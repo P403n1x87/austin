@@ -15,7 +15,7 @@ However, the output format can be grabbed from any other external tool for
 further processing. Look, for instance, at the following Python TUI, similar in
 spirit to [py-spy](https://github.com/benfred/py-spy).
 
-<div style="text-align:center"><img src ="art/austin-tui_wip.png" /></div>
+![tui](art/austin-tui_wip.png)
 
 The current version only supports the 64-bit version of Python 3.6 on
 Linux-based operating systems that has not been compiled wit the
@@ -31,6 +31,22 @@ plans to allow you to attach Austin to a running Python application.
 Installing Austin amounts to the usual `./configure`, `make` and `make install`
 finger gymnastic. The only dependency is the standard C library.
 
+~~~ bash
+git clone --depth=1 https://github.com/P403n1x87/austin.git
+autoreconf --install
+./configure
+make
+make install
+~~~
+
+Compilation has been tested with GNU GCC 7.3.0. The code is so simple that it
+really compiles with just
+
+~~~ bash
+gcc -O3 -Wall `ls src/*.c` -o austin
+~~~
+
+Add `-DDEBUG` if you want a more verbose syslog.
 
 # Usage
 
@@ -171,7 +187,7 @@ if __name__ == "__main__":
     keep_cpu_busy()
 ~~~
 
-<div style="text-align:center"><img src ="art/test.png" /></div>
+![test_graph](art/test.png)
 
 The tall stack on the right is the initialisation phase of the Python
 interpreter.
