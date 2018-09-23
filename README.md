@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin)
+
 ![austin](art/austin.png)
 
 Meet Austin, a Python frame stack sampler for CPython.
