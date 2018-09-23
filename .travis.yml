@@ -1,0 +1,10 @@
+language: c
+
+compiler:
+  - gcc
+
+before_script:
+  autoreconf --install
+
+script:
+  ./configure && make && make check
