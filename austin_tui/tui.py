@@ -30,16 +30,16 @@ class AustinTUI:
         scr.addstr(TITLE_LINE, 1, "Austin -- Frame stack sampler for CPython.")
 
         scr.addstr(PROC_LINE, 1, "PID: {:5}".format(self.austin.get_pid()))
-        scr.addstr(PROC_LINE, 12, "CmdLine: " + self.austin.get_cmd_line())
+        scr.addstr(PROC_LINE, 16, 'Cmd line:  "{}"'.format(self.austin.get_cmd_line()))
 
         scr.addstr(THREAD_LINE, 1, "Sampling...")
 
-        scr.addstr(TABHEAD_LINE, 0, " " * curses.COLS, curses.A_REVERSE | curses.A_BOLD)
         scr.addstr(TABHEAD_LINE, 1, "{:^6} {:^6}  {}".format(
             "OWN",
             "TOT",
             "FUNCTION"
-        ), curses.A_REVERSE)
+        ), curses.A_REVERSE | curses.A_BOLD)
+        scr.chgat(curses.A_REVERSE | curses.A_BOLD)
 
         scr.refresh()
 
@@ -59,8 +59,9 @@ class AustinTUI:
                 scr.addstr(THREAD_LINE, 24, "{:^5}".format(1), curses.A_REVERSE)
                 scr.addstr(THREAD_LINE, 31, " of {:^5}".format(len(stacks)))
 
-                stack = stacks[thread][::-1]
+                writeln(scr, THREAD_LINE + 1, 1, "Samples: {:8}".format(self.stats.samples))
 
+                stack = stacks[thread][::-1]
                 i = 1
                 for frame in stack:
                     writeln(scr, TABHEAD_LINE + i, 1, "{:6.2f} {:6.2f}  {}".format(

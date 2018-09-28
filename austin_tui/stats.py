@@ -60,10 +60,16 @@ def parse_line(line):
     These are: the thread ID, the list of frames and the duration of the
     samplingself.
     """
-    thread, rest = line.decode().strip('\n').split(';', maxsplit=1)
-    frames, duration = rest.rsplit(maxsplit=1)
+    try:
+        thread, rest = line.decode().strip('\n').split(';', maxsplit=1)
+        frames, duration = rest.rsplit(maxsplit=1)
+        frames = frames.split(";")
+    except ValueError:
+        # Probably an "empty" thread
+        thread, duration = line.rsplit(maxsplit=1)
+        frames = []
 
-    return thread, frames.split(';'), int(duration)
+    return thread, frames, int(duration)
 
 
 class Stats:
@@ -82,8 +88,12 @@ class Stats:
         self.current_thread = None
         self.current_stack = None
         self.current_threads = {}
+        self.samples = 0
 
     def _update_frame(self, frame_stack, sample_stack):
+        if sample_stack is None:
+            return
+
         frame_stack.total_time += sample_stack.total_time
         frame_stack.own_time += sample_stack.own_time
 
@@ -105,7 +115,7 @@ class Stats:
     def add_thread_sample(self, collapsed_sample):
         thread, frames, duration = parse_line(collapsed_sample)
 
-        sample_stack = SampledFrame(frames, duration, 1)
+        sample_stack = SampledFrame(frames, duration, 1) if frames else None
 
         self.current_stack = deque()
 
@@ -126,6 +136,8 @@ class Stats:
 
         self.current_threads[thread] = self.current_stack
 
+        self.samples += 1
+
     @atomic
     def get_current_stacks(self, reset_after = True):
         stacks = {}
@@ -133,6 +145,8 @@ class Stats:
             frame_list = self.threads[thread]
             stack = []
             for i in self.current_threads[thread]:
+                if frame_list[i] is None:
+                    continue
                 stack.append(frame_list[i].to_dict())
                 frame_list = frame_list[i].children
             stacks[thread] = stack

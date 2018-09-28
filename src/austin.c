@@ -23,6 +23,7 @@
 #include <argp.h>
 #include <signal.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -39,8 +40,17 @@
 
 #define DEFAULT_SAMPLING_INTERVAL    100
 
-static ctime_t t_sampling_interval = DEFAULT_SAMPLING_INTERVAL;
+const char SAMPLE_FORMAT_NORMAL[]      = ";%s (%s);line %d";
+const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s (%s:%d)";
+
 static ctime_t t_sample;  // Checkmark for sampling duration calculation
+
+// Globals for command line arguments
+static ctime_t t_sampling_interval = DEFAULT_SAMPLING_INTERVAL;
+static pid_t   attach_pid          = 0;
+static int     exclude_empty       = 0;
+static int     sleepless           = 0;
+static char *  format              = (char *) SAMPLE_FORMAT_NORMAL;
 
 static int exec_arg = 0;
 
@@ -50,19 +60,29 @@ static int exec_arg = 0;
 // ----------------------------------------------------------------------------
 static void
 _print_collapsed_stack(py_thread_t * thread, ctime_t delta) {
-  printf("Thread %lx", thread->tid);
-
   py_frame_t * frame = py_thread__first_frame(thread);
-  if (frame == NULL)
+
+  if (frame == NULL && exclude_empty)
+    // Skip if thread has no frames and we want to exclude empty threads
     return;
 
+  // Group entries by thread.
+  printf("Thread %lx", thread->tid);
+
+  // Append frames
   while(frame != NULL) {
     py_code_t * code = frame->code;
-    printf(";%s (%s);#%d", code->scope, code->filename, code->lineno);
+    if (sleepless && strstr(code->scope, "wait") != NULL) {
+      delta = 0;
+      printf(";<idle>");
+      break;
+    }
+    printf(format, code->scope, code->filename, code->lineno);
 
     frame = frame->next;
   }
 
+  // Finish off sample with the sampling time
   printf(" %lu\n", delta);
 }
 
@@ -70,6 +90,9 @@ _print_collapsed_stack(py_thread_t * thread, ctime_t delta) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__sample(py_proc_t * py_proc) {
+  ctime_t delta = gettime() - t_sample;
+  error = EOK;
+
   PyInterpreterState is;
   if (py_proc__get_type(py_proc, py_proc->is_raddr, is) != 0)
     return 1;
@@ -80,16 +103,21 @@ _py_proc__sample(py_proc_t * py_proc) {
   raddr_t       raddr        = { .pid = py_proc->pid, .addr = is.tstate_head };
   py_thread_t * py_thread    = py_thread_new_from_raddr(&raddr);
   py_thread_t * first_thread = py_thread;
-  ctime_t       delta        = gettime() - t_sample;
 
   while (py_thread != NULL) {
     if (py_thread->invalid)
-      break;
-    _print_collapsed_stack(py_thread, delta);
-    py_thread = py_thread__next(py_thread);
+      printf("Bad samples %ld\n", delta);
+
+    else {
+      _print_collapsed_stack(py_thread, delta);
+      py_thread = py_thread__next(py_thread);
+    }
   }
 
   py_thread__destroy(first_thread);
+
+  if (error != EOK)
+    printf("Bad samples %ld\n", delta);
 
   t_sample += delta;
   return 0;
@@ -103,20 +131,48 @@ const char * argp_program_version = PROGRAM_NAME " " VERSION;
 const char * argp_program_bug_address = \
   "<https://github.com/P403n1x87/austin/issues>";
 
-static const char * doc = "austin -- A frame stack sampler for Python.";
+static const char * doc = "Austin -- A frame stack sampler for Python.";
 
 static struct argp_option options[] = {
-  {"interval", 'i', "n_usec", 0, "Sampling interval (default is 500 usec)"},
+  {
+    "interval",     'i', "n_usec",      0,
+    "Sampling interval (default is 500 usec)."
+  },
+  {
+    "alt-format",   'a', NULL,          0,
+    "alternative collapsed stack sample format."
+  },
+  {
+    "exclude-empty",'e', NULL,          0,
+    "do not output samples of threads with no frame stacks."
+  },
+  {
+    "sleepless",    's', NULL,          0,
+    "suppress idle samples."
+  },
+  {
+    "pid",          'p', "PID",         0,
+    "The the ID of the process to which Austin should attach."
+  },
   {0}
 };
 
 
 // ----------------------------------------------------------------------------
 static int
-parse_opt (int key, char *arg, struct argp_state *state)
-{
+strtonum(char * str, long * num) {
   char * p_err;
 
+  *num = strtol(str, &p_err, 10);
+
+  return  (p_err == str || *p_err != 0) ? 1 : 0;
+}
+
+
+// ----------------------------------------------------------------------------
+static int
+parse_opt (int key, char *arg, struct argp_state *state)
+{
   if (state->argc == 1) {
     argp_state_help(state, stdout, ARGP_HELP_USAGE);
     exit(0);
@@ -131,15 +187,35 @@ parse_opt (int key, char *arg, struct argp_state *state)
     state->next = state->argc;
   }
 
+  long l_pid;
   switch(key) {
   case 'i':
-    t_sampling_interval = strtol(arg, &p_err, 10);
-    if (p_err == arg || *p_err != 0)
+    if (strtonum(arg, (long *) &t_sampling_interval) == 1 || t_sampling_interval < 0)
       argp_error(state, "the sampling interval must be a positive integer");
+    break;
+
+  case 'a':
+    format = (char *) SAMPLE_FORMAT_ALTERNATIVE;
+    break;
+
+  case 'e':
+    exclude_empty = 1;
+    break;
+
+  case 's':
+    sleepless = 1;
+    break;
+
+  case 'p':
+    if (strtonum(arg, &l_pid) == 1 || l_pid <= 0)
+      argp_error(state, "invalid PID.");
+    attach_pid = (pid_t) l_pid;
     break;
 
   case ARGP_KEY_ARG:
   case ARGP_KEY_END:
+    if (attach_pid != 0 && exec_arg != 0)
+      argp_error(state, "the -p option is incompatible with the command argument.");
     break;
 
   default:
@@ -167,47 +243,52 @@ int main(int argc, char ** argv) {
 
   parse_args(argc, argv);
 
-  if (exec_arg == 0)
+  if (exec_arg == 0 && attach_pid == 0)
     return -1;
 
   logger_init();
   log_header();
   log_version();
 
+  error = EOK;
+
   py_proc_t * py_proc = py_proc_new();
   if (py_proc == NULL)
     return EPROC;
 
-  if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg]) != 0)
-    code = EPROCFORK;
+  if (attach_pid == 0) {
+    if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg]) != 0)
+      code = EPROCFORK;
+  } else {
+    if (py_proc__attach(py_proc, attach_pid) != 0)
+      code = EPROCFORK;
+  }
 
-  else if (py_proc->is_raddr == NULL)
-    code = EPROC;
+  if (code == EOK) {
+    if (py_proc->is_raddr == NULL)
+      code = EPROC;
 
-  else {
-    log_w("Sampling interval: %lu usec", t_sampling_interval);
+    else {
+      log_w("Sampling interval: %lu usec", t_sampling_interval);
 
-    stats_reset();
+      stats_reset();
 
-    t_sample = gettime();  // Prime sample checkmark
-    while(py_proc__is_running(py_proc)) {
-      ctime_t tb = gettime();
+      t_sample = gettime();  // Prime sample checkmark
+      while(py_proc__is_running(py_proc)) {
+        if (_py_proc__sample(py_proc))
+          break;
 
-      error = EOK;
+        stats_check_error();
 
-      if (_py_proc__sample(py_proc))
-        break;
+        ctime_t delta = gettime() - t_sample;  // Time spent sampling
+        stats_check_duration(delta, t_sampling_interval);
 
-      stats_check_error();
+        if (delta < t_sampling_interval)
+          usleep(t_sampling_interval - delta);
+      }
 
-      ctime_t delta = gettime() - tb;
-      stats_check_duration(delta, t_sampling_interval);
-
-      if (delta < t_sampling_interval)
-        usleep(t_sampling_interval - delta);
+      stats_log_metrics();
     }
-
-    stats_log_metrics();
   }
 
   if (py_proc != NULL) {

@@ -37,6 +37,7 @@ typedef struct {
   proc_vm_map_block_t elf;
   proc_vm_map_block_t dynsym;
   proc_vm_map_block_t rodata;
+  proc_vm_map_block_t heap;
 } proc_vm_map_t;
 
 
@@ -77,6 +78,18 @@ py_proc_new(void);
  */
 int
 py_proc__start(py_proc_t *, const char *, char **);
+
+
+/**
+ * Attach the process with the given PID
+ *
+ * @param py_proc_t *  the process object.
+ * @param pid_t        the PID of the process to attach.
+ *
+ * @return 0 on success.
+ */
+int
+py_proc__attach(py_proc_t *, pid_t);
 
 
 /**
