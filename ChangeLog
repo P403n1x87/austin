@@ -1,2 +1,32 @@
+2018-09-26 v0.2.0-alpha
+
+  Austin can now be attached to a running Python 3 process.
+
+  Added new command line options:
+
+    - --alt-format, -a:
+
+        Use the alternative format for collapsed stack samples.
+
+    - --exclude-empty, -e:
+
+        Exclude samples of threads with no frame stacks.
+
+        Usually, these are Python threads created by C extensions, whose code
+        cannot currently be traced.
+
+    - --sleepless, -s:
+
+        Suppress idle samples.
+
+        These are samples where a call to wait has been made and the thread
+        sits there doing nothing.
+
+  Fixed a bug that caused some valid thread samples to be marked as invalid.
+
+  Austin has been tested successfully on Windows 10 64-bit via WSL.
+
+
 2018-09-20 v0.1.0-alpha
+
   Initial release.

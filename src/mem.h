@@ -27,6 +27,7 @@
 
 #include <sys/uio.h>   /* LINUX */
 
+
 /**
  * Copy a data structure from the given remote address structure.
  * @param  raddr the remote address
@@ -34,6 +35,7 @@
  * @return       the number of bytes read.
  */
 #define copy_from_raddr(raddr, dt) copy_memory(raddr->pid, raddr->addr, sizeof(dt), &dt)
+
 
 /**
  * Same as copy_from_raddr, but with explicit arguments instead of a pointer to

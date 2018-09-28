@@ -20,7 +20,7 @@ class Austin(Thread):
         self.quit_event = Event()
         self.start_event = Event()
         self.austin = None
-        self.pid = -1
+        self.pid = int(args[1]) if args[0] == '-p' else -1
         self.cmd_line = "<unknown>"
 
     def get_pid(self):
@@ -35,9 +35,13 @@ class Austin(Thread):
             stdout=subprocess.PIPE,
         )
 
-        austin_process = Process(self.austin.pid)
-        child_process = austin_process.children()[0]
-        self.pid = child_process.pid
+        if self.pid < 0:
+            austin_process = Process(self.austin.pid)
+            child_process = austin_process.children()[0]
+            self.pid = child_process.pid
+        else:
+            child_process = Process(self.pid)
+
         self.cmd_line = child_process.cmdline()
 
         self.start_event.set()

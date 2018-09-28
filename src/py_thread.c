@@ -28,7 +28,7 @@
 
 // ---- PRIVATE ---------------------------------------------------------------
 
-#define FRAME_LIMIT 4096;
+#define FRAME_LIMIT                 4096
 
 
 // ---- PUBLIC ----------------------------------------------------------------
@@ -37,59 +37,64 @@
 py_thread_t *
 py_thread_new_from_raddr(raddr_t * raddr) {
   PyThreadState   ts;
-  py_frame_t    * py_frame  = NULL;
-  py_thread_t   * py_thread = NULL;
+  py_frame_t    * py_frame    = NULL;
+  py_thread_t   * py_thread   = NULL;
+  py_frame_t    * first_frame = NULL;
+  py_frame_t    * last_frame  = NULL;
+
+  error = EOK;
 
   if (copy_from_raddr(raddr, ts) != sizeof(ts))
     error = ETHREAD;
 
   else {
-    raddr_t frame_raddr = { .pid = raddr->pid, .addr = ts.frame };
-    py_frame = py_frame_new_from_raddr(&frame_raddr);
-    if (py_frame == NULL)
-      error = ETHREADNOFRAME;
-
-    else {
-      register int limit = FRAME_LIMIT;
-      py_frame_t * first_frame;
-      py_frame_t * last_frame = py_frame;
-      while (py_frame != NULL && limit--) {
-        if (py_frame->invalid) {
-          error = ETHREADNOFRAME;
-          free(last_frame);
-          last_frame = NULL;
-          break;
-        }
-        else {
-          first_frame = py_frame;
-          py_frame = py_frame__prev(py_frame);
-        }
-      }
-
-      if (last_frame == NULL)
+    if (ts.frame != NULL) {
+      raddr_t frame_raddr = { .pid = raddr->pid, .addr = ts.frame };
+      py_frame = py_frame_new_from_raddr(&frame_raddr);
+      if (py_frame == NULL)
         error = ETHREADNOFRAME;
 
       else {
-        py_thread = (py_thread_t *) malloc(sizeof(py_thread_t));
-        if (py_thread == NULL)
-          error = ETHREAD;
-
-        else {
-          py_thread->raddr.pid  = raddr->pid;
-          py_thread->raddr.addr = raddr->addr;
-
-          py_thread->next_raddr.pid  = raddr->pid;
-          py_thread->next_raddr.addr = ts.next == raddr->addr ? NULL : ts.next;
-
-          py_thread->tid = ts.thread_id;
-          py_thread->next = NULL;
-
-          py_thread->first_frame = first_frame;
-          py_thread->last_frame  = last_frame;
-
-          py_thread->invalid = 0;
+        register int limit = FRAME_LIMIT;
+        last_frame = py_frame;
+        while (py_frame != NULL && limit--) {
+          if (py_frame->invalid) {
+            error = ETHREADNOFRAME;
+            free(last_frame);
+            last_frame = NULL;
+            break;
+          }
+          else {
+            first_frame = py_frame;
+            py_frame = py_frame__prev(py_frame);
+          }
         }
+
+        if (last_frame == NULL)
+          error = ETHREADNOFRAME;
       }
+    }
+  }
+
+  if ((error & ETHREAD) == 0) {
+    py_thread = (py_thread_t *) malloc(sizeof(py_thread_t));
+    if (py_thread == NULL)
+      error = ETHREAD;
+
+    else {
+      py_thread->raddr.pid  = raddr->pid;
+      py_thread->raddr.addr = raddr->addr;
+
+      py_thread->next_raddr.pid  = raddr->pid;
+      py_thread->next_raddr.addr = ts.next == raddr->addr ? NULL : ts.next;
+
+      py_thread->tid  = ts.thread_id;
+      py_thread->next = NULL;
+
+      py_thread->first_frame = first_frame;
+      py_thread->last_frame  = last_frame;
+
+      py_thread->invalid = 0;
     }
   }
 

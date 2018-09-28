@@ -38,17 +38,18 @@
 #include "mem.h"
 
 #include "py_proc.h"
+#include "py_thread.h"
 
 
 // ---- PRIVATE ---------------------------------------------------------------
 
-#define INIT_RETRY_SLEEP              20  /* usecs */
-#define INIT_RETRY_CNT               500  /* Retry for 10 ms before giving up. */
+#define INIT_RETRY_SLEEP             100  /* usecs */
+#define INIT_RETRY_CNT               100  /* Retry for 10 ms before giving up. */
 
-#define ELF_MAP                  (1 << 0)
-#define DYNSYM_MAP               (1 << 2)
-#define RODATA_MAP               (1 << 3)
-#define MAP_DONE                  0b1111
+#define BIN_MAP                  (1 << 0)
+#define DYNSYM_MAP               (1 << 1)
+#define RODATA_MAP               (1 << 2)
+#define HEAP_MAP                 (1 << 3)
 
 
 #define _py_proc__get_elf_type(self, offset, dt) (py_proc__memcpy(self, self->map.elf.base + offset, sizeof(dt), &dt))
@@ -67,11 +68,12 @@ static long _dynsym_hash_array[DYNSYM_COUNT] = {
 
 // Get the offset of the ith section header
 #define ELF_SH_OFF(ehdr, i) (ehdr.e_shoff + i * ehdr.e_shentsize)
+#define get_bounds(line, a, b) (sscanf(line, "%lx-%lx", &a, &b))
 
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__get_bin_path(py_proc_t * self) {
+_py_proc__parse_maps_file(py_proc_t * self) {
   char      file_name[32];
   FILE    * fp        = NULL;
   char    * line      = NULL;
@@ -91,34 +93,47 @@ _py_proc__get_bin_path(py_proc_t * self) {
     error = EPROCVM;
 
   else {
-    if (getline(&line, &len, fp) != -1) {
-      void * python_ptr = strstr(line, "python");
-      if (python_ptr != NULL) {
-        // Get bounds
-        *strstr(line, " ") = 0;
-        ssize_t a, b;
-        sscanf(line, "%lx-%lx", &a, &b);
+    int maps_flag = 0;
+    ssize_t a, b;  // VM map bounds
+    char * needle;
+    while (maps_flag != (BIN_MAP | HEAP_MAP) && getline(&line, &len, fp) != -1) {
+      if ((maps_flag & BIN_MAP) == 0) {
+        needle = strstr(line, "python");
+        if (needle != NULL) {
+          // Store binary file name
+          // TODO: Extend to deal with libpython.so
+          while (*((char *) --needle) != ' ');
+          int len = strlen(++needle);
+          if (self->bin_path != NULL)
+            free(self->bin_path);
+          self->bin_path = (char *) malloc(sizeof(char) * len);
+          if (self->bin_path == NULL)
+            error = EPROCVM;
+          else {
+            strcpy(self->bin_path, needle);
+            if (self->bin_path[len-1] == '\n')
+              self->bin_path[len-1] = 0;
 
-        self->map.elf.base = (void *) a;
-        self->map.elf.size = b - a;
+            get_bounds(line, a, b);
+            self->map.elf.base = (void *) a;
+            self->map.elf.size = b - a;
 
-        // Store binary file name
-        // TODO: Extend to deal with libpython.so
-        while (*((char *) --python_ptr) != ' ');
-        int len = strlen(++python_ptr);
-        if (self->bin_path != NULL)
-          free(self->bin_path);
-        self->bin_path = (char *) malloc(sizeof(char) * len);
-        if (self->bin_path == NULL)
-          error = EPROCVM;
-        else {
-          strcpy(self->bin_path, python_ptr);
-          if (self->bin_path[len-1] == '\n')
-            self->bin_path[len-1] = 0;
+            #ifdef DEBUG
+            log_d("Python binary path: %s\n", self->bin_path);
+            #endif // DEBUG
 
-          #ifdef DEBUG
-          log_d("Python binary path: %s\n", self->bin_path);
-          #endif // DEBUG
+            maps_flag |= BIN_MAP;
+          }
+        }
+      }
+      if ((maps_flag & HEAP_MAP) == 0) {
+        needle = strstr(line, "[heap]\n");
+        if (needle != NULL) {
+          get_bounds(line, a, b);
+          self->map.heap.base = (void *) a;
+          self->map.heap.size = b - a;
+
+          maps_flag |= HEAP_MAP;
         }
       }
     }
@@ -129,9 +144,7 @@ _py_proc__get_bin_path(py_proc_t * self) {
     }
   }
 
-  #ifdef DEBUG
   if (error & EPROC) log_error();
-  #endif
 
   return self->bin_path == NULL ? 1 : 0;
 }
@@ -151,14 +164,13 @@ _py_proc__get_version(py_proc_t * self, void * map) {
   // waiting until the version appears in the bss section at run-time.
   // NOTE: This method is not guaranteed to find a valid Python version.
   //       If this causes problems then another method is required.
-  char * p_ver = map + (Elf64_Addr) self->map.rodata.base;
+  char * p_ver = (char *) map + (Elf64_Addr) self->map.rodata.base;
   for (register int i = 0; i < self->map.rodata.size; i++) {
     if (p_ver[i] == '.' && p_ver[i+1] != '.' && p_ver[i+2] == '.' && p_ver[i-2] == 0) {
       if (sscanf(p_ver + i - 1, "%d.%d.%d", &major, &minor, &patch) == 3 && (major == 2 || major == 3)) {
         #ifdef DEBUG
         log_d("Python version: %s", p_ver + i - 1, p_ver);
         #endif
-
         break;
       }
     }
@@ -178,7 +190,7 @@ _py_proc__analyze_bin(py_proc_t * self) {
     return 0;
 
   if (self->bin_path == NULL)
-    _py_proc__get_bin_path(self);
+    _py_proc__parse_maps_file(self);
 
   if (self->bin_path == NULL)
     return 1;
@@ -254,7 +266,9 @@ _py_proc__analyze_bin(py_proc_t * self) {
           if (hash == _dynsym_hash_array[i] && strcmp(sym_name, _dynsym_array[i]) == 0) {
             *(&(self->tstate_curr_raddr) + i) = (void *) sym->st_value;
             hit_cnt++;
+            #ifdef DEBUG
             log_d("Symbol %s found at %p", sym_name, sym->st_value);
+            #endif
           }
         }
       }
@@ -269,12 +283,36 @@ _py_proc__analyze_bin(py_proc_t * self) {
   return 1 - self->sym_loaded;
 }
 
+// ----------------------------------------------------------------------------
+static int
+_py_proc__check_interp_state(py_proc_t * self, void * raddr) {
+  PyInterpreterState is;
+  PyThreadState      tstate_head;
+
+  if (py_proc__get_type(self, raddr, is) != 0)
+    return -1; // This signals that we are out of bounds.
+
+  if (py_proc__get_type(self, is.tstate_head, tstate_head) != 0)
+    return 1;
+
+  if (tstate_head.interp != raddr || tstate_head.frame == 0)
+    return 1;
+
+  error = EOK;
+  raddr_t thread_raddr = { .pid = self->pid, .addr = is.tstate_head };
+  py_thread_t * thread = py_thread_new_from_raddr(&thread_raddr);
+  if (thread == NULL)
+    return 1;
+  py_thread__destroy(thread);
+
+  return error == EOK ? 0 : 1;
+}
+
 
 // ----------------------------------------------------------------------------
 static int
 _py_proc__get_interp_state(py_proc_t * self) {
-  PyThreadState tstate_current, tstate_head;
-  PyInterpreterState is;
+  PyThreadState tstate_current;
 
   if (self == NULL)
     return 1;
@@ -290,21 +328,68 @@ _py_proc__get_interp_state(py_proc_t * self) {
 
   // 3.6.5 -> 3.6.6: _PyThreadState_Current doesn't seem what one would expect
   //                 anymore, but _PyThreadState_Current.prev is.
-  if (tstate_current.thread_id == 0 && tstate_current.prev != 0)
+  if (tstate_current.thread_id == 0 && tstate_current.prev != 0) {
     self->tstate_curr_raddr = tstate_current.prev;
+    return 1;
+  }
 
-  if (py_proc__get_type(self, tstate_current.interp, is) != 0)
+  if (_py_proc__check_interp_state(self, tstate_current.interp))
     return 1;
 
-  if (py_proc__get_type(self, is.tstate_head, tstate_head) != 0)
-    return 1;
-
-  if (tstate_head.interp != tstate_current.interp)
-    return 1;
-
-  self->is_raddr = tstate_head.interp;
+  self->is_raddr = tstate_current.interp;
 
   return 0;
+}
+
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
+  if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
+    return 0;
+
+  return (raddr >= self->map.heap.base && raddr < self->map.heap.base + self->map.heap.size)
+    ? 1
+    : 0;
+}
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__wait_for_interp_state(py_proc_t * self) {
+  register int try_cnt = INIT_RETRY_CNT;
+
+  while (try_cnt--) {
+    usleep(INIT_RETRY_SLEEP);
+
+    if (_py_proc__get_interp_state(self) == 0) {
+
+      #ifdef DEBUG
+      log_d("Interpreter State found @ raddr: %p after %d iterations",
+        self->is_raddr,
+        INIT_RETRY_CNT - try_cnt
+      );
+      #endif
+
+      return 0;
+    }
+  }
+
+  // Educated guess failed. Try brute force now.
+  void * upper_bound = self->map.heap.base + self->map.heap.size;
+
+  for (
+    register void ** raddr = (void **) self->map.heap.base;
+    (void *) raddr < upper_bound;
+    raddr++
+  ) {
+    if (_py_proc__is_heap_raddr(self, raddr) && _py_proc__check_interp_state(self, raddr) == 0) {
+      self->is_raddr = raddr;
+      return 0;
+    }
+  }
+
+  error = EPROCISTIMEOUT;
+  return 1;
 }
 
 
@@ -333,6 +418,19 @@ py_proc_new() {
 
 // ----------------------------------------------------------------------------
 int
+py_proc__attach(py_proc_t * self, pid_t pid) {
+  self->pid = pid;
+
+  if (_py_proc__wait_for_interp_state(self) == 0)
+    return 0;
+
+  log_error();
+  return 1;
+}
+
+
+// ----------------------------------------------------------------------------
+int
 py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   self->pid = fork();
 
@@ -342,30 +440,10 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
     exit(127);
   }
   else {
-    register int try_cnt = INIT_RETRY_CNT;
-    while (try_cnt--) {
-      usleep(INIT_RETRY_SLEEP);
-
-      if (_py_proc__get_interp_state(self) == 0) {
-
-        #ifdef DEBUG
-        log_d("Interpreter @ raddr: %p", self->is_raddr);
-        #endif
-
-        break;
-      }
-    }
-
-    if (self->is_raddr != NULL) {
-      #ifdef DEBUG
-      log_d("PyInterpreterState instance found after %d iterations", INIT_RETRY_CNT - try_cnt);
-      #endif
-
+    if (_py_proc__wait_for_interp_state(self) == 0)
       return 0;
-    }
   }
 
-  error = EPROCISTIMEOUT;
   log_error();
   return 1;
 }

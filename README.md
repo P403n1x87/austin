@@ -24,9 +24,6 @@ Linux-based operating systems that has not been compiled wit the
 `--enable-shared` flag. There is a plan to first support more Python versions,
 then the 32-bit architecture and finally more operating systems.
 
-Presently, it is only possible to start a Python process with Austin. There are
-plans to allow you to attach Austin to a running Python application.
-
 
 # Installation
 
@@ -53,12 +50,18 @@ Add `-DDEBUG` if you want a more verbose syslog.
 # Usage
 
 ~~~
-Usage: austin [OPTION...] executable [args ...]
-austin -- A frame stack sampler for Python.
+Austin -- A frame stack sampler for Python.
 
-  -i, --interval=n_usec      Sampling interval (default is 500 usec)
+  -a, --alt-format           alternative collapsed stack sample format.
+  -e, --exclude-empty        do not output samples of threads with no frame
+                             stacks.
+  -i, --interval=n_usec      Sampling interval (default is 500 usec).
+  -p, --pid=PID              The the ID of the process to which Austin should
+                             attach.
+  -s, --sleepless            suppress idle samples.
   -?, --help                 Give this help list
       --usage                Give a short usage message
+  -V, --version              Print program version
 ~~~
 
 The output is a sequence of frame stack samples, one on each line. The format is
@@ -80,6 +83,20 @@ each function, plus the finer detail of the time spent on each line.
 Austin uses syslog for log messages so make sure you watch `/var/log/syslog` for
 the `austin` tag to get some execution details and statistics.
 
+
+# Compatibility
+
+Austin has been tested on the following systems
+
+## Linux
+
+- Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04 x86-64
+
+## Windows
+
+- Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04 x86-64 via WSL
+
+
 # How does it work?
 
 To understand how Python works internally in terms of keeping track of all the
@@ -87,7 +104,7 @@ function calls, you can have a look at the related project
 [py-spy](https://github.com/benfred/py-spy) and references therein (in
 particular the [pyflame](https://github.com/uber/pyflame) project).
 
-The approach taken by Austin is similar to `py-spy` in the sense that it too
+The approach taken by Austin is similar to py-spy in the sense that it too
 peeks at the process memory while it is running, instead of pausing it with
 `ptrace`.
 
@@ -145,7 +162,7 @@ but even this approach doesn't guarantee 100% accuracy. It might be that a new
 read now succeeds, but there is no way of telling whether the references are
 genuine or not.
 
-## In between Python releases
+## In Between Python Releases
 
 The early development of this project was tested against Python 3.6.5. The
 method for finding a valid instance of `PyInterpreterState` described above
@@ -169,29 +186,21 @@ does. Fortunately enough, this fix works for both versions of Python.
 The following flame graph has been obtained with the command
 
 ~~~
-./austin -i 500 ./test.py | ./flamegraph.pl --colors mem --countname=usec > test.svg
+./austin -i 50 ./test.py | ./flamegraph.pl --countname=usec > test.svg
 ~~~
 
 where the sample `test.py` script has the following content
 
 ~~~ python
-#!/usr/bin/env python3
+import psutil
 
-import threading
-
-def keep_cpu_busy():
-    a = []
-    for i in range(10_000_000):
-        a.append(i)
-
-if __name__ == "__main__":
-    threading.Thread(target=keep_cpu_busy).start()
-    keep_cpu_busy()
+for i in range(1_000):
+  list(psutil.process_iter())
 ~~~
 
 ![test_graph](art/test.png)
 
-The tall stack on the right is the initialisation phase of the Python
+The tall stack on the left is the initialisation phase of the Python
 interpreter.
 
 
