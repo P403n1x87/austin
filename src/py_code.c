@@ -25,14 +25,15 @@
 #include "error.h"
 #include "logging.h"
 #include "py_code.h"
-#include "python36.h"
+#include "version.h"
 
 
 // ---- PRIVATE ---------------------------------------------------------------
 
-#define _code__get_filename(self, pid) _get_string_from_raddr(pid, (self)->co_filename)
-#define _code__get_name(self, pid) _get_string_from_raddr(pid, (self)->co_name)
-#define _code__get_lnotab(self, pid, buf) _get_bytes_from_raddr(pid, (self)->co_lnotab, buf)
+#define _code__get_filename(self, pid)    _get_string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_filename)))
+#define _code__get_name(self, pid)        _get_string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_name)))
+
+#define _code__get_lnotab(self, pid, buf) _get_bytes_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_lnotab)), buf)
 
 #define p_ascii_data(raddr) (raddr + sizeof(PyASCIIObject))
 
@@ -56,7 +57,6 @@ _get_string_from_raddr(pid_t pid, void * raddr) {
   else {
     ssize_t len = unicode._base._base.length;
     string      = (char *) malloc(len * sizeof(char) + 1);
-
     if (string == NULL)
       error = ECODE;
 
@@ -114,7 +114,7 @@ py_code_new_from_raddr(raddr_t * raddr, int lasti) {
   char         * lnotab   = NULL;
   int            len;
 
-  if (copy_from_raddr(raddr, code) != sizeof(code))
+  if (copy_from_raddr_v(raddr, code, py_v->py_code.size))
     error = ECODE;
 
   else if ((filename = _code__get_filename(&code, raddr->pid)) == NULL)
@@ -127,7 +127,7 @@ py_code_new_from_raddr(raddr_t * raddr, int lasti) {
     error = ECODENOLINENO;
 
   else {
-    int lineno = code.co_firstlineno;
+    int lineno = V_FIELD(int, code, py_code, o_firstlineno);
     for (register int i = 0, bc = 0; i < len; lineno += (int) lnotab[i++]) {
       bc += (int) lnotab[i++];
       if (bc > lasti)

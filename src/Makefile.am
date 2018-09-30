@@ -29,6 +29,7 @@ austin_SOURCES = \
   error.c        \
   logging.c      \
   mem.c          \
+  version.c      \
   stats.c        \
   py_code.c      \
   py_frame.c     \

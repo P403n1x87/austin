@@ -90,12 +90,15 @@ Austin has been tested on the following systems
 
 ## Linux
 
-- Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04 x86-64
+- Python 3.4 (3.4.9+) on Ubuntu 18.04.1 x86-64
+- Python 3.5 (3.5.2) on Ubuntu 16.04.5 x86-64
+- Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04.1 x86-64
 
 ## Windows
 
 - Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04 x86-64 via WSL
 
+> **NOTE** Austin *might* work with other versions of Python 3.
 
 # How does it work?
 

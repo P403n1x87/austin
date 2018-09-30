@@ -31,6 +31,7 @@
 #include "error.h"
 #include "logging.h"
 #include "mem.h"
+#include "python.h"
 #include "stats.h"
 
 #include "py_frame.h"
@@ -40,7 +41,7 @@
 
 #define DEFAULT_SAMPLING_INTERVAL    100
 
-const char SAMPLE_FORMAT_NORMAL[]      = ";%s (%s);line %d";
+const char SAMPLE_FORMAT_NORMAL[]      = ";%s (%s);L%d";
 const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s (%s:%d)";
 
 static ctime_t t_sample;  // Checkmark for sampling duration calculation

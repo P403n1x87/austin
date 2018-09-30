@@ -38,6 +38,15 @@
 
 
 /**
+ * Copy a data structure from the given remote address structure.
+ * @param  raddr the remote address
+ * @param  dt    the data structure as a local variable
+ * @return       the number of bytes read.
+ */
+#define copy_from_raddr_v(raddr, dt, n) copy_memory(raddr->pid, raddr->addr, n, &dt) != n
+
+
+/**
  * Same as copy_from_raddr, but with explicit arguments instead of a pointer to
  * a remote address structure
  * @param  pid  the process ID

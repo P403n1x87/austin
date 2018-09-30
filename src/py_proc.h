@@ -24,9 +24,6 @@
 #define PY_PROC_H
 
 
-#include "python36.h"
-
-
 typedef struct {
   void    * base;
   ssize_t   size;
@@ -38,6 +35,7 @@ typedef struct {
   proc_vm_map_block_t dynsym;
   proc_vm_map_block_t rodata;
   proc_vm_map_block_t heap;
+  proc_vm_map_block_t bss;
 } proc_vm_map_t;
 
 
@@ -50,6 +48,7 @@ typedef struct {
 
   // Local copy of the dynsym section
   int             sym_loaded;
+  int             maps_loaded;
   int             version;
   void          * tstate_curr_raddr;
 
