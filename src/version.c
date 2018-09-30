@@ -72,14 +72,21 @@ set_version(int version) {
   case 3:
     switch (minor) {
 
+    // NOTE: These versions haven't been tested.
+    case 0:
+    case 1:
+    case 2:
+    case 3:
+
     // 3.4, 3.5
     case 4:
     case 5:
       py_v = &python_v3_4;
       break;
 
-    // 3.6
+    // 3.6, 3.7
     case 6:
+    case 7:
       py_v = &python_v3_6;
       break;
 

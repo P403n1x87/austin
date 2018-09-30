@@ -24,6 +24,10 @@ Linux-based operating systems that has not been compiled wit the
 `--enable-shared` flag. There is a plan to first support more Python versions,
 then the 32-bit architecture and finally more operating systems.
 
+> **NOTE** The TUI is still work in progress. Its main purpose is to provide
+> an example of how to use the output produce by Austin rather than an
+> additional application to maintain.
+
 
 # Installation
 
@@ -93,12 +97,14 @@ Austin has been tested on the following systems
 - Python 3.4 (3.4.9+) on Ubuntu 18.04.1 x86-64
 - Python 3.5 (3.5.2) on Ubuntu 16.04.5 x86-64
 - Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04.1 x86-64
+- Python 3.7 (3.7.0) on Ubuntu 18.04.1 x86-64
 
 ## Windows
 
 - Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04 x86-64 via WSL
 
-> **NOTE** Austin *might* work with other versions of Python 3.
+> **NOTE** Austin *might* work with other versions of Python 3 on both Linux
+> and Windows
 
 # How does it work?
 
@@ -144,6 +150,11 @@ before, bearing in mind that, in principle, the `tstate_head` of
 
 At this point we are ready to navigate all the threads and traverse their frame
 stacks at regular interval of times to sample them.
+
+Starting with Python 3.7, the symbol `_PyRuntime` is exposed in the `.dynsym`
+section. This is a pointer to an internal structure of type `_PyRuntimeState`.
+The sub-field `interpreters.head` points to the head `PyInterpreterState`
+instance that can then be de-referenced directly.
 
 ## Concurrency
 

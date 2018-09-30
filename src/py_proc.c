@@ -57,10 +57,11 @@
 #define _py_proc__get_elf_type(self, offset, dt) (py_proc__memcpy(self, self->map.elf.base + offset, sizeof(dt), &dt))
 
 
-#define DYNSYM_COUNT                   1
+#define DYNSYM_COUNT                   2
 
 static const char * _dynsym_array[DYNSYM_COUNT] = {
-  "_PyThreadState_Current"
+  "_PyThreadState_Current",
+  "_PyRuntime"
 };
 
 static long _dynsym_hash_array[DYNSYM_COUNT] = {
@@ -315,7 +316,7 @@ _py_proc__analyze_bin(py_proc_t * self) {
   munmap(elf_map, elf_map_size);
   close(fd);
 
-  self->sym_loaded = (hit_cnt == DYNSYM_COUNT) ? 1 : 0;
+  self->sym_loaded = (hit_cnt > 0) ? 1 : 0;
 
   return 1 - self->sym_loaded;
 }
@@ -365,7 +366,8 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__get_interp_state(py_proc_t * self) {
-  PyThreadState tstate_current;
+  PyThreadState   tstate_current;
+  _PyRuntimeState py_runtime;
 
   if (self == NULL)
     return 1;
@@ -375,6 +377,20 @@ _py_proc__get_interp_state(py_proc_t * self) {
 
   if (self->sym_loaded == 0)
     return 1;
+
+  // Python 3.7 exposes the _PyRuntime symbol. This can be used to find the
+  // head interpreter state.
+  if (self->py_runtime != NULL) {
+    if (py_proc__get_type(self, self->py_runtime, py_runtime) != 0)
+      return 1;
+
+    if (_py_proc__check_interp_state(self, py_runtime.interpreters.head))
+      return 1;
+
+    self->is_raddr = py_runtime.interpreters.head;
+
+    return 0;
+  }
 
   if (py_proc__get_type(self, self->tstate_curr_raddr, tstate_current) != 0)
     return 1;
@@ -465,6 +481,7 @@ py_proc_new() {
     py_proc->maps_loaded       = 0;
     py_proc->sym_loaded        = 0;
     py_proc->tstate_curr_raddr = NULL;
+    py_proc->py_runtime        = NULL;
   }
 
   check_not_null(py_proc);

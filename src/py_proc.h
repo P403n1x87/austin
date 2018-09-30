@@ -51,6 +51,7 @@ typedef struct {
   int             maps_loaded;
   int             version;
   void          * tstate_curr_raddr;
+  void          * py_runtime;
 
   void          * is_raddr;
 } py_proc_t;

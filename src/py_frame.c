@@ -23,7 +23,7 @@
 #include "error.h"
 #include "logging.h"
 #include "py_frame.h"
-#include "python36.h"
+#include "python.h"
 
 
 // ---- PUBLIC ----------------------------------------------------------------

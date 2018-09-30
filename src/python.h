@@ -184,6 +184,24 @@ typedef struct _ts {
 } PyThreadState;
 
 
+// ---- internal/pystate.h ----------------------------------------------------
+
+typedef void *PyThread_type_lock;
+
+typedef struct pyruntimestate {
+    int initialized;
+    int core_initialized;
+    PyThreadState *finalizing;
+
+    struct pyinterpreters {
+        PyThread_type_lock mutex;
+        PyInterpreterState *head;
+        PyInterpreterState *main;
+        int64_t next_id;
+    } interpreters;
+} _PyRuntimeState;
+
+
 // ---- unicodeobject.h -------------------------------------------------------
 
 typedef uint32_t Py_UCS4;
