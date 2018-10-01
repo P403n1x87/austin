@@ -1,3 +1,8 @@
+2018-09-30 v0.3.0-alpha
+
+  Austin now supports Python 3.3, 3.4, 3.5 and 3.7 on x86_64 Linux.
+
+
 2018-09-26 v0.2.0-alpha
 
   Austin can now be attached to a running Python 3 process.

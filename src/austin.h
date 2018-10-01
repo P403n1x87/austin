@@ -25,7 +25,7 @@
 
 
 #define PROGRAM_NAME                    "austin"
-#define VERSION                         "0.2.0-alpha"
+#define VERSION                         "0.3.0-alpha"
 
 
 #endif

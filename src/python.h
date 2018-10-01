@@ -21,20 +21,21 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 // COPYRIGHT NOTICE: The content of this file is composed of different parts
-//                   taken from the source code of Python version 3.6.5.
-//                   The authors of those sources hold the copyright for most
-//                   of the content of this header file.
+//                   taken from different versions of the source code of
+//                   Python. The authors of those sources hold the copyright
+//                   for most of the content of this header file.
 
-#ifndef PYTHON36_H
-#define PYTHON36_H
+#ifndef PYTHON_H
+#define PYTHON_H
 
 #include <stdint.h>
 #include <stdlib.h>
 
+
 // ---- object.h --------------------------------------------------------------
 
-#define PyObject_HEAD                   PyObject ob_base;
-#define PyObject_VAR_HEAD      PyVarObject ob_base;
+#define PyObject_HEAD                   PyObject    ob_base;
+#define PyObject_VAR_HEAD               PyVarObject ob_base;
 
 #ifdef Py_TRACE_REFS
 #define _PyObject_HEAD_EXTRA            \
@@ -73,6 +74,26 @@ typedef struct {
     int co_nlocals;		/* #local variables */
     int co_stacksize;		/* #entries needed for evaluation stack */
     int co_flags;		/* CO_..., see below */
+    PyObject *co_code;		/* instruction opcodes */
+    PyObject *co_consts;	/* list (constants used) */
+    PyObject *co_names;		/* list of strings (names used) */
+    PyObject *co_varnames;	/* tuple of strings (local variable names) */
+    PyObject *co_freevars;	/* tuple of strings (free variable names) */
+    PyObject *co_cellvars;      /* tuple of strings (cell variable names) */
+    unsigned char *co_cell2arg; /* Maps cell vars which are arguments. */
+    PyObject *co_filename;	/* unicode (where it was loaded from) */
+    PyObject *co_name;		/* unicode (name, for reference) */
+    int co_firstlineno;		/* first source line number */
+    PyObject *co_lnotab;	/* string (encoding addr<->lineno mapping) */
+} PyCodeObject3_3;
+
+typedef struct {
+    PyObject_HEAD
+    int co_argcount;		/* #arguments, except *args */
+    int co_kwonlyargcount;	/* #keyword only arguments */
+    int co_nlocals;		/* #local variables */
+    int co_stacksize;		/* #entries needed for evaluation stack */
+    int co_flags;		/* CO_..., see below */
     int co_firstlineno;   /* first source line number */
     PyObject *co_code;		/* instruction opcodes */
     PyObject *co_consts;	/* list (constants used) */
@@ -80,16 +101,15 @@ typedef struct {
     PyObject *co_varnames;	/* tuple of strings (local variable names) */
     PyObject *co_freevars;	/* tuple of strings (free variable names) */
     PyObject *co_cellvars;      /* tuple of strings (cell variable names) */
-    /* The rest aren't used in either hash or comparisons, except for co_name,
-       used in both. This is done to preserve the name and line number
-       for tracebacks and debuggers; otherwise, constant de-duplication
-       would collapse identical functions/lambdas defined on different lines.
-    */
     unsigned char *co_cell2arg; /* Maps cell vars which are arguments. */
     PyObject *co_filename;	/* unicode (where it was loaded from) */
     PyObject *co_name;		/* unicode (name, for reference) */
-    PyObject *co_lnotab;	/* string (encoding addr<->lineno mapping) See
-				   Objects/lnotab_notes.txt for details. */
+    PyObject *co_lnotab;	/* string (encoding addr<->lineno mapping) */
+} PyCodeObject3_6;
+
+typedef union {
+  PyCodeObject3_3 v3_3;
+  PyCodeObject3_6 v3_6;
 } PyCodeObject;
 
 
@@ -130,9 +150,44 @@ typedef struct _is {
 typedef int (*Py_tracefunc)(PyObject *, struct _frame *, int, PyObject *);
 
 
-typedef struct _ts {
-    struct _ts *prev;
-    struct _ts *next;
+typedef struct _ts3_3 {
+    struct _ts3_3 *next;
+    PyInterpreterState *interp;
+
+    struct _frame *frame;
+    int recursion_depth;
+    char overflowed;
+    char recursion_critical;
+    int tracing;
+    int use_tracing;
+
+    Py_tracefunc c_profilefunc;
+    Py_tracefunc c_tracefunc;
+    PyObject *c_profileobj;
+    PyObject *c_traceobj;
+
+    PyObject *curexc_type;
+    PyObject *curexc_value;
+    PyObject *curexc_traceback;
+
+    PyObject *exc_type;
+    PyObject *exc_value;
+    PyObject *exc_traceback;
+
+    PyObject *dict;  /* Stores per-thread state */
+
+    int tick_counter;
+
+    int gilstate_counter;
+
+    PyObject *async_exc; /* Asynchronous exception to raise */
+    long thread_id; /* Thread id where this tstate was created */
+} PyThreadState3_3;
+
+
+typedef struct _ts3_4 {
+    struct _ts3_4 *prev;
+    struct _ts3_4 *next;
     PyInterpreterState *interp;
 
     struct _frame *frame;
@@ -161,7 +216,30 @@ typedef struct _ts {
 
     PyObject *async_exc; /* Asynchronous exception to raise */
     long thread_id; /* Thread id where this tstate was created */
+} PyThreadState3_4;
+
+
+typedef union {
+  PyThreadState3_3 v3_3;
+  PyThreadState3_4 v3_4;
 } PyThreadState;
+
+// ---- internal/pystate.h ----------------------------------------------------
+
+typedef void *PyThread_type_lock;
+
+typedef struct pyruntimestate {
+    int initialized;
+    int core_initialized;
+    PyThreadState *finalizing;
+
+    struct pyinterpreters {
+        PyThread_type_lock mutex;
+        PyInterpreterState *head;
+        PyInterpreterState *main;
+        int64_t next_id;
+    } interpreters;
+} _PyRuntimeState;
 
 
 // ---- unicodeobject.h -------------------------------------------------------
@@ -214,12 +292,6 @@ typedef struct {
     PyObject_VAR_HEAD
     Py_hash_t ob_shash;
     char ob_sval[1];
-
-    /* Invariants:
-     *     ob_sval contains space for 'ob_size+1' elements.
-     *     ob_sval[ob_size] == 0.
-     *     ob_shash is the hash of the string or -1 if not computed yet.
-     */
 } PyBytesObject;
 
 

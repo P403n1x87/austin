@@ -20,10 +20,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#include "py_thread.h"
-#include "python36.h"
-#include "logging.h"
 #include "error.h"
+#include "logging.h"
+#include "version.h"
+
+#include "py_thread.h"
 
 
 // ---- PRIVATE ---------------------------------------------------------------
@@ -48,8 +49,8 @@ py_thread_new_from_raddr(raddr_t * raddr) {
     error = ETHREAD;
 
   else {
-    if (ts.frame != NULL) {
-      raddr_t frame_raddr = { .pid = raddr->pid, .addr = ts.frame };
+    if (V_FIELD(void*, ts, py_thread, o_frame) != NULL) {
+      raddr_t frame_raddr = { .pid = raddr->pid, .addr = V_FIELD(void*, ts, py_thread, o_frame) };
       py_frame = py_frame_new_from_raddr(&frame_raddr);
       if (py_frame == NULL)
         error = ETHREADNOFRAME;
@@ -86,9 +87,11 @@ py_thread_new_from_raddr(raddr_t * raddr) {
       py_thread->raddr.addr = raddr->addr;
 
       py_thread->next_raddr.pid  = raddr->pid;
-      py_thread->next_raddr.addr = ts.next == raddr->addr ? NULL : ts.next;
+      py_thread->next_raddr.addr = V_FIELD(void*, ts, py_thread, o_next) == raddr->addr \
+        ? NULL \
+        : V_FIELD(void*, ts, py_thread, o_next);
 
-      py_thread->tid  = ts.thread_id;
+      py_thread->tid  = V_FIELD(long, ts, py_thread, o_thread_id);
       py_thread->next = NULL;
 
       py_thread->first_frame = first_frame;

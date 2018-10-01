@@ -36,6 +36,7 @@
 #include "error.h"
 #include "logging.h"
 #include "mem.h"
+#include "version.h"
 
 #include "py_proc.h"
 #include "py_thread.h"
@@ -50,15 +51,17 @@
 #define DYNSYM_MAP               (1 << 1)
 #define RODATA_MAP               (1 << 2)
 #define HEAP_MAP                 (1 << 3)
+#define BSS_MAP                  (1 << 4)
 
 
 #define _py_proc__get_elf_type(self, offset, dt) (py_proc__memcpy(self, self->map.elf.base + offset, sizeof(dt), &dt))
 
 
-#define DYNSYM_COUNT                   1
+#define DYNSYM_COUNT                   2
 
 static const char * _dynsym_array[DYNSYM_COUNT] = {
-  "_PyThreadState_Current"
+  "_PyThreadState_Current",
+  "_PyRuntime"
 };
 
 static long _dynsym_hash_array[DYNSYM_COUNT] = {
@@ -78,8 +81,9 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   FILE    * fp        = NULL;
   char    * line      = NULL;
   size_t    len       = 0;
+  int       maps_flag = 0;
 
-  if (self->bin_path != NULL)
+  if (self->maps_loaded)
     return 0;
 
   sprintf(file_name, "/proc/%d/maps", self->pid);
@@ -93,47 +97,60 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     error = EPROCVM;
 
   else {
-    int maps_flag = 0;
     ssize_t a, b;  // VM map bounds
     char * needle;
-    while (maps_flag != (BIN_MAP | HEAP_MAP) && getline(&line, &len, fp) != -1) {
-      if ((maps_flag & BIN_MAP) == 0) {
-        needle = strstr(line, "python");
-        if (needle != NULL) {
-          // Store binary file name
-          // TODO: Extend to deal with libpython.so
-          while (*((char *) --needle) != ' ');
-          int len = strlen(++needle);
-          if (self->bin_path != NULL)
-            free(self->bin_path);
-          self->bin_path = (char *) malloc(sizeof(char) * len);
-          if (self->bin_path == NULL)
-            error = EPROCVM;
-          else {
-            strcpy(self->bin_path, needle);
-            if (self->bin_path[len-1] == '\n')
-              self->bin_path[len-1] = 0;
+    while (maps_flag != (HEAP_MAP | BSS_MAP) && getline(&line, &len, fp) != -1) {
+      if (self->bin_path == NULL) {
+        // Store binary file name
+        // TODO: Extend to deal with libpython.so
+        if ((needle = strstr(line, "python")) == NULL)
+          break;
 
-            get_bounds(line, a, b);
-            self->map.elf.base = (void *) a;
-            self->map.elf.size = b - a;
+        while (*((char *) --needle) != ' ');
+        int len = strlen(++needle);
+        if (self->bin_path != NULL)
+          free(self->bin_path);
+        self->bin_path = (char *) malloc(sizeof(char) * len);
+        if (self->bin_path == NULL)
+          error = EPROCVM;
+        else {
+          strcpy(self->bin_path, needle);
+          if (self->bin_path[len-1] == '\n')
+            self->bin_path[len-1] = 0;
 
-            #ifdef DEBUG
-            log_d("Python binary path: %s\n", self->bin_path);
-            #endif // DEBUG
+          get_bounds(line, a, b);
+          self->map.elf.base = (void *) a;
+          self->map.elf.size = b - a;
 
-            maps_flag |= BIN_MAP;
-          }
+          #ifdef DEBUG
+          log_d("Python binary path: %s\n", self->bin_path);
+          #endif // DEBUG
         }
       }
-      if ((maps_flag & HEAP_MAP) == 0) {
-        needle = strstr(line, "[heap]\n");
-        if (needle != NULL) {
-          get_bounds(line, a, b);
-          self->map.heap.base = (void *) a;
-          self->map.heap.size = b - a;
+      else {
+        if ((needle = strstr(line, "[heap]\n")) != NULL) {
+          if ((maps_flag & HEAP_MAP) == 0) {
+            get_bounds(line, a, b);
+            self->map.heap.base = (void *) a;
+            self->map.heap.size = b - a;
 
-          maps_flag |= HEAP_MAP;
+            maps_flag |= HEAP_MAP;
+
+            #ifdef DEBUG
+            log_d("HEAP bounds: %s", line);
+            #endif
+          }
+        }
+        else if ((maps_flag & BSS_MAP) == 0 && (line[strlen(line)-2] == ' ')) {
+          get_bounds(line, a, b);
+          self->map.bss.base = (void *) a;
+          self->map.bss.size = b - a;
+
+          maps_flag |= BSS_MAP;
+
+          #ifdef DEBUG
+          log_d("BSS bounds: %s", line);
+          #endif
         }
       }
     }
@@ -146,7 +163,9 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
   if (error & EPROC) log_error();
 
-  return self->bin_path == NULL ? 1 : 0;
+  self->maps_loaded = maps_flag == (HEAP_MAP | BSS_MAP) ? 1 : 0;
+
+  return 1 - self->maps_loaded;
 }
 
 
@@ -158,23 +177,43 @@ _py_proc__get_version(py_proc_t * self, void * map) {
 
   int major = 0, minor = 0, patch = 0;
 
+  FILE *fp;
+  char version[64];
+  char cmd[128];
+
+  sprintf(cmd, "%s --version 2>&1", self->bin_path);
+
+  fp = popen(cmd, "r");
+  if (fp == NULL) {
+    log_e("Failed to start Python to determine its version.");
+    return 0;
+  }
+
+  while (fgets(version, sizeof(version) - 1, fp) != NULL) {
+    if (sscanf(version, "Python %d.%d.%d", &major, &minor, &patch) == 3)
+      break;
+  }
+
+  /* close */
+  pclose(fp);
+
+  log_i("Python version: %d.%d.%d", major, minor, patch);
+
   // Scan the rodata section for something that looks like the Python version.
   // There are good chances this is at the very beginning of the section so
   // it shouldn't take too long to find a match. This is more reliable than
   // waiting until the version appears in the bss section at run-time.
   // NOTE: This method is not guaranteed to find a valid Python version.
   //       If this causes problems then another method is required.
-  char * p_ver = (char *) map + (Elf64_Addr) self->map.rodata.base;
-  for (register int i = 0; i < self->map.rodata.size; i++) {
-    if (p_ver[i] == '.' && p_ver[i+1] != '.' && p_ver[i+2] == '.' && p_ver[i-2] == 0) {
-      if (sscanf(p_ver + i - 1, "%d.%d.%d", &major, &minor, &patch) == 3 && (major == 2 || major == 3)) {
-        #ifdef DEBUG
-        log_d("Python version: %s", p_ver + i - 1, p_ver);
-        #endif
-        break;
-      }
-    }
-  }
+  // char * p_ver = (char *) map + (Elf64_Addr) self->map.rodata.base;
+  // for (register int i = 0; i < self->map.rodata.size; i++) {
+  //   if (p_ver[i] == '.' && p_ver[i+1] != '.' && p_ver[i+2] == '.' && p_ver[i-2] == 0) {
+  //     if (sscanf(p_ver + i - 1, "%d.%d.%d", &major, &minor, &patch) == 3 && (major == 2 || major == 3)) {
+  //       log_i("Python version: %s", p_ver + i - 1, p_ver);
+  //       // break;
+  //     }
+  //   }
+  // }
 
   return (major << 16) | (minor << 8) | patch;
 }
@@ -186,14 +225,14 @@ _py_proc__analyze_bin(py_proc_t * self) {
   if (self == NULL)
     return 1;
 
-  if (self->sym_loaded)
-    return 0;
-
-  if (self->bin_path == NULL)
+  if (self->maps_loaded == 0)
     _py_proc__parse_maps_file(self);
 
-  if (self->bin_path == NULL)
+  if (self->maps_loaded == 0)
     return 1;
+
+  if (self->sym_loaded)
+    return 0;
 
   Elf64_Ehdr ehdr;
 
@@ -238,8 +277,7 @@ _py_proc__analyze_bin(py_proc_t * self) {
   if (map_flag == (DYNSYM_MAP | RODATA_MAP)) {
     self->version = _py_proc__get_version(self, elf_map);
     if (self->version) {
-      if ((self->version & 0x00FFFF00) != ((3 << 16) | (6 << 8))) // Version 3.6
-        log_w("Unsupported Python version detected. Austin might not work as expected.");
+      set_version(self->version);
 
       Elf64_Shdr * p_dynsym = self->map.dynsym.base;
       if (p_dynsym->sh_offset == 0)
@@ -278,7 +316,7 @@ _py_proc__analyze_bin(py_proc_t * self) {
   munmap(elf_map, elf_map_size);
   close(fd);
 
-  self->sym_loaded = (hit_cnt == DYNSYM_COUNT) ? 1 : 0;
+  self->sym_loaded = (hit_cnt > 0) ? 1 : 0;
 
   return 1 - self->sym_loaded;
 }
@@ -292,11 +330,23 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   if (py_proc__get_type(self, raddr, is) != 0)
     return -1; // This signals that we are out of bounds.
 
+  #ifdef DEBUG
+  log_d("PyInterpreterState loaded @ %p", raddr);
+  #endif
+
   if (py_proc__get_type(self, is.tstate_head, tstate_head) != 0)
     return 1;
 
-  if (tstate_head.interp != raddr || tstate_head.frame == 0)
+  #ifdef DEBUG
+  log_d("PyThreadState head loaded @ %p", is.tstate_head);
+  #endif
+
+  if ((V_FIELD(void*, tstate_head, py_thread, o_interp)) != raddr || (V_FIELD(void*, tstate_head, py_thread, o_frame)) == 0)
     return 1;
+
+  #ifdef DEBUG
+  log_d("Found possible interpreter state @ %p (offset %p).", raddr, raddr - self->map.heap.base);
+  #endif
 
   error = EOK;
   raddr_t thread_raddr = { .pid = self->pid, .addr = is.tstate_head };
@@ -305,6 +355,10 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     return 1;
   py_thread__destroy(thread);
 
+  #ifdef DEBUG
+  log_d("Stack trace constructed from possible interpreter state (error %d)", error);
+  #endif
+
   return error == EOK ? 0 : 1;
 }
 
@@ -312,7 +366,8 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__get_interp_state(py_proc_t * self) {
-  PyThreadState tstate_current;
+  PyThreadState   tstate_current;
+  _PyRuntimeState py_runtime;
 
   if (self == NULL)
     return 1;
@@ -323,20 +378,34 @@ _py_proc__get_interp_state(py_proc_t * self) {
   if (self->sym_loaded == 0)
     return 1;
 
+  // Python 3.7 exposes the _PyRuntime symbol. This can be used to find the
+  // head interpreter state.
+  if (self->py_runtime != NULL) {
+    if (py_proc__get_type(self, self->py_runtime, py_runtime) != 0)
+      return 1;
+
+    if (_py_proc__check_interp_state(self, py_runtime.interpreters.head))
+      return 1;
+
+    self->is_raddr = py_runtime.interpreters.head;
+
+    return 0;
+  }
+
   if (py_proc__get_type(self, self->tstate_curr_raddr, tstate_current) != 0)
     return 1;
 
   // 3.6.5 -> 3.6.6: _PyThreadState_Current doesn't seem what one would expect
   //                 anymore, but _PyThreadState_Current.prev is.
-  if (tstate_current.thread_id == 0 && tstate_current.prev != 0) {
-    self->tstate_curr_raddr = tstate_current.prev;
+  if (V_FIELD(void*, tstate_current, py_thread, o_thread_id) == 0 && V_FIELD(void*, tstate_current, py_thread, o_prev) != 0) {
+    self->tstate_curr_raddr = V_FIELD(void*, tstate_current, py_thread, o_prev);
     return 1;
   }
 
-  if (_py_proc__check_interp_state(self, tstate_current.interp))
+  if (_py_proc__check_interp_state(self, V_FIELD(void*, tstate_current, py_thread, o_interp)))
     return 1;
 
-  self->is_raddr = tstate_current.interp;
+  self->is_raddr = V_FIELD(void*, tstate_current, py_thread, o_interp);
 
   return 0;
 }
@@ -374,6 +443,8 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
     }
   }
 
+  log_d("Unable to dereference _PyThreadState_Current. Scanning heap...");
+
   // Educated guess failed. Try brute force now.
   void * upper_bound = self->map.heap.base + self->map.heap.size;
 
@@ -407,8 +478,10 @@ py_proc_new() {
     py_proc->bin_path = NULL;
     py_proc->is_raddr = NULL;
 
+    py_proc->maps_loaded       = 0;
     py_proc->sym_loaded        = 0;
     py_proc->tstate_curr_raddr = NULL;
+    py_proc->py_runtime        = NULL;
   }
 
   check_not_null(py_proc);
