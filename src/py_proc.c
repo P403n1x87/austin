@@ -181,7 +181,7 @@ _py_proc__get_version(py_proc_t * self, void * map) {
   char version[64];
   char cmd[128];
 
-  sprintf(cmd, "%s --version", self->bin_path);
+  sprintf(cmd, "%s --version 2>&1", self->bin_path);
 
   fp = popen(cmd, "r");
   if (fp == NULL) {
@@ -341,7 +341,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   log_d("PyThreadState head loaded @ %p", is.tstate_head);
   #endif
 
-  if (tstate_head.interp != raddr || tstate_head.frame == 0)
+  if ((V_FIELD(void*, tstate_head, py_thread, o_interp)) != raddr || (V_FIELD(void*, tstate_head, py_thread, o_frame)) == 0)
     return 1;
 
   #ifdef DEBUG
@@ -397,15 +397,15 @@ _py_proc__get_interp_state(py_proc_t * self) {
 
   // 3.6.5 -> 3.6.6: _PyThreadState_Current doesn't seem what one would expect
   //                 anymore, but _PyThreadState_Current.prev is.
-  if (tstate_current.thread_id == 0 && tstate_current.prev != 0) {
-    self->tstate_curr_raddr = tstate_current.prev;
+  if (V_FIELD(void*, tstate_current, py_thread, o_thread_id) == 0 && V_FIELD(void*, tstate_current, py_thread, o_prev) != 0) {
+    self->tstate_curr_raddr = V_FIELD(void*, tstate_current, py_thread, o_prev);
     return 1;
   }
 
-  if (_py_proc__check_interp_state(self, tstate_current.interp))
+  if (_py_proc__check_interp_state(self, V_FIELD(void*, tstate_current, py_thread, o_interp)))
     return 1;
 
-  self->is_raddr = tstate_current.interp;
+  self->is_raddr = V_FIELD(void*, tstate_current, py_thread, o_interp);
 
   return 0;
 }

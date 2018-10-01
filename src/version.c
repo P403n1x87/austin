@@ -26,17 +26,57 @@
 #include "version.h"
 
 
+#define UNSUPPORTED_VERSION log_w("Unsupported Python 3 version detected. Austin might not work as expected.")
+
+
+// ---- Python 3.3 ------------------------------------------------------------
+
+python_v python_v3_3 = {
+  // py_code
+  {
+    sizeof(PyCodeObject3_3),
+
+    offsetof(PyCodeObject3_3, co_filename),
+    offsetof(PyCodeObject3_3, co_name),
+    offsetof(PyCodeObject3_3, co_lnotab),
+    offsetof(PyCodeObject3_3, co_firstlineno)
+  },
+
+  // py_thread
+  {
+    sizeof(PyThreadState3_3),
+
+    offsetof(PyThreadState3_3, next), /* Hack. Python 3.3 doesn't have this field */
+    offsetof(PyThreadState3_3, next),
+    offsetof(PyThreadState3_3, interp),
+    offsetof(PyThreadState3_3, frame),
+    offsetof(PyThreadState3_3, thread_id)
+  }
+};
+
+
 // ---- Python 3.4 ------------------------------------------------------------
 
 python_v python_v3_4 = {
   // py_code
   {
-    sizeof(PyCodeObject3_4),
+    sizeof(PyCodeObject3_3),
 
-    offsetof(PyCodeObject3_4, co_filename),
-    offsetof(PyCodeObject3_4, co_name),
-    offsetof(PyCodeObject3_4, co_lnotab),
-    offsetof(PyCodeObject3_4, co_firstlineno)
+    offsetof(PyCodeObject3_3, co_filename),
+    offsetof(PyCodeObject3_3, co_name),
+    offsetof(PyCodeObject3_3, co_lnotab),
+    offsetof(PyCodeObject3_3, co_firstlineno)
+  },
+
+  // py_thread
+  {
+    sizeof(PyThreadState3_4),
+
+    offsetof(PyThreadState3_4, prev),
+    offsetof(PyThreadState3_4, next),
+    offsetof(PyThreadState3_4, interp),
+    offsetof(PyThreadState3_4, frame),
+    offsetof(PyThreadState3_4, thread_id)
   }
 };
 
@@ -51,6 +91,17 @@ python_v python_v3_6 = {
     offsetof(PyCodeObject3_6, co_name),
     offsetof(PyCodeObject3_6, co_lnotab),
     offsetof(PyCodeObject3_6, co_firstlineno)
+  },
+
+  // py_thread
+  {
+    sizeof(PyThreadState3_4),
+
+    offsetof(PyThreadState3_4, prev),
+    offsetof(PyThreadState3_4, next),
+    offsetof(PyThreadState3_4, interp),
+    offsetof(PyThreadState3_4, frame),
+    offsetof(PyThreadState3_4, thread_id)
   }
 };
 
@@ -76,7 +127,12 @@ set_version(int version) {
     case 0:
     case 1:
     case 2:
+      UNSUPPORTED_VERSION;
+
+    // 3.3
     case 3:
+      py_v = &python_v3_3;
+      break;
 
     // 3.4, 3.5
     case 4:
@@ -91,7 +147,7 @@ set_version(int version) {
       break;
 
     default:
-      log_w("Unsupported Python 3 version detected. Austin might not work as expected.");
+      UNSUPPORTED_VERSION;
       py_v = &python_v3_6;
     }
   }

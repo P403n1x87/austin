@@ -85,7 +85,7 @@ typedef struct {
     PyObject *co_name;		/* unicode (name, for reference) */
     int co_firstlineno;		/* first source line number */
     PyObject *co_lnotab;	/* string (encoding addr<->lineno mapping) */
-} PyCodeObject3_4;
+} PyCodeObject3_3;
 
 typedef struct {
     PyObject_HEAD
@@ -108,7 +108,7 @@ typedef struct {
 } PyCodeObject3_6;
 
 typedef union {
-  PyCodeObject3_4 v3_4;
+  PyCodeObject3_3 v3_3;
   PyCodeObject3_6 v3_6;
 } PyCodeObject;
 
@@ -150,9 +150,44 @@ typedef struct _is {
 typedef int (*Py_tracefunc)(PyObject *, struct _frame *, int, PyObject *);
 
 
-typedef struct _ts {
-    struct _ts *prev;
-    struct _ts *next;
+typedef struct _ts3_3 {
+    struct _ts3_3 *next;
+    PyInterpreterState *interp;
+
+    struct _frame *frame;
+    int recursion_depth;
+    char overflowed;
+    char recursion_critical;
+    int tracing;
+    int use_tracing;
+
+    Py_tracefunc c_profilefunc;
+    Py_tracefunc c_tracefunc;
+    PyObject *c_profileobj;
+    PyObject *c_traceobj;
+
+    PyObject *curexc_type;
+    PyObject *curexc_value;
+    PyObject *curexc_traceback;
+
+    PyObject *exc_type;
+    PyObject *exc_value;
+    PyObject *exc_traceback;
+
+    PyObject *dict;  /* Stores per-thread state */
+
+    int tick_counter;
+
+    int gilstate_counter;
+
+    PyObject *async_exc; /* Asynchronous exception to raise */
+    long thread_id; /* Thread id where this tstate was created */
+} PyThreadState3_3;
+
+
+typedef struct _ts3_4 {
+    struct _ts3_4 *prev;
+    struct _ts3_4 *next;
     PyInterpreterState *interp;
 
     struct _frame *frame;
@@ -181,8 +216,13 @@ typedef struct _ts {
 
     PyObject *async_exc; /* Asynchronous exception to raise */
     long thread_id; /* Thread id where this tstate was created */
-} PyThreadState;
+} PyThreadState3_4;
 
+
+typedef union {
+  PyThreadState3_3 v3_3;
+  PyThreadState3_4 v3_4;
+} PyThreadState;
 
 // ---- internal/pystate.h ----------------------------------------------------
 

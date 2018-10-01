@@ -53,7 +53,19 @@ typedef struct {
 
 
 typedef struct {
-  py_code_v py_code;
+  ssize_t  size;
+
+  offset_t o_prev;
+  offset_t o_next;
+  offset_t o_interp;
+  offset_t o_frame;
+  offset_t o_thread_id;
+} py_thread_v;
+
+
+typedef struct {
+  py_code_v   py_code;
+  py_thread_v py_thread;
 } python_v;
 
 

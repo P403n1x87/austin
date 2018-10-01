@@ -1,6 +1,6 @@
-[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin)
-
 ![austin](art/austin.png)
+
+[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-0.3.0--alpha-blue.svg)
 
 Meet Austin, a Python frame stack sampler for CPython.
 
@@ -77,15 +77,25 @@ some further processing.
 Each line has the structure
 
 ~~~
-Thread [tid];[func] ([mod]);#[line no];[func] ...;#[line no] [usec]
+Thread [tid];[func] ([mod]);#[line no];[func] ...;L[line no] [usec]
 ~~~
 
 The reason why the line number is not included in the `([mod])` part, as done
 by py-spy, is that, this way, the flame graph will show the total time spent at
-each function, plus the finer detail of the time spent on each line.
+each function, plus the finer detail of the time spent on each line. A drawback
+of this format is that frame stacks double in height. If you prefer something
+more conventional, you can use the `-a` option to switch to the alternative
+format
+
+~~~
+Thread [tid];[func] ([mod]:[line no]);#[line no];[func] ... ([mod]:[line no]) [usec]
+~~~
 
 Austin uses syslog for log messages so make sure you watch `/var/log/syslog` for
-the `austin` tag to get some execution details and statistics.
+the `austin` tag to get execution details and statistics. _Bad_ frames are
+output together with the other frames. In general, entries for bad frames will
+not be visible in a flame graph as all tests show error rates below 1% on
+average.
 
 
 # Compatibility
@@ -94,6 +104,7 @@ Austin has been tested on the following systems
 
 ## Linux
 
+- Python 3.3 (3.3.7) on Ubuntu 18.04.1 x86-64
 - Python 3.4 (3.4.9+) on Ubuntu 18.04.1 x86-64
 - Python 3.5 (3.5.2) on Ubuntu 16.04.5 x86-64
 - Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04.1 x86-64
@@ -109,15 +120,15 @@ Austin has been tested on the following systems
 # How does it work?
 
 To understand how Python works internally in terms of keeping track of all the
-function calls, you can have a look at the related project
-[py-spy](https://github.com/benfred/py-spy) and references therein (in
-particular the [pyflame](https://github.com/uber/pyflame) project).
+function calls, you can have a look at similar projects like
+[py-spy](https://github.com/benfred/py-spy) and follow the references therein
+(in particular the [pyflame](https://github.com/uber/pyflame) project).
 
 The approach taken by Austin is similar to py-spy in the sense that it too
 peeks at the process memory while it is running, instead of pausing it with
 `ptrace`.
 
-Austin will fork itself and execute the program given at the command line. It
+Austin forks itself and executes the program specified at the command line. It
 waits until python has mapped its memory and uses the information contained in
 `/proc/[pid]/maps` to retrieve the location of the binary. It then looks at its
 header in memory to find the location and size of the section header table and
@@ -208,7 +219,7 @@ where the sample `test.py` script has the following content
 ~~~ python
 import psutil
 
-for i in range(1_000):
+for i in range(1000):
   list(psutil.process_iter())
 ~~~
 
