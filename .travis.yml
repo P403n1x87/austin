@@ -3,6 +3,8 @@ language: c
 compiler:
   - gcc
 
+sudo: required
+
 addons:
   apt:
     sources:
@@ -20,7 +22,7 @@ before_script:
   autoreconf --install
 
 script:
-  ./configure && make && make check
+  ./configure && make && sudo make check
 
 after_failure:
   - cat test-suite.log
