@@ -21,6 +21,3 @@ before_script:
 
 script:
   ./configure && make && make check
-
-after_script:
-  chmod +x austin && bats test/test.bats
