@@ -23,4 +23,6 @@ script:
   ./configure && make && make check
 
 after_failure:
-  cat test-suite.log
+  - pwd
+  - ls
+  - cat test-suite.log
