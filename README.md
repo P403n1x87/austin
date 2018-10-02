@@ -1,6 +1,6 @@
 ![austin](art/austin.png)
 
-[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-0.3.0--alpha-blue.svg)
+[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-0.3.1--alpha-blue.svg)
 
 Meet Austin, a Python frame stack sampler for CPython.
 
