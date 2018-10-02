@@ -23,4 +23,4 @@ script:
   ./configure && make && make check
 
 after_script:
-  make install && bats test/test.bats
+  bats test/test.bats
