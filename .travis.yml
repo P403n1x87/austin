@@ -3,8 +3,23 @@ language: c
 compiler:
   - gcc
 
+addons:
+  apt:
+    sources:
+    - sourceline: 'ppa:deadsnakes/ppa'
+    packages:
+    - bats
+    - python3.3
+    - python3.4
+    - python3.5
+    - python3.6
+    - python3.7
+
 before_script:
   autoreconf --install
 
 script:
   ./configure && make && make check
+
+after_script:
+  bats test/test.bats
