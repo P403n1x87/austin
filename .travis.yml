@@ -23,4 +23,4 @@ script:
   ./configure && make && make check
 
 after_script:
-  bats test/test.bats
+  chmod +x austin && bats test/test.bats
