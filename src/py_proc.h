@@ -46,10 +46,13 @@ typedef struct {
 
   proc_vm_map_t   map;
 
-  // Local copy of the dynsym section
+  void          * bss;
+
   int             sym_loaded;
   int             maps_loaded;
   int             version;
+
+  // Symbols from .dynsym
   void          * tstate_curr_raddr;
   void          * py_runtime;
 

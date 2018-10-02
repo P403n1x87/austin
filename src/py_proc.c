@@ -341,7 +341,10 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   log_d("PyThreadState head loaded @ %p", is.tstate_head);
   #endif
 
-  if ((V_FIELD(void*, tstate_head, py_thread, o_interp)) != raddr || (V_FIELD(void*, tstate_head, py_thread, o_frame)) == 0)
+  if (
+    (V_FIELD(void*, tstate_head, py_thread, o_interp)) != raddr ||
+    (V_FIELD(void*, tstate_head, py_thread, o_frame))  == 0
+  )
     return 1;
 
   #ifdef DEBUG
@@ -397,7 +400,10 @@ _py_proc__get_interp_state(py_proc_t * self) {
 
   // 3.6.5 -> 3.6.6: _PyThreadState_Current doesn't seem what one would expect
   //                 anymore, but _PyThreadState_Current.prev is.
-  if (V_FIELD(void*, tstate_current, py_thread, o_thread_id) == 0 && V_FIELD(void*, tstate_current, py_thread, o_prev) != 0) {
+  if (
+    V_FIELD(void*, tstate_current, py_thread, o_thread_id) == 0 && \
+    V_FIELD(void*, tstate_current, py_thread, o_prev)      != 0
+  ) {
     self->tstate_curr_raddr = V_FIELD(void*, tstate_current, py_thread, o_prev);
     return 1;
   }
@@ -443,18 +449,23 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
     }
   }
 
-  log_d("Unable to dereference _PyThreadState_Current. Scanning heap...");
+  log_d("Unable to de-reference global symbols. Scanning the bss section...");
 
   // Educated guess failed. Try brute force now.
-  void * upper_bound = self->map.heap.base + self->map.heap.size;
 
+  // Copy .bss section from remote location
+  self->bss = malloc(self->map.bss.size);
+  py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss);
+
+  // Scan bss section for pointers within the heap.
+  void * upper_bound = self->bss + self->map.bss.size;
   for (
-    register void ** raddr = (void **) self->map.heap.base;
+    register void ** raddr = (void **) self->bss;
     (void *) raddr < upper_bound;
     raddr++
   ) {
-    if (_py_proc__is_heap_raddr(self, raddr) && _py_proc__check_interp_state(self, raddr) == 0) {
-      self->is_raddr = raddr;
+    if (_py_proc__is_heap_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
+      self->is_raddr = *raddr;
       return 0;
     }
   }
@@ -477,6 +488,8 @@ py_proc_new() {
     py_proc->pid      = 0;
     py_proc->bin_path = NULL;
     py_proc->is_raddr = NULL;
+
+    py_proc->bss = NULL;
 
     py_proc->maps_loaded       = 0;
     py_proc->sym_loaded        = 0;
@@ -560,6 +573,9 @@ py_proc__destroy(py_proc_t * self) {
 
   if (self->bin_path != NULL)
     free(self->bin_path);
+
+  if (self->bss != NULL)
+    free(self->bss);
 
   free(self);
 }
