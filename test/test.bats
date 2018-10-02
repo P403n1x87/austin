@@ -1,11 +1,15 @@
 #!/usr/bin/env bats
 
-@test "Test Austin: fork" {
-  run bats test/test_fork.bats
+test_case() {
+  run bats test/test_$1.bats
+  echo $output
   [ $status = 0 ]
 }
 
+@test "Test Austin: fork" {
+  test_case fork
+}
+
 @test "Test Austin: attach" {
-  run bats test/test_attach.bats
-  [ $status = 0 ]
+  test_case attach
 }
