@@ -64,8 +64,14 @@ typedef struct {
 
 
 typedef struct {
-  py_code_v   py_code;
-  py_thread_v py_thread;
+  int version;
+} py_unicode_v;
+
+
+typedef struct {
+  py_code_v    py_code;
+  py_thread_v  py_thread;
+  py_unicode_v py_unicode;
 } python_v;
 
 

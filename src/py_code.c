@@ -41,31 +41,59 @@
 // ----------------------------------------------------------------------------
 static char *
 _get_string_from_raddr(pid_t pid, void * raddr) {
-  PyUnicodeObject   unicode;
+  PyStringObject  unicode2;
+  PyUnicodeObject3  unicode;
   char            * string = NULL;
 
-  if (copy_datatype(pid, raddr, unicode) != sizeof(unicode)) {
-    error = ECODE;
-  }
-  else if (unicode._base._base.state.kind != 1) {
-    error = ECODEFMT;
-  }
-  else if (unicode._base._base.state.compact != 1) {
-    error = ECODECMPT;
-  }
-
-  else {
-    ssize_t len = unicode._base._base.length;
-    string      = (char *) malloc(len * sizeof(char) + 1);
-    if (string == NULL)
+  // This switch statement is required by the changes regarding the string type
+  // introduced in Python 3.
+  switch (py_v->py_unicode.version) {
+  case 2:
+    if (copy_datatype(pid, raddr, unicode2) != sizeof(unicode2)) {
       error = ECODE;
-
-    else if (copy_memory(pid, p_ascii_data(raddr), len, string) != len) {
-      error = ECODE;
-      free(string);
     }
-    else
-      string[len] = 0;
+
+    else {
+      ssize_t len = unicode2.ob_base.ob_size;
+      string = (char *) malloc(len * sizeof(char) + 1);
+      if (string == NULL)
+        error = ECODE;
+      else if (copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, string) != len) {
+        error = ECODE;
+        free(string);
+        string = NULL;
+      }
+      else {
+        string[len] = 0;
+      }
+    }
+    break;
+
+  case 3:
+    if (copy_datatype(pid, raddr, unicode) != sizeof(unicode)) {
+      error = ECODE;
+    }
+    else if (unicode._base._base.state.kind != 1) {
+      error = ECODEFMT;
+    }
+    else if (unicode._base._base.state.compact != 1) {
+      error = ECODECMPT;
+    }
+
+    else {
+      ssize_t len = unicode._base._base.length;
+      string      = (char *) malloc(len * sizeof(char) + 1);
+      if (string == NULL)
+        error = ECODE;
+
+      else if (copy_memory(pid, p_ascii_data(raddr), len, string) != len) {
+        error = ECODE;
+        free(string);
+        string = NULL;
+      }
+      else
+        string[len] = 0;
+    }
   }
 
   check_not_null(string);

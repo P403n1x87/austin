@@ -6,6 +6,14 @@ invoke_austin() {
   echo $output | grep "keep_cpu_busy"
 }
 
+@test "Test Austin with Python 2.6" {
+	invoke_austin "2.6"
+}
+
+@test "Test Austin with Python 2.7" {
+	invoke_austin "2.7"
+}
+
 @test "Test Austin with Python 3.3" {
 	invoke_austin "3.3"
 }

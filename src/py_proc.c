@@ -181,7 +181,7 @@ _py_proc__get_version(py_proc_t * self, void * map) {
   char version[64];
   char cmd[128];
 
-  sprintf(cmd, "%s --version 2>&1", self->bin_path);
+  sprintf(cmd, "%s -V 2>&1", self->bin_path);
 
   fp = popen(cmd, "r");
   if (fp == NULL) {
@@ -395,6 +395,7 @@ _py_proc__get_interp_state(py_proc_t * self) {
     return 0;
   }
 
+  // TODO: Here we can detect ASLR and act accordingly.
   if (py_proc__get_type(self, self->tstate_curr_raddr, tstate_current) != 0)
     return 1;
 
@@ -433,7 +434,7 @@ static int
 _py_proc__wait_for_interp_state(py_proc_t * self) {
   register int try_cnt = INIT_RETRY_CNT;
 
-  while (try_cnt--) {
+  while (--try_cnt) {
     usleep(INIT_RETRY_SLEEP);
 
     if (_py_proc__get_interp_state(self) == 0) {
@@ -452,21 +453,23 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
   log_d("Unable to de-reference global symbols. Scanning the bss section...");
 
   // Educated guess failed. Try brute force now.
+  try_cnt = INIT_RETRY_CNT;
+  while (--try_cnt) {
+    // Copy .bss section from remote location
+    self->bss = malloc(self->map.bss.size);
+    py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss);
 
-  // Copy .bss section from remote location
-  self->bss = malloc(self->map.bss.size);
-  py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss);
-
-  // Scan bss section for pointers within the heap.
-  void * upper_bound = self->bss + self->map.bss.size;
-  for (
-    register void ** raddr = (void **) self->bss;
-    (void *) raddr < upper_bound;
-    raddr++
-  ) {
-    if (_py_proc__is_heap_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
-      self->is_raddr = *raddr;
-      return 0;
+    // Scan bss section for pointers within the heap.
+    void * upper_bound = self->bss + self->map.bss.size;
+    for (
+      register void ** raddr = (void **) self->bss;
+      (void *) raddr < upper_bound;
+      raddr++
+    ) {
+      if (_py_proc__is_heap_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
+        self->is_raddr = *raddr;
+        return 0;
+      }
     }
   }
 
