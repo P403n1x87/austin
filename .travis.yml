@@ -12,6 +12,8 @@ addons:
     - sourceline: 'ppa:duggan/bats'
     packages:
     - bats
+    - python2.6
+    - python2.7
     - python3.3
     - python3.4
     - python3.5
