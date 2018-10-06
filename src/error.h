@@ -38,6 +38,7 @@
 #define ECODENOFNAME          ((1 << 3) + 4)
 #define ECODENONAME           ((1 << 3) + 5)
 #define ECODENOLINENO         ((1 << 3) + 6)
+#define ECODEUNICODE          ((1 << 3) + 7)
 
 // py_frame_t
 #define EFRAME                ((2 << 3) + 0)

@@ -68,7 +68,7 @@ py_frame_new_from_raddr(raddr_t * raddr) {
   }
 
   if (py_frame == NULL && py_code != NULL)
-    free(py_code);
+    py_code__destroy(py_code);
 
   check_not_null(py_frame);
   return py_frame;

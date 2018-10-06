@@ -98,27 +98,26 @@ _py_proc__sample(py_proc_t * py_proc) {
   if (py_proc__get_type(py_proc, py_proc->is_raddr, is) != 0)
     return 1;
 
-  if (is.tstate_head == NULL)
-    return 0;
+  if (is.tstate_head != NULL) {
+    raddr_t       raddr        = { .pid = py_proc->pid, .addr = is.tstate_head };
+    py_thread_t * py_thread    = py_thread_new_from_raddr(&raddr);
+    py_thread_t * first_thread = py_thread;
 
-  raddr_t       raddr        = { .pid = py_proc->pid, .addr = is.tstate_head };
-  py_thread_t * py_thread    = py_thread_new_from_raddr(&raddr);
-  py_thread_t * first_thread = py_thread;
+    while (py_thread != NULL) {
+      if (py_thread->invalid) {
+        printf("Bad samples %ld\n", delta);
+        break;
+      }
 
-  while (py_thread != NULL) {
-    if (py_thread->invalid)
-      printf("Bad samples %ld\n", delta);
-
-    else {
       _print_collapsed_stack(py_thread, delta);
       py_thread = py_thread__next(py_thread);
     }
+
+    py_thread__destroy(first_thread);
+
+    if (error != EOK)
+      printf("Bad samples %ld\n", delta);
   }
-
-  py_thread__destroy(first_thread);
-
-  if (error != EOK)
-    printf("Bad samples %ld\n", delta);
 
   t_sample += delta;
   return 0;

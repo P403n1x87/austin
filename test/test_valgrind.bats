@@ -1,9 +1,15 @@
 #!/usr/bin/env bats
 
 invoke_austin() {
-  run src/austin -i 1000 python$1 test/target34.py
+  run valgrind \
+    --error-exitcode=42 \
+    --leak-check=full \
+    --show-leak-kinds=all \
+    --errors-for-leak-kinds=all \
+    --track-fds=yes \
+    src/austin -i 1000 python$1 test/target34.py
+  echo "Exit code:" $status
 	[ $status = 0 ]
-  echo $output | grep "keep_cpu_busy"
 }
 
 @test "Test Austin with Python 2.4" {

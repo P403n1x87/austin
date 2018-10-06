@@ -41,14 +41,14 @@ const char * _error_msg_tab[MAXERROR] = {
   NULL,
 
   // py_code_t
-  "Failed to retrieve PyUnicodeObject",
+  "Failed to retrieve PyCodeObject",
   "Encountered unsupported string format",
   "Not a compact unicode object",
   "Failed to retrieve PyBytesObject",
   "Unable to get filename from code object",
   "Unable to get function name from code object",
   "Unable to get line number from code object",
-  NULL,
+  "Failed to retrieve PyUnicodeObject",
 
   // py_frame_t
   "Failed to create frame object",

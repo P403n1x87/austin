@@ -45,7 +45,7 @@
 // ---- PRIVATE ---------------------------------------------------------------
 
 #define INIT_RETRY_SLEEP             100  /* usecs */
-#define INIT_RETRY_CNT               100  /* Retry for 10 ms before giving up. */
+#define INIT_RETRY_CNT              1000  /* Retry for 100 ms before giving up. */
 
 #define BIN_MAP                  (1 << 0)
 #define DYNSYM_MAP               (1 << 1)
@@ -110,7 +110,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
         int len = strlen(++needle);
         if (self->bin_path != NULL)
           free(self->bin_path);
-        self->bin_path = (char *) malloc(sizeof(char) * len);
+        self->bin_path = (char *) malloc(sizeof(char) * len + 1);
         if (self->bin_path == NULL)
           error = EPROCVM;
         else {
@@ -453,7 +453,7 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
   log_d("Unable to de-reference global symbols. Scanning the bss section...");
 
   // Educated guess failed. Try brute force now.
-  try_cnt = INIT_RETRY_CNT;
+  try_cnt = INIT_RETRY_CNT >> 4;
   while (--try_cnt) {
     // Copy .bss section from remote location
     self->bss = malloc(self->map.bss.size);

@@ -61,18 +61,15 @@ py_thread_new_from_raddr(raddr_t * raddr) {
         while (py_frame != NULL && limit--) {
           if (py_frame->invalid) {
             error = ETHREADNOFRAME;
-            free(last_frame);
+            py_frame__destroy(last_frame);
             last_frame = NULL;
             break;
           }
-          else {
-            first_frame = py_frame;
-            py_frame = py_frame__prev(py_frame);
-          }
-        }
 
-        if (last_frame == NULL)
-          error = ETHREADNOFRAME;
+          first_frame = py_frame;
+
+          py_frame = py_frame__prev(py_frame);
+        }
       }
     }
   }
@@ -100,6 +97,9 @@ py_thread_new_from_raddr(raddr_t * raddr) {
       py_thread->invalid = 0;
     }
   }
+
+  if (py_thread == NULL && last_frame != NULL)
+    py_frame__destroy(last_frame);
 
   check_not_null(py_thread);
   return py_thread;

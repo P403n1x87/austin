@@ -41,37 +41,37 @@
 // ----------------------------------------------------------------------------
 static char *
 _get_string_from_raddr(pid_t pid, void * raddr) {
-  PyStringObject  unicode2;
+  PyStringObject    string;
   PyUnicodeObject3  unicode;
-  char            * string = NULL;
+  char            * buffer = NULL;
 
   // This switch statement is required by the changes regarding the string type
   // introduced in Python 3.
   switch (py_v->py_unicode.version) {
   case 2:
-    if (copy_datatype(pid, raddr, unicode2) != sizeof(unicode2)) {
-      error = ECODE;
+    if (copy_datatype(pid, raddr, string) != sizeof(string)) {
+      error = ECODEUNICODE;
     }
 
     else {
-      ssize_t len = unicode2.ob_base.ob_size;
-      string = (char *) malloc(len * sizeof(char) + 1);
-      if (string == NULL)
-        error = ECODE;
-      else if (copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, string) != len) {
-        error = ECODE;
-        free(string);
-        string = NULL;
+      ssize_t len = string.ob_base.ob_size;
+      buffer = (char *) malloc(len * sizeof(char) + 1);
+      if (buffer == NULL)
+        error = ECODEUNICODE;
+      else if (copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, buffer) != len) {
+        error = ECODEUNICODE;
+        free(buffer);
+        buffer = NULL;
       }
       else {
-        string[len] = 0;
+        buffer[len] = 0;
       }
     }
     break;
 
   case 3:
     if (copy_datatype(pid, raddr, unicode) != sizeof(unicode)) {
-      error = ECODE;
+      error = ECODEUNICODE;
     }
     else if (unicode._base._base.state.kind != 1) {
       error = ECODEFMT;
@@ -82,46 +82,78 @@ _get_string_from_raddr(pid_t pid, void * raddr) {
 
     else {
       ssize_t len = unicode._base._base.length;
-      string      = (char *) malloc(len * sizeof(char) + 1);
-      if (string == NULL)
-        error = ECODE;
+      buffer      = (char *) malloc(len * sizeof(char) + 1);
+      if (buffer == NULL)
+        error = ECODEUNICODE;
 
-      else if (copy_memory(pid, p_ascii_data(raddr), len, string) != len) {
-        error = ECODE;
-        free(string);
-        string = NULL;
+      else if (copy_memory(pid, p_ascii_data(raddr), len, buffer) != len) {
+        error = ECODEUNICODE;
+        free(buffer);
+        buffer = NULL;
       }
       else
-        string[len] = 0;
+        buffer[len] = 0;
     }
   }
 
-  check_not_null(string);
-  return string;
+  check_not_null(buffer);
+  return buffer;
 }
 
 
 // ----------------------------------------------------------------------------
 static int
 _get_bytes_from_raddr(pid_t pid, void * raddr, char ** array) {
-  PyBytesObject bytes;
-  ssize_t       len = 0;
+  ssize_t len = 0;
 
-  if (copy_datatype(pid, raddr, bytes) != sizeof(bytes))
-    error = ECODEBYTES;
+  if (py_v->py_bytes.version == 2 && py_v->py_bytes.minor == 4) {
+    PyStringObject string;
+    if (copy_datatype(pid, raddr, string) != sizeof(string))
+      error = ECODEBYTES;
 
-  if ((len = bytes.ob_base.ob_size + 1) < 1)  // Include null-terminator
-    error = ECODEBYTES;
+    else {
+      len = string.ob_base.ob_size + 1;
+      *array = (char *) malloc(len * sizeof(char) + 1);
+      if (*array == NULL) {
+        // In Python 2.4, the ob_size field is of type int. If we cannot
+        // allocate on the first try it's because we are getting a ridiculous
+        // value for len. In that case, chop it down to an int and try again.
+        // This approach is simpler than adding version support.
+        len = (int) len;
+        *array = (char *) malloc(len * sizeof(char) + 1);
+      }
+      if (*array == NULL)
+        error = ECODEBYTES;
 
+      else if (copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, *array) != len) {
+        error = ECODEBYTES;
+        free(*array);
+        *array = NULL;
+      }
+      else {
+        (*array)[len] = 0;
+      }
+    }
+  }
   else {
-    *array = (char *) malloc(len * sizeof(char));
-    if (*array == NULL)
+    PyBytesObject bytes;
+
+    if (copy_datatype(pid, raddr, bytes) != sizeof(bytes))
       error = ECODEBYTES;
 
-    else if (copy_memory(pid, raddr + offsetof(PyBytesObject, ob_sval), len, *array) != len) {
+    if ((len = bytes.ob_base.ob_size + 1) < 1)  // Include null-terminator
       error = ECODEBYTES;
-      free(*array);
-      *array = NULL;
+
+    else {
+      *array = (char *) malloc(len * sizeof(char));
+      if (*array == NULL)
+        error = ECODEBYTES;
+
+      else if (copy_memory(pid, raddr + offsetof(PyBytesObject, ob_sval), len, *array) != len) {
+        error = ECODEBYTES;
+        free(*array);
+        *array = NULL;
+      }
     }
   }
 
@@ -175,6 +207,7 @@ py_code_new_from_raddr(raddr_t * raddr, int lasti) {
       py_code->lineno   = lineno;
     }
   }
+
   if (py_code == NULL) {
     if (filename != NULL) free(filename);
     if (name     != NULL) free(name);
