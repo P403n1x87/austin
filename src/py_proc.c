@@ -491,7 +491,7 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
   log_d("Unable to de-reference global symbols. Scanning the bss section...");
 
   // Educated guess failed. Try brute force now.
-  try_cnt = INIT_RETRY_CNT >> 4;
+  try_cnt = INIT_RETRY_CNT;
   while (--try_cnt) {
     usleep(INIT_RETRY_SLEEP);
 
