@@ -6,6 +6,11 @@ invoke_austin() {
   echo $output | grep "keep_cpu_busy"
 }
 
+@test "Test Austin with Python 2.3" {
+  skip # Austin fails to find a PyInterpreterState instance when run via bats
+	invoke_austin "2.3"
+}
+
 @test "Test Austin with Python 2.4" {
 	invoke_austin "2.4"
 }

@@ -1,4 +1,4 @@
-attach_austin_2_4() {
+attach_austin_2_3() {
   python$1 test/sleepy.py &
   sleep 5
   run src/austin -i 10000 -p $!
@@ -23,8 +23,12 @@ attach_austin() {
   echo $output | grep ";<module> (test/sleepy.py);L13 "
 }
 
+@test "Test Austin with Python 2.3" {
+	attach_austin_2_3 "2.3"
+}
+
 @test "Test Austin with Python 2.4" {
-	attach_austin_2_4 "2.4"
+	attach_austin_2_3 "2.4"
 }
 
 @test "Test Austin with Python 2.5" {

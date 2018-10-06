@@ -104,6 +104,9 @@ Austin has been tested on the following systems
 
 ## Linux
 
+- Python 2.3 (2.3.7) on Ubuntu 18.04.1 x86-64
+- Python 2.4 (2.4.6) on Ubuntu 18.04.1 x86-64
+- Python 2.5 (2.5.6) on Ubuntu 18.04.1 x86-64
 - Python 2.6 (2.6.9) on Ubuntu 18.04.1 x86-64
 - Python 2.7 (2.7.15rc1) on Ubuntu 18.04.1 x86-64
 

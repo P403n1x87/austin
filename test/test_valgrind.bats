@@ -12,6 +12,10 @@ invoke_austin() {
 	[ $status = 0 ]
 }
 
+@test "Test Austin with Python 2.3" {
+	invoke_austin "2.3"
+}
+
 @test "Test Austin with Python 2.4" {
 	invoke_austin "2.4"
 }

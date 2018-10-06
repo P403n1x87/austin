@@ -158,7 +158,7 @@ _get_bytes_from_raddr(pid_t pid, void * raddr, char ** array) {
   }
 
   check_not_null(*array);
-  return len - 1;  // The last char is guaranteed to be the null terminator
+  return (error & ECODEBYTES) ? -1 : len - 1;  // The last char is guaranteed to be the null terminator
 }
 
 

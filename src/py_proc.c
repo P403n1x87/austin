@@ -368,7 +368,19 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__get_interp_state(py_proc_t * self) {
+_py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
+  if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
+    return 0;
+
+  return (raddr >= self->map.heap.base && raddr < self->map.heap.base + self->map.heap.size)
+    ? 1
+    : 0;
+}
+
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__deref_interp_state(py_proc_t * self) {
   PyThreadState   tstate_current;
   _PyRuntimeState py_runtime;
 
@@ -384,6 +396,9 @@ _py_proc__get_interp_state(py_proc_t * self) {
   // Python 3.7 exposes the _PyRuntime symbol. This can be used to find the
   // head interpreter state.
   if (self->py_runtime != NULL) {
+    if (_py_proc__is_heap_raddr(self, self->py_runtime) == 0)
+      return 1;
+
     if (py_proc__get_type(self, self->py_runtime, py_runtime) != 0)
       return 1;
 
@@ -395,7 +410,9 @@ _py_proc__get_interp_state(py_proc_t * self) {
     return 0;
   }
 
-  // TODO: Here we can detect ASLR and act accordingly.
+  if (_py_proc__is_heap_raddr(self, self->tstate_curr_raddr) == 0)
+    return 1;
+
   if (py_proc__get_type(self, self->tstate_curr_raddr, tstate_current) != 0)
     return 1;
 
@@ -420,14 +437,30 @@ _py_proc__get_interp_state(py_proc_t * self) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
-  if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
-    return 0;
+_py_proc__scan_bss(py_proc_t * self) {
+  // Copy .bss section from remote location
+  self->bss = malloc(self->map.bss.size);
+  if (self->bss == NULL)
+    return 1;
 
-  return (raddr >= self->map.heap.base && raddr < self->map.heap.base + self->map.heap.size)
-    ? 1
-    : 0;
+  py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss);
+
+  // Scan bss section for pointers within the heap.
+  void * upper_bound = self->bss + self->map.bss.size;
+  for (
+    register void ** raddr = (void **) self->bss;
+    (void *) raddr < upper_bound;
+    raddr++
+  ) {
+    if (_py_proc__is_heap_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
+      self->is_raddr = *raddr;
+      return 0;
+    }
+  }
+
+  return 1;
 }
+
 
 // ----------------------------------------------------------------------------
 static int
@@ -437,16 +470,21 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
   while (--try_cnt) {
     usleep(INIT_RETRY_SLEEP);
 
-    if (_py_proc__get_interp_state(self) == 0) {
-
+    switch (_py_proc__deref_interp_state(self)) {
+    case 0:
       #ifdef DEBUG
-      log_d("Interpreter State found @ raddr: %p after %d iterations",
+      log_d("Interpreter State de-referenced @ raddr: %p after %d iterations",
         self->is_raddr,
         INIT_RETRY_CNT - try_cnt
       );
       #endif
 
       return 0;
+
+    case -1:
+      // Symbol address is not within detected heap bounds (ASLR?)
+      try_cnt = 1;
+      break;
     }
   }
 
@@ -455,22 +493,10 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
   // Educated guess failed. Try brute force now.
   try_cnt = INIT_RETRY_CNT >> 4;
   while (--try_cnt) {
-    // Copy .bss section from remote location
-    self->bss = malloc(self->map.bss.size);
-    py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss);
+    usleep(INIT_RETRY_SLEEP);
 
-    // Scan bss section for pointers within the heap.
-    void * upper_bound = self->bss + self->map.bss.size;
-    for (
-      register void ** raddr = (void **) self->bss;
-      (void *) raddr < upper_bound;
-      raddr++
-    ) {
-      if (_py_proc__is_heap_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
-        self->is_raddr = *raddr;
-        return 0;
-      }
-    }
+    if (_py_proc__scan_bss(self) == 0)
+      return 0;
   }
 
   error = EPROCISTIMEOUT;

@@ -31,7 +31,7 @@
 
 // ---- Python 2.4 ------------------------------------------------------------
 
-python_v python_v2_4 = {
+python_v python_v2_3 = {
   // py_code
   {
     sizeof(PyCodeObject2),
@@ -202,12 +202,12 @@ set_version(int version) {
     case 0:
     case 1:
     case 2:
-    case 3:
       UNSUPPORTED_VERSION;
 
-    // 2.4
+    // 2.3, 2.4
+    case 3:
     case 4:
-      py_v = &python_v2_4;
+      py_v = &python_v2_3;
       break;
 
     // 2.5, 2.6, 2.7
