@@ -380,6 +380,18 @@ _py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
 
 // ----------------------------------------------------------------------------
 static int
+_py_proc__is_bss_raddr(py_proc_t * self, void * raddr) {
+  if (self == NULL || raddr == NULL || self->map.bss.base == NULL)
+    return 0;
+
+  return (raddr >= self->map.bss.base && raddr < self->map.bss.base + self->map.bss.size)
+    ? 1
+    : 0;
+}
+
+
+// ----------------------------------------------------------------------------
+static int
 _py_proc__deref_interp_state(py_proc_t * self) {
   PyThreadState   tstate_current;
   _PyRuntimeState py_runtime;
@@ -396,8 +408,12 @@ _py_proc__deref_interp_state(py_proc_t * self) {
   // Python 3.7 exposes the _PyRuntime symbol. This can be used to find the
   // head interpreter state.
   if (self->py_runtime != NULL) {
-    if (_py_proc__is_heap_raddr(self, self->py_runtime) == 0)
-      return 1;
+    // NOTE: With Python 3.7, this check causes the de-reference to fail even
+    //       in cases where it shouldn't.
+    // if (
+    //   _py_proc__is_bss_raddr(self, self->py_runtime) == 0 &&
+    //   _py_proc__is_heap_raddr(self, self->py_runtime) == 0
+    // ) return -1;
 
     if (py_proc__get_type(self, self->py_runtime, py_runtime) != 0)
       return 1;
@@ -410,8 +426,10 @@ _py_proc__deref_interp_state(py_proc_t * self) {
     return 0;
   }
 
-  if (_py_proc__is_heap_raddr(self, self->tstate_curr_raddr) == 0)
-    return 1;
+  if (
+    _py_proc__is_bss_raddr(self, self->tstate_curr_raddr) == 0 &&
+    _py_proc__is_heap_raddr(self, self->tstate_curr_raddr) == 0
+  ) return -1;
 
   if (py_proc__get_type(self, self->tstate_curr_raddr, tstate_current) != 0)
     return 1;
@@ -438,11 +456,6 @@ _py_proc__deref_interp_state(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__scan_bss(py_proc_t * self) {
-  // Copy .bss section from remote location
-  self->bss = malloc(self->map.bss.size);
-  if (self->bss == NULL)
-    return 1;
-
   py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss);
 
   // Scan bss section for pointers within the heap.
@@ -482,7 +495,10 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
       return 0;
 
     case -1:
-      // Symbol address is not within detected heap bounds (ASLR?)
+      #ifdef DEBUG
+      log_d("Symbol address not within VM maps (shared object?)");
+      #endif
+
       try_cnt = 1;
       break;
     }
@@ -490,7 +506,11 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 
   log_d("Unable to de-reference global symbols. Scanning the bss section...");
 
-  // Educated guess failed. Try brute force now.
+  // Copy .bss section from remote location
+  self->bss = malloc(self->map.bss.size);
+  if (self->bss == NULL)
+    return 1;
+
   try_cnt = INIT_RETRY_CNT;
   while (--try_cnt) {
     usleep(INIT_RETRY_SLEEP);
