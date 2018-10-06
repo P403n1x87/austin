@@ -9,10 +9,12 @@ invoke_austin() {
     --track-fds=yes \
     src/austin -i 1000 python$1 test/target34.py
   echo "Exit code:" $status
+  echo $output
 	[ $status = 0 ]
 }
 
 @test "Test Austin with Python 2.3" {
+  skip
 	invoke_austin "2.3"
 }
 
