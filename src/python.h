@@ -70,6 +70,24 @@ typedef struct {
 typedef struct {
     PyObject_HEAD
     int co_argcount;		/* #arguments, except *args */
+    int co_nlocals;		/* #local variables */
+    int co_stacksize;		/* #entries needed for evaluation stack */
+    int co_flags;		/* CO_..., see below */
+    PyObject *co_code;		/* instruction opcodes */
+    PyObject *co_consts;	/* list (constants used) */
+    PyObject *co_names;		/* list of strings (names used) */
+    PyObject *co_varnames;	/* tuple of strings (local variable names) */
+    PyObject *co_freevars;	/* tuple of strings (free variable names) */
+    PyObject *co_cellvars;      /* tuple of strings (cell variable names) */
+    PyObject *co_filename;	/* string (where it was loaded from) */
+    PyObject *co_name;		/* string (name, for reference) */
+    int co_firstlineno;		/* first source line number */
+    PyObject *co_lnotab;	/* string (encoding addr<->lineno mapping) */
+} PyCodeObject2;
+
+typedef struct {
+    PyObject_HEAD
+    int co_argcount;		/* #arguments, except *args */
     int co_kwonlyargcount;	/* #keyword only arguments */
     int co_nlocals;		/* #local variables */
     int co_stacksize;		/* #entries needed for evaluation stack */
@@ -108,6 +126,7 @@ typedef struct {
 } PyCodeObject3_6;
 
 typedef union {
+  PyCodeObject2   v2;
   PyCodeObject3_3 v3_3;
   PyCodeObject3_6 v3_6;
 } PyCodeObject;
@@ -248,6 +267,20 @@ typedef uint32_t Py_UCS4;
 typedef uint16_t Py_UCS2;
 typedef uint8_t Py_UCS1;
 
+#define PY_UNICODE_TYPE Py_UCS4
+
+typedef PY_UNICODE_TYPE Py_UNICODE;
+
+
+typedef struct {
+    PyObject_HEAD
+    Py_ssize_t length;          /* Length of raw Unicode data in buffer */
+    Py_UNICODE *str;            /* Raw Unicode buffer */
+    long hash;                  /* Hash value; -1 if not set */
+    PyObject *defenc;           /* (Default) Encoded version as Python string */
+} PyUnicodeObject2;
+
+
 typedef Py_ssize_t Py_hash_t;
 
 typedef struct {
@@ -283,8 +316,13 @@ typedef struct {
         Py_UCS2 *ucs2;
         Py_UCS4 *ucs4;
     } data;                     /* Canonical, smallest-form Unicode buffer */
-} PyUnicodeObject;
+} PyUnicodeObject3;
 
+
+typedef union {
+  PyUnicodeObject2 v2;
+  PyUnicodeObject3 v3;
+} PyUnicodeObject;
 
 // ---- bytesobject.h ---------------------------------------------------------
 
@@ -293,6 +331,16 @@ typedef struct {
     Py_hash_t ob_shash;
     char ob_sval[1];
 } PyBytesObject;
+
+
+// ---- stringobject.h --------------------------------------------------------
+
+typedef struct {
+    PyObject_VAR_HEAD
+    long ob_shash;
+    int ob_sstate;
+    char ob_sval[1];
+} PyStringObject; /* From Python 2.7 */
 
 
 // ----------------------------------------------------------------------------

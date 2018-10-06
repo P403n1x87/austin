@@ -13,3 +13,7 @@ test_case() {
 @test "Test Austin: attach" {
   test_case attach
 }
+
+@test "Test Austin: valgrind" {
+  test_case valgrind
+}

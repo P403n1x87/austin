@@ -29,6 +29,73 @@
 #define UNSUPPORTED_VERSION log_w("Unsupported Python 3 version detected. Austin might not work as expected.")
 
 
+// ---- Python 2.4 ------------------------------------------------------------
+
+python_v python_v2_3 = {
+  // py_code
+  {
+    sizeof(PyCodeObject2),
+
+    offsetof(PyCodeObject2, co_filename),
+    offsetof(PyCodeObject2, co_name),
+    offsetof(PyCodeObject2, co_lnotab),
+    offsetof(PyCodeObject2, co_firstlineno)
+  },
+
+  // py_thread
+  {
+    sizeof(PyThreadState3_3),
+
+    offsetof(PyThreadState3_3, next), /* Hack. Python 3.3 doesn't have this field */
+    offsetof(PyThreadState3_3, next),
+    offsetof(PyThreadState3_3, interp),
+    offsetof(PyThreadState3_3, frame),
+    offsetof(PyThreadState3_3, thread_id)
+  },
+
+  // py_unicode
+  {
+    2
+  },
+
+  // py_bytes
+  {
+    2, 4
+  }
+};
+
+
+// ---- Python 2.5 ------------------------------------------------------------
+
+python_v python_v2_5 = {
+  // py_code
+  {
+    sizeof(PyCodeObject2),
+
+    offsetof(PyCodeObject2, co_filename),
+    offsetof(PyCodeObject2, co_name),
+    offsetof(PyCodeObject2, co_lnotab),
+    offsetof(PyCodeObject2, co_firstlineno)
+  },
+
+  // py_thread
+  {
+    sizeof(PyThreadState3_3),
+
+    offsetof(PyThreadState3_3, next), /* Hack. Python 3.3 doesn't have this field */
+    offsetof(PyThreadState3_3, next),
+    offsetof(PyThreadState3_3, interp),
+    offsetof(PyThreadState3_3, frame),
+    offsetof(PyThreadState3_3, thread_id)
+  },
+
+  // py_unicode
+  {
+    2
+  }
+};
+
+
 // ---- Python 3.3 ------------------------------------------------------------
 
 python_v python_v3_3 = {
@@ -51,6 +118,11 @@ python_v python_v3_3 = {
     offsetof(PyThreadState3_3, interp),
     offsetof(PyThreadState3_3, frame),
     offsetof(PyThreadState3_3, thread_id)
+  },
+
+  // py_unicode
+  {
+    3
   }
 };
 
@@ -77,6 +149,11 @@ python_v python_v3_4 = {
     offsetof(PyThreadState3_4, interp),
     offsetof(PyThreadState3_4, frame),
     offsetof(PyThreadState3_4, thread_id)
+  },
+
+  // py_unicode
+  {
+    3
   }
 };
 
@@ -102,6 +179,11 @@ python_v python_v3_6 = {
     offsetof(PyThreadState3_4, interp),
     offsetof(PyThreadState3_4, frame),
     offsetof(PyThreadState3_4, thread_id)
+  },
+
+  // py_unicode
+  {
+    3
   }
 };
 
@@ -116,7 +198,29 @@ set_version(int version) {
 
   // ---- Python 2 ------------------------------------------------------------
   case 2:
-    log_e("Python 2 is not supported yet.");
+    switch (minor) {
+    case 0:
+    case 1:
+    case 2:
+      UNSUPPORTED_VERSION;
+
+    // 2.3, 2.4
+    case 3:
+    case 4:
+      py_v = &python_v2_3;
+      break;
+
+    // 2.5, 2.6, 2.7
+    case 5:
+    case 6:
+    case 7:
+      py_v = &python_v2_5;
+      break;
+
+    default:
+      UNSUPPORTED_VERSION;
+      py_v = &python_v2_5;
+    }
     break;
 
   // ---- Python 3 ------------------------------------------------------------

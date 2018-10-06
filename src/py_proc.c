@@ -45,7 +45,7 @@
 // ---- PRIVATE ---------------------------------------------------------------
 
 #define INIT_RETRY_SLEEP             100  /* usecs */
-#define INIT_RETRY_CNT               100  /* Retry for 10 ms before giving up. */
+#define INIT_RETRY_CNT              1000  /* Retry for 100 ms before giving up. */
 
 #define BIN_MAP                  (1 << 0)
 #define DYNSYM_MAP               (1 << 1)
@@ -110,7 +110,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
         int len = strlen(++needle);
         if (self->bin_path != NULL)
           free(self->bin_path);
-        self->bin_path = (char *) malloc(sizeof(char) * len);
+        self->bin_path = (char *) malloc(sizeof(char) * len + 1);
         if (self->bin_path == NULL)
           error = EPROCVM;
         else {
@@ -181,7 +181,7 @@ _py_proc__get_version(py_proc_t * self, void * map) {
   char version[64];
   char cmd[128];
 
-  sprintf(cmd, "%s --version 2>&1", self->bin_path);
+  sprintf(cmd, "%s -V 2>&1", self->bin_path);
 
   fp = popen(cmd, "r");
   if (fp == NULL) {
@@ -368,7 +368,19 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__get_interp_state(py_proc_t * self) {
+_py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
+  if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
+    return 0;
+
+  return (raddr >= self->map.heap.base && raddr < self->map.heap.base + self->map.heap.size)
+    ? 1
+    : 0;
+}
+
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__deref_interp_state(py_proc_t * self) {
   PyThreadState   tstate_current;
   _PyRuntimeState py_runtime;
 
@@ -384,6 +396,9 @@ _py_proc__get_interp_state(py_proc_t * self) {
   // Python 3.7 exposes the _PyRuntime symbol. This can be used to find the
   // head interpreter state.
   if (self->py_runtime != NULL) {
+    if (_py_proc__is_heap_raddr(self, self->py_runtime) == 0)
+      return 1;
+
     if (py_proc__get_type(self, self->py_runtime, py_runtime) != 0)
       return 1;
 
@@ -394,6 +409,9 @@ _py_proc__get_interp_state(py_proc_t * self) {
 
     return 0;
   }
+
+  if (_py_proc__is_heap_raddr(self, self->tstate_curr_raddr) == 0)
+    return 1;
 
   if (py_proc__get_type(self, self->tstate_curr_raddr, tstate_current) != 0)
     return 1;
@@ -419,42 +437,12 @@ _py_proc__get_interp_state(py_proc_t * self) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
-  if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
-    return 0;
-
-  return (raddr >= self->map.heap.base && raddr < self->map.heap.base + self->map.heap.size)
-    ? 1
-    : 0;
-}
-
-// ----------------------------------------------------------------------------
-static int
-_py_proc__wait_for_interp_state(py_proc_t * self) {
-  register int try_cnt = INIT_RETRY_CNT;
-
-  while (try_cnt--) {
-    usleep(INIT_RETRY_SLEEP);
-
-    if (_py_proc__get_interp_state(self) == 0) {
-
-      #ifdef DEBUG
-      log_d("Interpreter State found @ raddr: %p after %d iterations",
-        self->is_raddr,
-        INIT_RETRY_CNT - try_cnt
-      );
-      #endif
-
-      return 0;
-    }
-  }
-
-  log_d("Unable to de-reference global symbols. Scanning the bss section...");
-
-  // Educated guess failed. Try brute force now.
-
+_py_proc__scan_bss(py_proc_t * self) {
   // Copy .bss section from remote location
   self->bss = malloc(self->map.bss.size);
+  if (self->bss == NULL)
+    return 1;
+
   py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss);
 
   // Scan bss section for pointers within the heap.
@@ -468,6 +456,47 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
       self->is_raddr = *raddr;
       return 0;
     }
+  }
+
+  return 1;
+}
+
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__wait_for_interp_state(py_proc_t * self) {
+  register int try_cnt = INIT_RETRY_CNT;
+
+  while (--try_cnt) {
+    usleep(INIT_RETRY_SLEEP);
+
+    switch (_py_proc__deref_interp_state(self)) {
+    case 0:
+      #ifdef DEBUG
+      log_d("Interpreter State de-referenced @ raddr: %p after %d iterations",
+        self->is_raddr,
+        INIT_RETRY_CNT - try_cnt
+      );
+      #endif
+
+      return 0;
+
+    case -1:
+      // Symbol address is not within detected heap bounds (ASLR?)
+      try_cnt = 1;
+      break;
+    }
+  }
+
+  log_d("Unable to de-reference global symbols. Scanning the bss section...");
+
+  // Educated guess failed. Try brute force now.
+  try_cnt = INIT_RETRY_CNT;
+  while (--try_cnt) {
+    usleep(INIT_RETRY_SLEEP);
+
+    if (_py_proc__scan_bss(self) == 0)
+      return 0;
   }
 
   error = EPROCISTIMEOUT;

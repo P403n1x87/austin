@@ -1,6 +1,6 @@
 ![austin](art/austin.png)
 
-[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-0.3.1--alpha-blue.svg)
+[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-0.4.0--alpha-blue.svg) [![License](https://img.shields.io/badge/license-GPLv3-ff69b4.svg)](https://github.com/P403n1x87/austin/blob/master/LICENSE.md)
 
 Meet Austin, a Python frame stack sampler for CPython.
 
@@ -103,6 +103,12 @@ average.
 Austin has been tested on the following systems
 
 ## Linux
+
+- Python 2.3 (2.3.7) on Ubuntu 18.04.1 x86-64
+- Python 2.4 (2.4.6) on Ubuntu 18.04.1 x86-64
+- Python 2.5 (2.5.6) on Ubuntu 18.04.1 x86-64
+- Python 2.6 (2.6.9) on Ubuntu 18.04.1 x86-64
+- Python 2.7 (2.7.15rc1) on Ubuntu 18.04.1 x86-64
 
 - Python 3.3 (3.3.7) on Ubuntu 18.04.1 x86-64
 - Python 3.4 (3.4.9+) on Ubuntu 18.04.1 x86-64
