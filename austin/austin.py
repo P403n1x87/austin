@@ -50,6 +50,6 @@ class Austin(Thread):
             line = self.austin.stdout.readline()
             if not line:
                 break
-            self.stats.add_thread_sample(line)
+            self.stats.add_thread_sample(bytes(line))
 
         self.quit_event.set()
