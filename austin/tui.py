@@ -28,7 +28,7 @@ def ellipsis(text, length):
 
     if len(f) + 6 <= length:
         length -= len(f) + 1
-        return f + " " + rest[:(length >> 1)-2] + "..." + rest[-(length >> 1)+1:-1]
+        return f + " " + rest[:(length >> 1)-2] + "..." + rest[-(length >> 1)+1:]
 
     return f
 
@@ -166,20 +166,20 @@ class AustinTUI:
 
         # ---- Header ---------------------------------------------------------
 
-        Line(scr, TITLE_LINE, 1, "Austin -- Frame stack sampler for CPython.")
-        Line(scr, PROC_LINE, 1, "PID: {:5}  Cmd: {}".format(
+        Line(scr, TITLE_LINE, 0, "Austin -- Frame stack sampler for CPython.")
+        Line(scr, PROC_LINE, 0, "PID: {:5}  Cmd: {}".format(
             self.austin.get_pid(),
             self.austin.get_cmd_line()
         ))
 
-        self.thread_line = Line(scr, THREAD_LINE, 1, "Sampling...")
+        self.thread_line = Line(scr, THREAD_LINE, 0, "Sampling...")
         self.thread_num = Label(scr, THREAD_LINE, 24, attr=curses.A_REVERSE)
 
-        self.samples_line = Line(scr, SAMPLES_LINE, 1)
+        self.samples_line = Line(scr, SAMPLES_LINE, 0)
 
         # ---- Table ----------------------------------------------------------
 
-        Line(scr, TABHEAD_LINE, 1, "{:^6}  {:^6}  {:^6}  {:^6}  {}".format(
+        Line(scr, TABHEAD_LINE, 0, "{:^6}  {:^6}  {:^6}  {:^6}  {}".format(
             "OWN",
             "TOTAL",
             "%OWN",

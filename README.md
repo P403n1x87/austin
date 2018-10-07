@@ -19,10 +19,10 @@ spirit to [py-spy](https://github.com/benfred/py-spy).
 
 ![tui](art/austin-tui_wip.png)
 
-The current version only supports the 64-bit version of Python 3.6 on
-Linux-based operating systems that has not been compiled wit the
-`--enable-shared` flag. There is a plan to first support more Python versions,
-then the 32-bit architecture and finally more operating systems.
+The current version only supports the 64-bit versions of Python on
+Linux-based operating systems that have not been compiled with the
+`--enable-shared` flag. Support for the i386 architecture is next in line, and
+then there might be support for other operating systems too.
 
 > **NOTE** The TUI is still work in progress. Its main purpose is to provide
 > an example of how to use the output produce by Austin rather than an
