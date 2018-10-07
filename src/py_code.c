@@ -103,24 +103,24 @@ _get_string_from_raddr(pid_t pid, void * raddr) {
 
 // ----------------------------------------------------------------------------
 static int
-_get_bytes_from_raddr(pid_t pid, void * raddr, char ** array) {
+_get_bytes_from_raddr(pid_t pid, void * raddr, unsigned char ** array) {
   ssize_t len = 0;
 
-  if (py_v->py_bytes.version == 2 && py_v->py_bytes.minor == 4) {
+  if (py_v->py_bytes.version == 2) {
     PyStringObject string;
     if (copy_datatype(pid, raddr, string) != sizeof(string))
       error = ECODEBYTES;
 
     else {
       len = string.ob_base.ob_size + 1;
-      *array = (char *) malloc(len * sizeof(char) + 1);
+      *array = (unsigned char *) malloc(len * sizeof(char) + 1);
       if (*array == NULL) {
         // In Python 2.4, the ob_size field is of type int. If we cannot
         // allocate on the first try it's because we are getting a ridiculous
         // value for len. In that case, chop it down to an int and try again.
         // This approach is simpler than adding version support.
         len = (int) len;
-        *array = (char *) malloc(len * sizeof(char) + 1);
+        *array = (unsigned char *) malloc(len * sizeof(char) + 1);
       }
       if (*array == NULL)
         error = ECODEBYTES;
@@ -145,7 +145,7 @@ _get_bytes_from_raddr(pid_t pid, void * raddr, char ** array) {
       error = ECODEBYTES;
 
     else {
-      *array = (char *) malloc(len * sizeof(char));
+      *array = (unsigned char *) malloc(len * sizeof(char));
       if (*array == NULL)
         error = ECODEBYTES;
 
@@ -171,7 +171,7 @@ py_code_new_from_raddr(raddr_t * raddr, int lasti) {
   py_code_t    * py_code  = NULL;
   char         * filename = NULL;
   char         * name     = NULL;
-  char         * lnotab   = NULL;
+  unsigned char* lnotab   = NULL;
   int            len;
 
   if (copy_from_raddr_v(raddr, code, py_v->py_code.size))
@@ -187,9 +187,13 @@ py_code_new_from_raddr(raddr_t * raddr, int lasti) {
     error = ECODENOLINENO;
 
   else {
-    int lineno = V_FIELD(int, code, py_code, o_firstlineno);
-    for (register int i = 0, bc = 0; i < len; lineno += (int) lnotab[i++]) {
-      bc += (int) lnotab[i++];
+    int lineno = V_FIELD(unsigned int, code, py_code, o_firstlineno);
+    for (
+      register int i = 0, bc = 0;
+      i < len;
+      lineno += lnotab[i++]
+    ) {
+      bc += lnotab[i++];
       if (bc > lasti)
         break;
     }

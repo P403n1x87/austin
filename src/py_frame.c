@@ -23,7 +23,7 @@
 #include "error.h"
 #include "logging.h"
 #include "py_frame.h"
-#include "python.h"
+#include "version.h"
 
 
 // ---- PUBLIC ----------------------------------------------------------------
@@ -35,12 +35,12 @@ py_frame_new_from_raddr(raddr_t * raddr) {
   py_code_t     * py_code  = NULL;
   py_frame_t    * py_frame = NULL;
 
-  if (copy_from_raddr(raddr, frame) != sizeof(frame))
+  if (copy_from_raddr_v(raddr, frame, py_v->py_frame.size))
     error = EFRAME;
 
   else {
-    raddr_t py_code_raddr = { .pid = raddr->pid, .addr = frame.f_code };
-    py_code = py_code_new_from_raddr(&py_code_raddr, frame.f_lasti);
+    raddr_t py_code_raddr = { .pid = raddr->pid, .addr = V_FIELD(void *, frame, py_frame, o_code) };
+    py_code = py_code_new_from_raddr(&py_code_raddr, V_FIELD(int, frame, py_frame, o_lasti));
     if (py_code == NULL)
       error = EFRAMENOCODE;
 
@@ -54,7 +54,7 @@ py_frame_new_from_raddr(raddr_t * raddr) {
         py_frame->raddr.addr = raddr->addr;
 
         py_frame->prev_raddr.pid  = raddr->pid;
-        py_frame->prev_raddr.addr = frame.f_back;
+        py_frame->prev_raddr.addr = V_FIELD(void *, frame, py_frame, o_back);
 
         py_frame->frame_no = 0;
         py_frame->prev     = NULL;

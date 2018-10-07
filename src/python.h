@@ -134,9 +134,9 @@ typedef union {
 
 // ---- frameobject.h ---------------------------------------------------------
 
-typedef struct _frame {
+typedef struct _frame2_3 {
     PyObject_VAR_HEAD
-    struct _frame *f_back;      /* previous frame, or NULL */
+    struct _frame2_3 *f_back;   /* previous frame, or NULL */
     PyCodeObject *f_code;       /* code segment */
     PyObject *f_builtins;       /* builtin symbol table (PyDictObject) */
     PyObject *f_globals;        /* global symbol table (PyDictObject) */
@@ -150,10 +150,30 @@ typedef struct _frame {
 
     int f_lasti;                /* Last instruction if called */
     int f_lineno;               /* Current line number */
-    int f_iblock;               /* index in f_blockstack */
-    char f_executing;           /* whether the frame is still executing */
-} PyFrameObject;
+} PyFrameObject2_3;
 
+typedef struct _frame3_7 {
+    PyObject_VAR_HEAD
+    struct _frame3_7 *f_back;   /* previous frame, or NULL */
+    PyCodeObject *f_code;       /* code segment */
+    PyObject *f_builtins;       /* builtin symbol table (PyDictObject) */
+    PyObject *f_globals;        /* global symbol table (PyDictObject) */
+    PyObject *f_locals;         /* local symbol table (any mapping) */
+    PyObject **f_valuestack;    /* points after the last local */
+    PyObject **f_stacktop;
+    PyObject *f_trace;          /* Trace function */
+    char f_trace_lines;         /* Emit per-line trace events? */
+    char f_trace_opcodes;       /* Emit per-opcode trace events? */
+    PyObject *f_gen;
+
+    int f_lasti;                /* Last instruction if called */
+    int f_lineno;               /* Current line number */
+} PyFrameObject3_7;
+
+typedef union {
+  PyFrameObject2_3 v2_3;
+  PyFrameObject3_7 v3_7;
+} PyFrameObject;
 
 // ---- pystate.h -------------------------------------------------------------
 
@@ -165,6 +185,8 @@ typedef struct _is {
     struct _ts *tstate_head;
 } PyInterpreterState;
 
+// Dummy struct _frame
+struct _frame;
 
 typedef int (*Py_tracefunc)(PyObject *, struct _frame *, int, PyObject *);
 
@@ -201,7 +223,7 @@ typedef struct _ts3_3 {
 
     PyObject *async_exc; /* Asynchronous exception to raise */
     long thread_id; /* Thread id where this tstate was created */
-} PyThreadState3_3;
+} PyThreadState2_3;
 
 
 typedef struct _ts3_4 {
@@ -239,7 +261,7 @@ typedef struct _ts3_4 {
 
 
 typedef union {
-  PyThreadState3_3 v3_3;
+  PyThreadState2_3 v3_3;
   PyThreadState3_4 v3_4;
 } PyThreadState;
 
