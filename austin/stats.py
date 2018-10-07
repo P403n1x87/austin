@@ -1,7 +1,6 @@
 from collections import deque
 from threading import RLock
 
-
 ATOM_LOCK = RLock()
 
 
@@ -47,7 +46,7 @@ class SampledFrame:
 
     def __eq__(self, other):
         """Two frames are the same if they represent the same function."""
-        return self.function == other.function
+        return self.function == other.function if other else False
 
 
 # -----------------------------------------------------------------------------
@@ -66,7 +65,7 @@ def parse_line(line):
         frames = frames.split(";")
     except ValueError:
         # Probably an "empty" thread
-        thread, duration = line.rsplit(maxsplit=1)
+        thread, duration = line.decode().rsplit(maxsplit=1)
         frames = []
 
     return thread, frames, int(duration)

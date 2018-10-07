@@ -37,6 +37,8 @@ class Austin(Thread):
 
         if self.pid < 0:
             austin_process = Process(self.austin.pid)
+            while not austin_process.children():
+                pass
             child_process = austin_process.children()[0]
             self.pid = child_process.pid
         else:

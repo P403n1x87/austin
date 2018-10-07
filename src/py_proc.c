@@ -20,16 +20,23 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#include <elf.h>
+#define PY_PROC_C
+
+#include "platform.h"
+
+#ifdef PL_WIN
+#include <windows.h>
+#else
+#include <signal.h>
+#include <sys/wait.h>
+#endif
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/mman.h>
 #include <sys/types.h>
-#include <sys/uio.h>   /* LINUX */
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include "dict.h"
@@ -44,24 +51,53 @@
 
 // ---- PRIVATE ---------------------------------------------------------------
 
+// ---- Retry Timer ----
 #define INIT_RETRY_SLEEP             100  /* usecs */
-#define INIT_RETRY_CNT              1000  /* Retry for 100 ms before giving up. */
+#define INIT_RETRY_CNT              1000  /* Retry for 0.1s before giving up. */
 
-#define BIN_MAP                  (1 << 0)
-#define DYNSYM_MAP               (1 << 1)
-#define RODATA_MAP               (1 << 2)
-#define HEAP_MAP                 (1 << 3)
-#define BSS_MAP                  (1 << 4)
+#define TIMER_RESET (try_cnt = INIT_RETRY_CNT);
+#define TIMER_START while (--try_cnt) { usleep(INIT_RETRY_SLEEP);
+#define TIMER_STOP  (try_cnt = 1);
+#define TIMER_END   }
 
-
-#define _py_proc__get_elf_type(self, offset, dt) (py_proc__memcpy(self, self->map.elf.base + offset, sizeof(dt), &dt))
+static int try_cnt = INIT_RETRY_CNT;
 
 
+// ----------------------------------------------------------------------------
+// -- Platform-dependent implementations of _py_proc__init
+// ----------------------------------------------------------------------------
+
+// Forward declaration
+static int _py_proc__check_sym(py_proc_t *, char *, void *);
+
+#if defined(PL_LINUX)
+
+  #include "linux/py_proc.h"
+
+#elif defined(PL_WIN)
+
+  #include "win/py_proc.h"
+
+#elif defined(PL_MACOS)
+
+  #include "mac/py_proc.h"
+
+#endif
+// ----------------------------------------------------------------------------
+
+
+// ---- Exported symbols ----
 #define DYNSYM_COUNT                   2
 
+#ifdef PL_MACOS
+  #define SYM_PREFIX "__"
+#else
+  #define SYM_PREFIX "_"
+#endif
+
 static const char * _dynsym_array[DYNSYM_COUNT] = {
-  "_PyThreadState_Current",
-  "_PyRuntime"
+  SYM_PREFIX "PyThreadState_Current",
+  SYM_PREFIX "PyRuntime"
 };
 
 static long _dynsym_hash_array[DYNSYM_COUNT] = {
@@ -69,110 +105,32 @@ static long _dynsym_hash_array[DYNSYM_COUNT] = {
 };
 
 
-// Get the offset of the ith section header
-#define ELF_SH_OFF(ehdr, i) (ehdr.e_shoff + i * ehdr.e_shentsize)
-#define get_bounds(line, a, b) (sscanf(line, "%lx-%lx", &a, &b))
-
-
-// ----------------------------------------------------------------------------
+#ifdef DEREF_SYM
 static int
-_py_proc__parse_maps_file(py_proc_t * self) {
-  char      file_name[32];
-  FILE    * fp        = NULL;
-  char    * line      = NULL;
-  size_t    len       = 0;
-  int       maps_flag = 0;
-
-  if (self->maps_loaded)
-    return 0;
-
-  sprintf(file_name, "/proc/%d/maps", self->pid);
-
-  #ifdef DEBUG
-  log_d("Opening %s", file_name);
-  #endif // DEBUG
-
-  fp = fopen(file_name, "r");
-  if (fp == NULL)
-    error = EPROCVM;
-
-  else {
-    ssize_t a, b;  // VM map bounds
-    char * needle;
-    while (maps_flag != (HEAP_MAP | BSS_MAP) && getline(&line, &len, fp) != -1) {
-      if (self->bin_path == NULL) {
-        // Store binary file name
-        // TODO: Extend to deal with libpython.so
-        if ((needle = strstr(line, "python")) == NULL)
-          break;
-
-        while (*((char *) --needle) != ' ');
-        int len = strlen(++needle);
-        if (self->bin_path != NULL)
-          free(self->bin_path);
-        self->bin_path = (char *) malloc(sizeof(char) * len + 1);
-        if (self->bin_path == NULL)
-          error = EPROCVM;
-        else {
-          strcpy(self->bin_path, needle);
-          if (self->bin_path[len-1] == '\n')
-            self->bin_path[len-1] = 0;
-
-          get_bounds(line, a, b);
-          self->map.elf.base = (void *) a;
-          self->map.elf.size = b - a;
-
-          #ifdef DEBUG
-          log_d("Python binary path: %s\n", self->bin_path);
-          #endif // DEBUG
-        }
-      }
-      else {
-        if ((needle = strstr(line, "[heap]\n")) != NULL) {
-          if ((maps_flag & HEAP_MAP) == 0) {
-            get_bounds(line, a, b);
-            self->map.heap.base = (void *) a;
-            self->map.heap.size = b - a;
-
-            maps_flag |= HEAP_MAP;
-
-            #ifdef DEBUG
-            log_d("HEAP bounds: %s", line);
-            #endif
-          }
-        }
-        else if ((maps_flag & BSS_MAP) == 0 && (line[strlen(line)-2] == ' ')) {
-          get_bounds(line, a, b);
-          self->map.bss.base = (void *) a;
-          self->map.bss.size = b - a;
-
-          maps_flag |= BSS_MAP;
-
-          #ifdef DEBUG
-          log_d("BSS bounds: %s", line);
-          #endif
-        }
-      }
-    }
-
-    fclose(fp);
-    if (line != NULL) {
-      free(line);
+_py_proc__check_sym(py_proc_t * self, char * name, void * value) {
+  for (register int i = 0; i < DYNSYM_COUNT; i++) {
+    if (
+      string_hash(name) == _dynsym_hash_array[i] &&
+      strcmp(name, _dynsym_array[i]) == 0
+    ) {
+      *(&(self->tstate_curr_raddr) + i) = value;
+      log_d("Symbol %s found @ %p", name, value);
+      return 1;
     }
   }
-
-  if (error & EPROC) log_error();
-
-  self->maps_loaded = maps_flag == (HEAP_MAP | BSS_MAP) ? 1 : 0;
-
-  return 1 - self->maps_loaded;
+  return 0;
 }
-
+#endif
 
 // ----------------------------------------------------------------------------
+#ifdef PL_UNIX
+#define _popen  popen
+#define _pclose pclose
+#endif
+
 static int
-_py_proc__get_version(py_proc_t * self, void * map) {
-  if (self == NULL || map == NULL)
+_py_proc__get_version(py_proc_t * self) {
+  if (self == NULL || self->bin_path == NULL)
     return 0;
 
   int major = 0, minor = 0, patch = 0;
@@ -183,7 +141,7 @@ _py_proc__get_version(py_proc_t * self, void * map) {
 
   sprintf(cmd, "%s -V 2>&1", self->bin_path);
 
-  fp = popen(cmd, "r");
+  fp = _popen(cmd, "r");
   if (fp == NULL) {
     log_e("Failed to start Python to determine its version.");
     return 0;
@@ -194,8 +152,7 @@ _py_proc__get_version(py_proc_t * self, void * map) {
       break;
   }
 
-  /* close */
-  pclose(fp);
+  _pclose(fp);
 
   log_i("Python version: %d.%d.%d", major, minor, patch);
 
@@ -221,135 +178,26 @@ _py_proc__get_version(py_proc_t * self, void * map) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__analyze_bin(py_proc_t * self) {
-  if (self == NULL)
-    return 1;
-
-  if (self->maps_loaded == 0)
-    _py_proc__parse_maps_file(self);
-
-  if (self->maps_loaded == 0)
-    return 1;
-
-  if (self->sym_loaded)
-    return 0;
-
-  Elf64_Ehdr ehdr;
-
-  if (_py_proc__get_elf_type(self, 0, ehdr) || ehdr.e_shoff == 0 || ehdr.e_shnum < 2 \
-    || ehdr.e_ident[1] != 'E' || ehdr.e_ident[2] != 'L' || ehdr.e_ident[3] != 'F' \
-    || ehdr.e_ident[EI_CLASS] != ELFCLASS64 \
-  ) return 1;
-
-  // Section header must be read from binary as it is not loaded into memory
-  Elf64_Xword   sht_size      = ehdr.e_shnum * ehdr.e_shentsize;
-  Elf64_Off     elf_map_size  = ehdr.e_shoff + sht_size;
-  int           fd            = open(self->bin_path, O_RDONLY);
-  void        * elf_map       = mmap(NULL, elf_map_size, PROT_READ, MAP_SHARED, fd, 0);
-  int           map_flag      = 0;
-  Elf64_Shdr  * p_shdr;
-
-  Elf64_Shdr  * p_shstrtab = elf_map + ELF_SH_OFF(ehdr, ehdr.e_shstrndx);
-  char        * sh_name_base = elf_map + p_shstrtab->sh_offset;
-
-  for (Elf64_Off sh_off = ehdr.e_shoff; \
-    map_flag != (DYNSYM_MAP | RODATA_MAP) && sh_off < elf_map_size; \
-    sh_off += ehdr.e_shentsize \
-  ) {
-    p_shdr = (Elf64_Shdr *) (elf_map + sh_off);
-
-    if (   p_shdr->sh_type == SHT_DYNSYM \
-        && strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
-    ) {
-      self->map.dynsym.base = p_shdr;  // WARNING: Different semantics!
-      map_flag |= DYNSYM_MAP;
-    }
-    else if (p_shdr->sh_type == SHT_PROGBITS \
-        && strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
-    ) {
-      self->map.rodata.base = (void *) p_shdr->sh_offset;
-      self->map.rodata.size = p_shdr->sh_size;
-      map_flag |= RODATA_MAP;
-    }
-  }
-
-  register int hit_cnt = 0;
-  if (map_flag == (DYNSYM_MAP | RODATA_MAP)) {
-    self->version = _py_proc__get_version(self, elf_map);
-    if (self->version) {
-      set_version(self->version);
-
-      Elf64_Shdr * p_dynsym = self->map.dynsym.base;
-      if (p_dynsym->sh_offset == 0)
-        return 1;
-
-      Elf64_Shdr * p_strtabsh = (Elf64_Shdr *) (elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
-
-      // NOTE: This runs sub-optimally when searching for a single symbol
-      // Pre-hash symbol names
-      if (_dynsym_hash_array[0] == 0) {
-        for (register int i = 0; i < DYNSYM_COUNT; i++)
-          _dynsym_hash_array[i] = string_hash((char *) _dynsym_array[i]);
-      }
-
-      // Search for dynamic symbols
-      for (Elf64_Off tab_off = p_dynsym->sh_offset; \
-        hit_cnt < DYNSYM_COUNT && tab_off < p_dynsym->sh_offset + p_dynsym->sh_size; \
-        tab_off += p_dynsym->sh_entsize
-      ) {
-        Elf64_Sym * sym      = (Elf64_Sym *) (elf_map + tab_off);
-        char      * sym_name = elf_map + p_strtabsh->sh_offset + sym->st_name;
-        long        hash     = string_hash(sym_name);
-        for (register int i = 0; i < DYNSYM_COUNT; i++) {
-          if (hash == _dynsym_hash_array[i] && strcmp(sym_name, _dynsym_array[i]) == 0) {
-            *(&(self->tstate_curr_raddr) + i) = (void *) sym->st_value;
-            hit_cnt++;
-            #ifdef DEBUG
-            log_d("Symbol %s found at %p", sym_name, sym->st_value);
-            #endif
-          }
-        }
-      }
-    }
-  }
-
-  munmap(elf_map, elf_map_size);
-  close(fd);
-
-  self->sym_loaded = (hit_cnt > 0) ? 1 : 0;
-
-  return 1 - self->sym_loaded;
-}
-
-// ----------------------------------------------------------------------------
-static int
 _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   PyInterpreterState is;
   PyThreadState      tstate_head;
 
   if (py_proc__get_type(self, raddr, is) != 0)
-    return -1; // This signals that we are out of bounds.
+    return -1;  // This signals that we are out of bounds.
 
-  #ifdef DEBUG
-  log_d("PyInterpreterState loaded @ %p", raddr);
-  #endif
+  log_t("PyInterpreterState loaded @ %p", raddr);
 
   if (py_proc__get_type(self, is.tstate_head, tstate_head) != 0)
     return 1;
 
-  #ifdef DEBUG
-  log_d("PyThreadState head loaded @ %p", is.tstate_head);
-  #endif
+  log_t("PyThreadState head loaded @ %p", is.tstate_head);
 
   if (
     (V_FIELD(void*, tstate_head, py_thread, o_interp)) != raddr ||
     (V_FIELD(void*, tstate_head, py_thread, o_frame))  == 0
-  )
-    return 1;
+  ) return 1;
 
-  #ifdef DEBUG
   log_d("Found possible interpreter state @ %p (offset %p).", raddr, raddr - self->map.heap.base);
-  #endif
 
   error = EOK;
   raddr_t thread_raddr = { .pid = self->pid, .addr = is.tstate_head };
@@ -358,38 +206,83 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     return 1;
   py_thread__destroy(thread);
 
-  #ifdef DEBUG
   log_d("Stack trace constructed from possible interpreter state (error %d)", error);
-  #endif
 
-  return error == EOK ? 0 : 1;
+  return error != EOK;
 }
 
 
+#ifdef CHECK_HEAP
 // ----------------------------------------------------------------------------
 static int
 _py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
   if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
     return 0;
 
-  return (raddr >= self->map.heap.base && raddr < self->map.heap.base + self->map.heap.size)
-    ? 1
-    : 0;
+  return (raddr >= self->map.heap.base && raddr < self->map.heap.base + self->map.heap.size);
 }
 
 
+// ----------------------------------------------------------------------------
+static int
+_py_proc__scan_heap(py_proc_t * self) {
+  // NOTE: This seems to be required by Python 2.7 on i386 Linux.
+  void * upper_bound = self->map.heap.base + self->map.heap.size;
+  for (
+    register void ** raddr = (void **) self->map.heap.base;
+    (void *) raddr < upper_bound;
+    raddr++
+  ) {
+    if (_py_proc__check_interp_state(self, raddr) == 0) {
+      self->is_raddr = raddr;
+      return 0;
+    }
+  }
+
+  return 1;
+}
+#endif
+
+
+#ifdef PL_LINUX
 // ----------------------------------------------------------------------------
 static int
 _py_proc__is_bss_raddr(py_proc_t * self, void * raddr) {
   if (self == NULL || raddr == NULL || self->map.bss.base == NULL)
     return 0;
 
-  return (raddr >= self->map.bss.base && raddr < self->map.bss.base + self->map.bss.size)
-    ? 1
-    : 0;
+  return (raddr >= self->map.bss.base && raddr < self->map.bss.base + self->map.bss.size);
+}
+#endif
+
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__scan_bss(py_proc_t * self) {
+  if (py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss))
+    return 1;
+
+  void * upper_bound = self->bss + self->map.bss.size;
+  for (
+    register void ** raddr = (void **) self->bss;
+    (void *) raddr < upper_bound;
+    raddr++
+  ) {
+    #ifdef CHECK_HEAP
+    if (_py_proc__is_heap_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
+    #else
+    if (_py_proc__check_interp_state(self, *raddr) == 0) {
+    #endif
+      self->is_raddr = *raddr;
+      return 0;
+    }
+  }
+
+  return 1;
 }
 
 
+#ifdef DEREF_SYM
 // ----------------------------------------------------------------------------
 static int
 _py_proc__deref_interp_state(py_proc_t * self) {
@@ -399,23 +292,20 @@ _py_proc__deref_interp_state(py_proc_t * self) {
   if (self == NULL)
     return 1;
 
-  if (self->sym_loaded == 0)
-    _py_proc__analyze_bin(self);
-
-  if (self->sym_loaded == 0)
-    return 1;
+  if (self->py_runtime_raddr == NULL && self->tstate_curr_raddr == NULL)
+    return -2;
 
   // Python 3.7 exposes the _PyRuntime symbol. This can be used to find the
   // head interpreter state.
-  if (self->py_runtime != NULL) {
+  if (self->py_runtime_raddr != NULL) {
     // NOTE: With Python 3.7, this check causes the de-reference to fail even
     //       in cases where it shouldn't.
     // if (
-    //   _py_proc__is_bss_raddr(self, self->py_runtime) == 0 &&
-    //   _py_proc__is_heap_raddr(self, self->py_runtime) == 0
+    //   _py_proc__is_bss_raddr(self, self->py_runtime_raddr) == 0 &&
+    //   _py_proc__is_heap_raddr(self, self->py_runtime_raddr) == 0
     // ) return -1;
 
-    if (py_proc__get_type(self, self->py_runtime, py_runtime) != 0)
+    if (py_proc__get_type(self, self->py_runtime_raddr, py_runtime) != 0)
       return 1;
 
     if (_py_proc__check_interp_state(self, py_runtime.interpreters.head))
@@ -426,10 +316,13 @@ _py_proc__deref_interp_state(py_proc_t * self) {
     return 0;
   }
 
+  // TODO: The quality of this check on Linux is to be further assessed.
+  #ifdef PL_LINUX
   if (
     _py_proc__is_bss_raddr(self, self->tstate_curr_raddr) == 0 &&
     _py_proc__is_heap_raddr(self, self->tstate_curr_raddr) == 0
   ) return -1;
+  #endif
 
   if (py_proc__get_type(self, self->tstate_curr_raddr, tstate_current) != 0)
     return 1;
@@ -451,76 +344,127 @@ _py_proc__deref_interp_state(py_proc_t * self) {
 
   return 0;
 }
-
-
-// ----------------------------------------------------------------------------
-static int
-_py_proc__scan_bss(py_proc_t * self) {
-  py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss);
-
-  // Scan bss section for pointers within the heap.
-  void * upper_bound = self->bss + self->map.bss.size;
-  for (
-    register void ** raddr = (void **) self->bss;
-    (void *) raddr < upper_bound;
-    raddr++
-  ) {
-    if (_py_proc__is_heap_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
-      self->is_raddr = *raddr;
-      return 0;
-    }
-  }
-
-  return 1;
-}
+#endif
 
 
 // ----------------------------------------------------------------------------
 static int
 _py_proc__wait_for_interp_state(py_proc_t * self) {
-  register int try_cnt = INIT_RETRY_CNT;
-
-  while (--try_cnt) {
-    usleep(INIT_RETRY_SLEEP);
-
+  #ifdef DEREF_SYM
+  TIMER_RESET
+  TIMER_START
     switch (_py_proc__deref_interp_state(self)) {
+    case 1:
+      continue;
+
     case 0:
-      #ifdef DEBUG
       log_d("Interpreter State de-referenced @ raddr: %p after %d iterations",
         self->is_raddr,
         INIT_RETRY_CNT - try_cnt
       );
-      #endif
-
       return 0;
 
     case -1:
-      #ifdef DEBUG
       log_d("Symbol address not within VM maps (shared object?)");
-      #endif
+      TIMER_STOP
+      break;
 
-      try_cnt = 1;
+    #ifdef DEREF_SYM
+    case -2:
+      log_w("Null symbol references. This is unexpected.");
+    #endif
+
+    default:
+      TIMER_STOP
       break;
     }
+  TIMER_END
+  #endif
+
+  if (self->map.bss.size == 0) {
+    log_f("Process not properly initialised. Invalid BSS reference found.");
+    error = EPROCVM;
+    return 1;
   }
 
+  #ifdef DEREF_SYM
   log_d("Unable to de-reference global symbols. Scanning the bss section...");
+  #else
+  log_d("Scanning the uninitialized data section ...");
+  #endif
 
   // Copy .bss section from remote location
   self->bss = malloc(self->map.bss.size);
   if (self->bss == NULL)
     return 1;
 
-  try_cnt = INIT_RETRY_CNT;
-  while (--try_cnt) {
-    usleep(INIT_RETRY_SLEEP);
-
+  TIMER_RESET
+  TIMER_START
     if (_py_proc__scan_bss(self) == 0)
       return 0;
-  }
+  TIMER_END
+
+  #ifdef CHECK_HEAP
+  log_w("Bss scan unsuccessful. Scanning heap directly...");
+
+  // TODO: Consider copying heap over and check for pointers
+  TIMER_RESET
+  TIMER_START
+    if (_py_proc__scan_heap(self) == 0)
+      return 0;
+  TIMER_END
+  #endif
 
   error = EPROCISTIMEOUT;
   return 1;
+}
+
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__run(py_proc_t * self) {
+  TIMER_START
+    if (_py_proc__init(self) == 0)
+      break;
+  TIMER_END
+
+  if (self->bin_path == NULL) {
+    log_f("Python binary not found. Not Python?");
+    return 1;
+  }
+
+  if (self->map.bss.size == 0)
+    log_e("Invalid BSS structure.");
+
+  #ifdef CHECK_HEAP
+  if (self->map.heap.size == 0)
+    log_e("Invalid HEAP structure.");
+  #endif
+
+  #ifdef DEREF_SYM
+  if (self->tstate_curr_raddr == NULL && self->py_runtime_raddr == NULL)
+    log_e("Expecting valid symbol references. Found none.");
+  #endif
+
+  log_d("Python binary: %s", self->bin_path);
+
+  // Determine and set version
+  if (!self->version) {
+    self->version = _py_proc__get_version(self);
+    if (!self->version) {
+      log_f("Python version is unknown.");
+      return 1;
+    }
+
+    set_version(self->version);
+  }
+
+  if (_py_proc__wait_for_interp_state(self)) {
+    log_error();
+    return 1;
+  }
+
+  return 0;
 }
 
 
@@ -538,12 +482,25 @@ py_proc_new() {
     py_proc->bin_path = NULL;
     py_proc->is_raddr = NULL;
 
+    py_proc->map.bss.base = NULL;
+    py_proc->map.bss.size = 0;
+
     py_proc->bss = NULL;
 
-    py_proc->maps_loaded       = 0;
-    py_proc->sym_loaded        = 0;
+    py_proc->maps_loaded = 0;
+    py_proc->sym_loaded  = 0;
+
     py_proc->tstate_curr_raddr = NULL;
-    py_proc->py_runtime        = NULL;
+    py_proc->py_runtime_raddr  = NULL;
+
+    py_proc->version = 0;
+  }
+
+  // Pre-hash symbol names
+  if (_dynsym_hash_array[0] == 0) {
+    for (register int i = 0; i < DYNSYM_COUNT; i++) {
+      _dynsym_hash_array[i] = string_hash((char *) _dynsym_array[i]);
+    }
   }
 
   check_not_null(py_proc);
@@ -554,33 +511,42 @@ py_proc_new() {
 // ----------------------------------------------------------------------------
 int
 py_proc__attach(py_proc_t * self, pid_t pid) {
+  log_d("Attaching to process with PID %d", pid);
+  #ifdef PL_WIN
+  self->pid = (pid_t) OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
+  if (self->pid == (pid_t) INVALID_HANDLE_VALUE) {
+    log_e("Unable to attach to process with PID %d", pid);
+    return 1;
+  }
+  #else
   self->pid = pid;
+  #endif
 
-  if (_py_proc__wait_for_interp_state(self) == 0)
-    return 0;
-
-  log_error();
-  return 1;
+  return _py_proc__run(self);
 }
 
 
 // ----------------------------------------------------------------------------
 int
 py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
-  self->pid = fork();
+  log_d("Starting new process with command: %s", exec);
 
+  #ifdef PL_WIN                                                        /* WIN */
+  self->pid = _spawnvp(_P_NOWAIT, exec, (const char * const*) argv);
+  if (self->pid == (pid_t) INVALID_HANDLE_VALUE) {
+    log_e("Failed to spawn command: %s", exec);
+    return 1;
+  }
+  #else                                                               /* UNIX */
+  self->pid = fork();
   if (self->pid == 0) {
     execvp(exec, argv);
     log_e("Failed to fork process");
     exit(127);
   }
-  else {
-    if (_py_proc__wait_for_interp_state(self) == 0)
-      return 0;
-  }
+  #endif                                                               /* ANY */
 
-  log_error();
-  return 1;
+  return _py_proc__run(self);
 }
 
 
@@ -594,7 +560,13 @@ py_proc__memcpy(py_proc_t * self, void * raddr, ssize_t size, void * dest) {
 // ----------------------------------------------------------------------------
 void
 py_proc__wait(py_proc_t * self) {
+  log_d("Waiting for process to terminate");
+
+  #ifdef PL_WIN                                                        /* WIN */
+  WaitForSingleObject((HANDLE) self->pid, INFINITE);
+  #else                                                               /* UNIX */
   waitpid(self->pid, 0, 0);
+  #endif
 }
 
 
@@ -608,9 +580,14 @@ py_proc__get_istate_raddr(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 int
 py_proc__is_running(py_proc_t * self) {
-  kill(self->pid, 0);
+  #ifdef PL_WIN                                                        /* WIN */
+  DWORD ec;
+  return GetExitCodeProcess((HANDLE) self->pid, &ec) ? ec : -1;
 
+  #else                                                               /* UNIX */
+  kill(self->pid, 0);
   return errno == ESRCH ? 0 : 1;
+  #endif
 }
 
 

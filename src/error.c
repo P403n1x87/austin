@@ -75,7 +75,7 @@ const char * _error_msg_tab[MAXERROR] = {
   "Failed to fork process",
   "Failed to load memory maps",
   "Interpreter state search timed out",
-  NULL,
+  "Failed to attach to running process",
   NULL,
   NULL,
   NULL,

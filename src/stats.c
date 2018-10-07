@@ -20,13 +20,28 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#include "platform.h"
+
 #include <limits.h>
 #include <time.h>
+
+#ifdef PL_MACOS
+#include <mach/clock.h>
+#include <mach/mach.h>
+#endif
 
 #include "error.h"
 #include "logging.h"
 #include "stats.h"
 
+
+#ifndef CLOCK_BOOTTIME
+  #ifdef CLOCK_REALTIME
+    #define CLOCK_BOOTTIME CLOCK_REALTIME
+  #else
+    #define CLOCK_BOOTTIME HIGHRES_CLOCK
+  #endif
+#endif
 
 // ---- PRIVATE ---------------------------------------------------------------
 
@@ -45,7 +60,22 @@ static ustat_t _long_cnt;
 ctime_t
 gettime(void) {
   struct timespec ts;
+
+  #ifdef PL_MACOS
+  clock_serv_t cclock;
+  mach_timespec_t mts;
+
+  host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+  clock_get_time(cclock, &mts);
+  mach_port_deallocate(mach_task_self(), cclock);
+
+  ts.tv_sec = mts.tv_sec;
+  ts.tv_nsec = mts.tv_nsec;
+
+  #else
   clock_gettime(CLOCK_BOOTTIME, &ts);
+  #endif
+
   return ts.tv_sec * 1e6 + ts.tv_nsec / 1e3;
 }
 
@@ -112,13 +142,13 @@ stats_log_metrics(void) {
     stats_get_avg_sampling_time()
   );
 
-  log_i("Long-running sample rate: %d samples over sampling interval/%d (%.2f %%)\n", \
+  log_i("Long-running sample rate: %d samples over sampling interval/%d (%.2f %%)", \
     _long_cnt,                                           \
     _sample_cnt,                                         \
     (float) _long_cnt / _sample_cnt * 100                \
   );
 
-  log_i("Error rate: %d invalid samples/%d (%.2f %%)\n", \
+  log_i("Error rate: %d invalid samples/%d (%.2f %%)",   \
     _error_cnt,                                          \
     _sample_cnt,                                         \
     (float) _error_cnt / _sample_cnt * 100               \

@@ -23,10 +23,8 @@
 #ifndef MEM_H
 #define MEM_H
 
-#define _GNU_SOURCE
 
-#include <sys/uio.h>   /* LINUX */
-
+#include <sys/types.h>
 
 /**
  * Copy a data structure from the given remote address structure.
