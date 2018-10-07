@@ -1,7 +1,6 @@
 from collections import deque
 from threading import RLock
 
-
 ATOM_LOCK = RLock()
 
 
@@ -66,7 +65,7 @@ def parse_line(line):
         frames = frames.split(";")
     except ValueError:
         # Probably an "empty" thread
-        thread, duration = line.rsplit(maxsplit=1)
+        thread, duration = line.decode().rsplit(maxsplit=1)
         frames = []
 
     return thread, frames, int(duration)
