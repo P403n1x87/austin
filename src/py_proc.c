@@ -42,35 +42,17 @@
 #include "py_thread.h"
 
 
+// ELF-specific private methods
+#include "linux/py_proc_elf.c"
+
+
 // ---- PRIVATE ---------------------------------------------------------------
 
 #define INIT_RETRY_SLEEP             100  /* usecs */
 #define INIT_RETRY_CNT              1000  /* Retry for 100 ms before giving up. */
 
-#define BIN_MAP                  (1 << 0)
-#define DYNSYM_MAP               (1 << 1)
-#define RODATA_MAP               (1 << 2)
-#define HEAP_MAP                 (1 << 3)
-#define BSS_MAP                  (1 << 4)
-
-
-#define _py_proc__get_elf_type(self, offset, dt) (py_proc__memcpy(self, self->map.elf.base + offset, sizeof(dt), &dt))
-
-
-#define DYNSYM_COUNT                   2
-
-static const char * _dynsym_array[DYNSYM_COUNT] = {
-  "_PyThreadState_Current",
-  "_PyRuntime"
-};
-
-static long _dynsym_hash_array[DYNSYM_COUNT] = {
-  0
-};
-
 
 // Get the offset of the ith section header
-#define ELF_SH_OFF(ehdr, i) (ehdr.e_shoff + i * ehdr.e_shentsize)
 #define get_bounds(line, a, b) (sscanf(line, "%lx-%lx", &a, &b))
 
 
@@ -171,8 +153,8 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__get_version(py_proc_t * self, void * map) {
-  if (self == NULL || map == NULL)
+_py_proc__get_version(py_proc_t * self) {
+  if (self == NULL)
     return 0;
 
   int major = 0, minor = 0, patch = 0;
@@ -225,98 +207,24 @@ _py_proc__analyze_bin(py_proc_t * self) {
   if (self == NULL)
     return 1;
 
-  if (self->maps_loaded == 0)
+  if (self->maps_loaded == 0) {
     _py_proc__parse_maps_file(self);
 
-  if (self->maps_loaded == 0)
-    return 1;
+    if (self->maps_loaded == 0)
+      return 1;
+  }
+
+  if (!self->version) {
+    self->version = _py_proc__get_version(self);
+    if (!self->version)
+      return 1;
+
+    set_version(self->version);
+  }
 
   if (self->sym_loaded)
     return 0;
-
-  Elf64_Ehdr ehdr;
-
-  if (_py_proc__get_elf_type(self, 0, ehdr) || ehdr.e_shoff == 0 || ehdr.e_shnum < 2 \
-    || ehdr.e_ident[1] != 'E' || ehdr.e_ident[2] != 'L' || ehdr.e_ident[3] != 'F' \
-    || ehdr.e_ident[EI_CLASS] != ELFCLASS64 \
-  ) return 1;
-
-  // Section header must be read from binary as it is not loaded into memory
-  Elf64_Xword   sht_size      = ehdr.e_shnum * ehdr.e_shentsize;
-  Elf64_Off     elf_map_size  = ehdr.e_shoff + sht_size;
-  int           fd            = open(self->bin_path, O_RDONLY);
-  void        * elf_map       = mmap(NULL, elf_map_size, PROT_READ, MAP_SHARED, fd, 0);
-  int           map_flag      = 0;
-  Elf64_Shdr  * p_shdr;
-
-  Elf64_Shdr  * p_shstrtab = elf_map + ELF_SH_OFF(ehdr, ehdr.e_shstrndx);
-  char        * sh_name_base = elf_map + p_shstrtab->sh_offset;
-
-  for (Elf64_Off sh_off = ehdr.e_shoff; \
-    map_flag != (DYNSYM_MAP | RODATA_MAP) && sh_off < elf_map_size; \
-    sh_off += ehdr.e_shentsize \
-  ) {
-    p_shdr = (Elf64_Shdr *) (elf_map + sh_off);
-
-    if (   p_shdr->sh_type == SHT_DYNSYM \
-        && strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
-    ) {
-      self->map.dynsym.base = p_shdr;  // WARNING: Different semantics!
-      map_flag |= DYNSYM_MAP;
-    }
-    else if (p_shdr->sh_type == SHT_PROGBITS \
-        && strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
-    ) {
-      self->map.rodata.base = (void *) p_shdr->sh_offset;
-      self->map.rodata.size = p_shdr->sh_size;
-      map_flag |= RODATA_MAP;
-    }
-  }
-
-  register int hit_cnt = 0;
-  if (map_flag == (DYNSYM_MAP | RODATA_MAP)) {
-    self->version = _py_proc__get_version(self, elf_map);
-    if (self->version) {
-      set_version(self->version);
-
-      Elf64_Shdr * p_dynsym = self->map.dynsym.base;
-      if (p_dynsym->sh_offset == 0)
-        return 1;
-
-      Elf64_Shdr * p_strtabsh = (Elf64_Shdr *) (elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
-
-      // NOTE: This runs sub-optimally when searching for a single symbol
-      // Pre-hash symbol names
-      if (_dynsym_hash_array[0] == 0) {
-        for (register int i = 0; i < DYNSYM_COUNT; i++)
-          _dynsym_hash_array[i] = string_hash((char *) _dynsym_array[i]);
-      }
-
-      // Search for dynamic symbols
-      for (Elf64_Off tab_off = p_dynsym->sh_offset; \
-        hit_cnt < DYNSYM_COUNT && tab_off < p_dynsym->sh_offset + p_dynsym->sh_size; \
-        tab_off += p_dynsym->sh_entsize
-      ) {
-        Elf64_Sym * sym      = (Elf64_Sym *) (elf_map + tab_off);
-        char      * sym_name = elf_map + p_strtabsh->sh_offset + sym->st_name;
-        long        hash     = string_hash(sym_name);
-        for (register int i = 0; i < DYNSYM_COUNT; i++) {
-          if (hash == _dynsym_hash_array[i] && strcmp(sym_name, _dynsym_array[i]) == 0) {
-            *(&(self->tstate_curr_raddr) + i) = (void *) sym->st_value;
-            hit_cnt++;
-            #ifdef DEBUG
-            log_d("Symbol %s found at %p", sym_name, sym->st_value);
-            #endif
-          }
-        }
-      }
-    }
-  }
-
-  munmap(elf_map, elf_map_size);
-  close(fd);
-
-  self->sym_loaded = (hit_cnt > 0) ? 1 : 0;
+  self->sym_loaded = _py_proc__analyze_elf(self) ? 1 : 0;
 
   return 1 - self->sym_loaded;
 }
@@ -458,7 +366,6 @@ static int
 _py_proc__scan_bss(py_proc_t * self) {
   py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss);
 
-  // Scan bss section for pointers within the heap.
   void * upper_bound = self->bss + self->map.bss.size;
   for (
     register void ** raddr = (void **) self->bss;
@@ -467,6 +374,26 @@ _py_proc__scan_bss(py_proc_t * self) {
   ) {
     if (_py_proc__is_heap_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
       self->is_raddr = *raddr;
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__scan_heap(py_proc_t * self) {
+  // NOTE: This seems to be required by Python 2.7 on i386 Linux.
+  void * upper_bound = self->map.heap.base + self->map.heap.size;
+  for (
+    register void ** raddr = (void **) self->map.heap.base;
+    (void *) raddr < upper_bound;
+    raddr++
+  ) {
+    if (_py_proc__check_interp_state(self, raddr) == 0) {
+      self->is_raddr = raddr;
       return 0;
     }
   }
@@ -519,6 +446,17 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
       return 0;
   }
 
+  log_w("Bss scan unsuccessful. Scanning heap directly...");
+
+  // TODO: Consider copying heap over and check for pointers
+  try_cnt = INIT_RETRY_CNT;
+  while (--try_cnt) {
+    usleep(INIT_RETRY_SLEEP);
+
+    if (_py_proc__scan_heap(self) == 0)
+      return 0;
+  }
+
   error = EPROCISTIMEOUT;
   return 1;
 }
@@ -544,6 +482,8 @@ py_proc_new() {
     py_proc->sym_loaded        = 0;
     py_proc->tstate_curr_raddr = NULL;
     py_proc->py_runtime        = NULL;
+
+    py_proc->version = 0;
   }
 
   check_not_null(py_proc);
