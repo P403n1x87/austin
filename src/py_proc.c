@@ -49,7 +49,7 @@
 // ---- PRIVATE ---------------------------------------------------------------
 
 #define INIT_RETRY_SLEEP             100  /* usecs */
-#define INIT_RETRY_CNT              1000  /* Retry for 100 ms before giving up. */
+#define INIT_RETRY_CNT              1000  /* Retry for 0.1s before giving up. */
 
 
 // Get the offset of the ith section header

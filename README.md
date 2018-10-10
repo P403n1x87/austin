@@ -1,6 +1,6 @@
 ![austin](art/austin.png)
 
-[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-0.4.0--alpha-blue.svg) [![License](https://img.shields.io/badge/license-GPLv3-ff69b4.svg)](https://github.com/P403n1x87/austin/blob/master/LICENSE.md)
+[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-0.5.0--beta-blue.svg) [![License](https://img.shields.io/badge/license-GPLv3-ff69b4.svg)](https://github.com/P403n1x87/austin/blob/master/LICENSE.md)
 
 Meet Austin, a Python frame stack sampler for CPython.
 
@@ -19,14 +19,13 @@ spirit to [py-spy](https://github.com/benfred/py-spy).
 
 ![tui](art/austin-tui_wip.png)
 
-The current version only supports the 64-bit versions of Python on
-Linux-based operating systems that have not been compiled with the
-`--enable-shared` flag. Support for the i386 architecture is next in line, and
-then there might be support for other operating systems too.
+The current version only supports Python on Linux-based operating systems that
+have not been compiled with the `--enable-shared` flag. Support for other
+operating systems is next in line.
 
-> **NOTE** The TUI is still work in progress. Its main purpose is to provide
-> an example of how to use the output produce by Austin rather than an
-> additional application to maintain.
+> **NOTE** The TUI is experimental and still work in progress. Its main purpose
+> is to provide an example of how to use the output produce by Austin rather
+> than an additional application to maintain.
 
 
 # Installation
@@ -100,21 +99,22 @@ average.
 
 # Compatibility
 
-Austin has been tested on the following systems
+Austin has been tested on the following systems (both 32- and 64-bit, unless
+otherwise specified).
 
 ## Linux
 
-- Python 2.3 (2.3.7) on Ubuntu 18.04.1 x86-64
-- Python 2.4 (2.4.6) on Ubuntu 18.04.1 x86-64
-- Python 2.5 (2.5.6) on Ubuntu 18.04.1 x86-64
-- Python 2.6 (2.6.9) on Ubuntu 18.04.1 x86-64
-- Python 2.7 (2.7.15rc1) on Ubuntu 18.04.1 x86-64
+- Python 2.3 (2.3.7) on Ubuntu 18.04.1
+- Python 2.4 (2.4.6) on Ubuntu 18.04.1
+- Python 2.5 (2.5.6) on Ubuntu 18.04.1
+- Python 2.6 (2.6.9) on Ubuntu 18.04.1
+- Python 2.7 (2.7.15rc1) on Ubuntu 18.04.1
 
-- Python 3.3 (3.3.7) on Ubuntu 18.04.1 x86-64
-- Python 3.4 (3.4.9+) on Ubuntu 18.04.1 x86-64
-- Python 3.5 (3.5.2) on Ubuntu 16.04.5 x86-64
-- Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04.1 x86-64
-- Python 3.7 (3.7.0) on Ubuntu 18.04.1 x86-64
+- Python 3.3 (3.3.7) on Ubuntu 18.04.1
+- Python 3.4 (3.4.9+) on Ubuntu 18.04.1
+- Python 3.5 (3.5.2) on Ubuntu 18.04.1
+- Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04.1
+- Python 3.7 (3.7.0) on Ubuntu 18.04.1
 
 ## Windows
 
@@ -123,7 +123,7 @@ Austin has been tested on the following systems
 > **NOTE** Austin *might* work with other versions of Python 3 on both Linux
 > and Windows
 
-# How does it work?
+# A Note on How Austin Works
 
 To understand how Python works internally in terms of keeping track of all the
 function calls, you can have a look at similar projects like
@@ -238,7 +238,7 @@ The Python TUI that is currently included in this repository is experimental and
 work in progress. It serves the purpose of providing an example of how to use
 Austin to profile Python applications. Here is a recording of the TUI in action
 with a sample script that spawns a new thread and keeps the CPU busy with a CPU
-bound loop on each thread. You can use PageUp and PageDown to explore the
+bound loop on each thread. You can use PageUp and PageDown to navigate the
 frame stack of each frame as the Python application runs.
 
 ![austin-tui thread navigation](art/austin-tui_threads_nav.gif)

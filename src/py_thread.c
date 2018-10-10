@@ -89,6 +89,8 @@ py_thread_new_from_raddr(raddr_t * raddr) {
         : V_FIELD(void*, ts, py_thread, o_next);
 
       py_thread->tid  = V_FIELD(long, ts, py_thread, o_thread_id);
+      if (py_thread->tid == 0)
+        py_thread->tid = (int) raddr->addr;
       py_thread->next = NULL;
 
       py_thread->first_frame = first_frame;

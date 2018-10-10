@@ -1,7 +1,17 @@
-2018-09-02 v0.3.1-alpha
+2018-10-10 v0.5.0-beta
+
+  Added support for all the major releases of Python 2 and 3 on 32-bit Linux.
+
+
+2018-10-08 v0.4.0-alpha
+
+  Added support for all the major releases of Python 2 and 3 on 64-bit Linux.
+
+
+2018-10-02 v0.3.1-alpha
 
   Bugfix: Austin can now attach to a running Python process again.
-  
+
 
 2018-09-30 v0.3.0-alpha
 
