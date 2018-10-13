@@ -23,9 +23,17 @@
 #ifndef MEM_H
 #define MEM_H
 
+
+#if defined(__linux__)
 #define _GNU_SOURCE
 
-#include <sys/uio.h>   /* LINUX */
+#include <sys/uio.h>
+
+#elif defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#include <sys/types.h>
+
+#endif
 
 
 /**

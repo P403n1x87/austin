@@ -23,16 +23,61 @@
 #define _DEFAULT_SOURCE
 
 #include <stdarg.h>
+
+#if defined(__linux__)
 #include <syslog.h>
+
+#elif defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+#include <stdio.h>
+
+#define	LOG_EMERG	0	/* system is unusable */
+#define	LOG_ALERT	1	/* action must be taken immediately */
+#define	LOG_CRIT	2	/* critical conditions */
+#define	LOG_ERR		3	/* error conditions */
+#define	LOG_WARNING	4	/* warning conditions */
+#define	LOG_NOTICE	5	/* normal but significant condition */
+#define	LOG_INFO	6	/* informational */
+#define	LOG_DEBUG	7	/* debug-level messages */
+
+FILE * lf = NULL;
+#endif
 
 #include "austin.h"
 #include "logging.h"
 
 
 void
+_log_writer(int prio, const char * fmt, va_list ap) {
+  #if defined(__linux__)
+  vsyslog(prio, fmt, ap);
+
+  #elif defined(_WIN32) || defined(_WIN64)
+  if (lf == NULL) {
+    vfprintf(stderr, fmt, ap); fputc('\n', stderr);
+  }
+  else {
+    vfprintf(lf, fmt, ap); fputc('\n', lf);
+    fflush(lf);
+  }
+
+  #endif
+}
+
+
+void
 logger_init(void) {
+  #if defined(__linux__)
   setlogmask (LOG_UPTO (LOG_DEBUG));
   openlog ("austin", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
+
+  #elif defined(_WIN32) || defined(_WIN64)
+  if (lf == NULL) {
+    char path[MAX_PATH];
+    ExpandEnvironmentStrings("%TEMP%\\austin.log", path, MAX_PATH);
+    lf = fopen(path, "a");
+  }
+  #endif
 }
 
 
@@ -41,7 +86,7 @@ log_e(const char * fmt, ...) {
   va_list args;
   va_start(args, fmt);
 
-  vsyslog(LOG_ERR, fmt, args);
+  _log_writer(LOG_ERR, fmt, args);
 
   va_end(args);
 }
@@ -51,7 +96,7 @@ log_d(const char * fmt, ...) {
   va_list args;
   va_start(args, fmt);
 
-  vsyslog(LOG_DEBUG, fmt, args);
+  _log_writer(LOG_DEBUG, fmt, args);
 
   va_end(args);
 }
@@ -61,7 +106,7 @@ log_w(const char * fmt, ...) {
   va_list args;
   va_start(args, fmt);
 
-  vsyslog(LOG_WARNING, fmt, args);
+  _log_writer(LOG_WARNING, fmt, args);
 
   va_end(args);
 }
@@ -71,7 +116,7 @@ log_i(const char * fmt, ...) {
   va_list args;
   va_start(args, fmt);
 
-  vsyslog(LOG_INFO, fmt, args);
+  _log_writer(LOG_INFO, fmt, args);
 
   va_end(args);
 }
@@ -84,5 +129,11 @@ void log_version(void) {
 
 void
 logger_close(void) {
+  #if defined(__linux__)
   closelog();
+
+  #elif defined(_WIN32) || defined(_WIN64)
+  if (lf != NULL)
+    fclose(lf);
+  #endif
 }

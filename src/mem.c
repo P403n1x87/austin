@@ -21,9 +21,12 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "mem.h"
+#include "logging.h"
 
 ssize_t
 copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
+  #if defined(__linux__)
+
   struct iovec local[1];
   struct iovec remote[1];
 
@@ -33,4 +36,12 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
   remote[0].iov_len = len;
 
   return process_vm_readv(pid, local, 1, remote, 1, 0);
+
+  #elif defined(_WIN32) || defined(_WIN64)
+  size_t n;
+  int ret = ReadProcessMemory((HANDLE) pid, addr, buf, len, &n) ? n : -1;
+  // if (ret == -1)
+  //   log_d("copy_memory: copied %ld bytes (requested %ld). Last error: %d", n, len, GetLastError());
+  return ret;
+  #endif
 }

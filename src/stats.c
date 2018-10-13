@@ -28,6 +28,10 @@
 #include "stats.h"
 
 
+#ifndef CLOCK_BOOTTIME
+#define CLOCK_BOOTTIME CLOCK_REALTIME
+#endif
+
 // ---- PRIVATE ---------------------------------------------------------------
 
 static unsigned long _sample_cnt;

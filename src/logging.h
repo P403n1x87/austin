@@ -23,9 +23,6 @@
 #ifndef LOGGING_H
 #define LOGGING_H
 
-#include <syslog.h>
-
-
 #define log_header() log_i("============================  AUSTIN  ╦̵̵̿╤─ ҉ ~ •  ============================\n")
 #define log_footer() log_i("============================================================================\n")
 

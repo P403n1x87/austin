@@ -20,8 +20,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#include <argp.h>
 #include <signal.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
@@ -124,7 +124,21 @@ _py_proc__sample(py_proc_t * py_proc) {
 }
 
 
+// ----------------------------------------------------------------------------
+static int
+strtonum(char * str, long * num) {
+  char * p_err;
+
+  *num = strtol(str, &p_err, 10);
+
+  return  (p_err == str || *p_err != 0) ? 1 : 0;
+}
+
+
 // ---- ARGUMENT PARSING ------------------------------------------------------
+
+#if defined(__linux__)
+#include <argp.h>
 
 const char * argp_program_version = PROGRAM_NAME " " VERSION;
 
@@ -156,17 +170,6 @@ static struct argp_option options[] = {
   },
   {0}
 };
-
-
-// ----------------------------------------------------------------------------
-static int
-strtonum(char * str, long * num) {
-  char * p_err;
-
-  *num = strtol(str, &p_err, 10);
-
-  return  (p_err == str || *p_err != 0) ? 1 : 0;
-}
 
 
 // ----------------------------------------------------------------------------
@@ -226,16 +229,81 @@ parse_opt (int key, char *arg, struct argp_state *state)
 }
 
 
-// ----------------------------------------------------------------------------
-static int
-parse_args(int argc, char ** argv) {
-  struct argp args = {options, parse_opt, "command [ARG...]", doc};
+#elif defined(_WIN32) || defined(_WIN64)
+#include "win/argparse.h"
 
-  return argp_parse(&args, argc, argv, 0, 0, 0);
+static arg_option opts[] = {
+  {
+    "interval",     'i', 1
+  },
+  {
+    "alt-format",   'a', 0
+  },
+  {
+    "exclude-empty",'e', 0
+  },
+  {
+    "sleepless",    's', 0
+  },
+  {
+    "pid",          'p', 1
+  },
+  {0, 0, 0}
+};
+
+int cb(const char opt, const char * arg) {
+  pid_t l_pid;
+
+  switch (opt) {
+  case 'i':
+    if (strtonum((char *) arg, (long *) &t_sampling_interval) == 1 || t_sampling_interval < 0)
+      return ARG_INVALID_VALUE;
+      // arg_error(state, "the sampling interval must be a positive integer");
+    break;
+
+  case 'a':
+    format = (char *) SAMPLE_FORMAT_ALTERNATIVE;
+    break;
+
+  case 'e':
+    exclude_empty = 1;
+    break;
+
+  case 's':
+    sleepless = 1;
+    break;
+
+  case 'p':
+    if (strtonum((char *) arg, &l_pid) == 1 || l_pid <= 0)
+      // argp_error(state, "invalid PID.");
+      return ARG_INVALID_VALUE;
+    attach_pid = (pid_t) l_pid;
+    break;
+
+  default:
+    return ARG_STOP_PARSING;
+  }
+
+  return ARG_CONTINUE_PARSING;
 }
+
+#endif
 
 
 // ---- MAIN ------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+static int
+parse_args(int argc, char ** argv) {
+  #if defined(__linux__)
+  struct argp args = {options, parse_opt, "command [ARG...]", doc};
+  return argp_parse(&args, argc, argv, 0, 0, 0);
+
+  #elif defined(_WIN32) || defined(_WIN64)
+  exec_arg = arg_parse(opts, cb, argc, argv) - 1;
+  return exec_arg;
+  #endif
+}
 
 // ----------------------------------------------------------------------------
 int main(int argc, char ** argv) {
