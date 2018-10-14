@@ -41,7 +41,7 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
   size_t n;
   int ret = ReadProcessMemory((HANDLE) pid, addr, buf, len, &n) ? n : -1;
   // if (ret == -1)
-  //   log_d("copy_memory: copied %ld bytes (requested %ld). Last error: %d", n, len, GetLastError());
+  //   log_d("copy_memory: copied %ld bytes (requested %ld from %p). Last error: %d", n, len, addr, GetLastError());
   return ret;
   #endif
 }

@@ -19,21 +19,11 @@
 #define _py_proc__get_elf_type(self, offset, dt) (py_proc__memcpy(self, self->map.elf.base + offset, sizeof(dt), &dt))
 #define ELF_SH_OFF(ehdr, i)            (ehdr.e_shoff + i * ehdr.e_shentsize)
 
-#define DYNSYM_COUNT                   2
 
 union {
   Elf32_Ehdr v32;
   Elf64_Ehdr v64;
 } ehdr_v;
-
-static const char * _dynsym_array[DYNSYM_COUNT] = {
-  "_PyThreadState_Current",
-  "_PyRuntime"
-};
-
-static long _dynsym_hash_array[DYNSYM_COUNT] = {
-  0
-};
 
 
 // ----------------------------------------------------------------------------
@@ -191,12 +181,6 @@ _py_proc__analyze_elf(py_proc_t * self) {
     || ehdr.e_ident[1] != 'E' || ehdr.e_ident[2] != 'L' || ehdr.e_ident[3] != 'F' \
   ) return 0;
 
-  // NOTE: This runs sub-optimally when searching for a single symbol
-  // Pre-hash symbol names
-  if (_dynsym_hash_array[0] == 0) {
-    for (register int i = 0; i < DYNSYM_COUNT; i++)
-      _dynsym_hash_array[i] = string_hash((char *) _dynsym_array[i]);
-  }
 
   // Dispatch
   switch (ehdr.e_ident[EI_CLASS]) {
@@ -342,114 +326,6 @@ _py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__is_bss_raddr(py_proc_t * self, void * raddr) {
-  if (self == NULL || raddr == NULL || self->map.bss.base == NULL)
-    return 0;
-
-  return (raddr >= self->map.bss.base && raddr < self->map.bss.base + self->map.bss.size)
-    ? 1
-    : 0;
-}
-
-
-// ----------------------------------------------------------------------------
-static int
-_py_proc__deref_interp_state(py_proc_t * self) {
-  PyThreadState   tstate_current;
-  _PyRuntimeState py_runtime;
-
-  if (self == NULL)
-    return 1;
-
-  if (self->sym_loaded == 0)
-    _py_proc__analyze_bin(self);
-
-  if (self->sym_loaded == 0)
-    return 1;
-
-  if (!self->version) {
-    self->version = _py_proc__get_version(self);
-    if (!self->version)
-      return 1;
-
-    set_version(self->version);
-  }
-
-  if (self->py_runtime == NULL && self->tstate_curr_raddr == NULL)
-    return -2;
-
-  // Python 3.7 exposes the _PyRuntime symbol. This can be used to find the
-  // head interpreter state.
-  if (self->py_runtime != NULL) {
-    // NOTE: With Python 3.7, this check causes the de-reference to fail even
-    //       in cases where it shouldn't.
-    // if (
-    //   _py_proc__is_bss_raddr(self, self->py_runtime) == 0 &&
-    //   _py_proc__is_heap_raddr(self, self->py_runtime) == 0
-    // ) return -1;
-
-    if (py_proc__get_type(self, self->py_runtime, py_runtime) != 0)
-      return 1;
-
-    if (_py_proc__check_interp_state(self, py_runtime.interpreters.head))
-      return 1;
-
-    self->is_raddr = py_runtime.interpreters.head;
-
-    return 0;
-  }
-
-  if (
-    _py_proc__is_bss_raddr(self, self->tstate_curr_raddr) == 0 &&
-    _py_proc__is_heap_raddr(self, self->tstate_curr_raddr) == 0
-  ) return -1;
-
-  if (py_proc__get_type(self, self->tstate_curr_raddr, tstate_current) != 0)
-    return 1;
-
-  // 3.6.5 -> 3.6.6: _PyThreadState_Current doesn't seem what one would expect
-  //                 anymore, but _PyThreadState_Current.prev is.
-  if (
-    V_FIELD(void*, tstate_current, py_thread, o_thread_id) == 0 && \
-    V_FIELD(void*, tstate_current, py_thread, o_prev)      != 0
-  ) {
-    self->tstate_curr_raddr = V_FIELD(void*, tstate_current, py_thread, o_prev);
-    return 1;
-  }
-
-  if (_py_proc__check_interp_state(self, V_FIELD(void*, tstate_current, py_thread, o_interp)))
-    return 1;
-
-  self->is_raddr = V_FIELD(void*, tstate_current, py_thread, o_interp);
-
-  return 0;
-}
-
-
-// ----------------------------------------------------------------------------
-static int
-_py_proc__scan_bss(py_proc_t * self) {
-  if (py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss))
-    return 1;
-
-  void * upper_bound = self->bss + self->map.bss.size;
-  for (
-    register void ** raddr = (void **) self->bss;
-    (void *) raddr < upper_bound;
-    raddr++
-  ) {
-    if (_py_proc__is_heap_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
-      self->is_raddr = *raddr;
-      return 0;
-    }
-  }
-
-  return 1;
-}
-
-
-// ----------------------------------------------------------------------------
-static int
 _py_proc__scan_heap(py_proc_t * self) {
   // NOTE: This seems to be required by Python 2.7 on i386 Linux.
   void * upper_bound = self->map.heap.base + self->map.heap.size;
@@ -464,69 +340,5 @@ _py_proc__scan_heap(py_proc_t * self) {
     }
   }
 
-  return 1;
-}
-
-
-// ----------------------------------------------------------------------------
-static int
-_py_proc__wait_for_interp_state(py_proc_t * self) {
-  register int try_cnt = INIT_RETRY_CNT;
-
-  while (--try_cnt) {
-    usleep(INIT_RETRY_SLEEP);
-
-    switch (_py_proc__deref_interp_state(self)) {
-    case 0:
-      #ifdef DEBUG
-      log_d("Interpreter State de-referenced @ raddr: %p after %d iterations",
-        self->is_raddr,
-        INIT_RETRY_CNT - try_cnt
-      );
-      #endif
-
-      return 0;
-
-    case -1:
-      #ifdef DEBUG
-      log_d("Symbol address not within VM maps (shared object?)");
-      #endif
-      try_cnt = 1;
-      break;
-
-    case -2:
-      log_w("Null symbol references. This is unexpected on Linux.");
-      try_cnt = 1;
-      break;
-    }
-  }
-
-  log_d("Unable to de-reference global symbols. Scanning the bss section...");
-
-  // Copy .bss section from remote location
-  self->bss = malloc(self->map.bss.size);
-  if (self->bss == NULL)
-    return 1;
-
-  try_cnt = INIT_RETRY_CNT;
-  while (--try_cnt) {
-    usleep(INIT_RETRY_SLEEP);
-
-    if (_py_proc__scan_bss(self) == 0)
-      return 0;
-  }
-
-  log_w("Bss scan unsuccessful. Scanning heap directly...");
-
-  // TODO: Consider copying heap over and check for pointers
-  try_cnt = INIT_RETRY_CNT;
-  while (--try_cnt) {
-    usleep(INIT_RETRY_SLEEP);
-
-    if (_py_proc__scan_heap(self) == 0)
-      return 0;
-  }
-
-  error = EPROCISTIMEOUT;
   return 1;
 }
