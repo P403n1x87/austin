@@ -8,19 +8,19 @@
 
 // ----------------------------------------------------------------------------
 // TODO: Optimise by avoiding executing the same code over and over again
-static void *
-RVAToFileMap(void * bin, DWORD rva) {
-  IMAGE_DOS_HEADER     * dos_hdr = (IMAGE_DOS_HEADER *) bin;
-  IMAGE_NT_HEADERS     * nt_hdr  = (IMAGE_NT_HEADERS *) (bin + dos_hdr->e_lfanew);
-  IMAGE_SECTION_HEADER * s_hdr   = (IMAGE_SECTION_HEADER *) (bin + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
-
-  for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
-    if (rva >= s_hdr[i].VirtualAddress && rva < s_hdr[i].VirtualAddress + s_hdr[i].SizeOfRawData)
-      return bin + s_hdr[i].PointerToRawData + (rva - s_hdr[i].VirtualAddress);
-  }
-
-  return NULL;
-}
+// static void *
+// RVAToFileMap(void * bin, DWORD rva) {
+//   IMAGE_DOS_HEADER     * dos_hdr = (IMAGE_DOS_HEADER *) bin;
+//   IMAGE_NT_HEADERS     * nt_hdr  = (IMAGE_NT_HEADERS *) (bin + dos_hdr->e_lfanew);
+//   IMAGE_SECTION_HEADER * s_hdr   = (IMAGE_SECTION_HEADER *) (bin + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
+//
+//   for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
+//     if (rva >= s_hdr[i].VirtualAddress && rva < s_hdr[i].VirtualAddress + s_hdr[i].SizeOfRawData)
+//       return bin + s_hdr[i].PointerToRawData + (rva - s_hdr[i].VirtualAddress);
+//   }
+//
+//   return NULL;
+// }
 
 
 // ----------------------------------------------------------------------------
@@ -37,7 +37,7 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
   if (nt_hdr->Signature != IMAGE_NT_SIGNATURE)
     return 1;
 
-  ULONGLONG base = self->map.bss.base;  // nt_hdr->OptionalHeader.ImageBase;
+  void * base = self->map.bss.base;  // nt_hdr->OptionalHeader.ImageBase;
 
   // ---- Find the .data section ----
   for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
@@ -49,34 +49,34 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
   }
 
   // ---- Search for exports ----
-  register int hit_cnt = 0;
-
-  IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) RVAToFileMap(pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress);
-  if (e_dir != NULL) {
-    DWORD * names   = (DWORD *) RVAToFileMap(pMapping, e_dir->AddressOfNames);
-    WORD  * idx_tab = (WORD *)  RVAToFileMap(pMapping, e_dir->AddressOfNameOrdinals);
-    DWORD * addrs   = (DWORD *) RVAToFileMap(pMapping, e_dir->AddressOfFunctions);
-    for (register int i = 0; i < e_dir->NumberOfFunctions; i++) {
-      char * sym_name = (char *) RVAToFileMap(pMapping, names[i]);
-      // log_d("Symbol: %s", sym_name);
-      long hash = string_hash(sym_name);
-      for (register int i = 0; i < DYNSYM_COUNT; i++) {
-        if (hash == _dynsym_hash_array[i] && strcmp(sym_name, _dynsym_array[i]) == 0) {
-          *(&(self->tstate_curr_raddr) + i) = (void *) (addrs[idx_tab[i]] + base);
-          hit_cnt++;
-          #ifdef DEBUG
-          log_d("Symbol %s found at %p", sym_name, addrs[idx_tab[i]] + base);
-          #endif
-        }
-      }
-    }
-  }
+  // register int hit_cnt = 0;
+  //
+  // IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) RVAToFileMap(pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress);
+  // if (e_dir != NULL) {
+  //   DWORD * names   = (DWORD *) RVAToFileMap(pMapping, e_dir->AddressOfNames);
+  //   WORD  * idx_tab = (WORD *)  RVAToFileMap(pMapping, e_dir->AddressOfNameOrdinals);
+  //   DWORD * addrs   = (DWORD *) RVAToFileMap(pMapping, e_dir->AddressOfFunctions);
+  //   for (register int i = 0; i < e_dir->NumberOfFunctions; i++) {
+  //     char * sym_name = (char *) RVAToFileMap(pMapping, names[i]);
+  //     // log_d("Symbol: %s", sym_name);
+  //     long hash = string_hash(sym_name);
+  //     for (register int i = 0; i < DYNSYM_COUNT; i++) {
+  //       if (hash == _dynsym_hash_array[i] && strcmp(sym_name, _dynsym_array[i]) == 0) {
+  //         *(&(self->tstate_curr_raddr) + i) = (void *) (addrs[idx_tab[i]] + base);
+  //         hit_cnt++;
+  //         #ifdef DEBUG
+  //         log_d("Symbol %s found at %p", sym_name, addrs[idx_tab[i]] + base);
+  //         #endif
+  //       }
+  //     }
+  //   }
+  // }
 
   UnmapViewOfFile(pMapping);
   CloseHandle(hMapping);
   CloseHandle(hFile);
 
-  return hit_cnt;
+  return 1;
 }
 
 
@@ -144,93 +144,3 @@ _py_proc__analyze_bin(py_proc_t * self) {
 
   return 0;
 }
-
-
-// ----------------------------------------------------------------------------
-// static int
-// _py_proc__is_raddr(py_proc_t * self, void * raddr) {
-//   if (self == NULL || raddr == NULL)
-//     return 0;
-//
-//   proc_vm_map_block_t * vm_maps = (proc_vm_map_block_t *) &(self->map);
-//   for (register int i = 0; i < MODULE_CNT; i++) {
-//     if (raddr >= vm_maps[i].base && raddr < vm_maps[i].base + vm_maps[i].size)
-//       return 1;
-//   }
-//
-//   return 0;
-// }
-
-
-// ----------------------------------------------------------------------------
-// static int
-// _py_proc__scan_module(py_proc_t * self, proc_vm_map_block_t * mod) {
-//   if (py_proc__memcpy(self, mod->base, mod->size, self->bss))
-//     return 1;
-//
-//   void * upper_bound = self->bss + mod->size;
-//   for (
-//     register void ** raddr = (void **) self->bss;
-//     (void *) raddr < upper_bound;
-//     raddr++
-//   ) {
-//     if (_py_proc__is_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
-//       self->is_raddr = *raddr;
-//       return 0;
-//     }
-//   }
-//
-//   return 1;
-// }
-
-
-// ----------------------------------------------------------------------------
-// static int
-// _py_proc__wait_for_interp_state(py_proc_t * self) {
-//   if (self == NULL)
-//     return 1;
-//
-//   register int try_cnt = INIT_RETRY_CNT;
-//
-//   // Wait for memory maps
-//   while (--try_cnt) {
-//     usleep(INIT_RETRY_SLEEP);
-//
-//     if (self->sym_loaded == 0) {
-//       _py_proc__analyze_bin(self);
-//       if (self->sym_loaded == 0)
-//         continue;
-//     }
-//
-//     if (!self->version) {
-//       self->version = _py_proc__get_version(self);
-//       if (!self->version)
-//         return 1;
-//
-//       set_version(self->version);
-//       break;
-//     }
-//   }
-//
-//   if (try_cnt) {
-//     proc_vm_map_block_t * vm_maps = (proc_vm_map_block_t *) &(self->map);
-//
-//     for (register int i = 0; i < MODULE_CNT; i++) {
-//       self->bss = malloc(vm_maps[i].size);
-//       if (self->bss == NULL)
-//         return 1;
-//
-//       try_cnt = INIT_RETRY_CNT;
-//       while (--try_cnt) {
-//         usleep(INIT_RETRY_SLEEP);
-//
-//         if (_py_proc__scan_module(self, &(vm_maps[i])) == 0)
-//           return 0;
-//       }
-//       free(self->bss);
-//     }
-//   }
-//
-//   error = EPROCISTIMEOUT;
-//   return 1;
-// }

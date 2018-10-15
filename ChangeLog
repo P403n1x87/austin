@@ -1,3 +1,8 @@
+2018-10-15 v0.6.0-beta
+
+  Introduced experimental native support for Windows.
+
+
 2018-10-10 v0.5.0-beta
 
   Added support for all the major releases of Python 2 and 3 on 32-bit Linux.

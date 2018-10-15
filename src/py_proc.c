@@ -326,16 +326,21 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
       #endif
       try_cnt = 1;
       break;
-
+    #if defined(__linux__)
     case -2:
       log_w("Null symbol references. This is unexpected on Linux.");
       try_cnt = 1;
       break;
+    #endif
     }
   }
 
   if (self->version) {
+    #if defined(__linux__)
     log_d("Unable to de-reference global symbols. Scanning the bss section...");
+    #else
+    log_d("Scanning the uninitialized data section ...");
+    #endif
 
     // Copy .bss section from remote location
     self->bss = malloc(self->map.bss.size);

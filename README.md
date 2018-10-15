@@ -1,6 +1,32 @@
-![austin](art/austin.png)
+<!--
 
-[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-0.5.0--beta-blue.svg) [![License](https://img.shields.io/badge/license-GPLv3-ff69b4.svg)](https://github.com/P403n1x87/austin/blob/master/LICENSE.md)
+<h1 align="center">
+  <br>
+  <img src="art/austin.png" alt="Austin">
+  <br>
+</h1>
+
+<p align="center">
+  <a href="https://travis-ci.org/P403n1x87/austin">
+    <img src="https://travis-ci.org/P403n1x87/austin.svg?branch=master"
+         alt="Travis CI Build Status">
+  </a>
+  <img src="https://img.shields.io/badge/version-0.6.0--beta-blue.svg"
+       alt="Version 0.6.0-beta">
+  <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md">
+    <img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg"
+         alt="source{d} design document">
+  </a>
+</p>
+
+-->
+
+<p align="center">![austin](art/austin.png)</p>
+
+<h3 align="center">A frame stack sampler for CPython</h3>
+
+<p align="center">[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-0.6.0--beta-blue.svg) [![License](https://img.shields.io/badge/license-GPLv3-ff69b4.svg)](https://github.com/P403n1x87/austin/blob/master/LICENSE.md)</p>
+
 
 Meet Austin, a Python frame stack sampler for CPython.
 
@@ -17,7 +43,7 @@ However, the output format can be grabbed from any other external tool for
 further processing. Look, for instance, at the following Python TUI, similar in
 spirit to [py-spy](https://github.com/benfred/py-spy).
 
-![tui](art/austin-tui_wip.png)
+<p align="center">![tui](art/austin-tui_wip.png)</p>
 
 The current version only supports Python on Linux-based operating systems that
 have not been compiled with the `--enable-shared` flag. Support for other
@@ -45,7 +71,7 @@ Compilation has been tested with GNU GCC 7.3.0. The code is so simple that it
 really compiles with just
 
 ~~~ bash
-gcc -O3 -Wall `ls src/*.c` -o austin
+gcc -O3 -Wall src/*.c src/win/*.c -o austin
 ~~~
 
 Add `-DDEBUG` if you want a more verbose syslog.
@@ -117,6 +143,9 @@ otherwise specified).
 - Python 3.7 (3.7.0) on Ubuntu 18.04.1
 
 ## Windows
+
+- Python 3.6.6 on Windows 10 64-bit
+- Python 3.7.0 on Windows 10 64-bit
 
 - Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04 x86-64 via WSL
 
@@ -193,24 +222,6 @@ but even this approach doesn't guarantee 100% accuracy. It might be that a new
 read now succeeds, but there is no way of telling whether the references are
 genuine or not.
 
-## In Between Python Releases
-
-The early development of this project was tested against Python 3.6.5. The
-method for finding a valid instance of `PyInterpreterState` described above
-worked perfectly. After the upgrade to Python 3.6.6, the code stopped working.
-It turned out that the following "fix" was required
-
-~~~ C
-// 3.6.5 -> 3.6.6: _PyThreadState_Current doesn't seem what one would expect
-//                 anymore, but _PyThreadState_Current.prev is.
-if (tstate_current.thread_id == 0 && tstate_current.prev != 0)
-  self->tstate_curr_raddr = tstate_current.prev;
-~~~
-
-That is, in Python 3.6.6, the symbol `_PyThreadState_Current` does not
-de-reference to a "valid" instance of `PyThreadState`, but `PythreadState.prev`
-does. Fortunately enough, this fix works for both versions of Python.
-
 
 # Examples
 
@@ -229,7 +240,7 @@ for i in range(1000):
   list(psutil.process_iter())
 ~~~
 
-![test_graph](art/test.png)
+<p align="center">![test_graph](art/test.png)</p>
 
 The tall stack on the left is the initialisation phase of the Python
 interpreter.
@@ -238,10 +249,10 @@ The Python TUI that is currently included in this repository is experimental and
 work in progress. It serves the purpose of providing an example of how to use
 Austin to profile Python applications. Here is a recording of the TUI in action
 with a sample script that spawns a new thread and keeps the CPU busy with a CPU
-bound loop on each thread. You can use PageUp and PageDown to navigate the
+bound loop on each thread. You can use `PageUp` and `PageDown` to navigate the
 frame stack of each frame as the Python application runs.
 
-![austin-tui thread navigation](art/austin-tui_threads_nav.gif)
+<p align="center">![austin-tui thread navigation](art/austin-tui_threads_nav.gif)</p>
 
 
 ----
