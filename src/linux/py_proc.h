@@ -245,7 +245,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
           self->map.elf.size = b - a;
 
           #ifdef DEBUG
-          log_d("Python binary path: %s\n", self->bin_path);
+          log_d("Python binary path: %s", self->bin_path);
           #endif // DEBUG
         }
       }
@@ -306,6 +306,7 @@ _py_proc__analyze_bin(py_proc_t * self) {
 
   if (self->sym_loaded)
     return 0;
+
   self->sym_loaded = _py_proc__analyze_elf(self) ? 1 : 0;
 
   return 1 - self->sym_loaded;

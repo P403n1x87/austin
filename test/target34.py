@@ -8,7 +8,5 @@ def keep_cpu_busy():
         a.append(i)
 
 if __name__ == "__main__":
-    print("Python Start")
     threading.Thread(target=keep_cpu_busy).start()
     keep_cpu_busy()
-    print("Python Stop")

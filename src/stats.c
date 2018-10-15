@@ -116,13 +116,13 @@ stats_log_metrics(void) {
     stats_get_avg_sampling_time()
   );
 
-  log_i("Long-running sample rate: %d samples over sampling interval/%d (%.2f %%)\n", \
+  log_i("Long-running sample rate: %d samples over sampling interval/%d (%.2f %%)", \
     _long_cnt,                                           \
     _sample_cnt,                                         \
     (float) _long_cnt / _sample_cnt * 100                \
   );
 
-  log_i("Error rate: %d invalid samples/%d (%.2f %%)\n", \
+  log_i("Error rate: %d invalid samples/%d (%.2f %%)",   \
     _error_cnt,                                          \
     _sample_cnt,                                         \
     (float) _error_cnt / _sample_cnt * 100               \

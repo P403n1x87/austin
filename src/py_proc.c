@@ -61,8 +61,7 @@ static const char * _dynsym_array[DYNSYM_COUNT] = {
 };
 
 static long _dynsym_hash_array[DYNSYM_COUNT] = {
-  0x9fee54cd,
-  0xb1bef8c
+  0
 };
 
 
@@ -178,11 +177,11 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 // ----------------------------------------------------------------------------
 #if defined(__linux__)
 
-  #include "linux/py_proc.c"
+  #include "linux/py_proc.h"
 
 #elif defined(_WIN32) || defined(_WIN64)
 
-  #include "win/py_proc.c"
+  #include "win/py_proc.h"
 
 #endif
 // ----------------------------------------------------------------------------
@@ -335,33 +334,36 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
     }
   }
 
-  log_d("Unable to de-reference global symbols. Scanning the bss section...");
+  if (self->version) {
+    log_d("Unable to de-reference global symbols. Scanning the bss section...");
 
-  // Copy .bss section from remote location
-  self->bss = malloc(self->map.bss.size);
-  if (self->bss == NULL)
-    return 1;
+    // Copy .bss section from remote location
+    self->bss = malloc(self->map.bss.size);
+    if (self->bss == NULL)
+      return 1;
 
-  try_cnt = INIT_RETRY_CNT;
-  while (--try_cnt) {
-    usleep(INIT_RETRY_SLEEP);
+    try_cnt = INIT_RETRY_CNT;
+    while (--try_cnt) {
+      usleep(INIT_RETRY_SLEEP);
 
-    if (_py_proc__scan_bss(self) == 0)
-      return 0;
-  }
+      if (_py_proc__scan_bss(self) == 0)
+        return 0;
+    }
 
-  #if defined(__linux__)
-  log_w("Bss scan unsuccessful. Scanning heap directly...");
+    #if defined(__linux__)
+    log_w("Bss scan unsuccessful. Scanning heap directly...");
 
-  // TODO: Consider copying heap over and check for pointers
-  try_cnt = INIT_RETRY_CNT;
-  while (--try_cnt) {
-    usleep(INIT_RETRY_SLEEP);
+    // TODO: Consider copying heap over and check for pointers
+    try_cnt = INIT_RETRY_CNT;
+    while (--try_cnt) {
+      usleep(INIT_RETRY_SLEEP);
 
-    if (_py_proc__scan_heap(self) == 0)
-      return 0;
-  }
-  #endif
+      if (_py_proc__scan_heap(self) == 0)
+        return 0;
+    }
+    #endif
+  } else
+    log_e("Python version not set");
 
   error = EPROCISTIMEOUT;
   return 1;
@@ -393,6 +395,14 @@ py_proc_new() {
     py_proc->version = 0;
   }
 
+  // Pre-hash symbol names
+  if (_dynsym_hash_array[0] == 0) {
+    for (register int i = 0; i < DYNSYM_COUNT; i++) {
+      _dynsym_hash_array[i] = string_hash((char *) _dynsym_array[i]);
+      printf("%lx\n", _dynsym_hash_array[i]);
+    }
+  }
+
   check_not_null(py_proc);
   return py_proc;
 }
@@ -414,14 +424,6 @@ py_proc__attach(py_proc_t * self, pid_t pid) {
 // ----------------------------------------------------------------------------
 int
 py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
-  // Pre-hash symbol names
-  // if (_dynsym_hash_array[0] == 0) {
-  //   for (register int i = 0; i < DYNSYM_COUNT; i++) {
-  //     _dynsym_hash_array[i] = string_hash((char *) _dynsym_array[i]);
-  //     printf("%lx\n", _dynsym_hash_array[i]);
-  //   }
-  // }
-
   #if defined(__linux__)
   self->pid = fork();
 
