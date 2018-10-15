@@ -44,7 +44,8 @@ However, the output format can be grabbed from any other external tool for
 further processing. Look, for instance, at the following Python TUI, similar in
 spirit to [py-spy](https://github.com/benfred/py-spy).
 
-<p align="center">![tui](art/austin-tui_wip.png)</p>
+<!-- ![tui](art/austin-tui_wip.png) -->
+<p align="center"><img src="art/austin-tui_wip.png" /></p>
 
 The current version only supports Python on Linux-based operating systems that
 have not been compiled with the `--enable-shared` flag. Support for other
@@ -241,7 +242,8 @@ for i in range(1000):
   list(psutil.process_iter())
 ~~~
 
-<p align="center">![test_graph](art/test.png)</p>
+<!-- ![test_graph](art/test.png) -->
+<p align="center"><img src="art/test.png" /></p>
 
 The tall stack on the left is the initialisation phase of the Python
 interpreter.
@@ -253,8 +255,8 @@ with a sample script that spawns a new thread and keeps the CPU busy with a CPU
 bound loop on each thread. You can use `PageUp` and `PageDown` to navigate the
 frame stack of each frame as the Python application runs.
 
-<p align="center">![austin-tui thread navigation](art/austin-tui_threads_nav.gif)</p>
-
+<!-- ![austin-tui thread navigation](art/austin-tui_threads_nav.gif) -->
+<p align="center"><img src="art/austin-tui_threads_nav.gif" /></p>
 
 ----
 
