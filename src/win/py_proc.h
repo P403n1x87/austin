@@ -33,7 +33,7 @@
 // ----------------------------------------------------------------------------
 // TODO: Optimise by avoiding executing the same code over and over again
 // static void *
-// RVAToFileMap(void * bin, DWORD rva) {
+// map_addr_from_rva(void * bin, DWORD rva) {
 //   IMAGE_DOS_HEADER     * dos_hdr = (IMAGE_DOS_HEADER *) bin;
 //   IMAGE_NT_HEADERS     * nt_hdr  = (IMAGE_NT_HEADERS *) (bin + dos_hdr->e_lfanew);
 //   IMAGE_SECTION_HEADER * s_hdr   = (IMAGE_SECTION_HEADER *) (bin + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
@@ -75,13 +75,13 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
   // ---- Search for exports ----
   // register int hit_cnt = 0;
   //
-  // IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) RVAToFileMap(pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress);
+  // IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) map_addr_from_rva(pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress);
   // if (e_dir != NULL) {
-  //   DWORD * names   = (DWORD *) RVAToFileMap(pMapping, e_dir->AddressOfNames);
-  //   WORD  * idx_tab = (WORD *)  RVAToFileMap(pMapping, e_dir->AddressOfNameOrdinals);
-  //   DWORD * addrs   = (DWORD *) RVAToFileMap(pMapping, e_dir->AddressOfFunctions);
+  //   DWORD * names   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfNames);
+  //   WORD  * idx_tab = (WORD *)  map_addr_from_rva(pMapping, e_dir->AddressOfNameOrdinals);
+  //   DWORD * addrs   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfFunctions);
   //   for (register int i = 0; i < e_dir->NumberOfFunctions; i++) {
-  //     char * sym_name = (char *) RVAToFileMap(pMapping, names[i]);
+  //     char * sym_name = (char *) map_addr_from_rva(pMapping, names[i]);
   //     // log_d("Symbol: %s", sym_name);
   //     long hash = string_hash(sym_name);
   //     for (register int i = 0; i < DYNSYM_COUNT; i++) {

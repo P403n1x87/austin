@@ -290,7 +290,7 @@ static arg_option opts[] = {
   },
   {
     "usage",        -1,  0
-  }
+  },
   {0, 0, 0}
 };
 
@@ -318,7 +318,7 @@ int cb(const char opt, const char * arg) {
     break;
 
   case 'p':
-    if (strtonum((char *) arg, &l_pid) == 1 || l_pid <= 0) {
+    if (strtonum((char *) arg, (long *) &l_pid) == 1 || l_pid <= 0) {
       printf(usage_msg);
       return ARG_INVALID_VALUE;
     }

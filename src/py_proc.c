@@ -52,7 +52,6 @@
 #define INIT_RETRY_CNT              1000  /* Retry for 0.1s before giving up. */
 
 
-// Get the offset of the ith section header
 #define get_bounds(line, a, b) (sscanf(line, "%lx-%lx", &a, &b))
 
 #define DYNSYM_COUNT                   2
@@ -97,7 +96,6 @@ _py_proc__get_version(py_proc_t * self) {
       break;
   }
 
-  /* close */
   _pclose(fp);
 
   log_i("Python version: %d.%d.%d", major, minor, patch);
@@ -129,7 +127,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   PyThreadState      tstate_head;
 
   if (py_proc__get_type(self, raddr, is) != 0)
-    return -1; // This signals that we are out of bounds.
+    return -1;  // This signals that we are out of bounds.
 
   #ifdef DEBUG
   log_d("PyInterpreterState loaded @ %p", raddr);
@@ -142,22 +140,15 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   log_d("PyThreadState head loaded @ %p", is.tstate_head);
   #endif
 
-  // if (V_FIELD(void*, tstate_head, py_thread, o_interp) != NULL)
-  //   log_d(
-  //     "ThreadState Head: interp: %p, frame: %p",
-  //     V_FIELD(void*, tstate_head, py_thread, o_interp),
-  //     V_FIELD(void*, tstate_head, py_thread, o_frame)
-  //   );
-
   if (
     (V_FIELD(void*, tstate_head, py_thread, o_interp)) != raddr ||
     (V_FIELD(void*, tstate_head, py_thread, o_frame))  == 0
   )
     return 1;
 
-  // #ifdef DEBUG
+  #ifdef DEBUG
   log_d("Found possible interpreter state @ %p (offset %p).", raddr, raddr - self->map.heap.base);
-  // #endif
+  #endif
 
   error = EOK;
   raddr_t thread_raddr = { .pid = self->pid, .addr = is.tstate_head };
@@ -418,8 +409,8 @@ py_proc_new() {
 int
 py_proc__attach(py_proc_t * self, pid_t pid) {
   #if defined(_WIN32) || defined(_WIN64)
-  self->pid = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
-  if (self->pid == INVALID_HANDLE_VALUE) {
+  self->pid = (pid_t) OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
+  if (self->pid == (pid_t) INVALID_HANDLE_VALUE) {
     log_e("Unable to attach to process with PID %d", pid);
     return 1;
   }
@@ -453,7 +444,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
 
   #elif defined(_WIN32) || defined(_WIN64)
   self->pid = _spawnvp(_P_NOWAIT, exec, (const char * const*) argv);
-  if (self->pid == INVALID_HANDLE_VALUE) {
+  if (self->pid == (pid_t) INVALID_HANDLE_VALUE) {
     log_e("Failed to spawn command: %s", exec);
     return 1;
   }
@@ -464,7 +455,6 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
 
   log_error();
   return 1;
-
 }
 
 
