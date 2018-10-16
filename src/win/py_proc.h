@@ -1,3 +1,27 @@
+// This file is part of "austin" which is released under GPL.
+//
+// See file LICENCE or go to http://www.gnu.org/licenses/ for full license
+// details.
+//
+// Austin is a Python frame stack sampler for CPython.
+//
+// Copyright (c) 2018 Gabriele N. Tornetta <phoenix1987@gmail.com>.
+// All rights reserved.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+#ifdef PY_PROC_C
+
 #include <tlhelp32.h>
 
 #include "../py_proc.h"
@@ -37,7 +61,7 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
   if (nt_hdr->Signature != IMAGE_NT_SIGNATURE)
     return 1;
 
-  void * base = self->map.bss.base;  // nt_hdr->OptionalHeader.ImageBase;
+  // void * base = self->map.bss.base;
 
   // ---- Find the .data section ----
   for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
@@ -83,7 +107,6 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__get_modules(py_proc_t * self) {
-  // TODO: https://stackoverflow.com/questions/3313581/runtime-process-memory-patching-for-restoring-state/3313700#3313700
   DWORD pid = GetProcessId((HANDLE) self->pid);
 
   HANDLE mod_hdl;
@@ -144,3 +167,5 @@ _py_proc__analyze_bin(py_proc_t * self) {
 
   return 0;
 }
+
+#endif

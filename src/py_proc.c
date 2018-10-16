@@ -20,6 +20,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#define PY_PROC_C
+
 #if defined(__linux__)
 #include <sys/wait.h>
 #elif defined(_WIN32) || defined(_WIN64)
@@ -404,7 +406,6 @@ py_proc_new() {
   if (_dynsym_hash_array[0] == 0) {
     for (register int i = 0; i < DYNSYM_COUNT; i++) {
       _dynsym_hash_array[i] = string_hash((char *) _dynsym_array[i]);
-      printf("%lx\n", _dynsym_hash_array[i]);
     }
   }
 
@@ -416,7 +417,15 @@ py_proc_new() {
 // ----------------------------------------------------------------------------
 int
 py_proc__attach(py_proc_t * self, pid_t pid) {
+  #if defined(_WIN32) || defined(_WIN64)
+  self->pid = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
+  if (self->pid == INVALID_HANDLE_VALUE) {
+    log_e("Unable to attach to process with PID %d", pid);
+    return 1;
+  }
+  #else
   self->pid = pid;
+  #endif
 
   if (_py_proc__wait_for_interp_state(self) == 0)
     return 0;

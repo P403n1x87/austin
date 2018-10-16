@@ -146,12 +146,14 @@ otherwise specified).
 
 ## Windows
 
-- Python 3.6.6 on Windows 10 64-bit
-- Python 3.7.0 on Windows 10 64-bit
+- Python 2.7 (2.7.13) on windows 10 64-bit
+
+- Python 3.6 (3.6.6) on Windows 10 64-bit
+- Python 3.7 (3.7.0) on Windows 10 64-bit
 
 - Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04 x86-64 via WSL
 
-> **NOTE** Austin *might* work with other versions of Python 3 on both Linux
+> **NOTE** Austin *might* work with other versions of Python on both Linux
 > and Windows
 
 # A Note on How Austin Works

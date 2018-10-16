@@ -135,6 +135,18 @@ strtonum(char * str, long * num) {
 }
 
 
+// ---- SIGNAL HANDLING -------------------------------------------------------
+
+static int interrupt = 0;
+
+static void
+signal_callback_handler(int signum)
+{
+  if (signum == SIGINT)
+    interrupt++;
+}
+
+
 // ---- ARGUMENT PARSING ------------------------------------------------------
 
 #if defined(__linux__)
@@ -232,6 +244,31 @@ parse_opt (int key, char *arg, struct argp_state *state)
 #elif defined(_WIN32) || defined(_WIN64)
 #include "win/argparse.h"
 
+static const char * help_msg = \
+"Usage: austin [OPTION...] command [ARG...]\n"
+"Austin -- A frame stack sampler for Python.\n"
+"\n"
+"  -a, --alt-format           alternative collapsed stack sample format.\n"
+"  -e, --exclude-empty        do not output samples of threads with no frame\n"
+"                             stacks.\n"
+"  -i, --interval=n_usec      Sampling interval (default is 500 usec).\n"
+"  -p, --pid=PID              The the ID of the process to which Austin should\n"
+"                             attach.\n"
+"  -s, --sleepless            suppress idle samples.\n"
+"  -?, --help                 Give this help list\n"
+"      --usage                Give a short usage message\n"
+"  -V, --version              Print program version\n"
+"\n"
+"Mandatory or optional arguments to long options are also mandatory or optional\n"
+"for any corresponding short options.\n"
+"\n"
+"Report bugs to <https://github.com/P403n1x87/austin/issues>.\n";
+
+static const char * usage_msg = \
+"Usage: austin [-aes?V] [-i n_usec] [-p PID] [--alt-format] [--exclude-empty]\n"
+"            [--interval=n_usec] [--pid=PID] [--sleepless] [--help] [--usage]\n"
+"            [--version] command [ARG...]\n";
+
 static arg_option opts[] = {
   {
     "interval",     'i', 1
@@ -248,6 +285,12 @@ static arg_option opts[] = {
   {
     "pid",          'p', 1
   },
+  {
+    "help",         '?', 0
+  },
+  {
+    "usage",        -1,  0
+  }
   {0, 0, 0}
 };
 
@@ -256,9 +299,10 @@ int cb(const char opt, const char * arg) {
 
   switch (opt) {
   case 'i':
-    if (strtonum((char *) arg, (long *) &t_sampling_interval) == 1 || t_sampling_interval < 0)
+    if (strtonum((char *) arg, (long *) &t_sampling_interval) == 1 || t_sampling_interval < 0) {
+      printf(usage_msg);
       return ARG_INVALID_VALUE;
-      // arg_error(state, "the sampling interval must be a positive integer");
+    }
     break;
 
   case 'a':
@@ -274,13 +318,23 @@ int cb(const char opt, const char * arg) {
     break;
 
   case 'p':
-    if (strtonum((char *) arg, &l_pid) == 1 || l_pid <= 0)
-      // argp_error(state, "invalid PID.");
+    if (strtonum((char *) arg, &l_pid) == 1 || l_pid <= 0) {
+      printf(usage_msg);
       return ARG_INVALID_VALUE;
+    }
     attach_pid = (pid_t) l_pid;
     break;
 
+  case '?':
+    printf(help_msg);
+    exit(0);
+
+  case -1:
+    printf(usage_msg);
+    exit(0);
+
   default:
+    printf(usage_msg);
     return ARG_STOP_PARSING;
   }
 
@@ -329,7 +383,7 @@ int main(int argc, char ** argv) {
       code = EPROCFORK;
   } else {
     if (py_proc__attach(py_proc, attach_pid) != 0)
-      code = EPROCFORK;
+      code = EPROCATTACH;
   }
 
   if (code == EOK) {
@@ -337,12 +391,15 @@ int main(int argc, char ** argv) {
       code = EPROC;
 
     else {
+      // Register signal handler for Ctrl+C
+      signal(SIGINT, signal_callback_handler);
+
       log_w("Sampling interval: %lu usec", t_sampling_interval);
 
       stats_reset();
 
       t_sample = gettime();  // Prime sample checkmark
-      while(py_proc__is_running(py_proc)) {
+      while(py_proc__is_running(py_proc) && !interrupt) {
         if (_py_proc__sample(py_proc))
           break;
 
@@ -360,7 +417,8 @@ int main(int argc, char ** argv) {
   }
 
   if (py_proc != NULL) {
-    py_proc__wait(py_proc);
+    if (!interrupt)
+      py_proc__wait(py_proc);
     py_proc__destroy(py_proc);
   }
 
