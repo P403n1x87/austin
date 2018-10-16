@@ -291,6 +291,9 @@ static arg_option opts[] = {
   {
     "usage",        -1,  0
   },
+  {
+    "version",      'V', 0
+  },
   {0, 0, 0}
 };
 
@@ -327,6 +330,10 @@ int cb(const char opt, const char * arg) {
 
   case '?':
     printf(help_msg);
+    exit(0);
+
+  case 'V':
+    printf(PROGRAM_NAME " " VERSION);
     exit(0);
 
   case -1:
