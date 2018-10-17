@@ -25,6 +25,16 @@
 
 #include <stdlib.h>
 
+#include "stats.h"
+
+#ifndef ARGPARSE_C
+extern ctime_t t_sampling_interval;
+extern pid_t   attach_pid;
+extern int     exclude_empty;
+extern int     sleepless;
+extern char *  format;
+#endif
+
 
 #define ARG_STOP_PARSING               1
 #define ARG_CONTINUE_PARSING           0
@@ -55,6 +65,9 @@ typedef int (*arg_callback)(const char opt, const char * arg);
 // Return 0 if all the arguments have been parsed. If interrupted, returns the
 // number of arguments consumed so far. Otherwise return an error code.
 int arg_parse(arg_option * opts, arg_callback cb, int argc, char ** argv);
+
+
+int parse_args(int argc, char ** argv);
 
 // TODO: Implement error.
 
