@@ -31,10 +31,10 @@
 
 #elif defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
-#include <sys/types.h>
 
 #endif
 
+#include <sys/types.h>
 
 /**
  * Copy a data structure from the given remote address structure.

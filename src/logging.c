@@ -24,7 +24,7 @@
 
 #include <stdarg.h>
 
-#if defined(__linux__)
+#if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
 #include <syslog.h>
 
 #elif defined(_WIN32) || defined(_WIN64)
@@ -49,7 +49,7 @@ FILE * lf = NULL;
 
 void
 _log_writer(int prio, const char * fmt, va_list ap) {
-  #if defined(__linux__)
+  #if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
   vsyslog(prio, fmt, ap);
 
   #elif defined(_WIN32) || defined(_WIN64)
@@ -67,7 +67,7 @@ _log_writer(int prio, const char * fmt, va_list ap) {
 
 void
 logger_init(void) {
-  #if defined(__linux__)
+  #if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
   setlogmask (LOG_UPTO (LOG_DEBUG));
   openlog ("austin", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
 
@@ -129,7 +129,7 @@ void log_version(void) {
 
 void
 logger_close(void) {
-  #if defined(__linux__)
+  #if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
   closelog();
 
   #elif defined(_WIN32) || defined(_WIN64)

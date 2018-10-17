@@ -23,13 +23,22 @@
 #include <limits.h>
 #include <time.h>
 
+#if defined(__APPLE__) && defined(__MACH__)
+#include <mach/clock.h>
+#include <mach/mach.h>
+#endif
+
 #include "error.h"
 #include "logging.h"
 #include "stats.h"
 
 
 #ifndef CLOCK_BOOTTIME
-#define CLOCK_BOOTTIME CLOCK_REALTIME
+  #ifdef CLOCK_REALTIME
+    #define CLOCK_BOOTTIME CLOCK_REALTIME
+  #else
+    #define CLOCK_BOOTTIME HIGHRES_CLOCK
+  #endif
 #endif
 
 // ---- PRIVATE ---------------------------------------------------------------
@@ -49,7 +58,22 @@ static ustat_t _long_cnt;
 ctime_t
 gettime(void) {
   struct timespec ts;
+
+  #if defined(__APPLE__) && defined(__MACH__)
+  clock_serv_t cclock;
+  mach_timespec_t mts;
+
+  host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+  clock_get_time(cclock, &mts);
+  mach_port_deallocate(mach_task_self(), cclock);
+
+  ts.tv_sec = mts.tv_sec;
+  ts.tv_nsec = mts.tv_nsec;
+
+  #else
   clock_gettime(CLOCK_BOOTTIME, &ts);
+  #endif
+
   return ts.tv_sec * 1e6 + ts.tv_nsec / 1e3;
 }
 

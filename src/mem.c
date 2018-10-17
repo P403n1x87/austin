@@ -38,10 +38,17 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
   return process_vm_readv(pid, local, 1, remote, 1, 0);
 
   #elif defined(_WIN32) || defined(_WIN64)
+
   size_t n;
   int ret = ReadProcessMemory((HANDLE) pid, addr, buf, len, &n) ? n : -1;
-  // if (ret == -1)
-  //   log_d("copy_memory: copied %ld bytes (requested %ld from %p). Last error: %d", n, len, addr, GetLastError());
   return ret;
+
+  #elif defined(__APPLE__) && defined(__MACH__)
+
+  // Get task from pid
+  // Allocate
+  // Read
+  // Deallocate
+
   #endif
 }

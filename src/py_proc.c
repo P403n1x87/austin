@@ -67,7 +67,7 @@ static long _dynsym_hash_array[DYNSYM_COUNT] = {
 
 
 // ----------------------------------------------------------------------------
-#if defined(__linux__)
+#if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
 #define _popen  popen
 #define _pclose pclose
 #endif
