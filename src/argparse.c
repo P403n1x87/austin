@@ -23,6 +23,7 @@
 #define ARGPARSE_C
 
 #include <stdlib.h>
+#include <sys/types.h>
 
 #include "argparse.h"
 #include "austin.h"
@@ -327,6 +328,8 @@ static const char * usage_msg = \
 "            [--interval=n_usec] [--pid=PID] [--sleepless] [--help] [--usage]\n"
 "            [--version] command [ARG...]\n";
 
+#define ARG_USAGE -1
+
 static arg_option opts[] = {
   {
     "interval",     'i', 1
@@ -347,7 +350,7 @@ static arg_option opts[] = {
     "help",         '?', 0
   },
   {
-    "usage",        -1,  0
+    "usage",        ARG_USAGE,  0
   },
   {
     "version",      'V', 0
@@ -397,13 +400,16 @@ cb(const char opt, const char * arg) {
     printf(PROGRAM_NAME " " VERSION);
     exit(0);
 
-  case -1:
+  case ARG_USAGE:
     printf(usage_msg);
     exit(0);
 
+  case ARG_ARGUMENT:
+    return ARG_STOP_PARSING;
+
   default:
     printf(usage_msg);
-    return ARG_STOP_PARSING;
+    exit(ARG_UNRECOGNISED_OPT);
   }
 
   return ARG_CONTINUE_PARSING;

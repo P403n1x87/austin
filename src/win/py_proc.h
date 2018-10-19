@@ -162,7 +162,7 @@ _py_proc__analyze_bin(py_proc_t * self) {
       return 1;
   }
 
-  // Not loading simbols on Windows
+  // Not loading symbols on Windows
   self->sym_loaded = 1;
 
   return 0;

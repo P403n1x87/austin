@@ -24,6 +24,7 @@ AM_CFLAGS =-I$(top_srcdir)/src -Wall -O3
 
 bin_PROGRAMS = austin
 austin_SOURCES = \
+  argparse.c     \
   austin.c       \
   dict.c         \
   error.c        \

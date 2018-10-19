@@ -36,6 +36,8 @@ extern char *  format;
 #endif
 
 
+#define ARG_ARGUMENT                   0
+
 #define ARG_STOP_PARSING               1
 #define ARG_CONTINUE_PARSING           0
 #define ARG_MISSING_OPT_ARG           -1
