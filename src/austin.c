@@ -118,6 +118,7 @@ static int interrupt = 0;
 static void
 signal_callback_handler(int signum)
 {
+  printf("Signal %d\n", signum);
   if (signum == SIGINT)
     interrupt++;
 }
@@ -158,7 +159,7 @@ int main(int argc, char ** argv) {
 
     else {
       // Register signal handler for Ctrl+C
-      signal(SIGINT, signal_callback_handler);
+      // signal(SIGINT, signal_callback_handler);
 
       log_w("Sampling interval: %lu usec", t_sampling_interval);
 

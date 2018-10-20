@@ -22,6 +22,30 @@
 
 #ifdef PY_PROC_C
 
+#include <stdio.h>
+#include <libproc.h>
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+// #include <mach/vm_region.h>
+#include <mach-o/fat.h>
+#include <mach-o/loader.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <sys/param.h>
+#include <unistd.h>
+
+
+#define ENDIAN(f, v) (f ? __bswap_32(v) : v)
+
+#define bswap_16(value) \
+((((value) & 0xff) << 8) | ((value) >> 8))
+
+#define bswap_32(value) \
+(((uint32_t)bswap_16((uint16_t)((value) & 0xffff)) << 16) | \
+(uint32_t)bswap_16((uint16_t)((value) >> 16)))
+
+#define sw32(f, v) (f ? bswap_32(v) : v)
+
 // https://www.real-world-systems.com/docs/vmmap.example.html
 // https://github.com/rbspy/proc-maps/blob/master/src/mac_maps/mod.rs
 // https://stackoverflow.com/questions/8058005/mac-os-x-equivalent-of-virtualquery-or-proc-pid-maps
@@ -30,26 +54,32 @@
 // ----------------------------------------------------------------------------
 static int
 _py_proc__analyze_macho64(py_proc_t * self, void * map) {
-  int ncmds = (mach_header_64 *) map->ncmds;
+  struct mach_header_64 * hdr = (struct mach_header_64 *) map;
+  int ncmds = hdr->ncmds;
+  int s = hdr->magic == MH_CIGAM_64;
+  if (hdr->magic == MH_MAGIC_64 || hdr->magic == MH_CIGAM_64)
+    printf("Found MACHO64 with %d commands (%d)\n", sw32(s,ncmds), s);
 
-  segment_command_64 * cmd = map + sizeof(mach_header_64);
+  struct segment_command_64 * cmd = map + sizeof(struct mach_header_64);
   for (register int i = 0; i < ncmds; i++) {
-    if (cmd->cmd != LC_SEGMENT)
-      continue;
-
-    if (strcmp(cmd->segname, "__DATA") == 0) {
-      int nsects = cmd->nsects;
-      section_64 * sec = (section_64 *) ((void *) cmd + sizeof(segment_command_64));
-      self->map.bss.base = NULL;
-      for (register int j = 0; self->map.bss.base == NULL && j < nsects; j++) {
-        if (strcmp(sec->sectname, "__bss") == 0) {
-          self->map.bss.base = sec->addr;
-          self->map.bss.size = sec->size;
-          break;
+    printf("Found command: %x of size %d @ %p (%s)\n", cmd->cmd, sw32(s,cmd->cmdsize), cmd, cmd->segname);
+    if (cmd->cmd == LC_SEGMENT) {
+      if (strcmp(cmd->segname, "__DATA") == 0) {
+        printf("Found __DATA\n");
+        int nsects = cmd->nsects;
+        struct section_64 * sec = (struct section_64 *) ((void *) cmd + sizeof(struct segment_command_64));
+        self->map.bss.base = NULL;
+        for (register int j = 0; self->map.bss.base == NULL && j < nsects; j++) {
+          if (strcmp(sec->sectname, "__bss") == 0) {
+            self->map.bss.base = (void *) sec->addr;
+            self->map.bss.size = sec->size;
+            printf("Found bss\n");
+            break;
+          }
         }
       }
     }
-    cmd = (segment_command *) ((void *) cmd + cmd->cmdsize);
+    cmd = (struct segment_command_64 *) ((void *) cmd + cmd->cmdsize);
   }
 
   if (self->map.bss.base == NULL)
@@ -61,38 +91,107 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__analyze_macho(py_proc_t * self, char * path) {
-  // map file to memory
-  //
-  // get location of bss section
-  //
-  // unmap file
+_py_proc__analyze_fat(py_proc_t * self, void * addr, void * map) {
+  int retval = 0;
 
-  int    fd  = open(path, O_RDONLY);
-  void * map = mmap(NULL, elf_map_size, PROT_READ, MAP_SHARED, fd, 0);
+  void * vm_map = malloc(sizeof(struct mach_header_64));
+  if (vm_map == NULL)
+    return 1;
 
-  mach_header hdr = (mach_header *) map;
-  switch (hdr.magic) {
-  case MH_MAGIC:
-    _py_proc__analyze_macho32(self, map);
+  if (copy_memory(self->pid, addr, sizeof(struct mach_header_64), vm_map) == sizeof(struct mach_header_64)) {
+    // Determine CPU type from process in memory
+    struct mach_header_64 * hdr = (struct mach_header_64 *) vm_map;
+    int ms = hdr->magic == MH_CIGAM || hdr->magic == MH_CIGAM_64;  // This is probably useless
+    cpu_type_t cpu = hdr->cputype;
 
-  case MH_MAGIC_64:
-    _py_proc__analyze_macho64(Self, map);
+    // Look up corresponding part from universal binary
+    struct fat_header * fat_hdr = (struct fat_header *) map;
 
-  default:
-    // TODO: Handle invalid magic
+    int fs = fat_hdr->magic == FAT_CIGAM;
+    struct fat_arch * arch = (struct fat_arch *) (map + sizeof(struct fat_header));
+
+    uint32_t narchs = sw32(fs, fat_hdr->nfat_arch);
+printf("There are %d architectures in FAT binary\n", narchs);
+    for (register int i = 0; i < narchs; i++) {
+      printf("%x == %x\n", sw32(fs, arch[i].cputype), sw32(ms, cpu));
+      if (sw32(fs, arch[i].cputype) == sw32(ms, cpu)) {
+        hdr = (struct mach_header_64 *) (map + sw32(fs, arch[i].offset));
+        printf("%p->%p (%dK)\n", map, hdr, sw32(fs, arch[i].offset)>> 10);
+        switch (hdr->magic) {
+        case MH_MAGIC:
+        case MH_CIGAM:
+          break;
+          // _py_proc__analyze_macho32(self, map);
+
+        case MH_MAGIC_64:
+        case MH_CIGAM_64:
+          _py_proc__analyze_macho64(self, (void *) hdr);
+          break;
+
+        default:
+          // TODO: Handle invalid magic
+          printf("Invalid format from FAT\n");
+          return 1;
+        }
+        break;
+      }
+    }
+  } else {
+    printf("Unable to copy memory\n");
+    retval = 1;
   }
 
-  munmap(map);
-  close(fd);
+  free(vm_map);
+  return retval;
 }
 
 
 // ----------------------------------------------------------------------------
-task_t
+static int
+_py_proc__analyze_macho(py_proc_t * self, char * path, void * addr, mach_vm_size_t size) {
+  int    fd  = open(path, O_RDONLY);
+  struct stat * fs = (struct stat *) malloc(sizeof(struct stat));
+  fstat(fd, fs);
+  void * map = mmap(NULL, fs->st_size, PROT_READ, MAP_SHARED, fd, 0);
+  free(fs);
+  printf("Local mapping %p-%p\n", map, map+size);
+  struct mach_header_64 * hdr = (struct mach_header_64 *) map;
+  switch (hdr->magic) {
+  case MH_MAGIC:
+  case MH_CIGAM:
+    break;
+    // _py_proc__analyze_macho32(self, map);
+
+  case MH_MAGIC_64:
+  case MH_CIGAM_64:
+    _py_proc__analyze_macho64(self, map);
+    break;
+
+  case FAT_MAGIC:
+  case FAT_CIGAM:
+    printf("Fat\n");
+    _py_proc__analyze_fat(self, addr, map);
+    break;
+
+  default:
+    // TODO: Handle invalid magic
+    printf("Invalid format\n");
+    return 1;
+  }
+
+  munmap(map, size);
+  close(fd);
+
+  return 0;
+}
+
+
+// ----------------------------------------------------------------------------
+static mach_port_t
 pid_to_task(pid_t pid) {
-  task_t task;
-  return task_for_pid(mach_task_self(), pid, &task) == KERN_SUCCESS ? task : NULL;
+  mach_port_t task;
+  task_for_pid(mach_task_self(), pid, &task);
+  return task;
 }
 
 
@@ -105,25 +204,41 @@ _py_proc__get_maps(py_proc_t * self) {
   mach_vm_address_t           address = 1;
   mach_vm_size_t              size;
   vm_region_basic_info_data_t region_info;
-  mach_msg_type_number_t      count;
+  mach_msg_type_number_t      count = sizeof(vm_region_basic_info_data_t);
   mach_port_t                 object_name;
 
-  while (mach_vm_region(
-    pid_to_task(self->pid),
-    &address,
-    &size,
-    VM_REGION_BASIC_INFO,
-    &region_info,
-    &count,
-    &object_name
-  ) == KERN_SUCCESS) {
+  // NOTE: Mac OS X kernel bug
+  usleep(10000);
+
+  mach_port_t task = pid_to_task(self->pid);
+
+  while (1) {
+    kern_return_t retval = mach_vm_region(
+      task,
+      &address,
+      &size,
+      VM_REGION_BASIC_INFO,
+      (vm_region_info_t) &region_info,
+      &count,
+      &object_name
+    );
+    if (retval != KERN_SUCCESS)
+      break;
+
     char path[MAXPATHLEN];
-    if (proc_regionfilename(self->pid, address, path, MAXPATHLEN)) {
+    if (size > (1 << 12) && proc_regionfilename(self->pid, address, path, MAXPATHLEN)) {
+      printf("%p-%p (%ldK) %s\n", address, address+size, size >> 10, path);
       // Analyse file name
       // TODO: Call _py_proc__analyze_macho
+      if (strstr(path, "Python")) {
+        _py_proc__analyze_macho(self, path, address, size);
+        break;
+      }
     }
     address += size;
   }
+
+  return 0;
 }
 
 
@@ -135,7 +250,7 @@ _py_proc__analyze_bin(py_proc_t * self) {
 
   if (self->maps_loaded == 0) {
     self->maps_loaded = 1 - _py_proc__get_maps(self);
-
+exit(-42);
     if (self->maps_loaded == 0)
       return 1;
   }

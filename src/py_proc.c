@@ -176,6 +176,10 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   #include "win/py_proc.h"
 
+#elif defined(__APPLE__) && defined(__MACH__)
+
+  #include "mach/py_proc.h"
+
 #endif
 // ----------------------------------------------------------------------------
 
@@ -429,7 +433,7 @@ py_proc__attach(py_proc_t * self, pid_t pid) {
 // ----------------------------------------------------------------------------
 int
 py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
-  #if defined(__linux__)
+  #if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
   self->pid = fork();
 
   if (self->pid == 0) {

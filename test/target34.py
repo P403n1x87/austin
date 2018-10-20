@@ -10,3 +10,4 @@ def keep_cpu_busy():
 if __name__ == "__main__":
     threading.Thread(target=keep_cpu_busy).start()
     keep_cpu_busy()
+    print("Done")

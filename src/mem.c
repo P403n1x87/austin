@@ -23,6 +23,19 @@
 #include "mem.h"
 #include "logging.h"
 
+#if defined(__linux__)
+#define _GNU_SOURCE
+#include <sys/uio.h>
+
+#elif defined(_WIN32) || defined(_WIN64)
+#include <windows.h>
+
+#elif defined(__APPLE__) && defined(__MACH__)
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+
+#endif
+
 ssize_t
 copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
   #if defined(__linux__)
@@ -49,6 +62,16 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
   // Allocate
   // Read
   // Deallocate
+  mach_port_t task;
+  if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
+    log_d("Failed to obtain task from PID. Are you running austin with the right privileges?");
+    return -1;
+  }
+
+  mach_vm_size_t nread;
+  mach_vm_read_overwrite(task, addr, len, buf, &nread);
+
+  return nread == len ? nread : -1;
 
   #endif
 }
