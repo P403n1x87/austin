@@ -58,8 +58,13 @@
 #define DYNSYM_COUNT                   2
 
 static const char * _dynsym_array[DYNSYM_COUNT] = {
+#if defined(__APPLE__) && defined(__MACH__)
+  "__PyThreadState_Current",
+  "__PyRuntime"
+#else
   "_PyThreadState_Current",
   "_PyRuntime"
+#endif
 };
 
 static long _dynsym_hash_array[DYNSYM_COUNT] = {
@@ -244,12 +249,15 @@ _py_proc__deref_interp_state(py_proc_t * self) {
     return 0;
   }
 
+  #if defined(__linux__)
+  // TODO: The quality of this check on Linux is to be further assessed.
   if (
     _py_proc__is_bss_raddr(self, self->tstate_curr_raddr) == 0
     #if defined(__linux__)
       && _py_proc__is_heap_raddr(self, self->tstate_curr_raddr) == 0
     #endif
   ) return -1;
+  #endif
 
   if (py_proc__get_type(self, self->tstate_curr_raddr, tstate_current) != 0)
     return 1;
@@ -276,11 +284,9 @@ _py_proc__deref_interp_state(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__scan_bss(py_proc_t * self) {
-  if (py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss)) {
-    log_e("Failed to copy BSS");
+  if (py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss))
     return 1;
-  }
-log_d("BSS copied");
+
   void * upper_bound = self->bss + self->map.bss.size;
   for (
     register void ** raddr = (void **) self->bss;
@@ -310,6 +316,9 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
     usleep(INIT_RETRY_SLEEP);
 
     switch (_py_proc__deref_interp_state(self)) {
+    case 1:
+      continue;
+
     case 0:
       #ifdef DEBUG
       log_d("Interpreter State de-referenced @ raddr: %p after %d iterations",
@@ -339,10 +348,10 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
   }
 
   if (self->version) {
-    #if defined(__linux__)
-    log_d("Unable to de-reference global symbols. Scanning the bss section...");
-    #else
+    #if defined(_WIN32) || defined(_WIN64)
     log_d("Scanning the uninitialized data section ...");
+    #else
+    log_d("Unable to de-reference global symbols. Scanning the bss section...");
     #endif
 
     // Copy .bss section from remote location

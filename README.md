@@ -149,6 +149,8 @@ otherwise specified).
 
 - Python 2.7 (2.7.10) on OS X "El Capitan" 10.11.4
 
+- Python 3.7 (3.7.0) on OS X "El Capitan" 10.11.4
+
 
 > TODO: Due to the introduction of the SIP blabla
 
@@ -161,8 +163,18 @@ otherwise specified).
 
 - Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04 x86-64 via WSL
 
-> **NOTE** Austin *might* work with other versions of Python on both Linux
-> and Windows
+> **NOTE** Austin *might* work with other versions of Python on all the
+> platforms and architectures above.
+
+
+# Why Austin
+
+When there already are similar tools out there, it's normal to wonder why one
+should be interested in yet another one. So here is a list of features that
+currently distinguish Austin from the rest.
+
+<!-- TODO -->
+
 
 # A Note on How Austin Works
 
