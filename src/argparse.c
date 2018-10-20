@@ -367,7 +367,7 @@ cb(const char opt, const char * arg) {
   switch (opt) {
   case 'i':
     if (strtonum((char *) arg, (long *) &t_sampling_interval) == 1 || t_sampling_interval < 0) {
-      printf(usage_msg);
+      puts(usage_msg);
       return ARG_INVALID_VALUE;
     }
     break;
@@ -386,29 +386,29 @@ cb(const char opt, const char * arg) {
 
   case 'p':
     if (strtonum((char *) arg, (long *) &l_pid) == 1 || l_pid <= 0) {
-      printf(usage_msg);
+      puts(usage_msg);
       return ARG_INVALID_VALUE;
     }
     attach_pid = (pid_t) l_pid;
     break;
 
   case '?':
-    printf(help_msg);
+    puts(help_msg);
     exit(0);
 
   case 'V':
-    printf(PROGRAM_NAME " " VERSION);
+    puts(PROGRAM_NAME " " VERSION);
     exit(0);
 
   case ARG_USAGE:
-    printf(usage_msg);
+    puts(usage_msg);
     exit(0);
 
   case ARG_ARGUMENT:
     return ARG_STOP_PARSING;
 
   default:
-    printf(usage_msg);
+    puts(usage_msg);
     exit(ARG_UNRECOGNISED_OPT);
   }
 

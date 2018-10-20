@@ -57,11 +57,6 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
   return ret;
 
   #elif defined(__APPLE__) && defined(__MACH__)
-
-  // Get task from pid
-  // Allocate
-  // Read
-  // Deallocate
   mach_port_t task;
   if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
     log_d("Failed to obtain task from PID. Are you running austin with the right privileges?");
@@ -69,7 +64,7 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
   }
 
   mach_vm_size_t nread;
-  mach_vm_read_overwrite(task, addr, len, buf, &nread);
+  mach_vm_read_overwrite(task, (mach_vm_address_t) addr, len, (mach_vm_address_t) buf, &nread);
 
   return nread == len ? nread : -1;
 

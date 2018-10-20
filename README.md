@@ -144,6 +144,14 @@ otherwise specified).
 - Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04.1
 - Python 3.7 (3.7.0) on Ubuntu 18.04.1
 
+
+## MacOS
+
+- Python 2.7 (2.7.10) on OS X "El Capitan" 10.11.4
+
+
+> TODO: Due to the introduction of the SIP blabla
+
 ## Windows
 
 - Python 2.7 (2.7.13) on windows 10 64-bit

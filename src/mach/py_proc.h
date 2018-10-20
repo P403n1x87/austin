@@ -26,7 +26,6 @@
 #include <libproc.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
-// #include <mach/vm_region.h>
 #include <mach-o/fat.h>
 #include <mach-o/loader.h>
 #include <sys/mman.h>
@@ -63,26 +62,28 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
   struct segment_command_64 * cmd = map + sizeof(struct mach_header_64);
   for (register int i = 0; i < ncmds; i++) {
     printf("Found command: %x of size %d @ %p (%s)\n", cmd->cmd, sw32(s,cmd->cmdsize), cmd, cmd->segname);
-    if (cmd->cmd == LC_SEGMENT) {
+    if (cmd->cmd == LC_SEGMENT_64) {
       if (strcmp(cmd->segname, "__DATA") == 0) {
         printf("Found __DATA\n");
         int nsects = cmd->nsects;
         struct section_64 * sec = (struct section_64 *) ((void *) cmd + sizeof(struct segment_command_64));
-        self->map.bss.base = NULL;
-        for (register int j = 0; self->map.bss.base == NULL && j < nsects; j++) {
-          if (strcmp(sec->sectname, "__bss") == 0) {
-            self->map.bss.base = (void *) sec->addr;
-            self->map.bss.size = sec->size;
-            printf("Found bss\n");
+        self->map.bss.size = 0;
+        for (register int j = 0; j < nsects; j++) {
+          printf("Section %s\n", sec[j].sectname);
+          if (strcmp(sec[j].sectname, "__bss") == 0) {
+            self->map.bss.base += sec[j].addr;
+            self->map.bss.size = sec[j].size;
+            printf("Found bss. Address: %p, size: %zdK\n", self->map.bss.base, self->map.bss.size >> 10);
             break;
           }
         }
+        break;
       }
     }
     cmd = (struct segment_command_64 *) ((void *) cmd + cmd->cmdsize);
   }
 
-  if (self->map.bss.base == NULL)
+  if (self->map.bss.size == 0)
     return 1;
 
   return 0;
@@ -117,6 +118,7 @@ printf("There are %d architectures in FAT binary\n", narchs);
       if (sw32(fs, arch[i].cputype) == sw32(ms, cpu)) {
         hdr = (struct mach_header_64 *) (map + sw32(fs, arch[i].offset));
         printf("%p->%p (%dK)\n", map, hdr, sw32(fs, arch[i].offset)>> 10);
+        // self->map.bss.base = (void *) addr;
         switch (hdr->magic) {
         case MH_MAGIC:
         case MH_CIGAM:
@@ -156,6 +158,7 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * addr, mach_vm_size
   free(fs);
   printf("Local mapping %p-%p\n", map, map+size);
   struct mach_header_64 * hdr = (struct mach_header_64 *) map;
+  self->map.bss.base = addr;
   switch (hdr->magic) {
   case MH_MAGIC:
   case MH_CIGAM:
@@ -211,10 +214,10 @@ _py_proc__get_maps(py_proc_t * self) {
   usleep(10000);
 
   mach_port_t task = pid_to_task(self->pid);
-
+register int i = 0;
   while (1) {
     kern_return_t retval = mach_vm_region(
-      task,
+      pid_to_task(self->pid), //task,
       &address,
       &size,
       VM_REGION_BASIC_INFO,
@@ -222,20 +225,24 @@ _py_proc__get_maps(py_proc_t * self) {
       &count,
       &object_name
     );
-    if (retval != KERN_SUCCESS)
+
+    if (retval != KERN_SUCCESS/* || size == 0*/)
       break;
 
     char path[MAXPATHLEN];
-    if (size > (1 << 12) && proc_regionfilename(self->pid, address, path, MAXPATHLEN)) {
-      printf("%p-%p (%ldK) %s\n", address, address+size, size >> 10, path);
-      // Analyse file name
-      // TODO: Call _py_proc__analyze_macho
-      if (strstr(path, "Python")) {
-        _py_proc__analyze_macho(self, path, address, size);
-        break;
-      }
+    if (size > 0 && proc_regionfilename(self->pid, address, path, MAXPATHLEN)) {
+      printf("%p-%p (%lluB) %s\n", (void *) address, (void *) address+size, size, path);
+      if (self->bin_path == NULL && strstr(path, "python")) {
+        self->bin_path = (char *) malloc(strlen(path) + 1);
+        strcpy(self->bin_path, path);
+        // #ifdef DEBUG
+        log_d("Python binary: %s", self->bin_path);
+        // #endif
+      } else if (size > (1 << 12) && strstr(path, "Python"))
+        return _py_proc__analyze_macho(self, path, (void *) address, size);
     }
-    address += size;
+    log_d("incrementing %d", ++i);
+    address += size + 4097;
   }
 
   return 0;
@@ -250,7 +257,7 @@ _py_proc__analyze_bin(py_proc_t * self) {
 
   if (self->maps_loaded == 0) {
     self->maps_loaded = 1 - _py_proc__get_maps(self);
-exit(-42);
+// exit(-42);
     if (self->maps_loaded == 0)
       return 1;
   }

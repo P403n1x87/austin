@@ -22,7 +22,8 @@
 
 #define PY_PROC_C
 
-#if defined(__linux__)
+#if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
+#include <signal.h>
 #include <sys/wait.h>
 #elif defined(_WIN32) || defined(_WIN64)
 #include <windows.h>
@@ -74,7 +75,7 @@ static long _dynsym_hash_array[DYNSYM_COUNT] = {
 
 static int
 _py_proc__get_version(py_proc_t * self) {
-  if (self == NULL)
+  if (self == NULL || self->bin_path == NULL)
     return 0;
 
   int major = 0, minor = 0, patch = 0;
@@ -275,9 +276,11 @@ _py_proc__deref_interp_state(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__scan_bss(py_proc_t * self) {
-  if (py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss))
+  if (py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss)) {
+    log_e("Failed to copy BSS");
     return 1;
-
+  }
+log_d("BSS copied");
   void * upper_bound = self->bss + self->map.bss.size;
   for (
     register void ** raddr = (void **) self->bss;
@@ -323,12 +326,15 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
       #endif
       try_cnt = 1;
       break;
+
     #if defined(__linux__)
     case -2:
       log_w("Null symbol references. This is unexpected on Linux.");
+    #endif
+
+    default:
       try_cnt = 1;
       break;
-    #endif
     }
   }
 
@@ -475,10 +481,10 @@ py_proc__wait(py_proc_t * self) {
   #ifdef DEBUG
   log_d("Waiting for process to terminate");
   #endif
-  #if defined(__linux__)
-  waitpid(self->pid, 0, 0);
-  #elif defined(_WIN32) || defined(_WIN64)
+  #if defined(_WIN32) || defined(_WIN64)
   WaitForSingleObject((HANDLE) self->pid, INFINITE);
+  #else
+  waitpid(self->pid, 0, 0);
   #endif
 }
 
@@ -493,7 +499,7 @@ py_proc__get_istate_raddr(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 int
 py_proc__is_running(py_proc_t * self) {
-  #if defined(__linux__)
+  #if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
   kill(self->pid, 0);
   return errno == ESRCH ? 0 : 1;
 
