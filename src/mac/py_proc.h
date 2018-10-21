@@ -38,7 +38,8 @@
 #define DEREF_SYM
 
 
-#define next_lc(cmd) (cmd = (struct segment_command_64 *) ((void *) cmd + cmd->cmdsize));
+#define next_lc(cmd) (cmd = (struct segment_command *) ((void *) cmd + cmd->cmdsize));
+#define next_lc_64(cmd) (cmd = (struct segment_command_64 *) ((void *) cmd + cmd->cmdsize));
 
 // ---- Endianness ----
 #define ENDIAN(f, v) (f ? __bswap_32(v) : v)
@@ -96,12 +97,12 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
           continue;
 
         char * sym_name = (char *) (str_tab + sym_tab[i].n_un.n_strx);
-        self->sym_loaded = _py_proc__check_sym(self, sym_name, (void *) sym_tab[i].n_value);
+        self->sym_loaded = _py_proc__check_sym(self, sym_name, (void *) (img_base + sym_tab[i].n_value));
       }
       cmd_cnt++;
     } // switch
 
-    next_lc(cmd);
+    next_lc_64(cmd);
   }
 
   if (self->map.bss.size == 0)
@@ -154,7 +155,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
           continue;
 
         char * sym_name = (char *) (str_tab + sym_tab[i].n_un.n_strx);
-        self->sym_loaded = _py_proc__check_sym(self, sym_name, (void *) sym_tab[i].n_value);
+        self->sym_loaded = _py_proc__check_sym(self, sym_name, (void *) (img_base + sym_tab[i].n_value));
       }
       cmd_cnt++;
     } // switch
@@ -278,16 +279,15 @@ _py_proc__get_maps(py_proc_t * self) {
   // NOTE: Mac OS X kernel bug
   usleep(10000);
 
-  while (kern_return_t retval = mach_vm_region(
-      pid_to_task(self->pid),
-      &address,
-      &size,
-      VM_REGION_BASIC_INFO,
-      (vm_region_info_t) &region_info,
-      &count,
-      &object_name
-    )
-  ) {
+  while (mach_vm_region(
+    pid_to_task(self->pid),
+    &address,
+    &size,
+    VM_REGION_BASIC_INFO,
+    (vm_region_info_t) &region_info,
+    &count,
+    &object_name
+  ) == KERN_SUCCESS) {
     char path[MAXPATHLEN];
     if (size > 0 && proc_regionfilename(self->pid, address, path, MAXPATHLEN)) {
       if (self->bin_path == NULL && strstr(path, "python")) {

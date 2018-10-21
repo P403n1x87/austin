@@ -241,6 +241,7 @@ _py_proc__scan_heap(py_proc_t * self) {
 #endif
 
 
+#ifdef PL_LINUX
 // ----------------------------------------------------------------------------
 static int
 _py_proc__is_bss_raddr(py_proc_t * self, void * raddr) {
@@ -251,6 +252,7 @@ _py_proc__is_bss_raddr(py_proc_t * self, void * raddr) {
     ? 1
     : 0;
 }
+#endif
 
 
 // ----------------------------------------------------------------------------
