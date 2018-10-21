@@ -22,12 +22,15 @@
 
 #define _DEFAULT_SOURCE
 
-#include <stdarg.h>
+#include "platform.h"
 
-#if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
+#include <stdarg.h>
+#include <stdio.h>
+
+#ifdef PL_UNIX
 #include <syslog.h>
 
-#elif defined(_WIN32) || defined(_WIN64)
+#else
 #include <windows.h>
 #include <stdio.h>
 
@@ -49,10 +52,10 @@ FILE * lf = NULL;
 
 void
 _log_writer(int prio, const char * fmt, va_list ap) {
-  #if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
+  #ifdef PL_UNIX
   vsyslog(prio, fmt, ap);
 
-  #elif defined(_WIN32) || defined(_WIN64)
+  #else
   if (lf == NULL) {
     vfprintf(stderr, fmt, ap); fputc('\n', stderr);
   }
@@ -67,11 +70,11 @@ _log_writer(int prio, const char * fmt, va_list ap) {
 
 void
 logger_init(void) {
-  #if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
+  #ifdef PL_UNIX
   setlogmask (LOG_UPTO (LOG_DEBUG));
   openlog ("austin", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
 
-  #elif defined(_WIN32) || defined(_WIN64)
+  #else
   if (lf == NULL) {
     char path[MAX_PATH];
     ExpandEnvironmentStrings("%TEMP%\\austin.log", path, MAX_PATH);
@@ -82,21 +85,22 @@ logger_init(void) {
 
 
 void
-log_e(const char * fmt, ...) {
+log_f(const char * fmt, ...) {
   va_list args;
   va_start(args, fmt);
 
-  _log_writer(LOG_ERR, fmt, args);
+  _log_writer(LOG_CRIT, fmt, args);
+  vfprintf(stderr, fmt, args);
 
   va_end(args);
 }
 
 void
-log_d(const char * fmt, ...) {
+log_e(const char * fmt, ...) {
   va_list args;
   va_start(args, fmt);
 
-  _log_writer(LOG_DEBUG, fmt, args);
+  _log_writer(LOG_ERR, fmt, args);
 
   va_end(args);
 }
@@ -121,6 +125,30 @@ log_i(const char * fmt, ...) {
   va_end(args);
 }
 
+#if defined(DEBUG) || defined(TRACE)
+void
+log_d(const char * fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+
+  _log_writer(LOG_DEBUG, fmt, args);
+
+  va_end(args);
+}
+#endif
+
+#ifdef TRACE
+void
+log_t(const char * fmt, ...) {
+  va_list args;
+  va_start(args, fmt);
+
+  _log_writer(LOG_DEBUG, fmt, args);
+
+  va_end(args);
+}
+#endif
+
 
 void log_version(void) {
   log_i("%s version: %s", PROGRAM_NAME, VERSION);
@@ -129,10 +157,10 @@ void log_version(void) {
 
 void
 logger_close(void) {
-  #if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
+  #ifdef PL_UNIX
   closelog();
 
-  #elif defined(_WIN32) || defined(_WIN64)
+  #else
   if (lf != NULL)
     fclose(lf);
   #endif

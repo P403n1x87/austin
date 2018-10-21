@@ -22,11 +22,13 @@
 
 #define PY_PROC_C
 
-#if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
+#include "platform.h"
+
+#ifdef PL_WIN
+#include <windows.h>
+#else
 #include <signal.h>
 #include <sys/wait.h>
-#elif defined(_WIN32) || defined(_WIN64)
-#include <windows.h>
 #endif
 
 #include <errno.h>
@@ -49,22 +51,30 @@
 
 // ---- PRIVATE ---------------------------------------------------------------
 
+// ---- Retry Timer ----
 #define INIT_RETRY_SLEEP             100  /* usecs */
 #define INIT_RETRY_CNT              1000  /* Retry for 0.1s before giving up. */
 
+#define TIMER_RESET (try_cnt = INIT_RETRY_CNT);
+#define TIMER_START while (--try_cnt) { usleep(INIT_RETRY_SLEEP);
+#define TIMER_STOP  (try_cnt = 1);
+#define TIMER_END   }
 
-#define get_bounds(line, a, b) (sscanf(line, "%lx-%lx", &a, &b))
+static int try_cnt = INIT_RETRY_CNT;
 
+
+// ---- Exported symbols ----
 #define DYNSYM_COUNT                   2
 
-static const char * _dynsym_array[DYNSYM_COUNT] = {
-#if defined(__APPLE__) && defined(__MACH__)
-  "__PyThreadState_Current",
-  "__PyRuntime"
+#ifdef PL_MACOS
+  #define SYM_PREFIX "__"
 #else
-  "_PyThreadState_Current",
-  "_PyRuntime"
+  #define SYM_PREFIX "_"
 #endif
+
+static const char * _dynsym_array[DYNSYM_COUNT] = {
+  SYM_PREFIX "PyThreadState_Current",
+  SYM_PREFIX "PyRuntime"
 };
 
 static long _dynsym_hash_array[DYNSYM_COUNT] = {
@@ -72,8 +82,23 @@ static long _dynsym_hash_array[DYNSYM_COUNT] = {
 };
 
 
+static int
+_py_proc__check_sym(py_proc_t * self, char * name, void * value) {
+  for (register int i = 0; i < DYNSYM_COUNT; i++) {
+    if (
+      string_hash(name) == _dynsym_hash_array[i] &&
+      strcmp(name, _dynsym_array[i]) == 0
+    ) {
+      *(&(self->tstate_curr_raddr) + i) = value;
+      log_d("Symbol %s found @ %p", name, value);
+      return 1;
+    }
+  }
+  return 0;
+}
+
 // ----------------------------------------------------------------------------
-#if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
+#ifdef PL_UNIX
 #define _popen  popen
 #define _pclose pclose
 #endif
@@ -135,16 +160,12 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   if (py_proc__get_type(self, raddr, is) != 0)
     return -1;  // This signals that we are out of bounds.
 
-  #ifdef DEBUG
-  log_d("PyInterpreterState loaded @ %p", raddr);
-  #endif
+  log_t("PyInterpreterState loaded @ %p", raddr);
 
   if (py_proc__get_type(self, is.tstate_head, tstate_head) != 0)
     return 1;
 
-  #ifdef DEBUG
-  log_d("PyThreadState head loaded @ %p", is.tstate_head);
-  #endif
+  log_t("PyThreadState head loaded @ %p", is.tstate_head);
 
   if (
     (V_FIELD(void*, tstate_head, py_thread, o_interp)) != raddr ||
@@ -152,9 +173,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   )
     return 1;
 
-  #ifdef DEBUG
   log_d("Found possible interpreter state @ %p (offset %p).", raddr, raddr - self->map.heap.base);
-  #endif
 
   error = EOK;
   raddr_t thread_raddr = { .pid = self->pid, .addr = is.tstate_head };
@@ -163,9 +182,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     return 1;
   py_thread__destroy(thread);
 
-  #ifdef DEBUG
   log_d("Stack trace constructed from possible interpreter state (error %d)", error);
-  #endif
 
   return error == EOK ? 0 : 1;
 }
@@ -174,20 +191,54 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 // ----------------------------------------------------------------------------
 // -- Platform-dependent implementations of _py_proc__wait_for_interp_state
 // ----------------------------------------------------------------------------
-#if defined(__linux__)
+#if defined(PL_LINUX)
 
   #include "linux/py_proc.h"
 
-#elif defined(_WIN32) || defined(_WIN64)
+#elif defined(PL_WIN)
 
   #include "win/py_proc.h"
 
-#elif defined(__APPLE__) && defined(__MACH__)
+#elif defined(PL_MACOS)
 
-  #include "mach/py_proc.h"
+  #include "mac/py_proc.h"
 
 #endif
 // ----------------------------------------------------------------------------
+
+
+#ifdef CHECK_HEAP
+// ----------------------------------------------------------------------------
+static int
+_py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
+  if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
+    return 0;
+
+  return (raddr >= self->map.heap.base && raddr < self->map.heap.base + self->map.heap.size)
+    ? 1
+    : 0;
+}
+
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__scan_heap(py_proc_t * self) {
+  // NOTE: This seems to be required by Python 2.7 on i386 Linux.
+  void * upper_bound = self->map.heap.base + self->map.heap.size;
+  for (
+    register void ** raddr = (void **) self->map.heap.base;
+    (void *) raddr < upper_bound;
+    raddr++
+  ) {
+    if (_py_proc__check_interp_state(self, raddr) == 0) {
+      self->is_raddr = raddr;
+      return 0;
+    }
+  }
+
+  return 1;
+}
+#endif
 
 
 // ----------------------------------------------------------------------------
@@ -204,6 +255,33 @@ _py_proc__is_bss_raddr(py_proc_t * self, void * raddr) {
 
 // ----------------------------------------------------------------------------
 static int
+_py_proc__scan_bss(py_proc_t * self) {
+  if (py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss))
+    return 1;
+
+  void * upper_bound = self->bss + self->map.bss.size;
+  for (
+    register void ** raddr = (void **) self->bss;
+    (void *) raddr < upper_bound;
+    raddr++
+  ) {
+    #ifdef CHECK_HEAP
+    if (_py_proc__is_heap_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
+    #else
+    if (_py_proc__check_interp_state(self, *raddr) == 0) {
+    #endif
+      self->is_raddr = *raddr;
+      return 0;
+    }
+  }
+
+  return 1;
+}
+
+
+#ifdef DEREF_SYM
+// ----------------------------------------------------------------------------
+static int
 _py_proc__deref_interp_state(py_proc_t * self) {
   PyThreadState   tstate_current;
   _PyRuntimeState py_runtime;
@@ -211,34 +289,20 @@ _py_proc__deref_interp_state(py_proc_t * self) {
   if (self == NULL)
     return 1;
 
-  if (self->sym_loaded == 0)
-    _py_proc__analyze_bin(self);
-
-  if (self->sym_loaded == 0)
-    return 1;
-
-  if (!self->version) {
-    self->version = _py_proc__get_version(self);
-    if (!self->version)
-      return 1;
-
-    set_version(self->version);
-  }
-
-  if (self->py_runtime == NULL && self->tstate_curr_raddr == NULL)
+  if (self->py_runtime_raddr == NULL && self->tstate_curr_raddr == NULL)
     return -2;
 
   // Python 3.7 exposes the _PyRuntime symbol. This can be used to find the
   // head interpreter state.
-  if (self->py_runtime != NULL) {
+  if (self->py_runtime_raddr != NULL) {
     // NOTE: With Python 3.7, this check causes the de-reference to fail even
     //       in cases where it shouldn't.
     // if (
-    //   _py_proc__is_bss_raddr(self, self->py_runtime) == 0 &&
-    //   _py_proc__is_heap_raddr(self, self->py_runtime) == 0
+    //   _py_proc__is_bss_raddr(self, self->py_runtime_raddr) == 0 &&
+    //   _py_proc__is_heap_raddr(self, self->py_runtime_raddr) == 0
     // ) return -1;
 
-    if (py_proc__get_type(self, self->py_runtime, py_runtime) != 0)
+    if (py_proc__get_type(self, self->py_runtime_raddr, py_runtime) != 0)
       return 1;
 
     if (_py_proc__check_interp_state(self, py_runtime.interpreters.head))
@@ -249,13 +313,11 @@ _py_proc__deref_interp_state(py_proc_t * self) {
     return 0;
   }
 
-  #if defined(__linux__)
   // TODO: The quality of this check on Linux is to be further assessed.
+  #ifdef PL_LINUX
   if (
-    _py_proc__is_bss_raddr(self, self->tstate_curr_raddr) == 0
-    #if defined(__linux__)
-      && _py_proc__is_heap_raddr(self, self->tstate_curr_raddr) == 0
-    #endif
+    _py_proc__is_bss_raddr(self, self->tstate_curr_raddr) == 0 &&
+    _py_proc__is_heap_raddr(self, self->tstate_curr_raddr) == 0
   ) return -1;
   #endif
 
@@ -279,113 +341,129 @@ _py_proc__deref_interp_state(py_proc_t * self) {
 
   return 0;
 }
-
-
-// ----------------------------------------------------------------------------
-static int
-_py_proc__scan_bss(py_proc_t * self) {
-  if (py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss))
-    return 1;
-
-  void * upper_bound = self->bss + self->map.bss.size;
-  for (
-    register void ** raddr = (void **) self->bss;
-    (void *) raddr < upper_bound;
-    raddr++
-  ) {
-    #if defined(__linux__)
-    if (_py_proc__is_heap_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
-    #else
-    if (_py_proc__check_interp_state(self, *raddr) == 0) {
-    #endif
-      self->is_raddr = *raddr;
-      return 0;
-    }
-  }
-
-  return 1;
-}
+#endif
 
 
 // ----------------------------------------------------------------------------
 static int
 _py_proc__wait_for_interp_state(py_proc_t * self) {
-  register int try_cnt = INIT_RETRY_CNT;
-
-  while (--try_cnt) {
-    usleep(INIT_RETRY_SLEEP);
-
+  #ifdef DEREF_SYM
+  TIMER_RESET
+  TIMER_START
     switch (_py_proc__deref_interp_state(self)) {
     case 1:
       continue;
 
     case 0:
-      #ifdef DEBUG
       log_d("Interpreter State de-referenced @ raddr: %p after %d iterations",
         self->is_raddr,
         INIT_RETRY_CNT - try_cnt
       );
-      #endif
-
       return 0;
 
     case -1:
-      #ifdef DEBUG
       log_d("Symbol address not within VM maps (shared object?)");
-      #endif
-      try_cnt = 1;
+      TIMER_STOP
       break;
 
-    #if defined(__linux__)
+    #ifdef DEREF_SYM
     case -2:
-      log_w("Null symbol references. This is unexpected on Linux.");
+      log_w("Null symbol references. This is unexpected.");
     #endif
 
     default:
-      try_cnt = 1;
+      TIMER_STOP
       break;
     }
+  TIMER_END
+  #endif
+
+  if (self->map.bss.size == 0) {
+    log_f("Process not properly initialised. Invalid BSS reference found.");
+    error = EPROCVM;
+    return 1;
   }
 
-  if (self->version) {
-    #if defined(_WIN32) || defined(_WIN64)
-    log_d("Scanning the uninitialized data section ...");
-    #else
-    log_d("Unable to de-reference global symbols. Scanning the bss section...");
-    #endif
+  #ifdef DEREF_SYM
+  log_d("Unable to de-reference global symbols. Scanning the bss section...");
+  #else
+  log_d("Scanning the uninitialized data section ...");
+  #endif
 
-    // Copy .bss section from remote location
-    self->bss = malloc(self->map.bss.size);
-    if (self->bss == NULL)
-      return 1;
+  // Copy .bss section from remote location
+  self->bss = malloc(self->map.bss.size);
+  if (self->bss == NULL)
+    return 1;
 
-    try_cnt = INIT_RETRY_CNT;
-    while (--try_cnt) {
-      usleep(INIT_RETRY_SLEEP);
+  TIMER_RESET
+  TIMER_START
+    if (_py_proc__scan_bss(self) == 0)
+      return 0;
+  TIMER_END
 
-      if (_py_proc__scan_bss(self) == 0)
-        return 0;
-    }
+  #ifdef CHECK_HEAP
+  log_w("Bss scan unsuccessful. Scanning heap directly...");
 
-    #if defined(__linux__)
-    log_w("Bss scan unsuccessful. Scanning heap directly...");
-
-    // TODO: Consider copying heap over and check for pointers
-    try_cnt = INIT_RETRY_CNT;
-    while (--try_cnt) {
-      usleep(INIT_RETRY_SLEEP);
-
-      if (_py_proc__scan_heap(self) == 0)
-        return 0;
-    }
-    #endif
-  } else
-    log_e("Python version not set");
+  // TODO: Consider copying heap over and check for pointers
+  TIMER_RESET
+  TIMER_START
+    if (_py_proc__scan_heap(self) == 0)
+      return 0;
+  TIMER_END
+  #endif
 
   error = EPROCISTIMEOUT;
   return 1;
 }
 
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__run(py_proc_t * self) {
+  TIMER_START
+    if (_py_proc__init(self) == 0)
+      break;
+  TIMER_END
+
+  if (self->bin_path == NULL) {
+    log_f("Python binary not found. Not Python?");
+    return 1;
+  }
+
+  if (self->map.bss.size == 0)
+    log_e("Invalid BSS structure.");
+
+  #ifdef CHECK_HEAP
+  if (self->map.heap.size == 0)
+    log_e("Invalid HEAP structure.");
+  #endif
+
+  #ifdef DEREF_SYM
+  if (self->tstate_curr_raddr == NULL && self->py_runtime_raddr == NULL)
+    log_e("Expecting valid symbol references. Found none.");
+  #endif
+
+  log_d("Python binary: %s", self->bin_path);
+
+
+  // Determine and set version
+  if (!self->version) {
+    self->version = _py_proc__get_version(self);
+    if (!self->version) {
+      log_f("Python version is unknown.");
+      return 1;
+    }
+
+    set_version(self->version);
+  }
+
+  if (_py_proc__wait_for_interp_state(self)) {
+    log_error();
+    return 1;
+  }
+
+  return 0;
+}
 
 
 // ---- PUBLIC ----------------------------------------------------------------
@@ -402,12 +480,16 @@ py_proc_new() {
     py_proc->bin_path = NULL;
     py_proc->is_raddr = NULL;
 
+    py_proc->map.bss.base = NULL;
+    py_proc->map.bss.size = 0;
+
     py_proc->bss = NULL;
 
-    py_proc->maps_loaded       = 0;
-    py_proc->sym_loaded        = 0;
+    py_proc->maps_loaded = 0;
+    py_proc->sym_loaded  = 0;
+
     py_proc->tstate_curr_raddr = NULL;
-    py_proc->py_runtime        = NULL;
+    py_proc->py_runtime_raddr  = NULL;
 
     py_proc->version = 0;
   }
@@ -427,7 +509,7 @@ py_proc_new() {
 // ----------------------------------------------------------------------------
 int
 py_proc__attach(py_proc_t * self, pid_t pid) {
-  #if defined(_WIN32) || defined(_WIN64)
+  #ifdef PL_WIN
   self->pid = (pid_t) OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
   if (self->pid == (pid_t) INVALID_HANDLE_VALUE) {
     log_e("Unable to attach to process with PID %d", pid);
@@ -437,43 +519,29 @@ py_proc__attach(py_proc_t * self, pid_t pid) {
   self->pid = pid;
   #endif
 
-  if (_py_proc__wait_for_interp_state(self) == 0)
-    return 0;
-
-  log_error();
-  return 1;
+  return _py_proc__run(self);
 }
 
 
 // ----------------------------------------------------------------------------
 int
 py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
-  #if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
-  self->pid = fork();
-
-  if (self->pid == 0) {
-    execvp(exec, argv);
-    log_e("Failed to fork process");
-    exit(127);
-  }
-  else {
-    if (_py_proc__wait_for_interp_state(self) == 0)
-      return 0;
-  }
-
-  #elif defined(_WIN32) || defined(_WIN64)
+  #ifdef PL_WIN                                                        /* WIN */
   self->pid = _spawnvp(_P_NOWAIT, exec, (const char * const*) argv);
   if (self->pid == (pid_t) INVALID_HANDLE_VALUE) {
     log_e("Failed to spawn command: %s", exec);
     return 1;
   }
+  #else                                                               /* UNIX */
+  self->pid = fork();
+  if (self->pid == 0) {
+    execvp(exec, argv);
+    log_e("Failed to fork process");
+    exit(127);
+  }
+  #endif                                                               /* ANY */
 
-  if (_py_proc__wait_for_interp_state(self) == 0)
-    return 0;
-  #endif
-
-  log_error();
-  return 1;
+  return _py_proc__run(self);
 }
 
 
@@ -487,12 +555,11 @@ py_proc__memcpy(py_proc_t * self, void * raddr, ssize_t size, void * dest) {
 // ----------------------------------------------------------------------------
 void
 py_proc__wait(py_proc_t * self) {
-  #ifdef DEBUG
   log_d("Waiting for process to terminate");
-  #endif
-  #if defined(_WIN32) || defined(_WIN64)
+
+  #ifdef PL_WIN                                                        /* WIN */
   WaitForSingleObject((HANDLE) self->pid, INFINITE);
-  #else
+  #else                                                               /* UNIX */
   waitpid(self->pid, 0, 0);
   #endif
 }
@@ -508,13 +575,13 @@ py_proc__get_istate_raddr(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 int
 py_proc__is_running(py_proc_t * self) {
-  #if defined(__linux__) || (defined(__APPLE__) && defined(__MACH__))
-  kill(self->pid, 0);
-  return errno == ESRCH ? 0 : 1;
-
-  #elif defined(_WIN32) || defined(_WIN64)
+  #ifdef WIN                                                           /* WIN */
   DWORD ec;
   return GetExitCodeProcess((HANDLE) self->pid, &ec) ? ec : -1;
+
+  #else                                                               /* UNIX */
+  kill(self->pid, 0);
+  return errno == ESRCH ? 0 : 1;
   #endif
 }
 

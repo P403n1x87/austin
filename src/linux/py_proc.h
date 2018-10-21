@@ -33,6 +33,10 @@
 #include "../py_proc.h"
 
 
+#define CHECK_HEAP
+#define DEREF_SYM
+
+
 #define BIN_MAP                  (1 << 0)
 #define DYNSYM_MAP               (1 << 1)
 #define RODATA_MAP               (1 << 2)
@@ -45,6 +49,7 @@
 // Get the offset of the ith section header
 #define ELF_SH_OFF(ehdr, i)            (ehdr.e_shoff + i * ehdr.e_shentsize)
 
+#define get_bounds(line, a, b)         (sscanf(line, "%lx-%lx", &a, &b))
 
 union {
   Elf32_Ehdr v32;
@@ -65,8 +70,9 @@ _py_proc__analyze_elf64(py_proc_t * self) {
   int           map_flag      = 0;
   Elf64_Shdr  * p_shdr;
 
-  Elf64_Shdr  * p_shstrtab = elf_map + ELF_SH_OFF(ehdr, ehdr.e_shstrndx);
+  Elf64_Shdr  * p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr.e_shstrndx);
   char        * sh_name_base = elf_map + p_shstrtab->sh_offset;
+  Elf64_Shdr  * p_dynsym     = NULL;
 
   for (Elf64_Off sh_off = ehdr.e_shoff; \
     map_flag != (DYNSYM_MAP | RODATA_MAP) && sh_off < elf_map_size; \
@@ -74,24 +80,25 @@ _py_proc__analyze_elf64(py_proc_t * self) {
   ) {
     p_shdr = (Elf64_Shdr *) (elf_map + sh_off);
 
-    if (   p_shdr->sh_type == SHT_DYNSYM \
-        && strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
-    ) {
-      self->map.dynsym.base = p_shdr;  // WARNING: Different semantics!
-      map_flag |= DYNSYM_MAP;
-    }
-    else if (p_shdr->sh_type == SHT_PROGBITS \
-        && strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
-    ) {
-      self->map.rodata.base = (void *) p_shdr->sh_offset;
-      self->map.rodata.size = p_shdr->sh_size;
-      map_flag |= RODATA_MAP;
-    }
+    if (
+      p_shdr->sh_type == SHT_DYNSYM && \
+      strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
+    ) p_dynsym = p_shdr;
+
+    // NOTE: This might be required if the Python version is must be retrieved
+    //       from the RO data section
+    // else if (
+    //   p_shdr->sh_type == SHT_PROGBITS &&
+    //   strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
+    // ) {
+    //   self->map.rodata.base = (void *) p_shdr->sh_offset;
+    //   self->map.rodata.size = p_shdr->sh_size;
+    //   map_flag |= RODATA_MAP;
+    // }
   }
 
   register int hit_cnt = 0;
-  if (map_flag == (DYNSYM_MAP | RODATA_MAP)) {
-    Elf64_Shdr * p_dynsym = self->map.dynsym.base;
+  if (p_dynsym != NULL) {
     if (p_dynsym->sh_offset == 0)
       return 1;
 
@@ -99,35 +106,26 @@ _py_proc__analyze_elf64(py_proc_t * self) {
 
     // Search for dynamic symbols
     for (Elf64_Off tab_off = p_dynsym->sh_offset; \
-      hit_cnt < DYNSYM_COUNT && tab_off < p_dynsym->sh_offset + p_dynsym->sh_size; \
+      tab_off < p_dynsym->sh_offset + p_dynsym->sh_size; \
       tab_off += p_dynsym->sh_entsize
     ) {
       Elf64_Sym * sym      = (Elf64_Sym *) (elf_map + tab_off);
-      char      * sym_name = elf_map + p_strtabsh->sh_offset + sym->st_name;
-      long        hash     = string_hash(sym_name);
-      for (register int i = 0; i < DYNSYM_COUNT; i++) {
-        if (hash == _dynsym_hash_array[i] && strcmp(sym_name, _dynsym_array[i]) == 0) {
-          *(&(self->tstate_curr_raddr) + i) = (void *) sym->st_value;
-          hit_cnt++;
-          #ifdef DEBUG
-          log_d("Symbol %s found at %p", sym_name, sym->st_value);
-          #endif
-        }
-      }
+      char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
+      if ((hit_cnt = _py_proc__check_sym(self, sym_name, (void *) sym->st_value)))
+        break;
     }
   }
 
   munmap(elf_map, elf_map_size);
   close(fd);
 
-  return hit_cnt;
+  return 1 - hit_cnt;
 }
 
 
 // ----------------------------------------------------------------------------
 static int
 _py_proc__analyze_elf32(py_proc_t * self) {
-
   Elf32_Ehdr ehdr = ehdr_v.v32;
 
   // Section header must be read from binary as it is not loaded into memory
@@ -138,8 +136,9 @@ _py_proc__analyze_elf32(py_proc_t * self) {
   int           map_flag      = 0;
   Elf32_Shdr  * p_shdr;
 
-  Elf32_Shdr  * p_shstrtab = elf_map + ELF_SH_OFF(ehdr, ehdr.e_shstrndx);
+  Elf32_Shdr  * p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr.e_shstrndx);
   char        * sh_name_base = elf_map + p_shstrtab->sh_offset;
+  Elf32_Shdr  * p_dynsym     = NULL;
 
   for (Elf32_Off sh_off = ehdr.e_shoff; \
     map_flag != (DYNSYM_MAP | RODATA_MAP) && sh_off < elf_map_size; \
@@ -147,24 +146,14 @@ _py_proc__analyze_elf32(py_proc_t * self) {
   ) {
     p_shdr = (Elf32_Shdr *) (elf_map + sh_off);
 
-    if (   p_shdr->sh_type == SHT_DYNSYM \
-        && strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
-    ) {
-      self->map.dynsym.base = p_shdr;  // WARNING: Different semantics!
-      map_flag |= DYNSYM_MAP;
-    }
-    else if (p_shdr->sh_type == SHT_PROGBITS \
-        && strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
-    ) {
-      self->map.rodata.base = (void *) p_shdr->sh_offset;
-      self->map.rodata.size = p_shdr->sh_size;
-      map_flag |= RODATA_MAP;
-    }
+    if (
+      p_shdr->sh_type == SHT_DYNSYM && \
+      strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
+    ) p_dynsym = p_shdr;
   }
 
   register int hit_cnt = 0;
-  if (map_flag == (DYNSYM_MAP | RODATA_MAP)) {
-    Elf32_Shdr * p_dynsym = self->map.dynsym.base;
+  if (p_dynsym != NULL) {
     if (p_dynsym->sh_offset == 0)
       return 1;
 
@@ -172,28 +161,20 @@ _py_proc__analyze_elf32(py_proc_t * self) {
 
     // Search for dynamic symbols
     for (Elf32_Off tab_off = p_dynsym->sh_offset; \
-      hit_cnt < DYNSYM_COUNT && tab_off < p_dynsym->sh_offset + p_dynsym->sh_size; \
+      tab_off < p_dynsym->sh_offset + p_dynsym->sh_size; \
       tab_off += p_dynsym->sh_entsize
     ) {
       Elf32_Sym * sym      = (Elf32_Sym *) (elf_map + tab_off);
-      char      * sym_name = elf_map + p_strtabsh->sh_offset + sym->st_name;
-      long        hash     = string_hash(sym_name);
-      for (register int i = 0; i < DYNSYM_COUNT; i++) {
-        if (hash == _dynsym_hash_array[i] && strcmp(sym_name, _dynsym_array[i]) == 0) {
-          *(&(self->tstate_curr_raddr) + i) = (void *) sym->st_value;
-          hit_cnt++;
-          #ifdef DEBUG
-          log_d("Symbol %s found at %p", sym_name, sym->st_value);
-          #endif
-        }
-      }
+      char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
+      if ((hit_cnt = _py_proc__check_sym(self, sym_name, (void *) sym->st_value)))
+        break;
     }
   }
 
   munmap(elf_map, elf_map_size);
   close(fd);
 
-  return hit_cnt;
+  return 1 - hit_cnt;
 }
 
 
@@ -202,11 +183,12 @@ static int
 _py_proc__analyze_elf(py_proc_t * self) {
   Elf64_Ehdr ehdr = ehdr_v.v64;
 
-  // Check magic
-  if (_py_proc__get_elf_type(self, 0, ehdr_v) || ehdr.e_shoff == 0 || ehdr.e_shnum < 2 \
-    || ehdr.e_ident[1] != 'E' || ehdr.e_ident[2] != 'L' || ehdr.e_ident[3] != 'F' \
-  ) return 0;
-
+  if (
+    _py_proc__get_elf_type(self, 0, ehdr_v) ||
+    ehdr.e_shoff == 0 ||
+    ehdr.e_shnum < 2 ||
+    memcmp(ehdr.e_ident, ELFMAG, SELFMAG)
+  ) return 1;
 
   // Dispatch
   switch (ehdr.e_ident[EI_CLASS]) {
@@ -217,7 +199,7 @@ _py_proc__analyze_elf(py_proc_t * self) {
     return _py_proc__analyze_elf64(self);
 
   default:
-    return 0;
+    return 1;
   }
 }
 
@@ -235,11 +217,6 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     return 0;
 
   sprintf(file_name, "/proc/%d/maps", self->pid);
-
-  #ifdef DEBUG
-  log_d("Opening %s", file_name);
-  #endif // DEBUG
-
   fp = fopen(file_name, "r");
   if (fp == NULL)
     error = EPROCVM;
@@ -269,10 +246,6 @@ _py_proc__parse_maps_file(py_proc_t * self) {
           get_bounds(line, a, b);
           self->map.elf.base = (void *) a;
           self->map.elf.size = b - a;
-
-          #ifdef DEBUG
-          log_d("Python binary path: %s", self->bin_path);
-          #endif // DEBUG
         }
       }
       else {
@@ -284,9 +257,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
             maps_flag |= HEAP_MAP;
 
-            #ifdef DEBUG
             log_d("HEAP bounds: %s", line);
-            #endif
           }
         }
         else if ((maps_flag & BSS_MAP) == 0 && (line[strlen(line)-2] == ' ')) {
@@ -296,9 +267,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
           maps_flag |= BSS_MAP;
 
-          #ifdef DEBUG
           log_d("BSS bounds: %s", line);
-          #endif
         }
       }
     }
@@ -311,63 +280,23 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
   if (error & EPROC) log_error();
 
-  self->maps_loaded = maps_flag == (HEAP_MAP | BSS_MAP) ? 1 : 0;
+  self->maps_loaded = maps_flag == (HEAP_MAP | BSS_MAP);
 
-  return 1 - self->maps_loaded;
+  return maps_flag != (HEAP_MAP | BSS_MAP);
 }
 
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__analyze_bin(py_proc_t * self) {
-  if (self == NULL)
-    return 1;
+_py_proc__init(py_proc_t * self) {
+  if (
+    self == NULL ||
+    _py_proc__parse_maps_file(self) ||
+    _py_proc__analyze_elf(self)
+  ) return 1;
 
-  if (self->maps_loaded == 0) {
-    _py_proc__parse_maps_file(self);
-
-    if (self->maps_loaded == 0)
-      return 1;
-  }
-
-  if (self->sym_loaded)
-    return 0;
-
-  self->sym_loaded = _py_proc__analyze_elf(self) ? 1 : 0;
-
-  return 1 - self->sym_loaded;
+  return 0;
 }
 
-
-// ----------------------------------------------------------------------------
-static int
-_py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
-  if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
-    return 0;
-
-  return (raddr >= self->map.heap.base && raddr < self->map.heap.base + self->map.heap.size)
-    ? 1
-    : 0;
-}
-
-
-// ----------------------------------------------------------------------------
-static int
-_py_proc__scan_heap(py_proc_t * self) {
-  // NOTE: This seems to be required by Python 2.7 on i386 Linux.
-  void * upper_bound = self->map.heap.base + self->map.heap.size;
-  for (
-    register void ** raddr = (void **) self->map.heap.base;
-    (void *) raddr < upper_bound;
-    raddr++
-  ) {
-    if (_py_proc__check_interp_state(self, raddr) == 0) {
-      self->is_raddr = raddr;
-      return 0;
-    }
-  }
-
-  return 1;
-}
 
 #endif

@@ -35,6 +35,12 @@
 #include <unistd.h>
 
 
+#define DEREF_SYM
+
+
+#define next_lc(cmd) (cmd = (struct segment_command_64 *) ((void *) cmd + cmd->cmdsize));
+
+// ---- Endianness ----
 #define ENDIAN(f, v) (f ? __bswap_32(v) : v)
 
 #define bswap_16(value) \
@@ -51,12 +57,12 @@
 static int
 _py_proc__analyze_macho64(py_proc_t * self, void * map) {
   struct mach_header_64 * hdr = (struct mach_header_64 *) map;
+
   int ncmds = hdr->ncmds;
-  int s = hdr->magic == MH_CIGAM_64;
+  int s     = (hdr->magic == MH_CIGAM_64);
 
   int cmd_cnt = 0;
   struct segment_command_64 * cmd = map + sizeof(struct mach_header_64);
-  int hit_cnt = 0;
   void * img_base = self->map.bss.base;
   for (register int i = 0; cmd_cnt < 2 && i < ncmds; i++) {
     switch (cmd->cmd) {
@@ -79,46 +85,93 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
     case LC_SYMTAB:
       for (
         register int i = 0;
-        hit_cnt == 0 && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
+        self->sym_loaded == 0 && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
         i++
       ) {
         struct nlist_64 * sym_tab = (struct nlist_64 *) (map + sw32(s, ((struct symtab_command *) cmd)->symoff));
-        void     * str_tab = (void *) (map + sw32(s, ((struct symtab_command *) cmd)->stroff));
+        void            * str_tab = (void *)            (map + sw32(s, ((struct symtab_command *) cmd)->stroff));
 
         // TODO: Assess quality
         if ((sym_tab[i].n_type & N_EXT) == 0)
           continue;
 
         char * sym_name = (char *) (str_tab + sym_tab[i].n_un.n_strx);
-        long   hash     = string_hash(sym_name);
-        for (register int j = 0; j < DYNSYM_COUNT; j++) {
-          if (hash == _dynsym_hash_array[j] && strcmp(sym_name, _dynsym_array[j]) == 0) {
-            *(&(self->tstate_curr_raddr) + j) = (void *) (img_base + sym_tab[i].n_value);
-            hit_cnt++;
-            self->sym_loaded = 1;
-            #ifdef DEBUG
-            log_d("Symbol %s found at %p", sym_name, (void *) (img_base + sym_tab[i].n_value));
-            #endif
-          }
-        }
+        self->sym_loaded = _py_proc__check_sym(self, sym_name, (void *) sym_tab[i].n_value);
       }
       cmd_cnt++;
-    }
-    cmd = (struct segment_command_64 *) ((void *) cmd + cmd->cmdsize);
+    } // switch
+
+    next_lc(cmd);
   }
 
   if (self->map.bss.size == 0)
     return 1;
 
-  return 0;
+  return self->sym_loaded;
+}
+
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__analyze_macho32(py_proc_t * self, void * map) {
+  struct mach_header * hdr = (struct mach_header *) map;
+
+  int ncmds = hdr->ncmds;
+  int s     = (hdr->magic == MH_CIGAM);
+
+  int cmd_cnt = 0;
+  struct segment_command * cmd = map + sizeof(struct mach_header);
+  void * img_base = self->map.bss.base;
+  for (register int i = 0; cmd_cnt < 2 && i < ncmds; i++) {
+    switch (cmd->cmd) {
+    case LC_SEGMENT:
+      if (strcmp(cmd->segname, "__DATA") == 0) {
+        int nsects = cmd->nsects;
+        struct section * sec = (struct section *) ((void *) cmd + sizeof(struct segment_command));
+        self->map.bss.size = 0;
+        for (register int j = 0; j < nsects; j++) {
+          if (strcmp(sec[j].sectname, "__bss") == 0) {
+            self->map.bss.base += sec[j].addr;
+            self->map.bss.size = sec[j].size;
+            break;
+          }
+        }
+        cmd_cnt++;
+      }
+      break;
+
+    case LC_SYMTAB:
+      for (
+        register int i = 0;
+        self->sym_loaded == 0 && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
+        i++
+      ) {
+        struct nlist * sym_tab = (struct nlist *) (map + sw32(s, ((struct symtab_command *) cmd)->symoff));
+        void         * str_tab = (void *)         (map + sw32(s, ((struct symtab_command *) cmd)->stroff));
+
+        // TODO: Assess quality
+        if ((sym_tab[i].n_type & N_EXT) == 0)
+          continue;
+
+        char * sym_name = (char *) (str_tab + sym_tab[i].n_un.n_strx);
+        self->sym_loaded = _py_proc__check_sym(self, sym_name, (void *) sym_tab[i].n_value);
+      }
+      cmd_cnt++;
+    } // switch
+
+    next_lc(cmd);
+  }
+
+  if (self->map.bss.size == 0)
+    return 1;
+
+  return self->sym_loaded;
 }
 
 
 // ----------------------------------------------------------------------------
 static int
 _py_proc__analyze_fat(py_proc_t * self, void * addr, void * map) {
-  int retval = 0;
-
   void * vm_map = malloc(sizeof(struct mach_header_64));
   if (vm_map == NULL)
     return 1;
@@ -143,47 +196,45 @@ _py_proc__analyze_fat(py_proc_t * self, void * addr, void * map) {
         case MH_MAGIC:
         case MH_CIGAM:
           break;
-          // _py_proc__analyze_macho32(self, (void *) hdr);
+          _py_proc__analyze_macho32(self, (void *) hdr);
 
         case MH_MAGIC_64:
         case MH_CIGAM_64:
           _py_proc__analyze_macho64(self, (void *) hdr);
           break;
-
-        default:
-          // TODO: Handle invalid magic
-          printf("Invalid format from FAT\n");
-          return 1;
         }
         break;
       }
     }
-  } else {
-    printf("Unable to copy memory\n");
-    retval = 1;
   }
+  else log_e("Unable to copy memory from universal binary\n");
 
   free(vm_map);
-  return retval;
+
+  return 1 - self->sym_loaded;
 }
 
 
 // ----------------------------------------------------------------------------
 static int
 _py_proc__analyze_macho(py_proc_t * self, char * path, void * addr, mach_vm_size_t size) {
-  int    fd  = open(path, O_RDONLY);
+  int fd = open(path, O_RDONLY);
+
+  // This would cause problem if allocated in the stack frame
   struct stat * fs = (struct stat *) malloc(sizeof(struct stat));
-  fstat(fd, fs);
+  fstat(fd, fs);  // Get file size
+
   void * map = mmap(NULL, fs->st_size, PROT_READ, MAP_SHARED, fd, 0);
   free(fs);
-  log_d("Local mapping %p-%p\n", map, map+size);
+
+  log_t("Local Mach-O file mapping %p-%p\n", map, map+size);
+
   struct mach_header_64 * hdr = (struct mach_header_64 *) map;
-  self->map.bss.base = addr;
   switch (hdr->magic) {
   case MH_MAGIC:
   case MH_CIGAM:
     break;
-    // _py_proc__analyze_macho32(self, map);
+    _py_proc__analyze_macho32(self, map);
 
   case MH_MAGIC_64:
   case MH_CIGAM_64:
@@ -192,20 +243,17 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * addr, mach_vm_size
 
   case FAT_MAGIC:
   case FAT_CIGAM:
-    printf("Fat\n");
     _py_proc__analyze_fat(self, addr, map);
     break;
 
   default:
-    // TODO: Handle invalid magic
-    printf("Invalid format\n");
     return 1;
   }
 
   munmap(map, size);
   close(fd);
 
-  return 0;
+  return 1 - self->sym_loaded;
 }
 
 
@@ -221,9 +269,6 @@ pid_to_task(pid_t pid) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__get_maps(py_proc_t * self) {
-  // Call mach_vm_region repeatedly to get all the maps
-  // For each map, call proc_regionfilename to get the binary path
-
   mach_vm_address_t           address = 1;
   mach_vm_size_t              size;
   vm_region_basic_info_data_t region_info;
@@ -233,56 +278,44 @@ _py_proc__get_maps(py_proc_t * self) {
   // NOTE: Mac OS X kernel bug
   usleep(10000);
 
-  mach_port_t task = pid_to_task(self->pid);
-
-  // TODO: Fix loop
-  while (1) {
-    kern_return_t retval = mach_vm_region(
-      pid_to_task(self->pid), // TODO: task,
+  while (kern_return_t retval = mach_vm_region(
+      pid_to_task(self->pid),
       &address,
       &size,
       VM_REGION_BASIC_INFO,
       (vm_region_info_t) &region_info,
       &count,
       &object_name
-    );
-
-    if (retval != KERN_SUCCESS)
-      break;
-
+    )
+  ) {
     char path[MAXPATHLEN];
     if (size > 0 && proc_regionfilename(self->pid, address, path, MAXPATHLEN)) {
-      printf("%p-%p (%lluK) %s\n", (void *) address, (void *) address+size, size >> 10, path);
       if (self->bin_path == NULL && strstr(path, "python")) {
         self->bin_path = (char *) malloc(strlen(path) + 1);
         strcpy(self->bin_path, path);
-        #ifdef DEBUG
-        log_d("Python binary: %s", self->bin_path);
-        #endif
-      } else if (size > (1 << 12) && strstr(path, "Python"))
-        return _py_proc__analyze_macho(self, path, (void *) address, size);
+      } else if (size > (1 << 12) && strstr(path, "Python")) {
+        self->map.bss.base = (void *) address;  // Not yet the BSS base
+        self->sym_loaded = 1 - _py_proc__analyze_macho(self, path, (void *) address, size);
+      }
     }
+
+    if (self->sym_loaded)
+      break;
+
     address += size;
   }
 
-  return 0;
+  return 1 - self->sym_loaded;
 }
 
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__analyze_bin(py_proc_t * self) {
+_py_proc__init(py_proc_t * self) {
   if (self == NULL)
     return 1;
 
-  if (self->maps_loaded == 0) {
-    self->maps_loaded = 1 - _py_proc__get_maps(self);
-
-    if (self->maps_loaded == 0)
-      return 1;
-  }
-
-  return 0;
+  return _py_proc__get_maps(self);
 }
 
 #endif

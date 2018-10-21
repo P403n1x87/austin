@@ -54,8 +54,8 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
   HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READONLY,0,0,0);
   LPVOID pMapping = MapViewOfFile(hMapping,FILE_MAP_READ,0,0,0);
 
-  IMAGE_DOS_HEADER     * dos_hdr = (IMAGE_DOS_HEADER *) pMapping;
-  IMAGE_NT_HEADERS     * nt_hdr  = (IMAGE_NT_HEADERS *) (pMapping + dos_hdr->e_lfanew);
+  IMAGE_DOS_HEADER     * dos_hdr = (IMAGE_DOS_HEADER *)     pMapping;
+  IMAGE_NT_HEADERS     * nt_hdr  = (IMAGE_NT_HEADERS *)     (pMapping + dos_hdr->e_lfanew);
   IMAGE_SECTION_HEADER * s_hdr   = (IMAGE_SECTION_HEADER *) (pMapping + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
 
   if (nt_hdr->Signature != IMAGE_NT_SIGNATURE)
@@ -100,7 +100,7 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
   CloseHandle(hMapping);
   CloseHandle(hFile);
 
-  return 1;
+  return 0;
 }
 
 
@@ -117,7 +117,7 @@ _py_proc__get_modules(py_proc_t * self) {
   MODULEENTRY32 module;
   module.dwSize = sizeof(module);
 
-  register int map_cnt = 0;  // TODO: Replace with flags
+  register int map_cnt = 0;  // TODO: Replace with flags?
   // proc_vm_map_block_t * vm_maps = (proc_vm_map_block_t *) &(self->map);
   BOOL success = Module32First(mod_hdl, &module);
   while (success && map_cnt < MODULE_CNT) {
@@ -126,12 +126,9 @@ _py_proc__get_modules(py_proc_t * self) {
       if (self->bin_path == NULL && strstr(module.szModule, "python.exe")) {
         self->bin_path = (char *) malloc(strlen(module.szExePath) + 1);
         strcpy(self->bin_path, module.szExePath);
-        #ifdef DEBUG
-        log_d("Python binary: %s", self->bin_path);
-        #endif
       }
       if (strstr(module.szModule, ".dll")) {
-        self->map.bss.base = module.modBaseAddr;
+        self->map.bss.base = module.modBaseAddr;  // Not the BSS base yet
         _py_proc__analyze_pe(self, module.szExePath);
       }
       // vm_maps[map_cnt].base = module.modBaseAddr;
@@ -151,21 +148,11 @@ _py_proc__get_modules(py_proc_t * self) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__analyze_bin(py_proc_t * self) {
+_py_proc__init(py_proc_t * self) {
   if (self == NULL)
     return 1;
 
-  if (self->maps_loaded == 0) {
-    self->maps_loaded = 1 - _py_proc__get_modules(self);
-
-    if (self->maps_loaded == 0)
-      return 1;
-  }
-
-  // Not loading symbols on Windows
-  self->sym_loaded = 1;
-
-  return 0;
+  return _py_proc__get_modules(self);
 }
 
 #endif

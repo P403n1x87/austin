@@ -32,16 +32,30 @@ logger_init(void);
 
 
 void
-log_e(const char *, ...);
+log_f(const char *, ...);
 
 void
-log_d(const char *, ...);
+log_e(const char *, ...);
 
 void
 log_w(const char *, ...);
 
 void
 log_i(const char *, ...);
+
+#if defined(DEBUG) || defined(TRACE)
+void
+log_d(const char *, ...);
+#else
+#define log_d(f, args...) {}
+#endif
+
+#ifdef TRACE
+void
+log_t(const char *, ...);
+#else
+#define log_t(f, args...) {}
+#endif
 
 void
 log_version(void);

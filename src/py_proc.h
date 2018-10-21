@@ -54,7 +54,7 @@ typedef struct {
 
   // Symbols from .dynsym
   void          * tstate_curr_raddr;
-  void          * py_runtime;
+  void          * py_runtime_raddr;
 
   void          * is_raddr;
 } py_proc_t;

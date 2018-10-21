@@ -27,6 +27,7 @@
 
 #include "argparse.h"
 #include "austin.h"
+#include "platform.h"
 
 
 #define DEFAULT_SAMPLING_INTERVAL    100
@@ -60,7 +61,7 @@ strtonum(char * str, long * num) {
 
 // ---- GNU C -----------------------------------------------------------------
 
-#if defined(__linux__)
+#ifdef PL_LINUX                                                      /* LINUX */
 
 #include <argp.h>
 
@@ -152,11 +153,8 @@ parse_opt (int key, char *arg, struct argp_state *state)
   return 0;
 }
 
-#else
 
-
-// ---- OTHER C ---------------------------------------------------------------
-
+#else                                                               /* !LINUX */
 #include <stdio.h>
 #include <string.h>
 
@@ -424,7 +422,7 @@ cb(const char opt, const char * arg) {
 // ----------------------------------------------------------------------------
 int
 parse_args(int argc, char ** argv) {
-  #if defined(__linux__)
+  #ifdef PL_LINUX
   struct argp args = {options, parse_opt, "command [ARG...]", doc};
   argp_parse(&args, argc, argv, 0, 0, 0);
 

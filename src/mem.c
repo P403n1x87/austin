@@ -20,26 +20,28 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#include "mem.h"
-#include "logging.h"
+#include "platform.h"
 
-#if defined(__linux__)
-#define _GNU_SOURCE
-#include <sys/uio.h>
+#if defined(PL_LINUX)
+  #define _GNU_SOURCE
+  #include <sys/uio.h>
 
-#elif defined(_WIN32) || defined(_WIN64)
-#include <windows.h>
+#elif defined(PL_WIN)
+  #include <windows.h>
 
-#elif defined(__APPLE__) && defined(__MACH__)
-#include <mach/mach.h>
-#include <mach/mach_vm.h>
+#elif defined(PL_MACOS)
+  #include <mach/mach.h>
+  #include <mach/mach_vm.h>
 
 #endif
 
+#include "mem.h"
+#include "logging.h"
+
+
 ssize_t
 copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
-  #if defined(__linux__)
-
+  #if defined(PL_LINUX)                                              /* LINUX */
   struct iovec local[1];
   struct iovec remote[1];
 
@@ -50,13 +52,12 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
 
   return process_vm_readv(pid, local, 1, remote, 1, 0);
 
-  #elif defined(_WIN32) || defined(_WIN64)
-
+  #elif defined(PL_WIN)                                                /* WIN */
   size_t n;
   int ret = ReadProcessMemory((HANDLE) pid, addr, buf, len, &n) ? n : -1;
   return ret;
 
-  #elif defined(__APPLE__) && defined(__MACH__)
+  #elif defined(PL_MACOS)                                              /* MAC */
   mach_port_t task;
   if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
     log_d("Failed to obtain task from PID. Are you running austin with the right privileges?");

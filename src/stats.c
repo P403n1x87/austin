@@ -20,10 +20,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#include "platform.h"
+
 #include <limits.h>
 #include <time.h>
 
-#if defined(__APPLE__) && defined(__MACH__)
+#ifdef PL_MACOS
 #include <mach/clock.h>
 #include <mach/mach.h>
 #endif
@@ -59,7 +61,7 @@ ctime_t
 gettime(void) {
   struct timespec ts;
 
-  #if defined(__APPLE__) && defined(__MACH__)
+  #ifdef PL_MACOS
   clock_serv_t cclock;
   mach_timespec_t mts;
 
