@@ -82,6 +82,7 @@ static long _dynsym_hash_array[DYNSYM_COUNT] = {
 };
 
 
+#ifdef DEREF_SYM
 static int
 _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
   for (register int i = 0; i < DYNSYM_COUNT; i++) {
@@ -96,6 +97,7 @@ _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
   }
   return 0;
 }
+#endif
 
 // ----------------------------------------------------------------------------
 #ifdef PL_UNIX
@@ -577,7 +579,7 @@ py_proc__get_istate_raddr(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 int
 py_proc__is_running(py_proc_t * self) {
-  #ifdef WIN                                                           /* WIN */
+  #ifdef PL_WIN                                                        /* WIN */
   DWORD ec;
   return GetExitCodeProcess((HANDLE) self->pid, &ec) ? ec : -1;
 
