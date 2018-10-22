@@ -28,10 +28,10 @@
 </p>
 
 <p align="center">
-  <a href="#synopsis"><b>Synopsis</b></a>&nbsp;&bull;&nbsp;
-  <a href="#installation"><b>Installation</b></a>&nbsp;&bull;&nbsp;
-  <a href="#usage"><b>Usage</b></a>&nbsp;&bull;&nbsp;
-  <a href="#compatibility"><b>Compatibility</b></a>&nbsp;&bull;&nbsp;
+  <a href="#synopsis"><b>Synopsis</b></a>&nbsp;&bull;
+  <a href="#installation"><b>Installation</b></a>&nbsp;&bull;
+  <a href="#usage"><b>Usage</b></a>&nbsp;&bull;
+  <a href="#compatibility"><b>Compatibility</b></a>&nbsp;&bull;
   <a href="#examples"><b>Examples</b></a>
 </p>
 
@@ -328,6 +328,22 @@ Austin to profile Python applications. Here is a recording of the TUI in action
 with a sample script that spawns a new thread and keeps the CPU busy with a CPU
 bound loop on each thread. You can use `PageUp` and `PageDown` to navigate the
 frame stack of each frame as the Python application runs.
+
+If you want to use it you will have to make sure that all the dependencies
+(`psutil` in this case) are installed, as the TUI project still lacks a
+`setup.py` script.
+
+~~~ bash
+pip install psutil
+~~~
+
+> The TUI is based on `python-curses`. The version included with the standard
+> Windows installations of Python is broken so it won't work out of the box. A
+> solution is to install the the wheel of the port to Windows from
+> [this](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses) page. Wheel files
+> can be installed directly with `pip`, as described in the
+> [linked](https://pip.pypa.io/en/latest/user_guide/#installing-from-wheels)
+> page.
 
 <!-- ![austin-tui thread navigation](art/austin-tui_threads_nav.gif) -->
 <p align="center"><img src="art/austin-tui_threads_nav.gif" /></p>

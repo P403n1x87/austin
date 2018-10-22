@@ -118,7 +118,6 @@ static int interrupt = 0;
 static void
 signal_callback_handler(int signum)
 {
-  printf("Signal %d\n", signum);
   if (signum == SIGINT)
     interrupt++;
 }

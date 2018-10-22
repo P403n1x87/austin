@@ -179,7 +179,7 @@ class AustinTUI:
 
         # ---- Table ----------------------------------------------------------
 
-        Line(scr, TABHEAD_LINE, 0, "{:^6}  {:^6}  {:^6}  {:^6}  {}".format(
+        Line(scr, TABHEAD_LINE, 0, " {:^6}  {:^6}  {:^6}  {:^6}  {}".format(
             "OWN",
             "TOTAL",
             "%OWN",
@@ -232,10 +232,7 @@ class AustinTUI:
         self.austin.start()
 
         if (self.austin.start_event.wait(1)):
-            try:
-                curses.wrapper(self.run)
-            except e:
-                print(e)
+            curses.wrapper(self.run)
         else:
             print("Austin took too long to start. Terminating...")
             exit(1)
