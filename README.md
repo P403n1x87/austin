@@ -20,11 +20,19 @@
 </p>
 
 <p align="center">
-  <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="48px" />
+  <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" />
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="48px" />
+  <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="48px" />
+  <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px" />
+</p>
+
+<p align="center">
+  <a href="#synopsis"><b>Synopsis</b></a>&nbsp;&bull;&nbsp;
+  <a href="#installation"><b>Installation</b></a>&nbsp;&bull;&nbsp;
+  <a href="#usage"><b>Usage</b></a>&nbsp;&bull;&nbsp;
+  <a href="#compatibility"><b>Compatibility</b></a>&nbsp;&bull;&nbsp;
+  <a href="#examples"><b>Examples</b></a>
 </p>
 
 <!--
