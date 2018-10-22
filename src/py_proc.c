@@ -63,6 +63,29 @@
 static int try_cnt = INIT_RETRY_CNT;
 
 
+// ----------------------------------------------------------------------------
+// -- Platform-dependent implementations of _py_proc__init
+// ----------------------------------------------------------------------------
+
+// Forward declaration
+static int _py_proc__check_sym(py_proc_t *, char *, void *);
+
+#if defined(PL_LINUX)
+
+  #include "linux/py_proc.h"
+
+#elif defined(PL_WIN)
+
+  #include "win/py_proc.h"
+
+#elif defined(PL_MACOS)
+
+  #include "mac/py_proc.h"
+
+#endif
+// ----------------------------------------------------------------------------
+
+
 // ---- Exported symbols ----
 #define DYNSYM_COUNT                   2
 
@@ -172,8 +195,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   if (
     (V_FIELD(void*, tstate_head, py_thread, o_interp)) != raddr ||
     (V_FIELD(void*, tstate_head, py_thread, o_frame))  == 0
-  )
-    return 1;
+  ) return 1;
 
   log_d("Found possible interpreter state @ %p (offset %p).", raddr, raddr - self->map.heap.base);
 
@@ -186,27 +208,8 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   log_d("Stack trace constructed from possible interpreter state (error %d)", error);
 
-  return error == EOK ? 0 : 1;
+  return error != EOK;
 }
-
-
-// ----------------------------------------------------------------------------
-// -- Platform-dependent implementations of _py_proc__wait_for_interp_state
-// ----------------------------------------------------------------------------
-#if defined(PL_LINUX)
-
-  #include "linux/py_proc.h"
-
-#elif defined(PL_WIN)
-
-  #include "win/py_proc.h"
-
-#elif defined(PL_MACOS)
-
-  #include "mac/py_proc.h"
-
-#endif
-// ----------------------------------------------------------------------------
 
 
 #ifdef CHECK_HEAP
@@ -216,9 +219,7 @@ _py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
   if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
     return 0;
 
-  return (raddr >= self->map.heap.base && raddr < self->map.heap.base + self->map.heap.size)
-    ? 1
-    : 0;
+  return (raddr >= self->map.heap.base && raddr < self->map.heap.base + self->map.heap.size);
 }
 
 
@@ -250,9 +251,7 @@ _py_proc__is_bss_raddr(py_proc_t * self, void * raddr) {
   if (self == NULL || raddr == NULL || self->map.bss.base == NULL)
     return 0;
 
-  return (raddr >= self->map.bss.base && raddr < self->map.bss.base + self->map.bss.size)
-    ? 1
-    : 0;
+  return (raddr >= self->map.bss.base && raddr < self->map.bss.base + self->map.bss.size);
 }
 #endif
 
@@ -449,7 +448,6 @@ _py_proc__run(py_proc_t * self) {
 
   log_d("Python binary: %s", self->bin_path);
 
-
   // Determine and set version
   if (!self->version) {
     self->version = _py_proc__get_version(self);
@@ -513,6 +511,7 @@ py_proc_new() {
 // ----------------------------------------------------------------------------
 int
 py_proc__attach(py_proc_t * self, pid_t pid) {
+  log_d("Attaching to process with PID %d", pid);
   #ifdef PL_WIN
   self->pid = (pid_t) OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
   if (self->pid == (pid_t) INVALID_HANDLE_VALUE) {
@@ -530,6 +529,8 @@ py_proc__attach(py_proc_t * self, pid_t pid) {
 // ----------------------------------------------------------------------------
 int
 py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
+  log_d("Starting new process with command: %s", exec);
+
   #ifdef PL_WIN                                                        /* WIN */
   self->pid = _spawnvp(_P_NOWAIT, exec, (const char * const*) argv);
   if (self->pid == (pid_t) INVALID_HANDLE_VALUE) {

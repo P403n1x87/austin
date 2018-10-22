@@ -139,54 +139,61 @@ int main(int argc, char ** argv) {
   log_header();
   log_version();
 
-  error = EOK;
-
-  py_proc_t * py_proc = py_proc_new();
-  if (py_proc == NULL)
-    return EPROC;
-
-  if (attach_pid == 0) {
-    if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg]) != 0)
-      code = EPROCFORK;
-  } else {
-    if (py_proc__attach(py_proc, attach_pid) != 0)
-      code = EPROCATTACH;
+  if (attach_pid == 0 && argv[exec_arg] == NULL) {
+    log_f("Null command and invalid PID. Austin doesn't know what to do.");
+    code = EPROC;
   }
 
-  if (code == EOK) {
-    if (py_proc->is_raddr == NULL)
-      code = EPROC;
+  else {
+    error = EOK;
 
-    else {
-      // Register signal handler for Ctrl+C
-      signal(SIGINT, signal_callback_handler);
+    py_proc_t * py_proc = py_proc_new();
+    if (py_proc == NULL)
+      return EPROC;
 
-      log_w("Sampling interval: %lu usec", t_sampling_interval);
-
-      stats_reset();
-
-      t_sample = gettime();  // Prime sample checkmark
-      while(py_proc__is_running(py_proc) && !interrupt) {
-        if (_py_proc__sample(py_proc))
-          break;
-
-        stats_check_error();
-
-        ctime_t delta = gettime() - t_sample;  // Time spent sampling
-        stats_check_duration(delta, t_sampling_interval);
-
-        if (delta < t_sampling_interval)
-          usleep(t_sampling_interval - delta);
-      }
-
-      stats_log_metrics();
+    if (attach_pid == 0) {
+      if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg]) != 0)
+        code = EPROCFORK;
+    } else {
+      if (py_proc__attach(py_proc, attach_pid) != 0)
+        code = EPROCATTACH;
     }
-  }
 
-  if (py_proc != NULL) {
-    if (!interrupt)
-      py_proc__wait(py_proc);
-    py_proc__destroy(py_proc);
+    if (code == EOK) {
+      if (py_proc->is_raddr == NULL)
+        code = EPROC;
+
+      else {
+        // Register signal handler for Ctrl+C
+        signal(SIGINT, signal_callback_handler);
+
+        log_w("Sampling interval: %lu usec", t_sampling_interval);
+
+        stats_reset();
+
+        t_sample = gettime();  // Prime sample checkmark
+        while(py_proc__is_running(py_proc) && !interrupt) {
+          if (_py_proc__sample(py_proc))
+            break;
+
+          stats_check_error();
+
+          ctime_t delta = gettime() - t_sample;  // Time spent sampling
+          stats_check_duration(delta, t_sampling_interval);
+
+          if (delta < t_sampling_interval)
+            usleep(t_sampling_interval - delta);
+        }
+
+        stats_log_metrics();
+      }
+    }
+
+    if (py_proc != NULL) {
+      if (!interrupt)
+        py_proc__wait(py_proc);
+      py_proc__destroy(py_proc);
+    }
   }
 
   log_footer();

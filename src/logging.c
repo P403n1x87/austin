@@ -90,7 +90,7 @@ log_f(const char * fmt, ...) {
   va_start(args, fmt);
 
   _log_writer(LOG_CRIT, fmt, args);
-  vfprintf(stderr, fmt, args);
+  vfprintf(stderr, fmt, args); fputc('\n', stderr);
 
   va_end(args);
 }

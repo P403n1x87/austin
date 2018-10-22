@@ -44,6 +44,7 @@ extern char *  format;
 #define ARG_UNRECOGNISED_LONG_OPT     -2
 #define ARG_UNRECOGNISED_OPT          -3
 #define ARG_INVALID_VALUE             -4
+#define ARG_UNEXPECTED_OPT_ARG        -5
 
 
 int parse_args(int argc, char ** argv);

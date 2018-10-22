@@ -180,18 +180,23 @@ typedef int (*arg_callback)(const char opt, const char * arg);
 // ----------------------------------------------------------------------------
 static arg_option *
 _find_long_opt(arg_option * opts, char * opt_name) {
-  register int i = 0;
+  arg_option * retval = NULL;
 
-  while (opts[i].opt != 0) {
+  register int i = 0;
+  while (retval == NULL && opts[i].opt != 0) {
     if (opts[i].long_name != NULL) {
-      if (strcmp(opt_name, opts[i].long_name) == 0)
-        return &opts[i];
+      char * equal = strchr(opt_name, '=');
+      if (equal) *equal = 0;
+      if (strcmp(opt_name, opts[i].long_name) == 0) {
+        retval = &opts[i];
+      }
+      if (equal) *equal = '=';
     }
 
     i++;
   }
 
-  return NULL;
+  return retval;
 }
 
 
@@ -217,12 +222,14 @@ _handle_opt(arg_option * opt, arg_callback cb, int argi, int argc, char ** argv)
   char * opt_arg = NULL;
 
   if (opt) {
+    char * equal = strchr(argv[argi], '=');
     if (opt->has_arg) {
-      if (argi >= argc - 1 || argv[argi+1][0] == '-')
+      if (equal == NULL && (argi >= argc - 1 || argv[argi+1][0] == '-'))
         return ARG_MISSING_OPT_ARG;
 
-      opt_arg = argv[++argi];
-    }
+      opt_arg = equal ? equal + 1 : argv[argi+1];
+    } else if(equal != NULL)
+      return ARG_UNEXPECTED_OPT_ARG;
 
     return cb(opt->opt, opt_arg);
   }
@@ -239,7 +246,7 @@ _handle_long_opt(arg_option * opts, arg_callback cb, int * argi, int argc, char 
   if (cb_res)
     return cb_res;
 
-  *argi += opt->has_arg ? 2 : 1;
+  *argi += opt->has_arg && strchr(argv[*argi], '=') == NULL ? 2 : 1;
 
   return 0;
 }
@@ -251,19 +258,23 @@ _handle_opts(arg_option * opts, arg_callback cb, int * argi, int argc, char ** a
   char       * opt_str  = &argv[*argi][1];
   int          n_opts   = strlen(opt_str);
   arg_option * curr_opt = NULL;
+  char       * equal    = strchr(argv[*argi], '=');
+
   for (register int i = 0; i < n_opts; i++) {
+    if (opt_str[i] == '=')
+      break;
     curr_opt  = _find_opt(opts, opt_str[i]);
     if (curr_opt == NULL)
       return ARG_UNRECOGNISED_OPT;
 
-    if (curr_opt->has_arg && i < n_opts - 1)
+    if (curr_opt->has_arg && (equal == NULL && i < n_opts - 1))
       return ARG_MISSING_OPT_ARG;
     int cb_res = _handle_opt(curr_opt, cb, *argi, argc, argv);
     if (cb_res)
       return cb_res;
   }
 
-  *argi += curr_opt->has_arg ? 2 : 1;
+  *argi += curr_opt->has_arg && equal == NULL ? 2 : 1;
 
   return 0;
 }
@@ -360,8 +371,6 @@ static arg_option opts[] = {
 // ----------------------------------------------------------------------------
 static int
 cb(const char opt, const char * arg) {
-  pid_t l_pid;
-
   switch (opt) {
   case 'i':
     if (strtonum((char *) arg, (long *) &t_sampling_interval) == 1 || t_sampling_interval < 0) {
@@ -383,11 +392,10 @@ cb(const char opt, const char * arg) {
     break;
 
   case 'p':
-    if (strtonum((char *) arg, (long *) &l_pid) == 1 || l_pid <= 0) {
+    if (strtonum((char *) arg, (long *) &attach_pid) == 1 || attach_pid <= 0) {
       puts(usage_msg);
       return ARG_INVALID_VALUE;
     }
-    attach_pid = (pid_t) l_pid;
     break;
 
   case '?':
@@ -412,7 +420,6 @@ cb(const char opt, const char * arg) {
 
   return ARG_CONTINUE_PARSING;
 }
-
 
 #endif
 
