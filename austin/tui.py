@@ -145,12 +145,12 @@ class AustinTUI:
             if key == "q":
                 return -1
 
-            if key == "KEY_NPAGE":
+            if key == "KEY_NPAGE" and self.current_threads:
                 if self.current_thread_index < len(self.current_threads) - 1:
                     self.current_thread_index += 1
                     self.current_thread = self.current_threads[self.current_thread_index]
 
-            elif key == "KEY_PPAGE":
+            elif key == "KEY_PPAGE" and self.current_threads:
                 if self.current_thread_index > 0:
                     self.current_thread_index -= 1
                     self.current_thread = self.current_threads[self.current_thread_index]
@@ -232,7 +232,10 @@ class AustinTUI:
         self.austin.start()
 
         if (self.austin.start_event.wait(1)):
-            curses.wrapper(self.run)
+            try:
+                curses.wrapper(self.run)
+            except e:
+                print(e)
         else:
             print("Austin took too long to start. Terminating...")
             exit(1)
