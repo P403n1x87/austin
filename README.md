@@ -32,6 +32,7 @@
   <a href="#installation"><b>Installation</b></a>&nbsp;&bull;
   <a href="#usage"><b>Usage</b></a>&nbsp;&bull;
   <a href="#compatibility"><b>Compatibility</b></a>&nbsp;&bull;
+  <a href="#why--austin"><b>Why <img src="art/austin_logo.svg" height="20px" /> Austin</b></a>&nbsp;&bull;
   <a href="#examples"><b>Examples</b></a>
 </p>
 
