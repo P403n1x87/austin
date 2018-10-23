@@ -20,12 +20,35 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef AUSTIN_H
-#define AUSTIN_H
+#ifndef ARGPARSE_H
+#define ARGPARSE_H
+
+#include <stdlib.h>
+
+#include "stats.h"
+
+#ifndef ARGPARSE_C
+extern ctime_t t_sampling_interval;
+extern pid_t   attach_pid;
+extern int     exclude_empty;
+extern int     sleepless;
+extern char *  format;
+#endif
 
 
-#define PROGRAM_NAME                    "austin"
-#define VERSION                         "0.6.0-beta"
+#define ARG_ARGUMENT                   0
 
+#define ARG_STOP_PARSING               1
+#define ARG_CONTINUE_PARSING           0
+#define ARG_MISSING_OPT_ARG           -1
+#define ARG_UNRECOGNISED_LONG_OPT     -2
+#define ARG_UNRECOGNISED_OPT          -3
+#define ARG_INVALID_VALUE             -4
+#define ARG_UNEXPECTED_OPT_ARG        -5
+
+
+int parse_args(int argc, char ** argv);
+
+// TODO: Implement error.
 
 #endif

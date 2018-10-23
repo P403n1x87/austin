@@ -55,6 +55,7 @@
 #define EPROCFORK             ((4 << 3) + 1)
 #define EPROCVM               ((4 << 3) + 2)
 #define EPROCISTIMEOUT        ((4 << 3) + 3)
+#define EPROCATTACH           ((4 << 3) + 4)
 
 
 #ifdef ERROR_C

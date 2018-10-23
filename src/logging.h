@@ -23,11 +23,8 @@
 #ifndef LOGGING_H
 #define LOGGING_H
 
-#include <syslog.h>
-
-
-#define log_header() log_i("============================  AUSTIN  ╦̵̵̿╤─ ҉ ~ •  ============================\n")
-#define log_footer() log_i("============================================================================\n")
+#define log_header() log_i("============================  AUSTIN  ╦̵̵̿╤─ ҉ ~ •  ============================")
+#define log_footer() log_i("============================================================================")
 
 
 void
@@ -35,16 +32,30 @@ logger_init(void);
 
 
 void
-log_e(const char *, ...);
+log_f(const char *, ...);
 
 void
-log_d(const char *, ...);
+log_e(const char *, ...);
 
 void
 log_w(const char *, ...);
 
 void
 log_i(const char *, ...);
+
+#if defined(DEBUG) || defined(TRACE)
+void
+log_d(const char *, ...);
+#else
+#define log_d(f, args...) {}
+#endif
+
+#ifdef TRACE
+void
+log_t(const char *, ...);
+#else
+#define log_t(f, args...) {}
+#endif
 
 void
 log_version(void);

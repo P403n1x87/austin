@@ -31,11 +31,11 @@ typedef struct {
 
 
 typedef struct {
+  proc_vm_map_block_t bss;
+  proc_vm_map_block_t heap;
   proc_vm_map_block_t elf;
   proc_vm_map_block_t dynsym;
   proc_vm_map_block_t rodata;
-  proc_vm_map_block_t heap;
-  proc_vm_map_block_t bss;
 } proc_vm_map_t;
 
 
@@ -54,7 +54,7 @@ typedef struct {
 
   // Symbols from .dynsym
   void          * tstate_curr_raddr;
-  void          * py_runtime;
+  void          * py_runtime_raddr;
 
   void          * is_raddr;
 } py_proc_t;

@@ -46,7 +46,7 @@ class SampledFrame:
 
     def __eq__(self, other):
         """Two frames are the same if they represent the same function."""
-        return self.function == other.function
+        return self.function == other.function if other else False
 
 
 # -----------------------------------------------------------------------------
