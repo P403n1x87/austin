@@ -80,7 +80,6 @@ typedef struct {
 
 typedef struct {
   int version;
-  int minor;
 } py_bytes_v;
 
 
