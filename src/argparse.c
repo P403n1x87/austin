@@ -65,6 +65,13 @@ strtonum(char * str, long * num) {
 
 #include <argp.h>
 
+const char * argp_program_version = PROGRAM_NAME " " VERSION;
+
+const char * argp_program_bug_address = \
+  "<https://github.com/P403n1x87/austin/issues>";
+
+static const char * doc = "Austin -- A frame stack sampler for Python.";
+
 #else
 
 #define ARG_USAGE -1
@@ -78,13 +85,6 @@ typedef struct argp_option {
 } arg_option;
 
 #endif
-
-const char * argp_program_version = PROGRAM_NAME " " VERSION;
-
-const char * argp_program_bug_address = \
-  "<https://github.com/P403n1x87/austin/issues>";
-
-static const char * doc = "Austin -- A frame stack sampler for Python.";
 
 static struct argp_option options[] = {
   {
