@@ -58,7 +58,7 @@ py_thread_new_from_raddr(raddr_t * raddr) {
       else {
         register int limit = FRAME_LIMIT;
         last_frame = py_frame;
-        while (py_frame != NULL && limit--) {
+        while (py_frame != NULL && --limit) {
           if (py_frame->invalid) {
             error = ETHREADNOFRAME;
             py_frame__destroy(last_frame);
@@ -70,6 +70,8 @@ py_thread_new_from_raddr(raddr_t * raddr) {
 
           py_frame = py_frame__prev(py_frame);
         }
+        if (!limit)
+          log_w("Frames limit reached. Discarding the rest");
       }
     }
   }
