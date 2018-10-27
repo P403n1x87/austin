@@ -30,252 +30,97 @@
 
 #define LATEST_VERSION                  &python_v3_7
 
+#define PY_CODE(s) {                    \
+  sizeof(s),                            \
+  offsetof(s, co_filename),             \
+  offsetof(s, co_name),                 \
+  offsetof(s, co_lnotab),               \
+  offsetof(s, co_firstlineno)           \
+}
 
-// ---- Python 2.3 ------------------------------------------------------------
+#define PY_FRAME(s) {                   \
+  sizeof(s),                            \
+  offsetof(s, f_back),                  \
+  offsetof(s, f_code),                  \
+  offsetof(s, f_lasti),                 \
+}
 
-python_v python_v2_3 = {
-  // py_code
-  {
-    sizeof(PyCodeObject2),
+/* Hack. Python 3.3 and below don't have the prev field */
+#define PY_THREAD_H(s) {                \
+  sizeof(s),                            \
+  offsetof(s, next),                    \
+  offsetof(s, next),                    \
+  offsetof(s, interp),                  \
+  offsetof(s, frame),                   \
+  offsetof(s, thread_id)                \
+}
 
-    offsetof(PyCodeObject2, co_filename),
-    offsetof(PyCodeObject2, co_name),
-    offsetof(PyCodeObject2, co_lnotab),
-    offsetof(PyCodeObject2, co_firstlineno)
-  },
+#define PY_THREAD(s) {                  \
+  sizeof(s),                            \
+  offsetof(s, prev),                    \
+  offsetof(s, next),                    \
+  offsetof(s, interp),                  \
+  offsetof(s, frame),                   \
+  offsetof(s, thread_id)                \
+}
 
-  // py_frame
-  {
-    sizeof(PyFrameObject2_3),
+#define PY_UNICODE(n) {                 \
+  n                                     \
+}
 
-    offsetof(PyFrameObject2_3, f_back),
-    offsetof(PyFrameObject2_3, f_code),
-    offsetof(PyFrameObject2_3, f_lasti),
-  },
+#define PY_BYTES(n) {                   \
+  n                                     \
+}
 
-  // py_thread
-  {
-    sizeof(PyThreadState2_3),
 
-    offsetof(PyThreadState2_3, next), /* Hack. Python 3.3 doesn't have this field */
-    offsetof(PyThreadState2_3, next),
-    offsetof(PyThreadState2_3, interp),
-    offsetof(PyThreadState2_3, frame),
-    offsetof(PyThreadState2_3, thread_id)
-  },
+// ---- Python 2 --------------------------------------------------------------
 
-  // py_unicode
-  {
-    2
-  },
-
-  // py_bytes
-  {
-    2, 3
-  }
+python_v python_v2 = {
+  PY_CODE     (PyCodeObject2),
+  PY_FRAME    (PyFrameObject2),
+  PY_THREAD_H (PyThreadState2),
+  PY_UNICODE  (2),
+  PY_BYTES    (2)
 };
-
-
-// ---- Python 2.5 ------------------------------------------------------------
-
-python_v python_v2_5 = {
-  // py_code
-  {
-    sizeof(PyCodeObject2),
-
-    offsetof(PyCodeObject2, co_filename),
-    offsetof(PyCodeObject2, co_name),
-    offsetof(PyCodeObject2, co_lnotab),
-    offsetof(PyCodeObject2, co_firstlineno)
-  },
-
-  // py_frame
-  {
-    sizeof(PyFrameObject2_3),
-
-    offsetof(PyFrameObject2_3, f_back),
-    offsetof(PyFrameObject2_3, f_code),
-    offsetof(PyFrameObject2_3, f_lasti),
-  },
-
-  // py_thread
-  {
-    sizeof(PyThreadState2_3),
-
-    offsetof(PyThreadState2_3, next), /* Hack. Python 3.3 doesn't have this field */
-    offsetof(PyThreadState2_3, next),
-    offsetof(PyThreadState2_3, interp),
-    offsetof(PyThreadState2_3, frame),
-    offsetof(PyThreadState2_3, thread_id)
-  },
-
-  // py_unicode
-  {
-    2
-  },
-
-  // py_bytes
-  {
-    2, 5
-  }
-};
-
 
 // ---- Python 3.3 ------------------------------------------------------------
 
 python_v python_v3_3 = {
-  // py_code
-  {
-    sizeof(PyCodeObject3_3),
-
-    offsetof(PyCodeObject3_3, co_filename),
-    offsetof(PyCodeObject3_3, co_name),
-    offsetof(PyCodeObject3_3, co_lnotab),
-    offsetof(PyCodeObject3_3, co_firstlineno)
-  },
-
-  // py_frame
-  {
-    sizeof(PyFrameObject2_3),
-
-    offsetof(PyFrameObject2_3, f_back),
-    offsetof(PyFrameObject2_3, f_code),
-    offsetof(PyFrameObject2_3, f_lasti),
-  },
-
-  // py_thread
-  {
-    sizeof(PyThreadState2_3),
-
-    offsetof(PyThreadState2_3, next), /* Hack. Python 3.3 doesn't have this field */
-    offsetof(PyThreadState2_3, next),
-    offsetof(PyThreadState2_3, interp),
-    offsetof(PyThreadState2_3, frame),
-    offsetof(PyThreadState2_3, thread_id)
-  },
-
-  // py_unicode
-  {
-    3
-  }
+  PY_CODE     (PyCodeObject3_3),
+  PY_FRAME    (PyFrameObject2),
+  PY_THREAD_H (PyThreadState2),
+  PY_UNICODE  (3),
+  PY_BYTES    (3)
 };
-
 
 // ---- Python 3.4 ------------------------------------------------------------
 
 python_v python_v3_4 = {
-  // py_code
-  {
-    sizeof(PyCodeObject3_3),
-
-    offsetof(PyCodeObject3_3, co_filename),
-    offsetof(PyCodeObject3_3, co_name),
-    offsetof(PyCodeObject3_3, co_lnotab),
-    offsetof(PyCodeObject3_3, co_firstlineno)
-  },
-
-  // py_frame
-  {
-    sizeof(PyFrameObject2_3),
-
-    offsetof(PyFrameObject2_3, f_back),
-    offsetof(PyFrameObject2_3, f_code),
-    offsetof(PyFrameObject2_3, f_lasti),
-  },
-
-  // py_thread
-  {
-    sizeof(PyThreadState3_4),
-
-    offsetof(PyThreadState3_4, prev),
-    offsetof(PyThreadState3_4, next),
-    offsetof(PyThreadState3_4, interp),
-    offsetof(PyThreadState3_4, frame),
-    offsetof(PyThreadState3_4, thread_id)
-  },
-
-  // py_unicode
-  {
-    3
-  }
+  PY_CODE     (PyCodeObject3_3),
+  PY_FRAME    (PyFrameObject2),
+  PY_THREAD   (PyThreadState3_4),
+  PY_UNICODE  (3),
+  PY_BYTES    (3)
 };
-
 
 // ---- Python 3.6 ------------------------------------------------------------
 
 python_v python_v3_6 = {
-  {
-    sizeof(PyCodeObject3_6),
-
-    offsetof(PyCodeObject3_6, co_filename),
-    offsetof(PyCodeObject3_6, co_name),
-    offsetof(PyCodeObject3_6, co_lnotab),
-    offsetof(PyCodeObject3_6, co_firstlineno)
-  },
-
-  // py_frame
-  {
-    sizeof(PyFrameObject2_3),
-
-    offsetof(PyFrameObject2_3, f_back),
-    offsetof(PyFrameObject2_3, f_code),
-    offsetof(PyFrameObject2_3, f_lasti),
-  },
-
-  // py_thread
-  {
-    sizeof(PyThreadState3_4),
-
-    offsetof(PyThreadState3_4, prev),
-    offsetof(PyThreadState3_4, next),
-    offsetof(PyThreadState3_4, interp),
-    offsetof(PyThreadState3_4, frame),
-    offsetof(PyThreadState3_4, thread_id)
-  },
-
-  // py_unicode
-  {
-    3
-  }
+  PY_CODE     (PyCodeObject3_6),
+  PY_FRAME    (PyFrameObject2),
+  PY_THREAD   (PyThreadState3_4),
+  PY_UNICODE  (3),
+  PY_BYTES    (3)
 };
-
 
 // ---- Python 3.7 ------------------------------------------------------------
 
 python_v python_v3_7 = {
-  {
-    sizeof(PyCodeObject3_6),
-
-    offsetof(PyCodeObject3_6, co_filename),
-    offsetof(PyCodeObject3_6, co_name),
-    offsetof(PyCodeObject3_6, co_lnotab),
-    offsetof(PyCodeObject3_6, co_firstlineno)
-  },
-
-  // py_frame
-  {
-    sizeof(PyFrameObject3_7),
-
-    offsetof(PyFrameObject3_7, f_back),
-    offsetof(PyFrameObject3_7, f_code),
-    offsetof(PyFrameObject3_7, f_lasti),
-  },
-
-  // py_thread
-  {
-    sizeof(PyThreadState3_4),
-
-    offsetof(PyThreadState3_4, prev),
-    offsetof(PyThreadState3_4, next),
-    offsetof(PyThreadState3_4, interp),
-    offsetof(PyThreadState3_4, frame),
-    offsetof(PyThreadState3_4, thread_id)
-  },
-
-  // py_unicode
-  {
-    3
-  }
+  PY_CODE     (PyCodeObject3_6),
+  PY_FRAME    (PyFrameObject3_7),
+  PY_THREAD   (PyThreadState3_4),
+  PY_UNICODE  (3),
+  PY_BYTES    (3)
 };
 
 
@@ -293,61 +138,44 @@ set_version(int version) {
     case 0:
     case 1:
     case 2:
-      UNSUPPORTED_VERSION;
+      UNSUPPORTED_VERSION;  // NOTE: These versions haven't been tested.
 
-    // 2.3, 2.4
+    // 2.3, 2.4, 2.5, 2.6, 2.7
     case 3:
     case 4:
-      py_v = &python_v2_3;
-      break;
-
-    // 2.5, 2.6, 2.7
     case 5:
     case 6:
-    case 7:
-      py_v = &python_v2_5;
+    case 7: py_v = &python_v2;
       break;
 
-    default:
+    default: py_v = &python_v2;
       UNSUPPORTED_VERSION;
-      py_v = &python_v2_5;
     }
     break;
 
   // ---- Python 3 ------------------------------------------------------------
   case 3:
     switch (minor) {
-
-    // NOTE: These versions haven't been tested.
     case 0:
     case 1:
     case 2:
-      UNSUPPORTED_VERSION;
+      UNSUPPORTED_VERSION;  // NOTE: These versions haven't been tested.
 
     // 3.3
-    case 3:
-      py_v = &python_v3_3;
-      break;
+    case 3: py_v = &python_v3_3; break;
 
     // 3.4, 3.5
     case 4:
-    case 5:
-      py_v = &python_v3_4;
-      break;
+    case 5: py_v = &python_v3_4; break;
 
     // 3.6
-    case 6:
-      py_v = &python_v3_6;
-      break;
+    case 6: py_v = &python_v3_6; break;
 
     // 3.7
-    case 7:
-      py_v = &python_v3_7;
-      break;
+    case 7: py_v = &python_v3_7; break;
 
-    default:
+    default: py_v = LATEST_VERSION;
       UNSUPPORTED_VERSION;
-      py_v = LATEST_VERSION;
     }
   }
 }

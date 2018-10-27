@@ -150,7 +150,7 @@ typedef struct _frame2_3 {
 
     int f_lasti;                /* Last instruction if called */
     int f_lineno;               /* Current line number */
-} PyFrameObject2_3;
+} PyFrameObject2;
 
 typedef struct _frame3_7 {
     PyObject_VAR_HEAD
@@ -171,7 +171,7 @@ typedef struct _frame3_7 {
 } PyFrameObject3_7;
 
 typedef union {
-  PyFrameObject2_3 v2_3;
+  PyFrameObject2   v2;
   PyFrameObject3_7 v3_7;
 } PyFrameObject;
 
@@ -223,7 +223,7 @@ typedef struct _ts3_3 {
 
     PyObject *async_exc; /* Asynchronous exception to raise */
     long thread_id; /* Thread id where this tstate was created */
-} PyThreadState2_3;
+} PyThreadState2;
 
 
 typedef struct _ts3_4 {
@@ -261,7 +261,7 @@ typedef struct _ts3_4 {
 
 
 typedef union {
-  PyThreadState2_3 v3_3;
+  PyThreadState2   v2;
   PyThreadState3_4 v3_4;
 } PyThreadState;
 
