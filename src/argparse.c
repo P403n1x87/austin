@@ -72,6 +72,20 @@ const char * argp_program_bug_address = \
 
 static const char * doc = "Austin -- A frame stack sampler for Python.";
 
+#else
+
+#define ARG_USAGE -1
+
+typedef struct argp_option {
+  const char * long_name;
+  int          opt;
+  const char * has_arg;
+  int          _flag;     /* Unused */
+  const char * _doc;      /* Unused */
+} arg_option;
+
+#endif
+
 static struct argp_option options[] = {
   {
     "interval",     'i', "n_usec",      0,
@@ -93,9 +107,22 @@ static struct argp_option options[] = {
     "pid",          'p', "PID",         0,
     "The the ID of the process to which Austin should attach."
   },
-  {0}
+  #ifndef PL_LINUX
+  {
+    "help",         '?', NULL
+  },
+  {
+    "usage",        ARG_USAGE, NULL
+  },
+  {
+    "version",      'V', NULL
+  },
+  #endif
+  {0, 0, 0}
 };
 
+
+#ifdef PL_LINUX
 
 // ----------------------------------------------------------------------------
 static int
@@ -157,13 +184,6 @@ parse_opt (int key, char *arg, struct argp_state *state)
 #else                                                               /* !LINUX */
 #include <stdio.h>
 #include <string.h>
-
-
-typedef struct {
-  const char *        long_name;
-  const char          opt;
-  int                 has_arg;
-} arg_option;
 
 
 // Argument callback. Called on every argument parser event.
@@ -337,36 +357,6 @@ static const char * usage_msg = \
 "            [--interval=n_usec] [--pid=PID] [--sleepless] [--help] [--usage]\n"
 "            [--version] command [ARG...]\n";
 
-#define ARG_USAGE -1
-
-static arg_option opts[] = {
-  {
-    "interval",     'i', 1
-  },
-  {
-    "alt-format",   'a', 0
-  },
-  {
-    "exclude-empty",'e', 0
-  },
-  {
-    "sleepless",    's', 0
-  },
-  {
-    "pid",          'p', 1
-  },
-  {
-    "help",         '?', 0
-  },
-  {
-    "usage",        ARG_USAGE,  0
-  },
-  {
-    "version",      'V', 0
-  },
-  {0, 0, 0}
-};
-
 
 // ----------------------------------------------------------------------------
 static int
@@ -434,7 +424,7 @@ parse_args(int argc, char ** argv) {
   argp_parse(&args, argc, argv, 0, 0, 0);
 
   #else
-  exec_arg = arg_parse(opts, cb, argc, argv) - 1;
+  exec_arg = arg_parse(options, cb, argc, argv) - 1;
   #endif
 
   return exec_arg;
