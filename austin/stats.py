@@ -1,3 +1,4 @@
+import copy
 from collections import deque
 from threading import RLock
 
@@ -154,3 +155,7 @@ class Stats:
             self.current_threads = {}
 
         return stacks
+
+    @atomic
+    def get_thread_stack(self, thread):
+        return copy.deepcopy(self.threads[thread])
