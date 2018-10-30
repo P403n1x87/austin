@@ -24,7 +24,10 @@ def ellipsis(text, length):
     if len(text) <= length:
         return text
 
-    f, rest = text.split()
+    try:
+        f, rest = text.split()
+    except ValueError:
+        f, rest = text, ""
 
     if len(f) > length:
         return f[:length-3]+"..."
@@ -133,11 +136,15 @@ class AustinTUI:
 
         scr.refresh()
 
-    def current_view(self, scr, stacks, thread):
+    def current_view(self, scr, thread):
         """Display the last sample only.
 
         This representation gives a live snapshot of what is happening.
         """
+        stacks = self.stats.get_current_stacks()
+        if not stacks:
+            return
+
         # Reverse the stack (top frames first)
         stack = stacks[thread][::-1]
         if not stack:
@@ -181,6 +188,7 @@ class AustinTUI:
 
             tail = ("└" if node.children else "") + char + prefix
             name_len = w - len(tail) - 33
+
             line = (
                 " {:^6}  {:^6}  {:5.2f}%  {:5.2f}%  {:" +
                 str(name_len) + "}").format(
@@ -189,8 +197,8 @@ class AustinTUI:
                     node.own_time / 1e4 / self.duration,
                     node.total_time / 1e4 / self.duration,
                     ellipsis(node.function, name_len - 1),
-                ) + tail
-            line_store.append(line)
+                )
+            line_store.append((line, tail, getattr(node, "is_active", False)))
 
         def print_children(nodes, prefix=""):
             if not nodes:
@@ -222,16 +230,16 @@ class AustinTUI:
             writeln(self.table_pad, 0, 1, "< Empty >")
             return
 
-        for l in line_store[::-1]:
-            writeln(self.table_pad, i, 0, l)
+        for l, t, a in line_store[::-1]:
+            self.table_pad.addstr(i, 0, l, curses.color_pair(1) if not a else 0)
+            self.table_pad.addstr(i, len(l), t, curses.color_pair(1))
             i += 1
 
     def update_view(self, scr):
-        stacks = self.stats.get_current_stacks()
-        if not stacks:
+        self.current_threads = self.stats.get_current_threads()
+        if not self.current_threads:
             return
 
-        self.current_threads = sorted(stacks.keys())
         if (
             not self.current_thread or
             self.current_thread not in self.current_threads
@@ -263,7 +271,7 @@ class AustinTUI:
         if self.is_full_view:
             self.full_view(scr, thread)
         else:
-            self.current_view(scr, stacks, thread)
+            self.current_view(scr, thread)
 
         scr.refresh()
 
@@ -303,7 +311,9 @@ class AustinTUI:
             return 1
 
     def run(self, scr):
+        curses.start_color()
         curses.use_default_colors()
+        curses.init_pair(1, 246, -1)
         curses.curs_set(False)
         scr.clear()
         scr.timeout(1000)
