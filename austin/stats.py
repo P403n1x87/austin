@@ -1,3 +1,4 @@
+import copy
 from collections import deque
 from threading import RLock
 
@@ -154,3 +155,24 @@ class Stats:
             self.current_threads = {}
 
         return stacks
+
+    @atomic
+    def get_current_threads(self):
+        return sorted(self.current_threads.keys())
+
+    @atomic
+    def get_thread_stack(self, thread):
+        if thread not in self.current_threads:
+            return None
+
+        retval = copy.deepcopy(self.threads[thread])
+        
+        frame_list = retval
+        for i in self.current_threads[thread]:
+            if frame_list[i]:
+                frame_list[i].is_active = True
+                frame_list = frame_list[i].children
+            else:
+                break
+
+        return retval
