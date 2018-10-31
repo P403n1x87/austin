@@ -11,8 +11,8 @@
     <img src="https://travis-ci.org/P403n1x87/austin.svg?branch=master"
          alt="Travis CI Build Status">
   </a>
-  <img src="https://img.shields.io/badge/version-0.6.0--beta-blue.svg"
-       alt="Version 0.6.0-beta">
+  <img src="https://img.shields.io/badge/version-0.6.1--beta-blue.svg"
+       alt="Version 0.6.1-beta">
   <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md">
     <img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg"
          alt="source{d} design document">
@@ -42,7 +42,7 @@
 
 <h3 align="center">A frame stack sampler for CPython</h3>
 
-[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-0.6.0--beta-blue.svg) [![License](https://img.shields.io/badge/license-GPLv3-ff69b4.svg)](https://github.com/P403n1x87/austin/blob/master/LICENSE.md)
+[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-0.6.1--beta-blue.svg) [![License](https://img.shields.io/badge/license-GPLv3-ff69b4.svg)](https://github.com/P403n1x87/austin/blob/master/LICENSE.md)
 
 -->
 

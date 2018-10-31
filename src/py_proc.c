@@ -192,10 +192,8 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   log_t("PyThreadState head loaded @ %p", is.tstate_head);
 
-  if (
-    (V_FIELD(void*, tstate_head, py_thread, o_interp)) != raddr ||
-    (V_FIELD(void*, tstate_head, py_thread, o_frame))  == 0
-  ) return 1;
+  if (V_FIELD(void*, tstate_head, py_thread, o_interp) != raddr)
+    return 1;
 
   log_d("Found possible interpreter state @ %p (offset %p).", raddr, raddr - self->map.heap.base);
 
