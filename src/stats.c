@@ -136,10 +136,10 @@ stats_check_duration(ctime_t delta, ctime_t sampling_interval) {
 
 void
 stats_log_metrics(void) {
-  log_i("Max/min/avg sampling time (in usecs): %lu/%lu/%lu",
-    stats_get_max_sampling_time(),
+  log_i("Sampling time statistics (min/avg/max) : %lu/%lu/%lu us",
     stats_get_min_sampling_time(),
-    stats_get_avg_sampling_time()
+    stats_get_avg_sampling_time(),
+    stats_get_max_sampling_time()
   );
 
   log_i("Long-running sample rate: %d samples over sampling interval/%d (%.2f %%)", \

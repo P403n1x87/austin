@@ -39,6 +39,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include "argparse.h"
 #include "dict.h"
 #include "error.h"
 #include "logging.h"
@@ -52,15 +53,15 @@
 // ---- PRIVATE ---------------------------------------------------------------
 
 // ---- Retry Timer ----
-#define INIT_RETRY_SLEEP             100  /* usecs */
-#define INIT_RETRY_CNT              1000  /* Retry for 0.1s before giving up. */
+#define INIT_RETRY_SLEEP             100   /* us */
+#define INIT_RETRY_CNT       (timeout*10)  /* Retry for 0.1s (default) before giving up. */
 
-#define TIMER_RESET (try_cnt = INIT_RETRY_CNT);
-#define TIMER_START while (--try_cnt) { usleep(INIT_RETRY_SLEEP);
-#define TIMER_STOP  (try_cnt = 1);
-#define TIMER_END   }
+#define TIMER_RESET                     (try_cnt=INIT_RETRY_CNT);
+#define TIMER_START                     while (--try_cnt>=0) { usleep(INIT_RETRY_SLEEP);
+#define TIMER_STOP                      (try_cnt = 0);
+#define TIMER_END                       }
 
-static int try_cnt = INIT_RETRY_CNT;
+static int try_cnt;
 
 
 // ----------------------------------------------------------------------------
@@ -183,7 +184,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   PyThreadState      tstate_head;
 
   if (py_proc__get_type(self, raddr, is) != 0)
-    return -1;  // This signals that we are out of bounds.
+    return OUT_OF_BOUND;
 
   log_t("PyInterpreterState loaded @ %p", raddr);
 
@@ -231,9 +232,13 @@ _py_proc__scan_heap(py_proc_t * self) {
     (void *) raddr < upper_bound;
     raddr++
   ) {
-    if (_py_proc__check_interp_state(self, raddr) == 0) {
+    switch (_py_proc__check_interp_state(self, raddr)) {
+    case 0:
       self->is_raddr = raddr;
       return 0;
+
+    case OUT_OF_BOUND:
+      return OUT_OF_BOUND;
     }
   }
 
@@ -301,7 +306,7 @@ _py_proc__deref_interp_state(py_proc_t * self) {
     // if (
     //   _py_proc__is_bss_raddr(self, self->py_runtime_raddr) == 0 &&
     //   _py_proc__is_heap_raddr(self, self->py_runtime_raddr) == 0
-    // ) return -1;
+    // ) return OUT_OF_BOUND;
 
     if (py_proc__get_type(self, self->py_runtime_raddr, py_runtime) != 0)
       return 1;
@@ -319,7 +324,7 @@ _py_proc__deref_interp_state(py_proc_t * self) {
   if (
     _py_proc__is_bss_raddr(self, self->tstate_curr_raddr) == 0 &&
     _py_proc__is_heap_raddr(self, self->tstate_curr_raddr) == 0
-  ) return -1;
+  ) return OUT_OF_BOUND;
   #endif
 
   if (py_proc__get_type(self, self->tstate_curr_raddr, tstate_current) != 0)
@@ -362,7 +367,7 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
       );
       return 0;
 
-    case -1:
+    case OUT_OF_BOUND:
       log_d("Symbol address not within VM maps (shared object?)");
       TIMER_STOP
       break;
@@ -396,7 +401,7 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
   if (self->bss == NULL)
     return 1;
 
-  TIMER_RESET
+  try_cnt = 10;
   TIMER_START
     if (_py_proc__scan_bss(self) == 0)
       return 0;
@@ -406,10 +411,15 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
   log_w("Bss scan unsuccessful. Scanning heap directly...");
 
   // TODO: Consider copying heap over and check for pointers
-  TIMER_RESET
+  try_cnt = 10;
   TIMER_START
-    if (_py_proc__scan_heap(self) == 0)
+    switch (_py_proc__scan_heap(self)) {
+    case 0:
       return 0;
+
+    case OUT_OF_BOUND:
+      TIMER_STOP
+    }
   TIMER_END
   #endif
 
@@ -421,6 +431,9 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__run(py_proc_t * self) {
+  log_d("Timeout: %dms", timeout);
+
+  TIMER_RESET
   TIMER_START
     if (_py_proc__init(self) == 0)
       break;
