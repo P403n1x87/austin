@@ -1,7 +1,14 @@
+os:
+  - windows
+  - linux
+  - osx
+
 language: c
 
 compiler:
   - gcc
+
+osx_image: xcode10
 
 sudo: required
 
@@ -19,7 +26,7 @@ addons:
     - python2.5
     - python2.6
     - python2.7
-    
+
     - python3.3
     - python3.4
     - python3.5
@@ -27,10 +34,13 @@ addons:
     - python3.7
 
 before_script:
-  autoreconf --install
+  if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then autoreconf --install; fi
 
 script:
-  ./configure && make && sudo make check
+  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then ./configure && make && sudo make check; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then gcc -Wall -O3 -o austin src/*.c;        fi
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then gcc -Wall -O3 -o austin src/*.c;        fi
 
 after_failure:
-  - cat test-suite.log
+  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then cat /var/log/syslog.log | grep austin; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then cat test-suite.log;                    fi
