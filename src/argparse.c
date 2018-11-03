@@ -22,6 +22,7 @@
 
 #define ARGPARSE_C
 
+#include <limits.h>
 #include <stdlib.h>
 #include <sys/types.h>
 
