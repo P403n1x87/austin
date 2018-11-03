@@ -73,18 +73,30 @@ _py_proc__analyze_elf64(py_proc_t * self) {
   Elf64_Shdr  * p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr.e_shstrndx);
   char        * sh_name_base = elf_map + p_shstrtab->sh_offset;
   Elf64_Shdr  * p_dynsym     = NULL;
+  Elf64_Addr    base         = 0;
+
+  if (ehdr.e_phnum) {
+    Elf64_Phdr * phdr = (Elf64_Phdr *) (elf_map + ehdr.e_phoff);
+    base = phdr->p_vaddr - phdr->p_offset;
+    if (!base)
+      base = (Elf64_Addr) self->map.elf.base;
+    log_d("Base @ %p", base);
+  }
 
   for (Elf64_Off sh_off = ehdr.e_shoff; \
-    map_flag != (DYNSYM_MAP | RODATA_MAP) && sh_off < elf_map_size; \
+    map_flag != DYNSYM_MAP && sh_off < elf_map_size; \
     sh_off += ehdr.e_shentsize \
   ) {
     p_shdr = (Elf64_Shdr *) (elf_map + sh_off);
 
     if (
+      !(map_flag & DYNSYM_MAP) &&
       p_shdr->sh_type == SHT_DYNSYM && \
       strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
-    ) p_dynsym = p_shdr;
-
+    ) {
+      p_dynsym = p_shdr;
+      map_flag |= DYNSYM_MAP;
+    }
     // NOTE: This might be required if the Python version is must be retrieved
     //       from the RO data section
     // else if (
@@ -111,7 +123,11 @@ _py_proc__analyze_elf64(py_proc_t * self) {
     ) {
       Elf64_Sym * sym      = (Elf64_Sym *) (elf_map + tab_off);
       char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
-      if ((hit_cnt = _py_proc__check_sym(self, sym_name, (void *) sym->st_value)))
+      // This leads to some good corrections, but it still fails in some cases.
+      void      * value    = (void *) sym->st_value >= self->map.bss.base && (void *) sym->st_value < self->map.bss.base + self->map.bss.size \
+        ? (void *) sym->st_value \
+        : (void *) base + (sym->st_value);
+      if ((hit_cnt = _py_proc__check_sym(self, sym_name, value)))
         break;
     }
   }
@@ -139,17 +155,40 @@ _py_proc__analyze_elf32(py_proc_t * self) {
   Elf32_Shdr  * p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr.e_shstrndx);
   char        * sh_name_base = elf_map + p_shstrtab->sh_offset;
   Elf32_Shdr  * p_dynsym     = NULL;
+  Elf32_Addr    base         = 0;
+
+  if (ehdr.e_phnum) {
+    Elf32_Phdr * phdr = (Elf32_Phdr *) (elf_map + ehdr.e_phoff);
+    base = phdr->p_vaddr - phdr->p_offset;
+    if (!base)
+      base = (Elf32_Addr) self->map.elf.base;
+    log_d("Base @ %p", base);
+  }
 
   for (Elf32_Off sh_off = ehdr.e_shoff; \
-    map_flag != (DYNSYM_MAP | RODATA_MAP) && sh_off < elf_map_size; \
+    map_flag != DYNSYM_MAP && sh_off < elf_map_size; \
     sh_off += ehdr.e_shentsize \
   ) {
     p_shdr = (Elf32_Shdr *) (elf_map + sh_off);
 
     if (
+      !(map_flag & DYNSYM_MAP) &&
       p_shdr->sh_type == SHT_DYNSYM && \
       strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
-    ) p_dynsym = p_shdr;
+    ) {
+      p_dynsym = p_shdr;
+      map_flag |= DYNSYM_MAP;
+    }
+    // NOTE: This might be required if the Python version is must be retrieved
+    //       from the RO data section
+    // else if (
+    //   p_shdr->sh_type == SHT_PROGBITS &&
+    //   strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
+    // ) {
+    //   self->map.rodata.base = (void *) p_shdr->sh_offset;
+    //   self->map.rodata.size = p_shdr->sh_size;
+    //   map_flag |= RODATA_MAP;
+    // }
   }
 
   register int hit_cnt = 0;
@@ -166,7 +205,11 @@ _py_proc__analyze_elf32(py_proc_t * self) {
     ) {
       Elf32_Sym * sym      = (Elf32_Sym *) (elf_map + tab_off);
       char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
-      if ((hit_cnt = _py_proc__check_sym(self, sym_name, (void *) sym->st_value)))
+      // This leads to some good corrections, but it still fails in some cases.
+      void      * value    = (void *) sym->st_value >= self->map.bss.base && (void *) sym->st_value < self->map.bss.base + self->map.bss.size \
+        ? (void *) sym->st_value \
+        : (void *) base + (sym->st_value);
+      if ((hit_cnt = _py_proc__check_sym(self, sym_name, value)))
         break;
     }
   }

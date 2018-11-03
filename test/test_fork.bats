@@ -8,7 +8,6 @@ invoke_austin() {
 }
 
 @test "Test Austin with Python 2.3" {
-  # skip # Austin fails to find a PyInterpreterState instance when run via bats
 	invoke_austin "2.3"
 }
 
