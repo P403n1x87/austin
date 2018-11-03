@@ -38,8 +38,11 @@ before_script:
 
 script:
   - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then ./configure && make && sudo make check; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then gcc -Wall -O3 -o austin src/*.c;        fi
-  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then gcc -Wall -O3 -o austin src/*.c;        fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then gcc -Wall -O3 -o src/austin src/*.c;    fi
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then gcc -Wall -O3 -o src/austin src/*.c;    fi
+
+after_success:
+  ./src/austin --usage
 
 after_failure:
   - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then cat /var/log/syslog.log | grep austin; fi
