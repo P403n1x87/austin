@@ -26,6 +26,10 @@
 
 #include <sys/types.h>
 
+
+#define OUT_OF_BOUND                  -1
+
+
 /**
  * Copy a data structure from the given remote address structure.
  * @param  raddr the remote address

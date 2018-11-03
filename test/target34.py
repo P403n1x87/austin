@@ -4,7 +4,7 @@ import threading
 
 def keep_cpu_busy():
     a = []
-    for i in range(10000000):
+    for i in range(30000000):
         a.append(i)
 
 if __name__ == "__main__":

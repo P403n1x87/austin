@@ -104,18 +104,24 @@ or `%TEMP%/austin.log` on Windows.
 # Usage
 
 ~~~
+Usage: austin [OPTION...] command [ARG...]
 Austin -- A frame stack sampler for Python.
 
   -a, --alt-format           alternative collapsed stack sample format.
   -e, --exclude-empty        do not output samples of threads with no frame
                              stacks.
-  -i, --interval=n_usec      Sampling interval (default is 500 usec).
+  -i, --interval=n_us        Sampling interval (default is 500us).
   -p, --pid=PID              The the ID of the process to which Austin should
                              attach.
   -s, --sleepless            suppress idle samples.
+  -t, --timeout=n_ms         Approximate start up wait time. Increase on slow
+                             machines (default is 100ms).
   -?, --help                 Give this help list
       --usage                Give a short usage message
   -V, --version              Print program version
+
+Mandatory or optional arguments to long options are also mandatory or optional
+for any corresponding short options.
 ~~~
 
 The output is a sequence of frame stack samples, one on each line. The format is
@@ -305,7 +311,7 @@ genuine or not.
 The following flame graph has been obtained with the command
 
 ~~~
-./austin -i 50 ./test.py | ./flamegraph.pl --countname=usec > test.svg
+./austin -i 50 ./test.py | ./flamegraph.pl --countname=us > test.svg
 ~~~
 
 where the sample `test.py` script has the following content

@@ -22,6 +22,7 @@
 
 #define ARGPARSE_C
 
+#include <limits.h>
 #include <stdlib.h>
 #include <sys/types.h>
 
@@ -31,6 +32,7 @@
 
 
 #define DEFAULT_SAMPLING_INTERVAL    100
+#define DEFAULT_INIT_RETRY_CNT      1000
 
 const char SAMPLE_FORMAT_NORMAL[]      = ";%s (%s);L%d";
 const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s (%s:%d)";
@@ -38,6 +40,7 @@ const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s (%s:%d)";
 
 // Globals for command line arguments
 ctime_t t_sampling_interval = DEFAULT_SAMPLING_INTERVAL;
+ctime_t timeout             = DEFAULT_INIT_RETRY_CNT;
 pid_t   attach_pid          = 0;
 int     exclude_empty       = 0;
 int     sleepless           = 0;
@@ -88,8 +91,12 @@ typedef struct argp_option {
 
 static struct argp_option options[] = {
   {
-    "interval",     'i', "n_usec",      0,
-    "Sampling interval (default is 500 usec)."
+    "interval",     'i', "n_us",      0,
+    "Sampling interval (default is 500us)."
+  },
+  {
+    "timeout",      't', "n_ms",      0,
+    "Approximate start up wait time. Increase on slow machines (default is 100ms)."
   },
   {
     "alt-format",   'a', NULL,          0,
@@ -145,8 +152,13 @@ parse_opt (int key, char *arg, struct argp_state *state)
   long l_pid;
   switch(key) {
   case 'i':
-    if (strtonum(arg, (long *) &t_sampling_interval) == 1 || t_sampling_interval < 0)
+    if (strtonum(arg, (long *) &t_sampling_interval) == 1 || t_sampling_interval > LONG_MAX)
       argp_error(state, "the sampling interval must be a positive integer");
+    break;
+
+  case 't':
+    if (strtonum(arg, (long *) &timeout) == 1 || timeout > LONG_MAX)
+      argp_error(state, "timeout must be a positive integer");
     break;
 
   case 'a':
@@ -339,10 +351,12 @@ static const char * help_msg = \
 "  -a, --alt-format           alternative collapsed stack sample format.\n"
 "  -e, --exclude-empty        do not output samples of threads with no frame\n"
 "                             stacks.\n"
-"  -i, --interval=n_usec      Sampling interval (default is 500 usec).\n"
+"  -i, --interval=n_us        Sampling interval (default is 500us).\n"
 "  -p, --pid=PID              The the ID of the process to which Austin should\n"
 "                             attach.\n"
 "  -s, --sleepless            suppress idle samples.\n"
+"  -t, --timeout=n_ms         Approximate start up wait time. Increase on slow\n"
+"                             machines (default is 100ms).\n"
 "  -?, --help                 Give this help list\n"
 "      --usage                Give a short usage message\n"
 "  -V, --version              Print program version\n"
@@ -353,8 +367,8 @@ static const char * help_msg = \
 "Report bugs to <https://github.com/P403n1x87/austin/issues>.\n";
 
 static const char * usage_msg = \
-"Usage: austin [-aes?V] [-i n_usec] [-p PID] [--alt-format] [--exclude-empty]\n"
-"            [--interval=n_usec] [--pid=PID] [--sleepless] [--help] [--usage]\n"
+"Usage: austin [-aes?V] [-i n_us] [-p PID] [--alt-format] [--exclude-empty]\n"
+"            [--interval=n_us] [--pid=PID] [--sleepless] [--help] [--usage]\n"
 "            [--version] command [ARG...]\n";
 
 
@@ -363,7 +377,14 @@ static int
 cb(const char opt, const char * arg) {
   switch (opt) {
   case 'i':
-    if (strtonum((char *) arg, (long *) &t_sampling_interval) == 1 || t_sampling_interval < 0) {
+    if (strtonum((char *) arg, (long *) &t_sampling_interval) == 1 || t_sampling_interval > LONG_MAX) {
+      puts(usage_msg);
+      return ARG_INVALID_VALUE;
+    }
+    break;
+
+  case 't':
+    if (strtonum((char *) arg, (long *) &timeout) == 1 || timeout > LONG_MAX) {
       puts(usage_msg);
       return ARG_INVALID_VALUE;
     }

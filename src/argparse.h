@@ -29,6 +29,7 @@
 
 #ifndef ARGPARSE_C
 extern ctime_t t_sampling_interval;
+extern ctime_t timeout;
 extern pid_t   attach_pid;
 extern int     exclude_empty;
 extern int     sleepless;

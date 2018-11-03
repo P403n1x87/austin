@@ -1,18 +1,18 @@
 #!/usr/bin/env bats
 
 invoke_austin() {
-  run src/austin -i 1000 python$1 test/target34.py
+  run src/austin -i 1000 -t 1000 python$1 test/target34.py
 	[ $status = 0 ]
   echo $output | grep "keep_cpu_busy (test/target34.py);L7 "
   echo $output | grep "keep_cpu_busy (test/target34.py);L8 "
 }
 
 @test "Test Austin with Python 2.3" {
-  skip # Austin fails to find a PyInterpreterState instance when run via bats
 	invoke_austin "2.3"
 }
 
 @test "Test Austin with Python 2.4" {
+  skip
 	invoke_austin "2.4"
 }
 
