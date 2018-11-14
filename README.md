@@ -77,8 +77,15 @@ operating systems is next in line.
 
 # Installation
 
-Installing Austin amounts to the usual `./configure`, `make` and `make install`
-finger gymnastic. The only dependency is the standard C library.
+Austin can be installed using `autotools` or as a snap from the Snap Store. The
+latter will automatically perform the steps of the `autotools` method with a
+single command
+
+## With `autotools`
+
+Installing Austin using `autotools` amounts to the usual `./configure`, `make`
+and `make install` finger gymnastic. The only dependency is the standard C
+library.
 
 ~~~ bash
 git clone --depth=1 https://github.com/P403n1x87/austin.git
@@ -100,6 +107,18 @@ so you can use just this command if you don't have `autoreconf` installed.
 
 Add `-DDEBUG` if you want a more verbose syslog output on UNIX-like systems,
 or `%TEMP%/austin.log` on Windows.
+
+## From the Snap Store
+
+Austin can be installed from the Snap Store with the following command
+
+~~~ bash
+sudo snap install austin --channel=beta
+~~~
+
+Note that this will fetch the latest sources from the `master` branch on
+GitHub and invoke the `autotools` steps.
+
 
 # Usage
 
