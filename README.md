@@ -15,7 +15,11 @@
        alt="Version 0.6.1-beta">
   <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md">
     <img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg"
-         alt="source{d} design document">
+         alt="LICENSE">
+  </a>
+  <a href="https://build.snapcraft.io/user/P403n1x87/austin">
+    <img src="https://build.snapcraft.io/badge/P403n1x87/austin.svg"
+         alt="Snap Status">
   </a>
 </p>
 
