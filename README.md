@@ -7,9 +7,21 @@
 <h3 align="center">A Frame Stack Sampler for CPython</h3>
 
 <p align="center">
+  <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" />
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px" />
+</p>
+
+<p align="center">
   <a href="https://travis-ci.org/P403n1x87/austin">
     <img src="https://travis-ci.org/P403n1x87/austin.svg?branch=master"
          alt="Travis CI Build Status">
+  </a>
+  <a href="https://build.snapcraft.io/user/P403n1x87/austin">
+    <img src="https://build.snapcraft.io/badge/P403n1x87/austin.svg"
+         alt="Snap Status">
   </a>
   <img src="https://img.shields.io/badge/version-0.6.1--beta-blue.svg"
        alt="Version 0.6.1-beta">
@@ -17,18 +29,12 @@
     <img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg"
          alt="LICENSE">
   </a>
-  <a href="https://build.snapcraft.io/user/P403n1x87/austin">
-    <img src="https://build.snapcraft.io/badge/P403n1x87/austin.svg"
-         alt="Snap Status">
-  </a>
 </p>
 
 <p align="center">
-  <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" />
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />
-  &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px" />
+  <a href="https://snapcraft.io/austin" title="Get it from the Snap Store">
+    <img src="https://snapcraft.io/static/images/badges/en/snap-store-black.svg" alt="" />
+  </a>
 </p>
 
 <p align="center">
@@ -117,11 +123,10 @@ or `%TEMP%/austin.log` on Windows.
 Austin can be installed from the Snap Store with the following command
 
 ~~~ bash
-sudo snap install austin --channel=beta
+sudo snap install austin --beta --classic
 ~~~
 
-Note that this will fetch the latest sources from the `master` branch on
-GitHub and invoke the `autotools` steps.
+[![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-white.svg)](https://snapcraft.io/austin)
 
 
 # Usage
