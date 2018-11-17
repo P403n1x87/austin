@@ -10,7 +10,9 @@ description: |
 grade: stable # must be 'stable' to release into candidate/stable channels
 confinement: classic # use 'strict' once you have the right plugs and slots
 
-architectures: [ i386, amd64 ]
+architectures:
+  - build-on: amd64
+  - build-on: i386
 
 parts:
   austin:
