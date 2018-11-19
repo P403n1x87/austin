@@ -8,6 +8,7 @@ invoke_austin() {
 }
 
 @test "Test Austin with Python 2.3" {
+  skip
 	invoke_austin "2.3"
 }
 
