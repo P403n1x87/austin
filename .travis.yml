@@ -50,3 +50,23 @@ after_success:
 after_failure:
   - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then cat /var/log/syslog.log | grep austin; fi
   - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then cat test-suite.log;                    fi
+
+before_deploy:
+  - export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+
+  - cd src
+  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then export ZIP_CMD="tar -Jcf" && export ARTEFACT="austin-${VERSION}-linux-amd64.tar.xz"; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then export ZIP_CMD="zip -r"   && export ARTEFACT="austin-${VERSION}-mac-x86_64.zip";     fi
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then export ZIP_CMD="zip"      && export ARTEFACT="austin-${VERSION}-win64.zip";          fi
+
+  - $ZIP_CMD $ARTEFACT austin
+
+  - git config --local user.name "Gabriele N. Tornetta"
+  - git config --local user.email ${GITHUB_EMAIL}
+  - git tag -a -m "Release $VERSION" $VERSION
+
+deploy:
+  provider: releases
+  api_key: $GITHUB_TOKEN
+  file: $ARTEFACT
+  skip_cleanup: true
