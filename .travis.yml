@@ -52,12 +52,12 @@ after_failure:
   - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then cat test-suite.log;                    fi
 
 before_deploy:
-  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export VERSION=$(cat src/austin.h | sed -E "s/.*VERSION[ ]+\"(.+)\"/\1/"); else export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p"); fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then export VERSION=$(cat src/austin.h | sed -n -E "s/.*VERSION[ ]+\"(.+)\"/\1/p"); else export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p"); fi
   - echo "==== Preparing to create GitHub Release for version $VERSION ===="
 
-  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then export ZIP_CMD="tar -Jcf"     && export ARTEFACT="austin-${VERSION}-linux-amd64.tar.xz"; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then export ZIP_CMD="zip -r"       && export ARTEFACT="austin-${VERSION}-mac-x86_64.zip";     fi
-  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then export ZIP_CMD="7zip a -tzip" && export ARTEFACT="austin-${VERSION}-win64.zip";          fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then export ZIP_CMD="tar -Jcf"   && export ARTEFACT="austin-${VERSION}-linux-amd64.tar.xz"; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then export ZIP_CMD="zip -r"     && export ARTEFACT="austin-${VERSION}-mac-x86_64.zip";     fi
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then export ZIP_CMD="7z a -tzip" && export ARTEFACT="austin-${VERSION}-win64.zip";          fi
   - echo " - Using command $ZIP_CMD to create artefact $ARTEFACT"
 
   - cd src
