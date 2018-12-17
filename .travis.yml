@@ -41,8 +41,8 @@ before_script:
 
 script:
   - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then ./configure && make && sudo make check; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then gcc -Wall -O3 -o src/austin src/*.c;    fi
-  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then gcc -Wall -O3 -o src/austin src/*.c;    fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then gcc -s -Wall -O3 -o src/austin src/*.c; fi
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then gcc -s -Wall -O3 -o src/austin src/*.c; fi
 
 after_success:
   ./src/austin --usage
@@ -56,9 +56,10 @@ before_deploy:
   - export TRAVIS_TAG=v$VERSION
   - echo "==== Preparing to create GitHub Release for version $VERSION ===="
 
-  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then export ZIP_CMD="tar -Jcf"   && export ARTEFACT="austin-${VERSION}-linux-amd64.tar.xz" && export AUSTIN_EXE=austin;     fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then export ZIP_CMD="zip -r"     && export ARTEFACT="austin-${VERSION}-mac-x86_64.zip"     && export AUSTIN_EXE=austin;     fi
-  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then export ZIP_CMD="7z a -tzip" && export ARTEFACT="austin-${VERSION}-win64.zip"          && export AUSTIN_EXE=austin.exe; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then export ZIP_CMD="tar -Jcf"   && export ZIP_SUFFIX="linux-amd64.tar.xz" && export AUSTIN_EXE=austin;     fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then export ZIP_CMD="zip -r"     && export ZIP_SUFFIX="mac-x86_64.zip"     && export AUSTIN_EXE=austin;     fi
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then export ZIP_CMD="7z a -tzip" && export ZIP_SUFFIX="win64.zip"          && export AUSTIN_EXE=austin.exe; fi
+  - export ARTEFACT="austin-${VERSION}-${ZIP_SUFFIX}"
   - echo " - Using command $ZIP_CMD to create artefact $ARTEFACT"
 
   - cd src
@@ -67,7 +68,7 @@ before_deploy:
 
   - git config --local user.name "Gabriele N. Tornetta"
   - git config --local user.email ${GITHUB_EMAIL}
-  - git tag -a -m "Release $VERSION" v$VERSION
+  - git tag -a -f -m "Release $VERSION" $TRAVIS_TAG
 
 deploy:
   provider: releases
