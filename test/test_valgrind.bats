@@ -1,6 +1,8 @@
 #!/usr/bin/env bats
 
 invoke_austin() {
+  if ! python$1 -V; then return; fi
+
   run valgrind \
     --error-exitcode=42 \
     --leak-check=full \

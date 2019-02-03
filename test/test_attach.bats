@@ -1,4 +1,6 @@
 attach_austin_2_3() {
+  if ! python$1 -V; then return; fi
+
   python$1 test/sleepy.py &
   sleep 5
   run src/austin -i 1000 -t 1000 -p $!
@@ -7,6 +9,8 @@ attach_austin_2_3() {
 }
 
 attach_austin() {
+  if ! python$1 -V; then return; fi
+
   python$1 test/sleepy.py &
   sleep 5
   run src/austin -i 1000 -t 1000 -p $!

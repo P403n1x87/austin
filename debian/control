@@ -2,10 +2,15 @@ Source: austin
 Section: devel
 Priority: optional
 Maintainer: Gabriele N. Tornetta <phoenix1987@gmail.com>
-Build-Depends: debhelper (>= 10)
-Standards-Version: 4.1.2
+Build-Depends: debhelper (>= 10),
+ bats,
+ valgrind,
+ python (>= 2.3),
+ python3 (>= 3.3)
+Standards-Version: 4.3.0
 Homepage: https://github.com/P403n1x87/austin
 Vcs-Git: https://github.com/P403n1x87/austin
+Vcs-Browser: https://github.com/P403n1x87/austin
 
 Package: austin
 Architecture: any

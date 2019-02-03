@@ -1,0 +1,5 @@
+version=4
+
+opts="filenamemangle=s/.+\/v?(\d\S+)\.tar\.gz/austin-$1\.tar\.gz/, \
+  uversionmangle=s/(\d)[_\.\-\+]?((RC|rc|pre|dev|beta|alpha)\d*)$/$1~$2/" \
+  https://github.com/P403n1x87/austin/tags .*/v?(\d\S+)\.tar\.gz

@@ -1,6 +1,8 @@
 #!/usr/bin/env bats
 
 invoke_austin() {
+  if ! python$1 -V; then return; fi
+
   run src/austin -i 1000 -t 1000 python$1 test/target34.py
 	[ $status = 0 ]
   echo $output | grep "keep_cpu_busy (test/target34.py);L7 "
