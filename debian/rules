@@ -2,5 +2,3 @@
 
 %:
 	dh $@
-
-override_dh_autoreconf:
