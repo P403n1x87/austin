@@ -2,10 +2,9 @@ Source: austin
 Section: devel
 Priority: optional
 Maintainer: Gabriele N. Tornetta <phoenix1987@gmail.com>
-Build-Depends: debhelper (>= 10),
+Build-Depends: debhelper (>= 11~),
  bats,
  valgrind,
- python (>= 2.3),
  python3 (>= 3.3)
 Standards-Version: 4.3.0
 Homepage: https://github.com/P403n1x87/austin
@@ -15,7 +14,7 @@ Vcs-Browser: https://github.com/P403n1x87/austin
 Package: austin
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}
-Description: a frame stack sampler for CPython
+Description: Frame stack sampler for CPython
  Austin is a Python frame stack sampler for CPython written in pure C. It
  samples the stack traces of a Python application so that they can be visualised
  and analysed. As such, it serves the basis for building powerful profilers for
