@@ -89,7 +89,10 @@ operating systems is next in line.
 
 Austin can be installed using `autotools` or as a snap from the Snap Store. The
 latter will automatically perform the steps of the `autotools` method with a
-single command
+single command.
+
+On March 30 2019, Austin has been accepted into the official Debian
+repositories and can therefore be installed with `apt`.
 
 ## With `autotools`
 
