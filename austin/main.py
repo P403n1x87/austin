@@ -1,6 +1,6 @@
 import sys
 
-from tui import AustinTUI
+from austin.tui import AustinTUI
 
 
 def main():

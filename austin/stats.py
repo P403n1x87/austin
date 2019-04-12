@@ -139,7 +139,7 @@ class Stats:
         self.samples += 1
 
     @atomic
-    def get_current_stacks(self, reset_after = True):
+    def get_current_stacks(self, reset_after=False):
         stacks = {}
         for thread in self.current_threads:
             frame_list = self.threads[thread]
@@ -166,7 +166,7 @@ class Stats:
             return None
 
         retval = copy.deepcopy(self.threads[thread])
-        
+
         frame_list = retval
         for i in self.current_threads[thread]:
             if frame_list[i]:

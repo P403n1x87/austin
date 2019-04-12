@@ -1,9 +1,10 @@
+import asyncio
 import curses
 import time
 
-import stats
-from austin import Austin
-from widget import Label, Line, Pad
+from austin import AsyncAustin
+from austin.stats import Stats
+from austin.widget import Label, Line, Pad
 
 # Widget positions
 TITLE_LINE = 0
@@ -69,16 +70,20 @@ def command_list(scr, y, cmd_list):
 
 # ---- AustinTUI --------------------------------------------------------------
 
-class AustinTUI:
+class AustinTUI(AsyncAustin):
 
     def __init__(self, args):
-        super().__init__()
+        super().__init__(args)
 
         self.args = args
         self.current_threads = None
         self.current_thread = None
         self.current_thread_index = 0
         self.is_full_view = False
+        self.stats = None
+
+    def on_sample_received(self, line):
+        self.stats.add_thread_sample(line.encode())
 
     def draw_ui(self, scr):
         h, w = scr.getmaxyx()
@@ -89,15 +94,15 @@ class AustinTUI:
 
         Label(scr, PROC_LINE, 0, "PID:")
         self.pid_label = Label(scr, PROC_LINE, 5, "{:5}".format(
-            self.austin.get_pid()
+            self.get_pid()
         ), curses.A_BOLD)
 
         Label(scr, PROC_LINE, 12, "Cmd:")
-        self.pid_label = Label(
-            scr, PROC_LINE, 17, self.austin.get_cmd_line(), curses.A_BOLD
+        self.cmd_line = Label(
+            scr, PROC_LINE, 17, self.get_cmd_line(), curses.A_BOLD
         )
 
-        self.thread_line = Line(scr, THREAD_LINE, 0, "")
+        self.thread_line = Line(scr, THREAD_LINE, 0, "Sampling ...")
         self.thread_num = Label(scr, THREAD_LINE, 24, attr=curses.A_REVERSE)
 
         self.samples_line = Line(scr, SAMPLES_LINE, 0)
@@ -172,9 +177,9 @@ class AustinTUI:
 
                 # Don't overfill the screen
                 # TODO: Consider using a widget for this (Pad?)
-                if i > curses.LINES - TABHEAD_LINE - 2:
-                    break
-                i += 1
+                # if i > curses.LINES - TABHEAD_LINE - 2:
+                #     break
+                # i += 1
 
     def full_view(self, scr, thread):
         """Show all samples per thread.
@@ -222,12 +227,13 @@ class AustinTUI:
         print_children(stack)
 
         i = 0
+        tab_h, tab_w = max(len(line_store) + 1, h - TABHEAD_LINE - 1), w
         self.table_pad.resize(
-            max(len(line_store) + 1, h - TABHEAD_LINE - 1),
-            w
+            tab_h,
+            tab_w
         )
         if not line_store:
-            writeln(self.table_pad, 0, 1, "< Empty >")
+            writeln(self.table_pad, tab_h >> 1, (tab_w >> 1) - 4, "< Empty >")
             return
 
         for l, t, a in line_store[::-1]:
@@ -237,6 +243,7 @@ class AustinTUI:
 
     def update_view(self, scr):
         self.current_threads = self.stats.get_current_threads()
+
         if not self.current_threads:
             return
 
@@ -275,91 +282,105 @@ class AustinTUI:
 
         scr.refresh()
 
-    def handle_keypress(self, scr):
         h, w = scr.getmaxyx()
         self.table_pad.refresh(TABHEAD_LINE + 1, 0, h - 2, w - 1)
 
+    # async def handle_keypress(self, scr):
+    def handle_keypress(self, scr):
         try:
+            # key = await self.get_event_loop().run_in_executor(None, self.table_pad.getkey)
             key = self.table_pad.getkey()
+            if self.table_pad.handle_input(key):
+                pass
 
-            if key == "q":
+            elif key == "q":
                 return -1
 
-            if key == "f":
+            elif key == "f":
                 self.is_full_view = not self.is_full_view
 
-            if self.table_pad.handle_input(key):
-                return 0
-
-            if key == "KEY_NPAGE" and self.current_threads:
+            elif key == "KEY_NPAGE" and self.current_threads:
                 if self.current_thread_index < len(self.current_threads) - 1:
                     self.current_thread_index += 1
                     self.current_thread = \
                         self.current_threads[self.current_thread_index]
+                else:
+                    return 0
 
             elif key == "KEY_PPAGE" and self.current_threads:
                 if self.current_thread_index > 0:
                     self.current_thread_index -= 1
                     self.current_thread = \
                         self.current_threads[self.current_thread_index]
+                else:
+                    return 0
 
             elif key == "KEY_RESIZE":
                 self.draw_ui(scr)
+
+            else:
+                # Unhandled input
+                return 1
+
+            self.update_view(scr)
 
             return 0
         except curses.error:
             return 1
 
     def run(self, scr):
+        # TODO: Make it a context manager
         curses.start_color()
         curses.use_default_colors()
         curses.init_pair(1, 246, -1)
         curses.curs_set(False)
         scr.clear()
-        scr.timeout(1000)
+        scr.timeout(0)  # non-blocking for async I/O
+        scr.nodelay(True)
 
         self.draw_ui(scr)
 
-        # Prepare to refresh the screen
-        self.thread_line.set_text("Sampling...")
         self.start_time = time.time()  # Keep track of the duration
 
-        # ---- Main Loop ------------------------------------------------------
+        async def input_loop():
+            while True:
+                # Process user input
+                # if await self.handle_keypress(scr) < 0:
+                if self.handle_keypress(scr) < 0:
+                    for task in asyncio.Task.all_tasks():
+                        task.cancel()
+                    return
 
-        while self.austin.is_alive():
-            h, w = scr.getmaxyx()
+                await asyncio.sleep(.015)
 
-            # NOTE: This might not be required
-            if self.austin.quit_event.wait(0):
-                break
+        async def update_loop():
+            while True:
+                self.update_view(scr)
+                await asyncio.sleep(1)
 
-            self.update_view(scr)
+        try:
+            self.get_event_loop().run_until_complete(
+                asyncio.wait(
+                    (input_loop(), update_loop()),
+                    return_when=asyncio.FIRST_EXCEPTION
+                )
+            )
+        except asyncio.CancelledError:
+            pass
 
-            # Process user input
-            if self.handle_keypress(scr) < 0:
-                break
-
-        # We are about to shut down
-        if self.austin.is_alive():
-            scr.addstr(h - 1, 1, "Waiting for process to terminate...")
-            scr.clrtoeol()
-            scr.refresh()
-
-            self.austin.join()
-        else:
-            scr.addstr(h - 1, 1, "Process terminated")
+        scr.clrtoeol()
+        scr.refresh()
 
     def start(self):
-        self.stats = stats.Stats()
+        super().start()
 
-        self.austin = Austin(
-            self.stats,
-            self.args
-        )
-        self.austin.start()
+        self.stats = Stats()
 
-        if (self.austin.start_event.wait(1)):
-            curses.wrapper(self.run)
+        if self.wait(self.start_event, 1):
+            try:
+                curses.wrapper(self.run)
+            except KeyboardInterrupt:
+                pass
         else:
             print("Austin took too long to start. Terminating...")
             exit(1)

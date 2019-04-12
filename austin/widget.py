@@ -30,7 +30,8 @@ class Pad:
         self.pad = curses.newpad(h, w)
         self.pad.scrollok(True)
         self.pad.keypad(True)
-        self.pad.timeout(1000)
+        self.pad.timeout(0)
+        self.pad.nodelay(True)
 
         self.curr_y = 0
         self.curr_x = 0
@@ -41,13 +42,14 @@ class Pad:
     def handle_input(self, k):
         if k == "KEY_DOWN":
             self.curr_y += 1
-            return True
 
-        if k == "KEY_UP" and self.curr_y > 0:
+        elif k == "KEY_UP" and self.curr_y > 0:
             self.curr_y -= 1
-            return True
 
-        return False
+        else:
+            return False
+
+        return True
 
     def resize(self, h, w):
         self.h, self.w = h, w
@@ -60,5 +62,5 @@ class Pad:
 
         if self.curr_y + h > self.h - 2:
             self.curr_y = self.h - h - 2
-
-        self.pad.refresh(self.curr_y, self.curr_x, *args)
+        else:
+            self.pad.refresh(self.curr_y, self.curr_x, *args)
