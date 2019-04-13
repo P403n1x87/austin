@@ -4,7 +4,7 @@ import time
 
 from austin import AsyncAustin
 from austin.stats import Stats
-from austin.widget import Label, Line, Pad
+from austin.widget import Label, Line, Pad, Window
 
 # Widget positions
 TITLE_LINE = 0
@@ -12,6 +12,7 @@ PROC_LINE = TITLE_LINE + 2
 THREAD_LINE = PROC_LINE + 1
 SAMPLES_LINE = THREAD_LINE + 1
 TABHEAD_LINE = THREAD_LINE + 2
+TAB_START = TABHEAD_LINE + 1
 
 
 # ---- Local Helpers ----------------------------------------------------------
@@ -70,53 +71,66 @@ def command_list(scr, y, cmd_list):
 
 # ---- AustinTUI --------------------------------------------------------------
 
-class AustinTUI(AsyncAustin):
+class AustinTUI(Window):
 
-    def __init__(self, args):
-        super().__init__(args)
+    def __init__(self, *args):
+        super().__init__(*args)
 
-        self.args = args
+        self.austin = AsyncAustin(self.on_sample_received)
+        self.stats = Stats()
+
         self.current_threads = None
         self.current_thread = None
-        self.current_thread_index = 0
+        self.current_thread_index = None
+        self.duration = 0
         self.is_full_view = False
-        self.stats = None
-
-    def on_sample_received(self, line):
-        self.stats.add_thread_sample(line.encode())
-
-    def draw_ui(self, scr):
-        h, w = scr.getmaxyx()
 
         # ---- Header ---------------------------------------------------------
 
-        Line(scr, TITLE_LINE, 0, "Austin -- Frame stack sampler for CPython.")
+        self.add_child("title_line", Line(
+            TITLE_LINE, 0,
+            "Austin -- Frame stack sampler for CPython."
+        ))
 
-        Label(scr, PROC_LINE, 0, "PID:")
-        self.pid_label = Label(scr, PROC_LINE, 5, "{:5}".format(
-            self.get_pid()
-        ), curses.A_BOLD)
+        self.add_child("pid_label", Label(PROC_LINE, 0, "PID"))
+        self.add_child("pid", Label(
+            PROC_LINE, 5,
+            lambda: "{:5}".format(self.austin.get_pid()),
+            curses.A_BOLD
+        ))
 
-        Label(scr, PROC_LINE, 12, "Cmd:")
-        self.cmd_line = Label(
-            scr, PROC_LINE, 17, self.get_cmd_line(), curses.A_BOLD
-        )
+        self.add_child("cmd_line_label", Label(PROC_LINE, 12, "CMD"))
+        self.add_child("cmd_line", Label(
+            PROC_LINE, 17,
+            lambda: self.austin.get_cmd_line(),
+            curses.A_BOLD
+        ))
 
-        self.thread_line = Line(scr, THREAD_LINE, 0, "Sampling ...")
-        self.thread_num = Label(scr, THREAD_LINE, 24, attr=curses.A_REVERSE)
+        self.add_child("thread_line", Line(
+            THREAD_LINE, 0,
+            "Sampling ..."
+        ))
+        self.add_child("thread_num", Label(
+            THREAD_LINE, 24,
+            lambda: "{:^5}".format(self.current_thread_index + 1 if self.current_thread_index is not None else ""),
+            attr=curses.A_REVERSE
+        ))
 
-        self.samples_line = Line(scr, SAMPLES_LINE, 0)
-        self.samples_count_label = Label(
-            scr, SAMPLES_LINE, 8, attr = curses.A_BOLD
-        )
-        self.duration_label = Label(
-            scr, SAMPLES_LINE, 28, attr = curses.A_BOLD
-        )
+        self.add_child("samples_line", Line(SAMPLES_LINE, 0))
+        self.add_child("samples_count_label", Label(
+            SAMPLES_LINE, 8,
+            lambda: "{:8}".format(self.stats.samples),
+            attr = curses.A_BOLD
+        ))
+        self.add_child("duration_label", Label(
+            SAMPLES_LINE, 28,
+            lambda: "{:>8}".format(fmt_time(int(self.duration))),
+            attr = curses.A_BOLD
+        ))
 
         # ---- Table ----------------------------------------------------------
 
-        self.table_header = Line(
-            scr,
+        self.add_child("table_header", Line(
             TABHEAD_LINE, 0,
             " {:^6}  {:^6}  {:^6}  {:^6}  {}".format(
                 "OWN",
@@ -126,11 +140,62 @@ class AustinTUI(AsyncAustin):
                 "FUNCTION"
                 ),
             curses.A_REVERSE | curses.A_BOLD
-        )
-
-        self.table_pad = Pad(h - TABHEAD_LINE, w)
+        ))
+        self.add_child("table_pad", Pad(
+            size_policy=lambda: [(h - TAB_START - 1, w) for h, w in [self.get_size()]][0],
+            position_policy=lambda: (TAB_START, 0),
+        ))
 
         # ---- Footer ---------------------------------------------------------
+        #
+        # TODO
+
+        # Conect signal handlers
+        self.connect("q", self.on_quit)
+        self.connect("f", self.on_full_mode_toggled)
+        self.connect("KEY_NPAGE", self.on_pgdown)
+        self.connect("KEY_PPAGE", self.on_pgup)
+
+    def __enter__(self):
+        super().__enter__()
+
+        curses.init_pair(1, 246, -1)
+
+        return self
+
+    def on_sample_received(self, line):
+        self.stats.add_thread_sample(line.encode())
+
+    def on_quit(self):
+        raise KeyboardInterrupt("Quit signal")
+
+    def on_pgdown(self):
+        if self.current_threads:
+            if self.current_thread_index < len(self.current_threads) - 1:
+                self.current_thread_index += 1
+                self.current_thread = \
+                    self.current_threads[self.current_thread_index]
+                self.thread_num.refresh()
+                # self.table_pad.curr_y = 0
+                self.update_thread_view()
+
+    def on_pgup(self):
+        if self.current_threads:
+            if self.current_thread_index > 0:
+                self.current_thread_index -= 1
+                self.current_thread = \
+                    self.current_threads[self.current_thread_index]
+                self.thread_num.refresh()
+                # self.table_pad.curr_y = 0
+                self.update_thread_view()
+
+    def on_full_mode_toggled(self):
+        self.is_full_view = not self.is_full_view
+        self.update_thread_view()
+
+    def draw_ui(self, scr):
+        h, w = scr.getmaxyx()
+
 
         command_list(scr, h - 1, {
             "Exit": " Q ",
@@ -158,8 +223,8 @@ class AustinTUI(AsyncAustin):
         else:
             h, w = scr.getmaxyx()
             i = 0  # Keep track of the line number
-            self.table_pad.resize(
-                max(len(stack) + 1, h - TABHEAD_LINE - 1),
+            self.table_pad.set_size(
+                max(len(stack), h - TAB_START - 1),
                 w
             )
             for frame in stack:
@@ -192,7 +257,7 @@ class AustinTUI(AsyncAustin):
                 return
 
             tail = ("└" if node.children else "") + char + prefix
-            name_len = w - len(tail) - 33
+            name_len = w - len(tail) - 34
 
             line = (
                 " {:^6}  {:^6}  {:5.2f}%  {:5.2f}%  {:" +
@@ -227,8 +292,8 @@ class AustinTUI(AsyncAustin):
         print_children(stack)
 
         i = 0
-        tab_h, tab_w = max(len(line_store) + 1, h - TABHEAD_LINE - 1), w
-        self.table_pad.resize(
+        tab_h, tab_w = max(len(line_store), h - TAB_START - 1), w
+        self.table_pad.set_size(
             tab_h,
             tab_w
         )
@@ -241,7 +306,9 @@ class AustinTUI(AsyncAustin):
             self.table_pad.addstr(i, len(l), t, curses.color_pair(1))
             i += 1
 
-    def update_view(self, scr):
+    def update_thread_view(self):
+        scr = self.get_screen()
+
         self.current_threads = self.stats.get_current_threads()
 
         if not self.current_threads:
@@ -257,11 +324,25 @@ class AustinTUI(AsyncAustin):
         thread = self.current_thread
         self.current_thread_index = self.current_threads.index(thread)
 
+        self.table_pad.clear()
+
+        if self.is_full_view:
+            self.full_view(scr, thread)
+        else:
+            self.current_view(scr, thread)
+
+            # scr.refresh()
+
+        self.table_pad.refresh()
+
+
+    def update_view(self, scr):
+        self.update_thread_view()
+
         self.thread_line.set_text("{:29} of {:^5}".format(
-            thread,
+            self.current_thread if self.current_thread else "",
             len(self.current_threads),
         ))
-        self.thread_num.set_text("{:^5}".format(self.current_thread_index + 1))
 
         self.duration = time.time() - self.start_time
         self.samples_line.set_text("Samples: {:8}  Duration: {:>8}".format(
@@ -273,93 +354,44 @@ class AustinTUI(AsyncAustin):
             "{:>8}".format(fmt_time(int(self.duration)))
         )
 
-        self.table_pad.clear()
-
-        if self.is_full_view:
-            self.full_view(scr, thread)
-        else:
-            self.current_view(scr, thread)
-
-        scr.refresh()
-
-        h, w = scr.getmaxyx()
-        self.table_pad.refresh(TABHEAD_LINE + 1, 0, h - 2, w - 1)
-
-    # async def handle_keypress(self, scr):
-    def handle_keypress(self, scr):
-        try:
-            # key = await self.get_event_loop().run_in_executor(None, self.table_pad.getkey)
-            key = self.table_pad.getkey()
-            if self.table_pad.handle_input(key):
-                pass
-
-            elif key == "q":
-                return -1
-
-            elif key == "f":
-                self.is_full_view = not self.is_full_view
-
-            elif key == "KEY_NPAGE" and self.current_threads:
-                if self.current_thread_index < len(self.current_threads) - 1:
-                    self.current_thread_index += 1
-                    self.current_thread = \
-                        self.current_threads[self.current_thread_index]
-                else:
-                    return 0
-
-            elif key == "KEY_PPAGE" and self.current_threads:
-                if self.current_thread_index > 0:
-                    self.current_thread_index -= 1
-                    self.current_thread = \
-                        self.current_threads[self.current_thread_index]
-                else:
-                    return 0
-
-            elif key == "KEY_RESIZE":
-                self.draw_ui(scr)
-
-            else:
-                # Unhandled input
-                return 1
-
-            self.update_view(scr)
-
-            return 0
-        except curses.error:
-            return 1
-
     def run(self, scr):
-        # TODO: Make it a context manager
-        curses.start_color()
-        curses.use_default_colors()
-        curses.init_pair(1, 246, -1)
-        curses.curs_set(False)
-        scr.clear()
-        scr.timeout(0)  # non-blocking for async I/O
-        scr.nodelay(True)
-
         self.draw_ui(scr)
 
         self.start_time = time.time()  # Keep track of the duration
 
         async def input_loop():
             while True:
-                # Process user input
-                # if await self.handle_keypress(scr) < 0:
-                if self.handle_keypress(scr) < 0:
+                try:
+                    scr.refresh()
+                    self.dispatch(self.table_pad.getkey())
+                except KeyboardInterrupt:
                     for task in asyncio.Task.all_tasks():
                         task.cancel()
                     return
+
+                except curses.error:
+                    pass
+                except:
+                    import traceback
+                    self.last_error = repr(traceback.format_exc())
 
                 await asyncio.sleep(.015)
 
         async def update_loop():
             while True:
-                self.update_view(scr)
+                try:
+                    # import pdb; pdb.set_trace()
+                    scr.refresh()
+                    self.update_view(scr)
+                    self.refresh()
+                except Exception as e:
+                    import traceback
+                    self.last_error = repr(traceback.format_exc())
+                    raise e
                 await asyncio.sleep(1)
 
         try:
-            self.get_event_loop().run_until_complete(
+            self.austin.get_event_loop().run_until_complete(
                 asyncio.wait(
                     (input_loop(), update_loop()),
                     return_when=asyncio.FIRST_EXCEPTION
@@ -368,19 +400,12 @@ class AustinTUI(AsyncAustin):
         except asyncio.CancelledError:
             pass
 
-        scr.clrtoeol()
-        scr.refresh()
-
-    def start(self):
-        super().start()
-
-        self.stats = Stats()
-
-        if self.wait(self.start_event, 1):
-            try:
-                curses.wrapper(self.run)
-            except KeyboardInterrupt:
-                pass
+    def start(self, args):
+        # Fork Austin
+        self.austin.start(args)
+        self.refresh()
+        if self.austin.wait(1):
+            self.run(self._scr)
         else:
             print("Austin took too long to start. Terminating...")
             exit(1)

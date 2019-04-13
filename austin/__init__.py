@@ -9,17 +9,27 @@ import psutil
 
 
 class AsyncAustin:
-    def __init__(self, args):
-        self.args = args
+    def __init__(self, sample_callback=None):
         self.__loop = None
         self.start_event = asyncio.Event()
-        self.__pid = int(args[1]) if args[0] == '-p' else -1
+        self.__pid = 0
         self.__cmd_line = "<unknown>"
 
-    def start(self, loop=None):
+        try:
+            self.__callback = (
+                sample_callback if sample_callback else self.on_sample_received
+            )
+        except AttributeError as e:
+            raise RuntimeError(
+                "No sample callback given or implemented."
+            ) from e
+
+    def start(self, args, loop=None):
         async def _start():
+            self.__pid = int(args[1]) if args[0] == '-p' else -1
+
             self.proc = await asyncio.create_subprocess_exec(
-                "austin", *self.args, stdout=asyncio.subprocess.PIPE
+                "austin", *args, stdout=asyncio.subprocess.PIPE
             )
 
             if self.__pid < 0:  # Austin is forking
@@ -41,7 +51,7 @@ class AsyncAustin:
                 data = await self.proc.stdout.readline()
                 if not data:
                     break
-                self.on_sample_received(data.decode('ascii').rstrip())
+                self.__callback(data.decode('ascii').rstrip())
 
             # Wait for the subprocess exit
             await self.proc.wait()
@@ -66,10 +76,10 @@ class AsyncAustin:
     def get_cmd_line(self):
         return self.__cmd_line
 
-    def wait(self, event, timeout=1):
+    def wait(self, timeout=1):
         try:
             self.__loop.run_until_complete(
-                asyncio.wait_for(event.wait(), timeout)
+                asyncio.wait_for(self.start_event.wait(), timeout)
             )
         except asyncio.TimeoutError:
             return False
