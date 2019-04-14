@@ -109,7 +109,8 @@ class Label(Widget):
         if not self.scr:
             self.scr = self.get_toplevel().get_screen()
         text = self.text() if callable(self.text) else self.text
-        self.scr.addstr(self.y, self.x, text if text else "", self.attr)
+        attr = self.attr() if callable(self.attr) else self.attr
+        self.scr.addstr(self.y, self.x, text if text else "", attr)
 
 
 class Line(Label):
@@ -193,11 +194,12 @@ class Pad(Widget):
 
 
 class Table(Pad):
-    def __init__(self, position_policy, size_policy, columns, data_policy):
+    def __init__(self, position_policy, size_policy, columns, data_policy, hook=None):
         super().__init__(position_policy, size_policy)
 
         self._datap = data_policy
         self._cols = columns
+        self._hook = hook
 
     def show_empty(self):
         h, w = self._sizep()
@@ -207,13 +209,14 @@ class Table(Pad):
         x = 0
         for j in range(len(self._cols)):
             text, attr = row[j]
-            self.pad.addstr(i, x, self._cols[j].format(text), attr)
+            text = self._cols[j].format(text)
+            self.pad.addstr(i, x, text, attr)
             x += len(text)
 
     def refresh(self):
         data = self._datap()
         h, w = self._sizep()
-        self.set_size(max(len(data), h), w - 1)  # ???
+        self.set_size(max(len(data), h), w)  # ???
 
         self.pad.clear()
         if not data:
@@ -224,4 +227,42 @@ class Table(Pad):
                 self.set_row(i, e)
                 i += 1
 
+            try:
+                self._hook(self.pad)
+            except AttributeError:
+                pass
+
         super().refresh()
+
+
+class CommandBar(Widget):
+    def __init__(self, commands):
+        super().__init__()
+
+        self._cmds = commands
+        self.scr = None
+
+    def refresh(self):
+        if not self.scr:
+            self.scr = self.get_toplevel().get_screen()
+
+        h, w = self.scr.getmaxyx()
+        x, y = 1, h - 1
+
+        for label, key in self._cmds.items():
+            if x + len(key) + len(label) + 3 > w:
+                self.scr.clrtoeol()
+                self.scr.chgat(0)
+                x = 1
+                y -= 1
+
+            try:
+                self.scr.addstr(y, x, key, curses.A_REVERSE)
+                x += len(key)
+                self.scr.addstr(y, x, " " + label + "  ")
+                x += len(label) + 2
+            except curses.error:
+                pass
+
+        self.scr.chgat(0)
+        self.scr.clrtoeol()

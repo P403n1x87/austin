@@ -4,7 +4,7 @@ import time
 
 from austin import AsyncAustin
 from austin.stats import Stats
-from austin.widget import Label, Line, Pad, Window
+from austin.widget import CommandBar, Label, Line, Table, Window
 
 # Widget positions
 TITLE_LINE = 0
@@ -20,6 +20,21 @@ TAB_START = TABHEAD_LINE + 1
 def writeln(scr, *args, **kwargs):
     scr.addstr(*args, **kwargs)
     scr.clrtoeol()
+
+
+def ell(text, length, sep=".."):
+    if len(text) <= length:
+        return text
+
+    if length <= len(sep):
+        return sep[:length]
+
+    m = length >> 1
+    n = length - m
+    a = len(sep) >> 1
+    b = len(sep) - a
+
+    return text[:n - b - 1] + sep + text[-m + a - 1:]
 
 
 def ellipsis(text, length):
@@ -51,22 +66,17 @@ def fmt_time(s):
     return ret
 
 
-def command_list(scr, y, cmd_list):
-    x = 1
+class Color:
+    INACTIVE = 1
+    HEAT_ACTIVE = 10
+    HEAT_INACTIVE = 20
+    RUNNING = 2
+    STOPPED = 3
 
-    for label, key in cmd_list.items():
-        scr.addstr(y, x, key, curses.A_REVERSE)
-        x += len(key) + 1
-        scr.addstr(y, x, label)
-        x += len(label) + 2
 
-        _, w = scr.getmaxyx()
-        if x > w:
-            scr.chgat(0)
-            x = 1
-            y += 1
-
-    scr.chgat(0)
+def color_level(p, a=True):
+    d = 10 if a else 20
+    return curses.color_pair(d + int(p / 20))
 
 
 # ---- AustinTUI --------------------------------------------------------------
@@ -98,35 +108,78 @@ class AustinTUI(Window):
             lambda: "{:5}".format(self.austin.get_pid()),
             curses.A_BOLD
         ))
+        self.add_child("pid_status", Label(
+            PROC_LINE, 11,
+            "◉",
+            lambda: curses.color_pair(
+                Color.RUNNING if self.austin.is_running() else Color.STOPPED
+            )
+        ))
 
-        self.add_child("cmd_line_label", Label(PROC_LINE, 12, "CMD"))
+        self.add_child("cmd_line_label", Label(PROC_LINE, 14, "CMD"))
         self.add_child("cmd_line", Label(
-            PROC_LINE, 17,
-            lambda: self.austin.get_cmd_line(),
+            PROC_LINE, 19,
+            lambda: ell(self.austin.get_cmd_line(), self.get_size()[1] - 19),
             curses.A_BOLD
         ))
 
-        self.add_child("thread_line", Line(
+        self.add_child("thread_name", Label(
             THREAD_LINE, 0,
-            "Sampling ..."
-        ))
+            lambda: "{:24}".format(
+                self.current_thread if self.current_thread else "Sampling ..."
+        )))
+        self.add_child("thread_total", Label(
+            THREAD_LINE, 31,
+            lambda: "of {:^5}".format(
+                len(self.current_threads) if self.current_threads else 0
+        )))
+
         self.add_child("thread_num", Label(
             THREAD_LINE, 24,
-            lambda: "{:^5}".format(self.current_thread_index + 1 if self.current_thread_index is not None else ""),
+            lambda: "{:^5}".format(
+                self.current_thread_index + 1
+                if self.current_thread_index is not None
+                else ""
+            ),
             attr=curses.A_REVERSE
         ))
 
-        self.add_child("samples_line", Line(SAMPLES_LINE, 0))
-        self.add_child("samples_count_label", Label(
-            SAMPLES_LINE, 8,
+        self.add_child("samples_label", Label(
+            SAMPLES_LINE, 0,
+            "Samples"
+            )
+        )
+        self.add_child("samples_count", Label(
+            SAMPLES_LINE, 7,
             lambda: "{:8}".format(self.stats.samples),
             attr = curses.A_BOLD
         ))
+
         self.add_child("duration_label", Label(
-            SAMPLES_LINE, 28,
+            SAMPLES_LINE, 18,
+            "Duration"
+            )
+        )
+        self.add_child("duration", Label(
+            SAMPLES_LINE, 26,
             lambda: "{:>8}".format(fmt_time(int(self.duration))),
             attr = curses.A_BOLD
         ))
+
+        self.add_child("cpu_label", Label(THREAD_LINE, 40, "CPU"))
+        self.add_child("cpu", Label(
+            THREAD_LINE, 44,
+            lambda: "{: >4}%".format(int(self.austin.get_child().cpu_percent()) if self.austin.is_running() else " "),
+            attr = curses.A_BOLD
+        ))
+
+        self.add_child("mem_label", Label(SAMPLES_LINE, 40, "MEM"))
+        self.add_child("mem", Label(
+            SAMPLES_LINE, 44,
+            lambda: "{: >4}MB".format(self.austin.get_child().memory_full_info()[0] >> 20 if self.austin.is_running() else " "),
+            attr = curses.A_BOLD
+        ))
+
 
         # ---- Table ----------------------------------------------------------
 
@@ -141,14 +194,24 @@ class AustinTUI(Window):
                 ),
             curses.A_REVERSE | curses.A_BOLD
         ))
-        self.add_child("table_pad", Pad(
-            size_policy=lambda: [(h - TAB_START - 1, w) for h, w in [self.get_size()]][0],
+        self.add_child("table_pad", Table(
+            size_policy=lambda: [
+                (h - TAB_START - 1, w) for h, w in [self.get_size()]
+            ][0],
             position_policy=lambda: (TAB_START, 0),
+            columns=[" {:^6} ", " {:^6} ", " {:5.2f}% ", " {:5.2f}% ", " {}"],
+            data_policy=self.generate_data,
+            hook=self.draw_tree
         ))
 
         # ---- Footer ---------------------------------------------------------
-        #
-        # TODO
+
+        self.add_child("cmd_bar", CommandBar({
+            "Exit": " Q ",
+            "PrevThread": "PgUp",
+            "NextThread": "PgDn",
+            "ToggleFullView": " F ",
+        }))
 
         # Conect signal handlers
         self.connect("q", self.on_quit)
@@ -159,7 +222,17 @@ class AustinTUI(Window):
     def __enter__(self):
         super().__enter__()
 
-        curses.init_pair(1, 246, -1)
+        curses.init_pair(Color.INACTIVE, 246, -1)
+        curses.init_pair(Color.RUNNING, 10, -1)
+        curses.init_pair(Color.STOPPED, 1, -1)
+        j = Color.HEAT_ACTIVE
+        for i in [-1, 226, 208, 202, 196]:
+            curses.init_pair(j, i, -1)
+            j+=1
+        j = Color.HEAT_INACTIVE
+        for i in [246, 100, 130, 94, 88]:
+            curses.init_pair(j, i, -1)
+            j+=1
 
         return self
 
@@ -175,9 +248,8 @@ class AustinTUI(Window):
                 self.current_thread_index += 1
                 self.current_thread = \
                     self.current_threads[self.current_thread_index]
-                self.thread_num.refresh()
-                # self.table_pad.curr_y = 0
-                self.update_thread_view()
+
+                self.refresh()
 
     def on_pgup(self):
         if self.current_threads:
@@ -185,73 +257,74 @@ class AustinTUI(Window):
                 self.current_thread_index -= 1
                 self.current_thread = \
                     self.current_threads[self.current_thread_index]
-                self.thread_num.refresh()
-                # self.table_pad.curr_y = 0
-                self.update_thread_view()
+
+                self.refresh()
 
     def on_full_mode_toggled(self):
         self.is_full_view = not self.is_full_view
-        self.update_thread_view()
+        self.table_pad.refresh()
 
-    def draw_ui(self, scr):
-        h, w = scr.getmaxyx()
-
-
-        command_list(scr, h - 1, {
-            "Exit": " Q ",
-            "PrevThread": "PgUp",
-            "NextThread": "PgDn",
-            "ToggleFullView": " F ",
-        })
-
-        scr.refresh()
-
-    def current_view(self, scr, thread):
-        """Display the last sample only.
-
-        This representation gives a live snapshot of what is happening.
-        """
+    def current_data(self):
         stacks = self.stats.get_current_stacks()
         if not stacks:
-            return
+            return []
 
         # Reverse the stack (top frames first)
-        stack = stacks[thread][::-1]
+        stack = stacks[self.current_thread][::-1]
         if not stack:
-            writeln(self.table_pad, 0, 1, "< Empty >")
+            return []
 
-        else:
-            h, w = scr.getmaxyx()
-            i = 0  # Keep track of the line number
-            self.table_pad.set_size(
-                max(len(stack), h - TAB_START - 1),
-                w
+        h, w = self.get_size()
+        return [
+            (
+                [fmt_time(frame["own_time"] / 1e6), 0],
+                [fmt_time(frame["tot_time"] / 1e6), 0],
+                [frame["own_time"] / 1e4 / self.duration, color_level(frame["own_time"] / 1e4 / self.duration)],
+                [frame["tot_time"] / 1e4 / self.duration, color_level(frame["tot_time"] / 1e4 / self.duration)],
+                [ellipsis(frame["function"], w - 34), 0]  # TODO: Improve!
+            ) for frame in stack
+        ]
+
+    def full_data(self):
+        def add_child(node, level):
+            if not node:
+                return
+
+            name_len = w - level - 34  # TODO: Improve!
+
+            a = getattr(node, "is_active", False)
+            attr = curses.color_pair(1) if not a else 0
+            line = (
+                [fmt_time(node.own_time / 1e6), attr],
+                [fmt_time(node.total_time / 1e6), attr],
+                [node.own_time / 1e4 / self.duration, color_level(node.own_time / 1e4 / self.duration, a)],
+                [node.total_time / 1e4 / self.duration, color_level(node.total_time / 1e4 / self.duration, a)],
+                [ellipsis(node.function, name_len - 1), attr],
             )
-            for frame in stack:
-                writeln(
-                    self.table_pad,
-                    i, 0,
-                    " {:^6}  {:^6}  {:5.2f}%  {:5.2f}%  {}".format(
-                        fmt_time(frame["own_time"] / 1e6),
-                        fmt_time(frame["tot_time"] / 1e6),
-                        frame["own_time"] / 1e4 / self.duration,
-                        frame["tot_time"] / 1e4 / self.duration,
-                        ellipsis(frame["function"], curses.COLS - 34)
-                    )
-                )
+            line_store.append(line)
 
-                # Don't overfill the screen
-                # TODO: Consider using a widget for this (Pad?)
-                # if i > curses.LINES - TABHEAD_LINE - 2:
-                #     break
-                # i += 1
+        def add_children(nodes, level=2):
+            if not nodes:
+                return
 
-    def full_view(self, scr, thread):
-        """Show all samples per thread.
+            for n in nodes:
+                if not n:
+                    continue
+                add_child(n, level)
+                add_children(n.children, level + 1)
 
-        This gives a comprehensive frame stack view with all the has
-        happened since the initial observation.
-        """
+        h, w = self.get_size()
+        stack = self.stats.get_thread_stack(self.current_thread)
+        if not stack:
+            return []
+
+        line_store = []
+
+        add_children(stack)
+
+        return line_store[::-1]
+
+    def draw_tree(self, pad):
         def print_child(node, char, prefix):
             if not node:
                 return
@@ -259,16 +332,7 @@ class AustinTUI(Window):
             tail = ("└" if node.children else "") + char + prefix
             name_len = w - len(tail) - 34
 
-            line = (
-                " {:^6}  {:^6}  {:5.2f}%  {:5.2f}%  {:" +
-                str(name_len) + "}").format(
-                    fmt_time(node.own_time / 1e6),
-                    fmt_time(node.total_time / 1e6),
-                    node.own_time / 1e4 / self.duration,
-                    node.total_time / 1e4 / self.duration,
-                    ellipsis(node.function, name_len - 1),
-                )
-            line_store.append((line, tail, getattr(node, "is_active", False)))
+            line_store.append(tail)
 
         def print_children(nodes, prefix=""):
             if not nodes:
@@ -282,37 +346,28 @@ class AustinTUI(Window):
                 print_child(nodes[-1], "┐", prefix)
                 print_children(nodes[-1].children, " " + prefix)
 
-        stack = self.stats.get_thread_stack(thread)
+        if not self.is_full_view:
+            return
+
+        stack = self.stats.get_thread_stack(self.current_thread)
         if not stack:
             return
 
-        h, w = scr.getmaxyx()
+        h, w = self.get_size()
         line_store = []
 
         print_children(stack)
 
         i = 0
-        tab_h, tab_w = max(len(line_store), h - TAB_START - 1), w
-        self.table_pad.set_size(
-            tab_h,
-            tab_w
-        )
-        if not line_store:
-            writeln(self.table_pad, tab_h >> 1, (tab_w >> 1) - 4, "< Empty >")
-            return
-
-        for l, t, a in line_store[::-1]:
-            self.table_pad.addstr(i, 0, l, curses.color_pair(1) if not a else 0)
-            self.table_pad.addstr(i, len(l), t, curses.color_pair(1))
+        for l in line_store[::-1]:
+            pad.addstr(i, w - 1 - len(l), l, curses.color_pair(1))
             i += 1
 
-    def update_thread_view(self):
-        scr = self.get_screen()
-
+    def generate_data(self):
         self.current_threads = self.stats.get_current_threads()
 
         if not self.current_threads:
-            return
+            return []
 
         if (
             not self.current_thread or
@@ -321,42 +376,16 @@ class AustinTUI(Window):
             self.current_thread = self.current_threads[0]
             self.current_thread_index = 0
 
-        thread = self.current_thread
-        self.current_thread_index = self.current_threads.index(thread)
-
-        self.table_pad.clear()
-
-        if self.is_full_view:
-            self.full_view(scr, thread)
-        else:
-            self.current_view(scr, thread)
-
-            # scr.refresh()
-
-        self.table_pad.refresh()
-
-
-    def update_view(self, scr):
-        self.update_thread_view()
-
-        self.thread_line.set_text("{:29} of {:^5}".format(
-            self.current_thread if self.current_thread else "",
-            len(self.current_threads),
-        ))
-
-        self.duration = time.time() - self.start_time
-        self.samples_line.set_text("Samples: {:8}  Duration: {:>8}".format(
-            " ",
-            " "
-        ))
-        self.samples_count_label.set_text("{:8}".format(self.stats.samples))
-        self.duration_label.set_text(
-            "{:>8}".format(fmt_time(int(self.duration)))
+        self.current_thread_index = self.current_threads.index(
+            self.current_thread
         )
 
-    def run(self, scr):
-        self.draw_ui(scr)
+        if self.is_full_view:
+            return self.full_data()
+        else:
+            return self.current_data()
 
+    def run(self, scr):
         self.start_time = time.time()  # Keep track of the duration
 
         async def input_loop():
@@ -380,10 +409,10 @@ class AustinTUI(Window):
         async def update_loop():
             while True:
                 try:
-                    # import pdb; pdb.set_trace()
-                    scr.refresh()
-                    self.update_view(scr)
+                    if self.austin.is_running():
+                        self.duration = time.time() - self.start_time
                     self.refresh()
+                    scr.refresh()
                 except Exception as e:
                     import traceback
                     self.last_error = repr(traceback.format_exc())

@@ -18,6 +18,8 @@ def main(scr):
         try:
             austin_tui.start(args[1:])
         except:
+            import traceback
+            last_error = traceback.format_exc()
             pass
         finally:
             last_error = austin_tui.last_error

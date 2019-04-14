@@ -14,6 +14,7 @@ class AsyncAustin:
         self.start_event = asyncio.Event()
         self.__pid = 0
         self.__cmd_line = "<unknown>"
+        self.__running = False
 
         try:
             self.__callback = (
@@ -41,10 +42,12 @@ class AsyncAustin:
             else:  # Austin is attaching
                 child_process = psutil.Process(self.__pid)
 
+            self.__child = child_process
             self.__cmd_line = " ".join(child_process.cmdline())
 
             # Signal that we are good to go
             self.start_event.set()
+            self.__running = True
 
             # Start readline loop
             while True:
@@ -55,6 +58,7 @@ class AsyncAustin:
 
             # Wait for the subprocess exit
             await self.proc.wait()
+            self.__running = False
 
         if not loop:
             if sys.platform == "win32":
@@ -75,6 +79,12 @@ class AsyncAustin:
 
     def get_cmd_line(self):
         return self.__cmd_line
+
+    def is_running(self):
+        return self.__running
+
+    def get_child(self):
+        return self.__child
 
     def wait(self, timeout=1):
         try:
