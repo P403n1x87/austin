@@ -74,7 +74,7 @@ further processing. Look, for instance, at the following Python TUI, similar in
 spirit to [py-spy](https://github.com/benfred/py-spy).
 
 <!-- ![tui](art/austin-tui_wip.png) -->
-<p align="center"><img src="art/austin-tui_wip.png" /></p>
+<p align="center"><img src="art/austin-tui.png" /></p>
 
 The current version only supports Python on Linux-based operating systems that
 have not been compiled with the `--enable-shared` flag. Support for other
@@ -354,18 +354,17 @@ for i in range(1000):
   list(psutil.process_iter())
 ~~~
 
-<!-- ![test_graph](art/test.png) -->
-<p align="center"><img src="art/test.png" /></p>
+<object data="art/process_iter_fg.svg" type="image/svg+xml" width="100%" >
+  <img src="art/process_iter_fg.svg" style="width:100%;"/>
+</object>
 
-The tall stack on the left is the initialisation phase of the Python
-interpreter.
 
-The Python TUI that is currently included in this repository is experimental and
-work in progress. It serves the purpose of providing an example of how to use
-Austin to profile Python applications. Here is a recording of the TUI in action
-with a sample script that spawns a new thread and keeps the CPU busy with a CPU
-bound loop on each thread. You can use `PageUp` and `PageDown` to navigate the
-frame stack of each frame as the Python application runs.
+The Python TUI that is currently included in this repository provides an
+example of how to use Austin to profile Python applications. Here is a
+recording of the TUI in action with a sample script that spawns a new thread
+and keeps the CPU busy with a CPU bound loop on each thread. You can use
+`PageUp` and `PageDown` to navigate the frame stack of each frame as the Python
+application runs.
 
 If you want to use it you will have to make sure that all the dependencies
 (`psutil` in this case) are installed, as the TUI project still lacks a

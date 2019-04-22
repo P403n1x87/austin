@@ -1,9 +1,10 @@
+import asyncio
 import curses
 import time
 
-import stats
-from austin import Austin
-from widget import Label, Line, Pad
+from austin import AsyncAustin
+from austin.stats import Stats
+from austin.widget import CommandBar, Label, Line, Table, Window
 
 # Widget positions
 TITLE_LINE = 0
@@ -11,13 +12,27 @@ PROC_LINE = TITLE_LINE + 2
 THREAD_LINE = PROC_LINE + 1
 SAMPLES_LINE = THREAD_LINE + 1
 TABHEAD_LINE = THREAD_LINE + 2
+TAB_START = TABHEAD_LINE + 1
+
+TABHEAD_TEMPLATE = " {:^6}  {:^6}  {:^6}  {:^6}  {}"
+TABHEAD_FUNCTION_PAD = len(TABHEAD_TEMPLATE.format("", "", "", "", ""))
 
 
 # ---- Local Helpers ----------------------------------------------------------
 
-def writeln(scr, *args, **kwargs):
-    scr.addstr(*args, **kwargs)
-    scr.clrtoeol()
+def ell(text, length, sep=".."):
+    if len(text) <= length:
+        return text
+
+    if length <= len(sep):
+        return sep[:length]
+
+    m = length >> 1
+    n = length - m
+    a = len(sep) >> 1
+    b = len(sep) - a
+
+    return text[:n - b - 1] + sep + text[-m + a - 1:]
 
 
 def ellipsis(text, length):
@@ -49,71 +64,148 @@ def fmt_time(s):
     return ret
 
 
-def command_list(scr, y, cmd_list):
-    x = 1
+class Color:
+    INACTIVE = 1
+    HEAT_ACTIVE = 10
+    HEAT_INACTIVE = 20
+    RUNNING = 2
+    STOPPED = 3
 
-    for label, key in cmd_list.items():
-        scr.addstr(y, x, key, curses.A_REVERSE)
-        x += len(key) + 1
-        scr.addstr(y, x, label)
-        x += len(label) + 2
 
-        _, w = scr.getmaxyx()
-        if x > w:
-            scr.chgat(0)
-            x = 1
-            y += 1
-
-    scr.chgat(0)
+def color_level(p, a=True):
+    d = 10 if a else 20
+    return curses.color_pair(d + int(p / 20))
 
 
 # ---- AustinTUI --------------------------------------------------------------
 
-class AustinTUI:
+class AustinTUI(Window):
 
-    def __init__(self, args):
-        super().__init__()
+    def __init__(self, *args):
+        super().__init__(*args)
 
-        self.args = args
+        self.austin = AsyncAustin(self.on_sample_received)
+        self.stats = Stats()
+
         self.current_threads = None
         self.current_thread = None
-        self.current_thread_index = 0
+        self.current_thread_index = None
+        self.duration = 0
         self.is_full_view = False
-
-    def draw_ui(self, scr):
-        h, w = scr.getmaxyx()
 
         # ---- Header ---------------------------------------------------------
 
-        Line(scr, TITLE_LINE, 0, "Austin -- Frame stack sampler for CPython.")
+        self.add_child("title_line", Line(
+            TITLE_LINE, 0,
+            "Austin -- Frame stack sampler for CPython."
+        ))
 
-        Label(scr, PROC_LINE, 0, "PID:")
-        self.pid_label = Label(scr, PROC_LINE, 5, "{:5}".format(
-            self.austin.get_pid()
-        ), curses.A_BOLD)
+        self.add_child("pid_label", Label(PROC_LINE, 0, "PID"))
+        self.add_child("pid", Label(
+            PROC_LINE, 5,
+            lambda: "{:5}".format(self.austin.get_pid()),
+            curses.A_BOLD
+        ))
+        self.add_child("pid_status", Label(
+            PROC_LINE, 11,
+            "◉",
+            lambda: curses.color_pair(
+                Color.RUNNING if self.austin.is_running() else Color.STOPPED
+            )
+        ))
 
-        Label(scr, PROC_LINE, 12, "Cmd:")
-        self.pid_label = Label(
-            scr, PROC_LINE, 17, self.austin.get_cmd_line(), curses.A_BOLD
+        self.add_child("cmd_line_label", Label(PROC_LINE, 14, "CMD"))
+        self.add_child("cmd_line", Label(
+            PROC_LINE, 19,
+            lambda: ell(self.austin.get_cmd_line(), self.get_size()[1] - 19),
+            curses.A_BOLD
+        ))
+
+        self.add_child("thread_name", Label(
+            THREAD_LINE, 0,
+            lambda: "{:24}".format(
+                self.current_thread if self.current_thread else "Sampling ..."
+        )))
+        self.add_child("thread_total", Label(
+            THREAD_LINE, 31,
+            lambda: "of {:^5}".format(
+                len(self.current_threads) if self.current_threads else 0
+        )))
+
+        self.add_child("thread_num", Label(
+            THREAD_LINE, 24,
+            lambda: "{:^5}".format(
+                self.current_thread_index + 1
+                if self.current_thread_index is not None
+                else ""
+            ),
+            attr=curses.A_REVERSE
+        ))
+
+        self.add_child("samples_label", Label(
+            SAMPLES_LINE, 0,
+            "Samples"
+            )
         )
+        self.add_child("samples_count", Label(
+            SAMPLES_LINE, 7,
+            lambda: "{:8}".format(self.stats.samples),
+            attr = curses.A_BOLD
+        ))
 
-        self.thread_line = Line(scr, THREAD_LINE, 0, "")
-        self.thread_num = Label(scr, THREAD_LINE, 24, attr=curses.A_REVERSE)
+        self.add_child("duration_label", Label(
+            SAMPLES_LINE, 18,
+            "Duration"
+            )
+        )
+        self.add_child("duration", Label(
+            SAMPLES_LINE, 26,
+            lambda: "{:>8}".format(fmt_time(int(self.duration))),
+            attr = curses.A_BOLD
+        ))
 
-        self.samples_line = Line(scr, SAMPLES_LINE, 0)
-        self.samples_count_label = Label(
-            scr, SAMPLES_LINE, 8, attr = curses.A_BOLD
-        )
-        self.duration_label = Label(
-            scr, SAMPLES_LINE, 28, attr = curses.A_BOLD
-        )
+        self.add_child("cpu_label", Label(THREAD_LINE, 40, "CPU"))
+        self.add_child("cpu", Label(
+            THREAD_LINE, 44,
+            lambda: "{: >4}%".format(
+                int(self.austin.get_child().cpu_percent())
+                if self.austin.is_running() else
+                ""
+            ),
+            attr = curses.A_BOLD
+        ))
+
+        self.add_child("mem_label", Label(SAMPLES_LINE, 40, "MEM"))
+        self.add_child("mem", Label(
+            SAMPLES_LINE, 44,
+            lambda: "{: >4}MB".format(
+                self.austin.get_child().memory_full_info()[0] >> 20
+                if self.austin.is_running() else
+                ""
+            ),
+            attr = curses.A_BOLD
+        ))
+
+        # ---- Footer ---------------------------------------------------------
+
+        self.add_child("cmd_bar", CommandBar({
+            "Exit": " Q ",
+            "PrevThread": "PgUp",
+            "NextThread": "PgDn",
+            "ToggleFullView": " F ",
+        }))
+
+        # Conect signal handlers
+        self.connect("q", self.on_quit)
+        self.connect("f", self.on_full_mode_toggled)
+        self.connect("KEY_NPAGE", self.on_pgdown)
+        self.connect("KEY_PPAGE", self.on_pgup)
 
         # ---- Table ----------------------------------------------------------
 
-        self.table_header = Line(
-            scr,
+        self.add_child("table_header", Line(
             TABHEAD_LINE, 0,
-            " {:^6}  {:^6}  {:^6}  {:^6}  {}".format(
+            TABHEAD_TEMPLATE.format(
                 "OWN",
                 "TOTAL",
                 "%OWN",
@@ -121,84 +213,141 @@ class AustinTUI:
                 "FUNCTION"
                 ),
             curses.A_REVERSE | curses.A_BOLD
-        )
+        ))
+        self.add_child("table_pad", Table(
+            size_policy=lambda: [
+                (h - TAB_START - self.cmd_bar.get_height(), w) for h, w in [self.get_size()]
+            ][0],
+            position_policy=lambda: (TAB_START, 0),
+            columns=[" {:^6} ", " {:^6} ", " {:5.2f}% ", " {:5.2f}% ", " {}"],
+            data_policy=self.generate_data,
+            hook=self.draw_tree
+        ))
 
-        self.table_pad = Pad(h - TABHEAD_LINE, w)
+        # ---- END OF UI DEFINITION -------------------------------------------
 
-        # ---- Footer ---------------------------------------------------------
+    def __enter__(self):
+        super().__enter__()
 
-        command_list(scr, h - 1, {
-            "Exit": " Q ",
-            "PrevThread": "PgUp",
-            "NextThread": "PgDn",
-            "ToggleFullView": " F ",
-        })
+        curses.init_pair(Color.INACTIVE, 246, -1)
+        curses.init_pair(Color.RUNNING, 10, -1)
+        curses.init_pair(Color.STOPPED, 1, -1)
+        j = Color.HEAT_ACTIVE
+        for i in [-1, 226, 208, 202, 196]:
+            curses.init_pair(j, i, -1)
+            j+=1
+        j = Color.HEAT_INACTIVE
+        for i in [246, 100, 130, 94, 88]:
+            curses.init_pair(j, i, -1)
+            j+=1
 
-        scr.refresh()
+        return self
 
-    def current_view(self, scr, thread):
-        """Display the last sample only.
+    # ---- EVENT HANDLERS -----------------------------------------------------
 
-        This representation gives a live snapshot of what is happening.
-        """
+    def on_sample_received(self, line):
+        self.stats.add_thread_sample(line.encode())
+
+    def on_quit(self):
+        raise KeyboardInterrupt("Quit signal")
+
+    def on_pgdown(self):
+        if self.current_threads:
+            if self.current_thread_index < len(self.current_threads) - 1:
+                self.current_thread_index += 1
+                self.current_thread = \
+                    self.current_threads[self.current_thread_index]
+
+                self.refresh()
+
+    def on_pgup(self):
+        if self.current_threads:
+            if self.current_thread_index > 0:
+                self.current_thread_index -= 1
+                self.current_thread = \
+                    self.current_threads[self.current_thread_index]
+
+                self.refresh()
+
+    def on_full_mode_toggled(self):
+        self.is_full_view = not self.is_full_view
+        self.table_pad.refresh()
+
+    # ---- METHODS ------------------------------------------------------------
+
+    def scale_time(self, time, active=True):
+        ratio = time / 1e4 / self.duration
+        return ratio, color_level(ratio, active)
+
+    def current_data(self):
         stacks = self.stats.get_current_stacks()
         if not stacks:
-            return
+            return []
 
         # Reverse the stack (top frames first)
-        stack = stacks[thread][::-1]
+        stack = stacks[self.current_thread][::-1]
         if not stack:
-            writeln(self.table_pad, 0, 1, "< Empty >")
+            return []
 
-        else:
-            h, w = scr.getmaxyx()
-            i = 0  # Keep track of the line number
-            self.table_pad.resize(
-                max(len(stack) + 1, h - TABHEAD_LINE - 1),
-                w
+        _, w = self.table_pad.get_inner_size()
+        return [
+            (
+                [fmt_time(frame["own_time"] / 1e6), 0],
+                [fmt_time(frame["tot_time"] / 1e6), 0],
+                self.scale_time(frame["own_time"]),
+                self.scale_time(frame["tot_time"]),
+                [ellipsis(frame["function"], w - TABHEAD_FUNCTION_PAD), 0]
+            ) for frame in stack
+        ]
+
+    def full_data(self):
+        def add_child(node, level):
+            if not node:
+                return
+
+            name_len = w - level - TABHEAD_FUNCTION_PAD
+
+            a = getattr(node, "is_active", False)
+            attr = curses.color_pair(1) if not a else 0
+            line = (
+                [fmt_time(node.own_time / 1e6), attr],
+                [fmt_time(node.total_time / 1e6), attr],
+                self.scale_time(node.own_time, a),
+                self.scale_time(node.total_time, a),
+                [ellipsis(node.function, name_len - 1), attr],
             )
-            for frame in stack:
-                writeln(
-                    self.table_pad,
-                    i, 0,
-                    " {:^6}  {:^6}  {:5.2f}%  {:5.2f}%  {}".format(
-                        fmt_time(frame["own_time"] / 1e6),
-                        fmt_time(frame["tot_time"] / 1e6),
-                        frame["own_time"] / 1e4 / self.duration,
-                        frame["tot_time"] / 1e4 / self.duration,
-                        ellipsis(frame["function"], curses.COLS - 34)
-                    )
-                )
+            line_store.append(line)
 
-                # Don't overfill the screen
-                # TODO: Consider using a widget for this (Pad?)
-                if i > curses.LINES - TABHEAD_LINE - 2:
-                    break
-                i += 1
+        def add_children(nodes, level=2):
+            if not nodes:
+                return
 
-    def full_view(self, scr, thread):
-        """Show all samples per thread.
+            for n in nodes:
+                if not n:
+                    continue
+                add_child(n, level)
+                add_children(n.children, level + 1)
 
-        This gives a comprehensive frame stack view with all the has
-        happened since the initial observation.
-        """
+        _, w = self.table_pad.get_inner_size()
+        stack = self.stats.get_thread_stack(self.current_thread)
+        if not stack:
+            return []
+
+        line_store = []
+
+        add_children(stack)
+
+        return line_store[::-1]
+
+    def draw_tree(self, pad):
         def print_child(node, char, prefix):
             if not node:
                 return
 
             tail = ("└" if node.children else "") + char + prefix
-            name_len = w - len(tail) - 33
+            name_len = w - len(tail) - 34
 
-            line = (
-                " {:^6}  {:^6}  {:5.2f}%  {:5.2f}%  {:" +
-                str(name_len) + "}").format(
-                    fmt_time(node.own_time / 1e6),
-                    fmt_time(node.total_time / 1e6),
-                    node.own_time / 1e4 / self.duration,
-                    node.total_time / 1e4 / self.duration,
-                    ellipsis(node.function, name_len - 1),
-                )
-            line_store.append((line, tail, getattr(node, "is_active", False)))
+            line_store.append(tail)
 
         def print_children(nodes, prefix=""):
             if not nodes:
@@ -212,33 +361,28 @@ class AustinTUI:
                 print_child(nodes[-1], "┐", prefix)
                 print_children(nodes[-1].children, " " + prefix)
 
-        stack = self.stats.get_thread_stack(thread)
+        if not self.is_full_view:
+            return
+
+        stack = self.stats.get_thread_stack(self.current_thread)
         if not stack:
             return
 
-        h, w = scr.getmaxyx()
+        h, w = self.get_size()
         line_store = []
 
         print_children(stack)
 
         i = 0
-        self.table_pad.resize(
-            max(len(line_store) + 1, h - TABHEAD_LINE - 1),
-            w
-        )
-        if not line_store:
-            writeln(self.table_pad, 0, 1, "< Empty >")
-            return
-
-        for l, t, a in line_store[::-1]:
-            self.table_pad.addstr(i, 0, l, curses.color_pair(1) if not a else 0)
-            self.table_pad.addstr(i, len(l), t, curses.color_pair(1))
+        for l in line_store[::-1]:
+            pad.addstr(i, w - 1 - len(l), l, curses.color_pair(1))
             i += 1
 
-    def update_view(self, scr):
+    def generate_data(self):
         self.current_threads = self.stats.get_current_threads()
+
         if not self.current_threads:
-            return
+            return []
 
         if (
             not self.current_thread or
@@ -247,119 +391,58 @@ class AustinTUI:
             self.current_thread = self.current_threads[0]
             self.current_thread_index = 0
 
-        thread = self.current_thread
-        self.current_thread_index = self.current_threads.index(thread)
-
-        self.thread_line.set_text("{:29} of {:^5}".format(
-            thread,
-            len(self.current_threads),
-        ))
-        self.thread_num.set_text("{:^5}".format(self.current_thread_index + 1))
-
-        self.duration = time.time() - self.start_time
-        self.samples_line.set_text("Samples: {:8}  Duration: {:>8}".format(
-            " ",
-            " "
-        ))
-        self.samples_count_label.set_text("{:8}".format(self.stats.samples))
-        self.duration_label.set_text(
-            "{:>8}".format(fmt_time(int(self.duration)))
+        self.current_thread_index = self.current_threads.index(
+            self.current_thread
         )
-
-        self.table_pad.clear()
 
         if self.is_full_view:
-            self.full_view(scr, thread)
+            return self.full_data()
         else:
-            self.current_view(scr, thread)
-
-        scr.refresh()
-
-    def handle_keypress(self, scr):
-        h, w = scr.getmaxyx()
-        self.table_pad.refresh(TABHEAD_LINE + 1, 0, h - 2, w - 1)
-
-        try:
-            key = self.table_pad.getkey()
-
-            if key == "q":
-                return -1
-
-            if key == "f":
-                self.is_full_view = not self.is_full_view
-
-            if self.table_pad.handle_input(key):
-                return 0
-
-            if key == "KEY_NPAGE" and self.current_threads:
-                if self.current_thread_index < len(self.current_threads) - 1:
-                    self.current_thread_index += 1
-                    self.current_thread = \
-                        self.current_threads[self.current_thread_index]
-
-            elif key == "KEY_PPAGE" and self.current_threads:
-                if self.current_thread_index > 0:
-                    self.current_thread_index -= 1
-                    self.current_thread = \
-                        self.current_threads[self.current_thread_index]
-
-            elif key == "KEY_RESIZE":
-                self.draw_ui(scr)
-
-            return 0
-        except curses.error:
-            return 1
+            return self.current_data()
 
     def run(self, scr):
-        curses.start_color()
-        curses.use_default_colors()
-        curses.init_pair(1, 246, -1)
-        curses.curs_set(False)
-        scr.clear()
-        scr.timeout(1000)
-
-        self.draw_ui(scr)
-
-        # Prepare to refresh the screen
-        self.thread_line.set_text("Sampling...")
         self.start_time = time.time()  # Keep track of the duration
 
-        # ---- Main Loop ------------------------------------------------------
+        async def input_loop():
+            while True:
+                try:
+                    scr.refresh()
+                    self.dispatch(self.table_pad.getkey())
+                except KeyboardInterrupt:
+                    for task in asyncio.Task.all_tasks():
+                        task.cancel()
+                    return
 
-        while self.austin.is_alive():
-            h, w = scr.getmaxyx()
+                except curses.error:
+                    pass
 
-            # NOTE: This might not be required
-            if self.austin.quit_event.wait(0):
-                break
+                await asyncio.sleep(.015)
 
-            self.update_view(scr)
+        async def update_loop():
+            while True:
+                if self.austin.is_running():
+                    self.duration = time.time() - self.start_time
+                self.refresh()
+                scr.refresh()
+                
+                await asyncio.sleep(1)
 
-            # Process user input
-            if self.handle_keypress(scr) < 0:
-                break
+        try:
+            self.austin.get_event_loop().run_until_complete(
+                asyncio.wait(
+                    (input_loop(), update_loop()),
+                    return_when=asyncio.FIRST_EXCEPTION
+                )
+            )
+        except asyncio.CancelledError:
+            pass
 
-        # We are about to shut down
-        if self.austin.is_alive():
-            scr.addstr(h - 1, 1, "Waiting for process to terminate...")
-            scr.clrtoeol()
-            scr.refresh()
-
-            self.austin.join()
-        else:
-            scr.addstr(h - 1, 1, "Process terminated")
-
-    def start(self):
-        self.stats = stats.Stats()
-
-        self.austin = Austin(
-            self.stats,
-            self.args
-        )
-        self.austin.start()
-
-        if (self.austin.start_event.wait(1)):
-            curses.wrapper(self.run)
+    def start(self, args):
+        # Fork Austin
+        self.austin.start(args)
+        self.refresh()
+        if self.austin.wait(1):
+            self.run(self._scr)
         else:
             print("Austin took too long to start. Terminating...")
             exit(1)
