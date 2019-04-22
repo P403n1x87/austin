@@ -74,7 +74,7 @@ further processing. Look, for instance, at the following Python TUI, similar in
 spirit to [py-spy](https://github.com/benfred/py-spy).
 
 <!-- ![tui](art/austin-tui_wip.png) -->
-<p align="center"><img src="art/austin-tui_wip.png" /></p>
+<p align="center"><img src="art/austin-tui.png" /></p>
 
 The current version only supports Python on Linux-based operating systems that
 have not been compiled with the `--enable-shared` flag. Support for other
@@ -354,8 +354,10 @@ for i in range(1000):
   list(psutil.process_iter())
 ~~~
 
-<!-- ![test_graph](art/test.png) -->
-<p align="center"><img src="art/test.png" /></p>
+<object data="art/process_iter_fg.svg" type="image/svg+xml" width="100%" >
+  <img src="art/process_iter_fg.svg" style="width:100%;"/>
+</object>
+
 
 The tall stack on the left is the initialisation phase of the Python
 interpreter.
