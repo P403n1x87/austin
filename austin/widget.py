@@ -144,6 +144,11 @@ class Pad(Widget):
     def __getattr__(self, name):
         return getattr(self.pad, name)
 
+    def get_inner_size(self):
+        h, w = self._sizep()
+
+        return h, w - 1
+
     def on_down(self):
         h, _ = self._sizep()
         if self.curr_y + h < self.h:
@@ -241,6 +246,7 @@ class CommandBar(Widget):
 
         self._cmds = commands
         self.scr = None
+        self.h = 0
 
     def refresh(self):
         if not self.scr:
@@ -264,5 +270,10 @@ class CommandBar(Widget):
             except curses.error:
                 pass
 
+        self.h = h - y
+
         self.scr.chgat(0)
         self.scr.clrtoeol()
+
+    def get_height(self):
+        return self.h

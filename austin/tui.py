@@ -14,13 +14,11 @@ SAMPLES_LINE = THREAD_LINE + 1
 TABHEAD_LINE = THREAD_LINE + 2
 TAB_START = TABHEAD_LINE + 1
 
+TABHEAD_TEMPLATE = " {:^6}  {:^6}  {:^6}  {:^6}  {}"
+TABHEAD_FUNCTION_PAD = len(TABHEAD_TEMPLATE.format("", "", "", "", ""))
+
 
 # ---- Local Helpers ----------------------------------------------------------
-
-def writeln(scr, *args, **kwargs):
-    scr.addstr(*args, **kwargs)
-    scr.clrtoeol()
-
 
 def ell(text, length, sep=".."):
     if len(text) <= length:
@@ -169,39 +167,23 @@ class AustinTUI(Window):
         self.add_child("cpu_label", Label(THREAD_LINE, 40, "CPU"))
         self.add_child("cpu", Label(
             THREAD_LINE, 44,
-            lambda: "{: >4}%".format(int(self.austin.get_child().cpu_percent()) if self.austin.is_running() else " "),
+            lambda: "{: >4}%".format(
+                int(self.austin.get_child().cpu_percent())
+                if self.austin.is_running() else
+                ""
+            ),
             attr = curses.A_BOLD
         ))
 
         self.add_child("mem_label", Label(SAMPLES_LINE, 40, "MEM"))
         self.add_child("mem", Label(
             SAMPLES_LINE, 44,
-            lambda: "{: >4}MB".format(self.austin.get_child().memory_full_info()[0] >> 20 if self.austin.is_running() else " "),
+            lambda: "{: >4}MB".format(
+                self.austin.get_child().memory_full_info()[0] >> 20
+                if self.austin.is_running() else
+                ""
+            ),
             attr = curses.A_BOLD
-        ))
-
-
-        # ---- Table ----------------------------------------------------------
-
-        self.add_child("table_header", Line(
-            TABHEAD_LINE, 0,
-            " {:^6}  {:^6}  {:^6}  {:^6}  {}".format(
-                "OWN",
-                "TOTAL",
-                "%OWN",
-                "%TOTAL",
-                "FUNCTION"
-                ),
-            curses.A_REVERSE | curses.A_BOLD
-        ))
-        self.add_child("table_pad", Table(
-            size_policy=lambda: [
-                (h - TAB_START - 1, w) for h, w in [self.get_size()]
-            ][0],
-            position_policy=lambda: (TAB_START, 0),
-            columns=[" {:^6} ", " {:^6} ", " {:5.2f}% ", " {:5.2f}% ", " {}"],
-            data_policy=self.generate_data,
-            hook=self.draw_tree
         ))
 
         # ---- Footer ---------------------------------------------------------
@@ -219,6 +201,31 @@ class AustinTUI(Window):
         self.connect("KEY_NPAGE", self.on_pgdown)
         self.connect("KEY_PPAGE", self.on_pgup)
 
+        # ---- Table ----------------------------------------------------------
+
+        self.add_child("table_header", Line(
+            TABHEAD_LINE, 0,
+            TABHEAD_TEMPLATE.format(
+                "OWN",
+                "TOTAL",
+                "%OWN",
+                "%TOTAL",
+                "FUNCTION"
+                ),
+            curses.A_REVERSE | curses.A_BOLD
+        ))
+        self.add_child("table_pad", Table(
+            size_policy=lambda: [
+                (h - TAB_START - self.cmd_bar.get_height(), w) for h, w in [self.get_size()]
+            ][0],
+            position_policy=lambda: (TAB_START, 0),
+            columns=[" {:^6} ", " {:^6} ", " {:5.2f}% ", " {:5.2f}% ", " {}"],
+            data_policy=self.generate_data,
+            hook=self.draw_tree
+        ))
+
+        # ---- END OF UI DEFINITION -------------------------------------------
+
     def __enter__(self):
         super().__enter__()
 
@@ -235,6 +242,8 @@ class AustinTUI(Window):
             j+=1
 
         return self
+
+    # ---- EVENT HANDLERS -----------------------------------------------------
 
     def on_sample_received(self, line):
         self.stats.add_thread_sample(line.encode())
@@ -264,6 +273,12 @@ class AustinTUI(Window):
         self.is_full_view = not self.is_full_view
         self.table_pad.refresh()
 
+    # ---- METHODS ------------------------------------------------------------
+
+    def scale_time(self, time, active=True):
+        ratio = time / 1e4 / self.duration
+        return ratio, color_level(ratio, active)
+
     def current_data(self):
         stacks = self.stats.get_current_stacks()
         if not stacks:
@@ -274,14 +289,14 @@ class AustinTUI(Window):
         if not stack:
             return []
 
-        h, w = self.get_size()
+        _, w = self.table_pad.get_inner_size()
         return [
             (
                 [fmt_time(frame["own_time"] / 1e6), 0],
                 [fmt_time(frame["tot_time"] / 1e6), 0],
-                [frame["own_time"] / 1e4 / self.duration, color_level(frame["own_time"] / 1e4 / self.duration)],
-                [frame["tot_time"] / 1e4 / self.duration, color_level(frame["tot_time"] / 1e4 / self.duration)],
-                [ellipsis(frame["function"], w - 34), 0]  # TODO: Improve!
+                self.scale_time(frame["own_time"]),
+                self.scale_time(frame["tot_time"]),
+                [ellipsis(frame["function"], w - TABHEAD_FUNCTION_PAD), 0]
             ) for frame in stack
         ]
 
@@ -290,15 +305,15 @@ class AustinTUI(Window):
             if not node:
                 return
 
-            name_len = w - level - 34  # TODO: Improve!
+            name_len = w - level - TABHEAD_FUNCTION_PAD
 
             a = getattr(node, "is_active", False)
             attr = curses.color_pair(1) if not a else 0
             line = (
                 [fmt_time(node.own_time / 1e6), attr],
                 [fmt_time(node.total_time / 1e6), attr],
-                [node.own_time / 1e4 / self.duration, color_level(node.own_time / 1e4 / self.duration, a)],
-                [node.total_time / 1e4 / self.duration, color_level(node.total_time / 1e4 / self.duration, a)],
+                self.scale_time(node.own_time, a),
+                self.scale_time(node.total_time, a),
                 [ellipsis(node.function, name_len - 1), attr],
             )
             line_store.append(line)
@@ -313,7 +328,7 @@ class AustinTUI(Window):
                 add_child(n, level)
                 add_children(n.children, level + 1)
 
-        h, w = self.get_size()
+        _, w = self.table_pad.get_inner_size()
         stack = self.stats.get_thread_stack(self.current_thread)
         if not stack:
             return []
@@ -400,23 +415,16 @@ class AustinTUI(Window):
 
                 except curses.error:
                     pass
-                except:
-                    import traceback
-                    self.last_error = repr(traceback.format_exc())
 
                 await asyncio.sleep(.015)
 
         async def update_loop():
             while True:
-                try:
-                    if self.austin.is_running():
-                        self.duration = time.time() - self.start_time
-                    self.refresh()
-                    scr.refresh()
-                except Exception as e:
-                    import traceback
-                    self.last_error = repr(traceback.format_exc())
-                    raise e
+                if self.austin.is_running():
+                    self.duration = time.time() - self.start_time
+                self.refresh()
+                scr.refresh()
+                
                 await asyncio.sleep(1)
 
         try:
