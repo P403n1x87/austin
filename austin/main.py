@@ -4,7 +4,7 @@ import sys
 from austin.tui import AustinTUI
 
 
-def main(scr):
+def curses_app(scr):
     args = sys.argv
     if len(args) == 1:
         print("Usage: austin-tui  command  [ARG...]")
@@ -14,8 +14,12 @@ def main(scr):
         austin_tui.start(args[1:])
 
 
-if __name__ == "__main__":
+def main():
     try:
-        curses.wrapper(main)
+        curses.wrapper(curses_app)
     except KeyboardInterrupt:
         pass
+
+
+if __name__ == "__main__":
+    main()

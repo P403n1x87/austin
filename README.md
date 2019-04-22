@@ -359,15 +359,12 @@ for i in range(1000):
 </object>
 
 
-The tall stack on the left is the initialisation phase of the Python
-interpreter.
-
-The Python TUI that is currently included in this repository is experimental and
-work in progress. It serves the purpose of providing an example of how to use
-Austin to profile Python applications. Here is a recording of the TUI in action
-with a sample script that spawns a new thread and keeps the CPU busy with a CPU
-bound loop on each thread. You can use `PageUp` and `PageDown` to navigate the
-frame stack of each frame as the Python application runs.
+The Python TUI that is currently included in this repository provides an
+example of how to use Austin to profile Python applications. Here is a
+recording of the TUI in action with a sample script that spawns a new thread
+and keeps the CPU busy with a CPU bound loop on each thread. You can use
+`PageUp` and `PageDown` to navigate the frame stack of each frame as the Python
+application runs.
 
 If you want to use it you will have to make sure that all the dependencies
 (`psutil` in this case) are installed, as the TUI project still lacks a
