@@ -360,18 +360,14 @@ for i in range(1000):
 
 
 The Python TUI that is currently included in this repository provides an
-example of how to use Austin to profile Python applications. Here is a
-recording of the TUI in action with a sample script that spawns a new thread
-and keeps the CPU busy with a CPU bound loop on each thread. You can use
+example of how to use Austin to profile Python applications. You can use
 `PageUp` and `PageDown` to navigate the frame stack of each frame as the Python
 application runs.
 
-If you want to use it you will have to make sure that all the dependencies
-(`psutil` in this case) are installed, as the TUI project still lacks a
-`setup.py` script.
+If you want to give it a go you can install it using `pip` with
 
 ~~~ bash
-pip install psutil
+pip install git+https://github.com/P403n1x87/austin.git
 ~~~
 
 > The TUI is based on `python-curses`. The version included with the standard
