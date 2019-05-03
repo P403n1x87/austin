@@ -75,12 +75,16 @@ class WebFrame:
         return WebFrame("root", 0)
 
     def to_dict(self):
+        # ---------------------------------------
+        # Validation check
+        # ---------------------------------------
         # s = 0
         # for c in self.children:
         #     s += c.value
         #
         # if s > self.value:
         #     raise RuntimeError("Invalid Frame")
+        # ---------------------------------------
 
         return {
             "name": self.name,
@@ -102,9 +106,10 @@ class DataPool:
 
     async def send(self, ws):
         data = self.data.to_dict()
+
         if self.data.height > self.max:
             self.max = self.data.height
-        # data["name"] = self.get_cmd_line()
+
         payload = {
             "type": "sample",
             "data": data,
@@ -113,7 +118,9 @@ class DataPool:
             "cpu": self._austin.get_child().cpu_percent(),
             "memory": self._austin.get_child().memory_full_info()[0] >> 20
         }
+
         await ws.send_str(json.dumps(payload))
+
         self.data = WebFrame.new_root()
 
 
@@ -171,7 +178,6 @@ class WebAustin(AsyncAustin):
             ]
         )
 
-        # TODO: Make it configurable
         port = int(env.get("WEBAUSTIN_PORT", 0)) or unused_port()
         host = env.get("WEBAUSTIN_HOST") or "localhost"
 
