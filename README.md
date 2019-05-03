@@ -417,7 +417,7 @@ serves on `WEBAUSTIN_HOST` if set or on `localhost` otherwise. The port can be
 controlled with the `WEBAUSTIN_PORT` environment variable. If it is not set,
 Web Austin will use an ephemeral port.
 
-<img src="art/web-austin.gif" />
+<p align="center"><img src="art/web-austin.gif" /></p
 
 ----
 
