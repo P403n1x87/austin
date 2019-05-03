@@ -358,7 +358,7 @@ for i in range(1000):
 </object>
 
 
-## Austion TUI
+## Austin TUI
 
 The Python TUI that is currently included in this repository provides an
 example of how to use Austin to profile Python applications. You can use
