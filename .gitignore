@@ -23,7 +23,6 @@ m4
 missing
 stamp-h1
 *~
-*.html
 *.log
 *.o
 *.la

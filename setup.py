@@ -37,6 +37,7 @@ setup(
     keywords='profiler stack sampler',
 
     packages=find_packages(exclude=['docs', 'test']),
+    include_package_data=True,
 
     python_requires='>=3.6',
 
@@ -50,6 +51,7 @@ setup(
     entry_points={
         'console_scripts': [
             'austin-tui=austin.main:main',
+            'austin-web=austin.web:main',
         ],
     },
 

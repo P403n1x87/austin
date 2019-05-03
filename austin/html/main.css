@@ -1,0 +1,30 @@
+@import url('https://fonts.googleapis.com/css?family=Montserrat:400,600,700');
+
+/* Custom page header */
+.header {
+  padding-bottom: 20px;
+  padding-right: 15px;
+  padding-left: 15px;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+/* Make the masthead heading the same height as the navigation */
+.header h3 {
+  margin-top: 0;
+  margin-bottom: 0;
+  line-height: 40px;
+}
+
+/* Customize container */
+.container {
+  max-width: 990px;
+}
+
+body {
+  overflow: hidden;
+  font-family: 'Montserrat';
+}
+
+#details {
+  min-height: 32px;
+}
