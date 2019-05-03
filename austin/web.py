@@ -3,6 +3,7 @@ import copy
 import json
 import sys
 import weakref
+from os import environ as env
 
 from aiohttp import WSMsgType, web
 from aiohttp.test_utils import unused_port
@@ -171,8 +172,8 @@ class WebAustin(AsyncAustin):
         )
 
         # TODO: Make it configurable
-        port = unused_port()
-        host = "localhost"
+        port = int(env.get("WEBAUSTIN_PORT", 0)) or unused_port()
+        host = env.get("WEBAUSTIN_HOST") or "localhost"
 
         print(Figlet(font="speed", width=240).renderText("* Web Austin *"))
         print(

@@ -59,30 +59,25 @@
 
 # Synopsis
 
-Austin is a Python frame stack sampler for CPython written in pure C. It samples
-the stack traces of a Python application so that they can be visualised and
-analysed. As such, it serves the basis for building powerful profilers for
+Austin is a Python frame stack sampler for CPython written in pure C. It
+samples the stack traces of a Python application so that they can be visualised
+and analysed. As such, it serves the basis for building powerful profilers for
 Python.
 
-The most interesting use of Austin is probably in conjunction with FlameGraph to
-profile Python applications while they are running, without the need of
-instrumentation. This means that Austin can be used on production code with
-little or even no impact on performance.
+The most interesting use of Austin is probably in conjunction with
+[FlameGraph](https://github.com/brendangregg/FlameGraph) to profile Python
+applications while they are running, without the need of instrumentation. This
+means that Austin can be used on production code with little or even no impact
+on performance.
 
 However, the output format can be grabbed from any other external tool for
 further processing. Look, for instance, at the following Python TUI, similar in
 spirit to [py-spy](https://github.com/benfred/py-spy).
 
 <!-- ![tui](art/austin-tui_wip.png) -->
-<p align="center"><img src="art/austin-tui.png" /></p>
-
-The current version only supports Python on Linux-based operating systems that
-have not been compiled with the `--enable-shared` flag. Support for other
-operating systems is next in line.
-
-> **NOTE** The TUI is experimental and still work in progress. Its main purpose
-> is to provide an example of how to use the output produce by Austin rather
-> than an additional application to maintain.
+<p align="center">
+  <img src="art/austin-tui.png" />
+</p>
 
 
 # Installation
@@ -90,9 +85,6 @@ operating systems is next in line.
 Austin can be installed using `autotools` or as a snap from the Snap Store. The
 latter will automatically perform the steps of the `autotools` method with a
 single command.
-
-On March 30 2019, Austin has been accepted into the official Debian
-repositories and can therefore be installed with `apt`.
 
 ## With `autotools`
 
@@ -130,6 +122,13 @@ sudo snap install austin --beta --classic
 ~~~
 
 [![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-white.svg)](https://snapcraft.io/austin)
+
+
+## On Debian and derivatives
+
+On March 30 2019, Austin has been accepted into the official Debian
+repositories and can therefore be installed with `apt`. The first Ubuntu
+release to include Austin is 19.10.
 
 
 # Usage
@@ -178,11 +177,11 @@ format
 Thread [tid];[func] ([mod]:[line no]);#[line no];[func] ... ([mod]:[line no]) [usec]
 ~~~
 
-Austin uses syslog for log messages so make sure you watch `/var/log/syslog` for
-the `austin` tag to get execution details and statistics. _Bad_ frames are
-output together with the other frames. In general, entries for bad frames will
-not be visible in a flame graph as all tests show error rates below 1% on
-average.
+Austin uses `syslog` on Linux and Mac OS, and `%TEMP%\austin.log` on Windows
+for log messages so make sure to watch these to get execution details and
+statistics. _Bad_ frames are output together with the other frames. In general,
+entries for bad frames will not be visible in a flame graph as all tests show
+error rates below 1% on average.
 
 
 # Compatibility
@@ -206,7 +205,7 @@ otherwise specified).
 - Python 3.3 (3.3.7) on Ubuntu 18.04.1
 - Python 3.4 (3.4.9+) on Ubuntu 18.04.1
 - Python 3.5 (3.5.2) on Ubuntu 18.04.1
-- Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04.1
+- Python 3.6 (3.6.5, 3.6.6, 3.6.7) on Ubuntu 18.04.x
 - Python 3.7 (3.7.0, 3.7.1) on Ubuntu 18.04.1
 
 
@@ -359,6 +358,8 @@ for i in range(1000):
 </object>
 
 
+## Austion TUI
+
 The Python TUI that is currently included in this repository provides an
 example of how to use Austin to profile Python applications. You can use
 `PageUp` and `PageDown` to navigate the frame stack of each frame as the Python
@@ -370,6 +371,14 @@ If you want to give it a go you can install it using `pip` with
 pip install git+https://github.com/P403n1x87/austin.git
 ~~~
 
+and run it with
+
+~~~ bash
+austin-tui [OPTION...] command [ARG...]
+~~~
+
+with the same command line as Austin.
+
 > The TUI is based on `python-curses`. The version included with the standard
 > Windows installations of Python is broken so it won't work out of the box. A
 > solution is to install the the wheel of the port to Windows from
@@ -380,6 +389,35 @@ pip install git+https://github.com/P403n1x87/austin.git
 
 <!-- ![austin-tui thread navigation](art/austin-tui_threads_nav.gif) -->
 <p align="center"><img src="art/austin-tui_threads_nav.gif" /></p>
+
+
+## Web Austin
+
+Web Austin is yet another example of how to use Austin to make a profiling
+tool. It makes use of
+[d3-flame-graph](https://github.com/spiermar/d3-flame-graph) to display a
+_live_ flame graph in the web browser that refreshes every 3 seconds with newly
+collected samples. Web Austin can also be used for _remote_ profiling by
+setting the `WEBAUSTIN_HOST` and `WEBAUSTIN_PORT` environment variables.
+
+If you want to give it a go you can install it using `pip` with
+
+~~~ bash
+pip install git+https://github.com/P403n1x87/austin.git
+~~~
+
+and run it with
+
+~~~ bash
+austin-tui [OPTION...] command [ARG...]
+~~~
+
+with the same command line as Austin. This starts a simple HTTP server that
+serves on `WEBAUSTIN_HOST` if set or on `localhost` otherwise. The port can be
+controlled with the `WEBAUSTIN_PORT` environment variable. If it is not set,
+Web Austin will use an ephemeral port.
+
+<img src="art/web-austin.gif" />
 
 ----
 
