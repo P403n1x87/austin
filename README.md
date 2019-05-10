@@ -409,7 +409,7 @@ pip install git+https://github.com/P403n1x87/austin.git
 and run it with
 
 ~~~ bash
-austin-tui [OPTION...] command [ARG...]
+austin-web [OPTION...] command [ARG...]
 ~~~
 
 with the same command line as Austin. This starts a simple HTTP server that
