@@ -68,9 +68,9 @@ function setDataInterval() {
 
 function setStatusColor(color) {
   d3.select("#status")
-    .classed("bg-green-dark", color == "green")
-    .classed("bg-red-dark", color == "red")
-    .classed("bg-yellow-dark", color == "yellow");
+    .classed("bg-green-700", color == "green")
+    .classed("bg-red-700", color == "red")
+    .classed("bg-yellow-700", color == "yellow");
 }
 
 
