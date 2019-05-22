@@ -76,8 +76,8 @@ const char * _error_msg_tab[MAXERROR] = {
   "Failed to load memory maps",
   "Interpreter state search timed out",
   "Failed to attach to running process",
-  NULL,
-  NULL,
+  "Permission denied. Try with elevated privileges.",
+  "No such process.",
   NULL,
 };
 

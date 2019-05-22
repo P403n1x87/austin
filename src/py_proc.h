@@ -45,8 +45,10 @@ typedef struct {
   char          * bin_path;
 
   proc_vm_map_t   map;
+  void          * min_raddr;
+  void          * max_raddr;
 
-  void          * bss;
+  void          * bss;  // local copy of the remote bss section
 
   int             sym_loaded;
   int             maps_loaded;

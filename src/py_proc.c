@@ -136,6 +136,19 @@ _py_proc__get_version(py_proc_t * self) {
 
   int major = 0, minor = 0, patch = 0;
 
+  char * libpython_ptr = strstr(self->bin_path, "libpython");
+  if (libpython_ptr != NULL) {
+    // The binary is a shared object. Determine the version from the name. So
+    // far we only care about major and minor so there is no point scanning
+    // the data section to match the exact version.
+    if (sscanf(libpython_ptr, "libpython%d.%d", &major, &minor) != 2) {
+      log_f("Failed to determine Python version from shared object name.");
+      return 0;
+    }
+    log_i("Python version: %d.%d.? (from shared library)", major, minor);
+    return (major << 16) | (minor << 8);
+  }
+
   FILE *fp;
   char version[64];
   char cmd[128];
@@ -144,7 +157,7 @@ _py_proc__get_version(py_proc_t * self) {
 
   fp = _popen(cmd, "r");
   if (fp == NULL) {
-    log_e("Failed to start Python to determine its version.");
+    log_f("Cannot determine the version of Python.");
     return 0;
   }
 
@@ -196,7 +209,10 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   if (V_FIELD(void*, tstate_head, py_thread, o_interp) != raddr)
     return 1;
 
-  log_d("Found possible interpreter state @ %p (offset %p).", raddr, raddr - self->map.heap.base);
+  log_d(
+    "Found possible interpreter state @ %p (offset %p).",
+    raddr, raddr - self->map.heap.base
+  );
 
   error = EOK;
   raddr_t thread_raddr = { .pid = self->pid, .addr = is.tstate_head };
@@ -205,7 +221,10 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     return 1;
   py_thread__destroy(thread);
 
-  log_d("Stack trace constructed from possible interpreter state (error %d)", error);
+  log_d(
+    "Stack trace constructed from possible interpreter state (error code: %d)",
+    error
+  );
 
   return error != EOK;
 }
@@ -219,6 +238,14 @@ _py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
     return 0;
 
   return (raddr >= self->map.heap.base && raddr < self->map.heap.base + self->map.heap.size);
+}
+
+static int
+_py_proc__is_raddr_within_max_range(py_proc_t * self, void * raddr) {
+  if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
+    return 0;
+
+  return (raddr >= self->min_raddr && raddr < self->max_raddr);
 }
 
 
@@ -266,16 +293,33 @@ _py_proc__scan_bss(py_proc_t * self) {
     return 1;
 
   void * upper_bound = self->bss + self->map.bss.size;
+  #ifdef CHECK_HEAP
+  // When the process uses the shared library we need to search in other maps
+  // other than the heap (at least on Linux). This could be optimised by
+  // creating a list of all the maps and checking that a value is valid address
+  // within any of these maps. However, this scan between min and max address
+  // should still be relatively quick so that the extra complexity of a list is
+  // not strictly required.
+  int is_lib = strstr(self->bin_path, "libpython") != NULL;
+  #endif
   for (
     register void ** raddr = (void **) self->bss;
     (void *) raddr < upper_bound;
     raddr++
   ) {
     #ifdef CHECK_HEAP
-    if (_py_proc__is_heap_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
+    if (
+        (is_lib ? _py_proc__is_raddr_within_max_range(self, *raddr)
+                : _py_proc__is_heap_raddr(self, *raddr))
+      && _py_proc__check_interp_state(self, *raddr) == 0
+    ) {
     #else
     if (_py_proc__check_interp_state(self, *raddr) == 0) {
     #endif
+      log_d(
+        "Possible interpreter state referenced by BSS @ %p",
+        (long) raddr - (long) self->bss + (long) self->map.bss.base
+      );
       self->is_raddr = *raddr;
       return 0;
     }
@@ -437,6 +481,9 @@ _py_proc__run(py_proc_t * self) {
   TIMER_START
     if (_py_proc__init(self) == 0)
       break;
+
+    if (error == EPROCPERM || error == EPROCNPID)
+      return 1;  // Fatal errors
   TIMER_END
 
   if (self->bin_path == NULL) {
