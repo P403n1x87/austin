@@ -217,7 +217,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   error = EOK;
   raddr_t thread_raddr = { .pid = self->pid, .addr = is.tstate_head };
   py_thread_t * thread = py_thread_new_from_raddr(&thread_raddr);
-  if (thread == NULL)
+  if (thread == NULL || thread->invalid)
     return 1;
   py_thread__destroy(thread);
 
@@ -317,8 +317,9 @@ _py_proc__scan_bss(py_proc_t * self) {
     if (_py_proc__check_interp_state(self, *raddr) == 0) {
     #endif
       log_d(
-        "Possible interpreter state referenced by BSS @ %p",
-        (long) raddr - (long) self->bss + (long) self->map.bss.base
+        "Possible interpreter state referenced by BSS @ %p (offset %x)",
+        (void *) raddr - (void *) self->bss + (void *) self->map.bss.base,
+        (void *) raddr - (void *) self->bss
       );
       self->is_raddr = *raddr;
       return 0;
