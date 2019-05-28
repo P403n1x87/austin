@@ -214,11 +214,20 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     raddr, raddr - self->map.heap.base
   );
 
+  // As an extra sanity check, verify that the thread state is valid
   error = EOK;
   raddr_t thread_raddr = { .pid = self->pid, .addr = is.tstate_head };
   py_thread_t * thread = py_thread_new_from_raddr(&thread_raddr);
-  if (thread == NULL || thread->invalid)
+  
+  if (thread == NULL)
     return 1;
+  
+  if (thread->invalid) {
+    py_thread__destroy(thread);
+    log_d("... but Head Thread State is invalid!");
+    return 1;
+  }
+  
   py_thread__destroy(thread);
 
   log_d(
