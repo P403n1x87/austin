@@ -43,6 +43,7 @@ typedef struct {
   pid_t           pid;
 
   char          * bin_path;
+  char          * lib_path;
 
   proc_vm_map_t   map;
   void          * min_raddr;

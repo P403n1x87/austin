@@ -124,7 +124,11 @@ python_v python_v3_7 = {
   PY_THREAD   (PyThreadState3_4),
   PY_UNICODE  (3),
   PY_BYTES    (3),
+  #ifdef PL_LINIX
   PY_RUNTIME  (0x570)  // Alt: 0x4a0
+  #else
+  PY_RUNTIME  (0x528)
+  #endif
 };
 
 

@@ -27,24 +27,27 @@
 #include "../py_proc.h"
 
 
+#define DEREF_SYM
+
+
 #define MODULE_CNT                     2
 
 
 // ----------------------------------------------------------------------------
 // TODO: Optimise by avoiding executing the same code over and over again
-// static void *
-// map_addr_from_rva(void * bin, DWORD rva) {
-//   IMAGE_DOS_HEADER     * dos_hdr = (IMAGE_DOS_HEADER *) bin;
-//   IMAGE_NT_HEADERS     * nt_hdr  = (IMAGE_NT_HEADERS *) (bin + dos_hdr->e_lfanew);
-//   IMAGE_SECTION_HEADER * s_hdr   = (IMAGE_SECTION_HEADER *) (bin + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
-//
-//   for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
-//     if (rva >= s_hdr[i].VirtualAddress && rva < s_hdr[i].VirtualAddress + s_hdr[i].SizeOfRawData)
-//       return bin + s_hdr[i].PointerToRawData + (rva - s_hdr[i].VirtualAddress);
-//   }
-//
-//   return NULL;
-// }
+static void *
+map_addr_from_rva(void * bin, DWORD rva) {
+  IMAGE_DOS_HEADER     * dos_hdr = (IMAGE_DOS_HEADER *) bin;
+  IMAGE_NT_HEADERS     * nt_hdr  = (IMAGE_NT_HEADERS *) (bin + dos_hdr->e_lfanew);
+  IMAGE_SECTION_HEADER * s_hdr   = (IMAGE_SECTION_HEADER *) (bin + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
+
+  for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
+    if (rva >= s_hdr[i].VirtualAddress && rva < s_hdr[i].VirtualAddress + s_hdr[i].SizeOfRawData)
+      return bin + s_hdr[i].PointerToRawData + (rva - s_hdr[i].VirtualAddress);
+  }
+
+  return NULL;
+}
 
 
 // ----------------------------------------------------------------------------
@@ -61,7 +64,7 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
   if (nt_hdr->Signature != IMAGE_NT_SIGNATURE)
     return 1;
 
-  // void * base = self->map.bss.base;
+  void * base = self->map.bss.base;
 
   // ---- Find the .data section ----
   for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
@@ -73,28 +76,18 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
   }
 
   // ---- Search for exports ----
-  // register int hit_cnt = 0;
-  //
-  // IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) map_addr_from_rva(pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress);
-  // if (e_dir != NULL) {
-  //   DWORD * names   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfNames);
-  //   WORD  * idx_tab = (WORD *)  map_addr_from_rva(pMapping, e_dir->AddressOfNameOrdinals);
-  //   DWORD * addrs   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfFunctions);
-  //   for (register int i = 0; i < e_dir->NumberOfFunctions; i++) {
-  //     char * sym_name = (char *) map_addr_from_rva(pMapping, names[i]);
-  //     // log_d("Symbol: %s", sym_name);
-  //     long hash = string_hash(sym_name);
-  //     for (register int i = 0; i < DYNSYM_COUNT; i++) {
-  //       if (hash == _dynsym_hash_array[i] && strcmp(sym_name, _dynsym_array[i]) == 0) {
-  //         *(&(self->tstate_curr_raddr) + i) = (void *) (addrs[idx_tab[i]] + base);
-  //         hit_cnt++;
-  //         #ifdef DEBUG
-  //         log_d("Symbol %s found at %p", sym_name, addrs[idx_tab[i]] + base);
-  //         #endif
-  //       }
-  //     }
-  //   }
-  // }
+  register int hit_cnt = 0;
+
+  IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) map_addr_from_rva(pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress);
+  if (e_dir != NULL) {
+    DWORD * names   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfNames);
+    WORD  * idx_tab = (WORD *)  map_addr_from_rva(pMapping, e_dir->AddressOfNameOrdinals);
+    DWORD * addrs   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfFunctions);
+    for (register int i = 0; i < e_dir->NumberOfFunctions; i++) {
+      char * sym_name = (char *) map_addr_from_rva(pMapping, names[i]);
+      hit_cnt += _py_proc__check_sym(self, sym_name, addrs[idx_tab[i]] + base);
+    }
+  }
 
   UnmapViewOfFile(pMapping);
   CloseHandle(hMapping);
@@ -129,6 +122,8 @@ _py_proc__get_modules(py_proc_t * self) {
       }
       if (strstr(module.szModule, ".dll")) {
         self->map.bss.base = module.modBaseAddr;  // Not the BSS base yet
+        self->lib_path = (char *) malloc(strlen(module.szExePath) + 1);
+        strcpy(self->lib_path, module.szExePath);
         _py_proc__analyze_pe(self, module.szExePath);
       }
       // vm_maps[map_cnt].base = module.modBaseAddr;
@@ -141,6 +136,9 @@ _py_proc__get_modules(py_proc_t * self) {
   }
 
   CloseHandle(mod_hdl);
+
+  if (self->lib_path != NULL && self->bin_path == NULL)
+    map_cnt++;
 
   return map_cnt == MODULE_CNT ? 0 : 1;
 }

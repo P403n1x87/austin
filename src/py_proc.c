@@ -132,11 +132,12 @@ _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
 
 static int
 _py_proc__get_version(py_proc_t * self) {
-  if (self == NULL || self->bin_path == NULL)
+  if (self == NULL || (self->bin_path == NULL && self->lib_path == NULL))
     return 0;
 
   int major = 0, minor = 0, patch = 0;
 
+  #ifdef PL_LINUX
   char * libpython_ptr = strstr(self->bin_path, "libpython");
   if (libpython_ptr != NULL) {
     // The binary is a shared object. Determine the version from the name. So
@@ -149,6 +150,18 @@ _py_proc__get_version(py_proc_t * self) {
     log_i("Python version: %d.%d.? (from shared library)", major, minor);
     return (major << 16) | (minor << 8);
   }
+  #endif
+
+  #ifdef PL_WIN
+  if (self->bin_path == NULL && self->lib_path != NULL) {
+    // Assume the library path is of the form *pythonMm.dll
+    int n = strlen(self->lib_path);
+    major = self->lib_path[n - 6] - '0';
+    minor = self->lib_path[n - 5] - '0';
+    log_i("Python version: %d.%d.? (from DLL)", major, minor);
+    return (major << 16) | (minor << 8);
+  }
+  #endif
 
   FILE *fp;
   char version[64];
@@ -538,7 +551,7 @@ _py_proc__run(py_proc_t * self) {
       return 1;  // Fatal errors
   TIMER_END
 
-  if (self->bin_path == NULL) {
+  if (self->bin_path == NULL && self->lib_path == NULL) {
     log_f("Python binary not found. Not Python?");
     return 1;
   }
@@ -563,7 +576,7 @@ _py_proc__run(py_proc_t * self) {
     log_w("No remote symbol references have been set.");
   #endif
 
-  log_d("Python binary: %s", self->bin_path);
+  log_d("Python binary: %s", self->bin_path != NULL ? self->bin_path : self->lib_path);
 
   // Determine and set version
   if (!self->version) {
@@ -597,6 +610,7 @@ py_proc_new() {
   else {
     py_proc->pid      = 0;
     py_proc->bin_path = NULL;
+    py_proc->lib_path = NULL;
     py_proc->is_raddr = NULL;
 
     py_proc->map.bss.base = NULL;
@@ -746,6 +760,9 @@ py_proc__destroy(py_proc_t * self) {
 
   if (self->bin_path != NULL)
     free(self->bin_path);
+
+  if (self->lib_path != NULL)
+    free(self->lib_path);
 
   if (self->bss != NULL)
     free(self->bss);
