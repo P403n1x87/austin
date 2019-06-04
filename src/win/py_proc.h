@@ -27,10 +27,12 @@
 #include "../py_proc.h"
 
 
+#define CHECK_HEAP
 #define DEREF_SYM
 
 
 #define MODULE_CNT                     2
+#define SYMBOLS                        2
 
 
 // ----------------------------------------------------------------------------
@@ -83,7 +85,7 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
     DWORD * names   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfNames);
     WORD  * idx_tab = (WORD *)  map_addr_from_rva(pMapping, e_dir->AddressOfNameOrdinals);
     DWORD * addrs   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfFunctions);
-    for (register int i = 0; i < e_dir->NumberOfFunctions; i++) {
+    for (register int i = 0; hit_cnt < SYMBOLS && i < e_dir->NumberOfFunctions; i++) {
       char * sym_name = (char *) map_addr_from_rva(pMapping, names[i]);
       hit_cnt += _py_proc__check_sym(self, sym_name, addrs[idx_tab[i]] + base);
     }
@@ -110,13 +112,27 @@ _py_proc__get_modules(py_proc_t * self) {
   MODULEENTRY32 module;
   module.dwSize = sizeof(module);
 
-  register int map_cnt = 0;  // TODO: Replace with flags?
+  self->min_raddr = (void *) -1;
+  self->max_raddr = NULL;
+
+  // register int map_cnt = 0;  // TODO: Replace with flags?
   // proc_vm_map_block_t * vm_maps = (proc_vm_map_block_t *) &(self->map);
   BOOL success = Module32First(mod_hdl, &module);
-  while (success && map_cnt < MODULE_CNT) {
-    // log_d("%p-%p  Module: %s", module.modBaseAddr, module.modBaseAddr + module.modBaseSize, module.szModule);
+  while (success /*&& map_cnt < MODULE_CNT*/) {
+    // log_d(
+    //   "%p-%p  Module: %s",
+    //   module.modBaseAddr, module.modBaseAddr + module.modBaseSize,
+    //   module.szModule
+    // );
+
+    if (module.modBaseAddr < self->min_raddr)
+      self->min_raddr = module.modBaseAddr;
+
+    if (module.modBaseAddr + module.modBaseSize > self->max_raddr)
+      self->max_raddr = module.modBaseAddr + module.modBaseSize;
+
     if (strstr(module.szModule, "python")) {
-      if (self->bin_path == NULL && strstr(module.szModule, "python.exe")) {
+      if (self->bin_path == NULL && strstr(module.szModule, ".exe")) {
         self->bin_path = (char *) malloc(strlen(module.szExePath) + 1);
         strcpy(self->bin_path, module.szExePath);
       }
@@ -129,7 +145,7 @@ _py_proc__get_modules(py_proc_t * self) {
       // vm_maps[map_cnt].base = module.modBaseAddr;
       // vm_maps[map_cnt].size = module.modBaseSize;
       // log_d("%p-%p: module %s", module.modBaseAddr, module.modBaseAddr + module.modBaseSize, module.szModule);
-      map_cnt++;
+      // map_cnt++;
     }
 
     success = Module32Next(mod_hdl, &module);
@@ -140,7 +156,7 @@ _py_proc__get_modules(py_proc_t * self) {
   if (self->lib_path != NULL && self->bin_path == NULL)
     map_cnt++;
 
-  return map_cnt == MODULE_CNT ? 0 : 1;
+  return map_cnt != MODULE_CNT;
 }
 
 

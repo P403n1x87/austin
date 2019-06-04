@@ -137,29 +137,24 @@ _py_proc__get_version(py_proc_t * self) {
 
   int major = 0, minor = 0, patch = 0;
 
-  #ifdef PL_LINUX
-  char * libpython_ptr = strstr(self->bin_path, "libpython");
-  if (libpython_ptr != NULL) {
-    // The binary is a shared object. Determine the version from the name. So
-    // far we only care about major and minor so there is no point scanning
-    // the data section to match the exact version.
-    if (sscanf(libpython_ptr, "libpython%d.%d", &major, &minor) != 2) {
+
+  if (self->bin_path == NULL && self->lib_path != NULL) {
+
+    #if defined PL_LINUX                                             /* LINUX */
+    if (sscanf(
+        strstr(self->lib_path, "libpython"), "libpython%d.%d", &major, &minor
+    ) != 2) {
       log_f("Failed to determine Python version from shared object name.");
       return 0;
     }
-    log_i("Python version: %d.%d.? (from shared library)", major, minor);
-    return (major << 16) | (minor << 8);
-  }
-  #endif
 
-
-  if (self->bin_path == NULL && self->lib_path != NULL) {
-    #if defined PL_WIN
+    #elif defined PL_WIN                                               /* WIN */
     // Assume the library path is of the form *pythonMm.dll
     int n = strlen(self->lib_path);
     major = self->lib_path[n - 6] - '0';
     minor = self->lib_path[n - 5] - '0';
-    #elif defined PL_MACOS
+
+    #elif defined PL_MACOS                                             /* MAC */
     char * ver_needle = strstr(self->lib_path, "/3.");
     if (ver_needle == NULL) ver_needle = strstr(self->lib_path, "/2.");
     if (ver_needle == NULL || sscanf(ver_needle, "/%d.%d", &major, &minor) != 2) {
@@ -167,7 +162,9 @@ _py_proc__get_version(py_proc_t * self) {
       return 0;
     }
     #endif
+
     log_i("Python version: %d.%d.? (from shared library)", major, minor);
+
     return (major << 16) | (minor << 8);
   }
 
@@ -322,21 +319,6 @@ _py_proc__scan_heap(py_proc_t * self) {
 #endif
 
 
-// #ifdef PL_LINUX
-// ----------------------------------------------------------------------------
-// static int
-// _py_proc__is_bss_raddr(py_proc_t * self, void * raddr) {
-//   if (self == NULL || raddr == NULL || self->map.bss.base == NULL)
-//     return 0;
-//
-//   return (
-//     raddr >= self->map.bss.base &&
-//     raddr < self->map.bss.base + self->map.bss.size
-//   );
-// }
-// #endif
-
-
 // ----------------------------------------------------------------------------
 static int
 _py_proc__scan_bss(py_proc_t * self) {
@@ -351,7 +333,7 @@ _py_proc__scan_bss(py_proc_t * self) {
   // within any of these maps. However, this scan between min and max address
   // should still be relatively quick so that the extra complexity of a list is
   // not strictly required.
-  int is_lib = strstr(self->bin_path, "libpython") != NULL;
+  int is_lib = self->lib_path != NULL;
   #endif
   for (
     register void ** raddr = (void **) self->bss;
@@ -585,7 +567,11 @@ _py_proc__run(py_proc_t * self) {
     log_w("No remote symbol references have been set.");
   #endif
 
-  log_d("Python binary: %s", self->bin_path != NULL ? self->bin_path : self->lib_path);
+  #ifdef DEBUG
+  if (self->bin_path != NULL) log_d("Python binary:  %s", self->bin_path);
+  if (self->lib_path != NULL) log_d("Python library: %s", self->lib_path);
+  log_d("Maximal VM address space: %p-%p", self->min_raddr, self->max_raddr);
+  #endif
 
   // Determine and set version
   if (!self->version) {

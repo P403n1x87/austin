@@ -37,10 +37,14 @@
 #include "../error.h"
 
 
+#define CHECK_HEAP
 #define DEREF_SYM
 
 
-#define next_lc(cmd) (cmd = (struct segment_command *) ((void *) cmd + cmd->cmdsize));
+#define SYMBOLS              2
+
+
+#define next_lc(cmd)    (cmd = (struct segment_command *)    ((void *) cmd + cmd->cmdsize));
 #define next_lc_64(cmd) (cmd = (struct segment_command_64 *) ((void *) cmd + cmd->cmdsize));
 
 // ---- Endianness ----
@@ -88,7 +92,7 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
     case LC_SYMTAB:
       for (
         register int i = 0;
-        self->sym_loaded == 0 && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
+        self->sym_loaded < SYMBOLS && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
         i++
       ) {
         struct nlist_64 * sym_tab = (struct nlist_64 *) (map + sw32(s, ((struct symtab_command *) cmd)->symoff));
@@ -99,7 +103,7 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
           continue;
 
         char * sym_name = (char *) (str_tab + sym_tab[i].n_un.n_strx);
-        self->sym_loaded = _py_proc__check_sym(self, sym_name, (void *) (img_base + sym_tab[i].n_value));
+        self->sym_loaded += _py_proc__check_sym(self, sym_name, (void *) (img_base + sym_tab[i].n_value));
       }
       cmd_cnt++;
     } // switch
@@ -110,7 +114,7 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
   if (self->map.bss.size == 0)
     return 1;
 
-  return self->sym_loaded;
+  return self->sym_loaded == SYMBOLS;
 }
 
 
@@ -146,7 +150,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
     case LC_SYMTAB:
       for (
         register int i = 0;
-        self->sym_loaded == 0 && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
+        self->sym_loaded < SYMBOLS && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
         i++
       ) {
         struct nlist * sym_tab = (struct nlist *) (map + sw32(s, ((struct symtab_command *) cmd)->symoff));
@@ -157,7 +161,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
           continue;
 
         char * sym_name = (char *) (str_tab + sym_tab[i].n_un.n_strx);
-        self->sym_loaded = _py_proc__check_sym(self, sym_name, (void *) (img_base + sym_tab[i].n_value));
+        self->sym_loaded += _py_proc__check_sym(self, sym_name, (void *) (img_base + sym_tab[i].n_value));
       }
       cmd_cnt++;
     } // switch
@@ -168,7 +172,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
   if (self->map.bss.size == 0)
     return 1;
 
-  return self->sym_loaded;
+  return self->sym_loaded == SYMBOLS;
 }
 
 
@@ -282,12 +286,14 @@ _py_proc__get_maps(py_proc_t * self) {
   mach_msg_type_number_t         count = sizeof(vm_region_basic_info_data_64_t);
   mach_port_t                    object_name;
 
-  // NOTE: Mac OS X kernel bug
-  usleep(10000);
+  usleep(10000);  // NOTE: Mac OS X kernel bug
 
   mach_port_t task_id = pid_to_task(self->pid);
   if (task_id == 0)
     return 1;
+
+  self->min_raddr = (void *) -1;
+  self->max_raddr = NULL;
 
   while (mach_vm_region(
     task_id,
@@ -298,6 +304,12 @@ _py_proc__get_maps(py_proc_t * self) {
     &count,
     &object_name
   ) == KERN_SUCCESS) {
+    if (address < self->min_raddr)
+      self->min_raddr = address;
+
+    if (address + size > self->max_raddr)
+      self->max_raddr = address + size;
+
     char path[MAXPATHLEN];
     int len = proc_regionfilename(self->pid, address, path, MAXPATHLEN);
     if (size > 0 && len) {
@@ -321,17 +333,11 @@ _py_proc__get_maps(py_proc_t * self) {
       }
     }
 
-    if (self->sym_loaded)
-      break;
-
     address += size;
   }
 
   if (self->bin_path && self->lib_path && !strcmp(self->bin_path, self->lib_path))
     self->bin_path = NULL;
-
-  log_d("Bin Path %s", self->bin_path);
-  log_d("Lib Path %s", self->lib_path);
 
   return !self->sym_loaded;
 }
