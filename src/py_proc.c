@@ -152,16 +152,25 @@ _py_proc__get_version(py_proc_t * self) {
   }
   #endif
 
-  #ifdef PL_WIN
+
   if (self->bin_path == NULL && self->lib_path != NULL) {
+    #if defined PL_WIN
     // Assume the library path is of the form *pythonMm.dll
     int n = strlen(self->lib_path);
     major = self->lib_path[n - 6] - '0';
     minor = self->lib_path[n - 5] - '0';
-    log_i("Python version: %d.%d.? (from DLL)", major, minor);
+    #elif defined PL_MACOS
+    char * ver_needle = strstr(self->lib_path, "/3.");
+    if (ver_needle == NULL) ver_needle = strstr(self->lib_path, "/2.");
+    if (ver_needle == NULL || sscanf(ver_needle, "/%d.%d", &major, &minor) != 2) {
+      log_f("Failed to determine Python version from shared object path.");
+      return 0;
+    }
+    #endif
+    log_i("Python version: %d.%d.? (from shared library)", major, minor);
     return (major << 16) | (minor << 8);
   }
-  #endif
+
 
   FILE *fp;
   char version[64];
