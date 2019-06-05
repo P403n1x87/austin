@@ -56,8 +56,8 @@ map_addr_from_rva(void * bin, DWORD rva) {
 static int
 _py_proc__analyze_pe(py_proc_t * self, char * path) {
   HANDLE hFile    = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-  HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READONLY,0,0,0);
-  LPVOID pMapping = MapViewOfFile(hMapping,FILE_MAP_READ,0,0,0);
+  HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READONLY, 0, 0, 0);
+  LPVOID pMapping = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
 
   IMAGE_DOS_HEADER     * dos_hdr = (IMAGE_DOS_HEADER *)     pMapping;
   IMAGE_NT_HEADERS     * nt_hdr  = (IMAGE_NT_HEADERS *)     (pMapping + dos_hdr->e_lfanew);
@@ -78,16 +78,20 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
   }
 
   // ---- Search for exports ----
-  register int hit_cnt = 0;
+  self->sym_loaded = 0;
 
   IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) map_addr_from_rva(pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress);
   if (e_dir != NULL) {
     DWORD * names   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfNames);
     WORD  * idx_tab = (WORD *)  map_addr_from_rva(pMapping, e_dir->AddressOfNameOrdinals);
     DWORD * addrs   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfFunctions);
-    for (register int i = 0; hit_cnt < SYMBOLS && i < e_dir->NumberOfFunctions; i++) {
+    for (
+      register int i = 0;
+      self->sym_loaded < SYMBOLS && i < e_dir->NumberOfFunctions;
+      i++
+    ) {
       char * sym_name = (char *) map_addr_from_rva(pMapping, names[i]);
-      hit_cnt += _py_proc__check_sym(self, sym_name, addrs[idx_tab[i]] + base);
+      self->sym_loaded += _py_proc__check_sym(self, sym_name, addrs[idx_tab[i]] + base);
     }
   }
 
@@ -95,7 +99,7 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
   CloseHandle(hMapping);
   CloseHandle(hFile);
 
-  return 0;
+  return !self->sym_loaded;
 }
 
 
@@ -153,10 +157,7 @@ _py_proc__get_modules(py_proc_t * self) {
 
   CloseHandle(mod_hdl);
 
-  if (self->lib_path != NULL && self->bin_path == NULL)
-    map_cnt++;
-
-  return map_cnt != MODULE_CNT;
+  return !self->sym_loaded;
 }
 
 

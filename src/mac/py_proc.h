@@ -114,7 +114,7 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
   if (self->map.bss.size == 0)
     return 1;
 
-  return self->sym_loaded == SYMBOLS;
+  return !self->sym_loaded;
 }
 
 
@@ -172,7 +172,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
   if (self->map.bss.size == 0)
     return 1;
 
-  return self->sym_loaded == SYMBOLS;
+  return !self->sym_loaded;
 }
 
 
