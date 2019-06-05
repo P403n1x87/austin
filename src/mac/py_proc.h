@@ -218,7 +218,7 @@ _py_proc__analyze_fat(py_proc_t * self, void * addr, void * map) {
 
   free(vm_map);
 
-  return 1 - self->sym_loaded;
+  return !self->sym_loaded;
 }
 
 
@@ -260,7 +260,7 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * addr, mach_vm_size
   munmap(map, size);
   close(fd);
 
-  return 1 - self->sym_loaded;
+  return !self->sym_loaded;
 }
 
 
@@ -304,11 +304,11 @@ _py_proc__get_maps(py_proc_t * self) {
     &count,
     &object_name
   ) == KERN_SUCCESS) {
-    if (address < self->min_raddr)
-      self->min_raddr = address;
+    if ((void *) address < self->min_raddr)
+      self->min_raddr = (void *) address;
 
-    if (address + size > self->max_raddr)
-      self->max_raddr = address + size;
+    if ((void *) address + size > self->max_raddr)
+      self->max_raddr = (void *) address + size;
 
     char path[MAXPATHLEN];
     int len = proc_regionfilename(self->pid, address, path, MAXPATHLEN);
@@ -322,13 +322,14 @@ _py_proc__get_maps(py_proc_t * self) {
         }
       }
 
-      if (/*size > (1 << 12) &&*/ strstr(path, "Python")) {
+      if (self->lib_path == NULL && strstr(path, "Python")) {
         if (strstr(path + strlen(path) - 3, ".so") == NULL) {
           self->lib_path = (char *) malloc(strlen(path) + 1);
           strcpy(self->lib_path, path);
 
           self->map.bss.base = (void *) address;  // WARNING: Partial result. Not yet the BSS base!!
-          self->sym_loaded = !_py_proc__analyze_macho(self, path, (void *) address, size);
+          if (_py_proc__analyze_macho(self, path, (void *) address, size))
+            return 1;
         }
       }
     }
