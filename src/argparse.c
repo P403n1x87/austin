@@ -24,6 +24,7 @@
 
 #include <limits.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/types.h>
 
 #include "argparse.h"
@@ -45,6 +46,7 @@ pid_t   attach_pid          = 0;
 int     exclude_empty       = 0;
 int     sleepless           = 0;
 char *  format              = (char *) SAMPLE_FORMAT_NORMAL;
+char*   output_filename     = NULL;
 
 static int exec_arg = 0;
 
@@ -114,6 +116,10 @@ static struct argp_option options[] = {
     "pid",          'p', "PID",         0,
     "The the ID of the process to which Austin should attach."
   },
+  {
+    "output",       'o', "OUTPUT",       0,
+    "Output file."
+  },
   #ifndef PL_LINUX
   {
     "help",         '?', NULL
@@ -177,6 +183,12 @@ parse_opt (int key, char *arg, struct argp_state *state)
     if (strtonum(arg, &l_pid) == 1 || l_pid <= 0)
       argp_error(state, "invalid PID.");
     attach_pid = (pid_t) l_pid;
+    break;
+
+  case 'o':
+    if (output_filename == NULL)
+      free(output_filename);
+    output_filename = strdup(arg);
     break;
 
   case ARGP_KEY_ARG:

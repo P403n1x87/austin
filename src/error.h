@@ -29,6 +29,7 @@
 // generic messages
 #define EOK                   0
 #define EMMAP                 1
+#define EFILE                 2
 
 // py_code_t
 #define ECODE                 ((1 << 3) + 0)

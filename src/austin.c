@@ -41,6 +41,7 @@
 
 
 static ctime_t t_sample;  // Checkmark for sampling duration calculation
+static FILE* output_file = NULL;
 
 
 // ---- HELPERS ---------------------------------------------------------------
@@ -55,23 +56,23 @@ _print_collapsed_stack(py_thread_t * thread, ctime_t delta) {
     return;
 
   // Group entries by thread.
-  printf("Thread %lx", thread->tid);
+  fprintf(output_file, "Thread %lx", thread->tid);
 
   // Append frames
   while(frame != NULL) {
     py_code_t * code = frame->code;
     if (sleepless && strstr(code->scope, "wait") != NULL) {
       delta = 0;
-      printf(";<idle>");
+      fprintf(output_file, ";<idle>");
       break;
     }
-    printf(format, code->scope, code->filename, code->lineno);
+    fprintf(output_file, format, code->scope, code->filename, code->lineno);
 
     frame = frame->next;
   }
 
   // Finish off sample with the sampling time
-  printf(" %lu\n", delta);
+  fprintf(output_file, " %lu\n", delta);
 }
 
 
@@ -138,6 +139,14 @@ int main(int argc, char ** argv) {
   log_header();
   log_version();
 
+  if (output_filename == NULL)
+    output_file = stdout;
+  else {
+    output_file = fopen(output_filename, "w");
+    if (output_file == NULL)
+      return EFILE;
+  }
+
   if (attach_pid == 0 && argv[exec_arg] == NULL) {
     log_f("Null command and invalid PID. Austin doesn't know what to do.");
     code = EPROC;
@@ -195,6 +204,7 @@ int main(int argc, char ** argv) {
     }
   }
 
+  fflush(output_file);
   log_footer();
   logger_close();
 
