@@ -9,7 +9,7 @@ invoke_austin() {
     --show-leak-kinds=all \
     --errors-for-leak-kinds=all \
     --track-fds=yes \
-    src/austin -i 1000 -t 1000 python$1 test/target34.py
+    src/austin -i 100000 -t 10000 python$1 test/target34.py
   echo "Exit code:" $status
   echo $output
 	[ $status = 0 ]

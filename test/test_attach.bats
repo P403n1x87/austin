@@ -3,7 +3,7 @@ attach_austin_2_3() {
 
   python$1 test/sleepy.py &
   sleep 5
-  run src/austin -i 1000 -t 1000 -p $!
+  run src/austin -i 100000 -t 10000 -p $!
   [ $status = 0 ]
   echo $output | grep ";? (test/sleepy.py);L13 "
 }
@@ -13,7 +13,7 @@ attach_austin() {
 
   python$1 test/sleepy.py &
   sleep 5
-  run src/austin -i 1000 -t 1000 -p $!
+  run src/austin -i 10000 -t 10000 -p $!
   [ $status = 0 ]
   echo $output | grep "cpu_bound"
   echo $output | grep ";<module> (test/sleepy.py);L13 "

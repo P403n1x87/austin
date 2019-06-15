@@ -3,10 +3,15 @@
 invoke_austin() {
   if ! python$1 -V; then return; fi
 
-  run src/austin -i 1000 -t 1000 python$1 test/target34.py
+  run src/austin -i 10000 -t 10000 python$1 test/target34.py
 	[ $status = 0 ]
   echo $output | grep "keep_cpu_busy (test/target34.py);L7 "
   echo $output | grep "keep_cpu_busy (test/target34.py);L8 "
+
+  # Memory profiling
+  run src/austin -i 100000 -t 10000 -m python$1 test/target34.py
+	[ $status = 0 ]
+  echo $output | grep "keep_cpu_busy (test/target34.py);L"
 }
 
 @test "Test Austin with Python 2.3" {
@@ -48,3 +53,7 @@ invoke_austin() {
 @test "Test Austin with Python 3.7" {
   invoke_austin "3.7"
 }
+
+# @test "Test Austin with Python 3.8" {
+#   invoke_austin "3.8"
+# }
