@@ -82,6 +82,9 @@ typedef struct {
   int version;
 } py_bytes_v;
 
+typedef struct {
+  unsigned int tstate_current_offset;
+} py_runtime;
 
 typedef struct {
   py_code_v    py_code;
@@ -89,6 +92,7 @@ typedef struct {
   py_thread_v  py_thread;
   py_unicode_v py_unicode;
   py_bytes_v   py_bytes;
+  py_runtime   py_runtime;
 } python_v;
 
 

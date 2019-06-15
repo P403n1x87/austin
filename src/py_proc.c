@@ -88,7 +88,7 @@ static int _py_proc__check_sym(py_proc_t *, char *, void *);
 
 
 // ---- Exported symbols ----
-#define DYNSYM_COUNT                   2
+#define DYNSYM_COUNT                   3
 
 #ifdef PL_MACOS
   #define SYM_PREFIX "__"
@@ -98,7 +98,8 @@ static int _py_proc__check_sym(py_proc_t *, char *, void *);
 
 static const char * _dynsym_array[DYNSYM_COUNT] = {
   SYM_PREFIX "PyThreadState_Current",
-  SYM_PREFIX "PyRuntime"
+  SYM_PREFIX "PyRuntime",
+  "interp_head"
 };
 
 static long _dynsym_hash_array[DYNSYM_COUNT] = {
@@ -131,10 +132,42 @@ _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
 
 static int
 _py_proc__get_version(py_proc_t * self) {
-  if (self == NULL || self->bin_path == NULL)
+  if (self == NULL || (self->bin_path == NULL && self->lib_path == NULL))
     return 0;
 
   int major = 0, minor = 0, patch = 0;
+
+
+  if (self->bin_path == NULL && self->lib_path != NULL) {
+
+    #if defined PL_LINUX                                             /* LINUX */
+    if (sscanf(
+        strstr(self->lib_path, "libpython"), "libpython%d.%d", &major, &minor
+    ) != 2) {
+      log_f("Failed to determine Python version from shared object name.");
+      return 0;
+    }
+
+    #elif defined PL_WIN                                               /* WIN */
+    // Assume the library path is of the form *pythonMm.dll
+    int n = strlen(self->lib_path);
+    major = self->lib_path[n - 6] - '0';
+    minor = self->lib_path[n - 5] - '0';
+
+    #elif defined PL_MACOS                                             /* MAC */
+    char * ver_needle = strstr(self->lib_path, "/3.");
+    if (ver_needle == NULL) ver_needle = strstr(self->lib_path, "/2.");
+    if (ver_needle == NULL || sscanf(ver_needle, "/%d.%d", &major, &minor) != 2) {
+      log_f("Failed to determine Python version from shared object path.");
+      return 0;
+    }
+    #endif
+
+    log_i("Python version: %d.%d.? (from shared library)", major, minor);
+
+    return (major << 16) | (minor << 8);
+  }
+
 
   FILE *fp;
   char version[64];
@@ -144,7 +177,7 @@ _py_proc__get_version(py_proc_t * self) {
 
   fp = _popen(cmd, "r");
   if (fp == NULL) {
-    log_e("Failed to start Python to determine its version.");
+    log_f("Cannot determine the version of Python.");
     return 0;
   }
 
@@ -165,8 +198,16 @@ _py_proc__get_version(py_proc_t * self) {
   //       If this causes problems then another method is required.
   // char * p_ver = (char *) map + (Elf64_Addr) self->map.rodata.base;
   // for (register int i = 0; i < self->map.rodata.size; i++) {
-  //   if (p_ver[i] == '.' && p_ver[i+1] != '.' && p_ver[i+2] == '.' && p_ver[i-2] == 0) {
-  //     if (sscanf(p_ver + i - 1, "%d.%d.%d", &major, &minor, &patch) == 3 && (major == 2 || major == 3)) {
+  //   if (
+  //     p_ver[i]   == '.' &&
+  //     p_ver[i+1] != '.' &&
+  //     p_ver[i+2] == '.' &&
+  //     p_ver[i-2] == 0
+  //   ) {
+  //     if (
+  //       sscanf(p_ver + i - 1, "%d.%d.%d", &major, &minor, &patch) == 3 &&
+  //       (major == 2 || major == 3)
+  //     ) {
   //       log_i("Python version: %s", p_ver + i - 1, p_ver);
   //       // break;
   //     }
@@ -183,12 +224,15 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   PyInterpreterState is;
   PyThreadState      tstate_head;
 
-  if (py_proc__get_type(self, raddr, is) != 0)
+  if (py_proc__get_type(self, raddr, is))
     return OUT_OF_BOUND;
 
-  log_t("PyInterpreterState loaded @ %p", raddr);
+  log_t(
+    "PyInterpreterState loaded @ %p. Thread State head @ %p",
+    raddr, is.tstate_head
+  );
 
-  if (py_proc__get_type(self, is.tstate_head, tstate_head) != 0)
+  if (py_proc__get_type(self, is.tstate_head, tstate_head))
     return 1;
 
   log_t("PyThreadState head loaded @ %p", is.tstate_head);
@@ -196,16 +240,31 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   if (V_FIELD(void*, tstate_head, py_thread, o_interp) != raddr)
     return 1;
 
-  log_d("Found possible interpreter state @ %p (offset %p).", raddr, raddr - self->map.heap.base);
+  log_d(
+    "Found possible interpreter state @ %p (offset %p).",
+    raddr, raddr - self->map.heap.base
+  );
 
+  // As an extra sanity check, verify that the thread state is valid
   error = EOK;
   raddr_t thread_raddr = { .pid = self->pid, .addr = is.tstate_head };
   py_thread_t * thread = py_thread_new_from_raddr(&thread_raddr);
+
   if (thread == NULL)
     return 1;
+
+  if (thread->invalid) {
+    py_thread__destroy(thread);
+    log_d("... but Head Thread State is invalid!");
+    return 1;
+  }
+
   py_thread__destroy(thread);
 
-  log_d("Stack trace constructed from possible interpreter state (error %d)", error);
+  log_d(
+    "Stack trace constructed from possible interpreter state (error code: %d)",
+    error
+  );
 
   return error != EOK;
 }
@@ -218,7 +277,20 @@ _py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
   if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
     return 0;
 
-  return (raddr >= self->map.heap.base && raddr < self->map.heap.base + self->map.heap.size);
+  return (
+    raddr >= self->map.heap.base &&
+    raddr < self->map.heap.base + self->map.heap.size
+  );
+}
+
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__is_raddr_within_max_range(py_proc_t * self, void * raddr) {
+  if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
+    return 0;
+
+  return (raddr >= self->min_raddr && raddr < self->max_raddr);
 }
 
 
@@ -247,18 +319,6 @@ _py_proc__scan_heap(py_proc_t * self) {
 #endif
 
 
-#ifdef PL_LINUX
-// ----------------------------------------------------------------------------
-static int
-_py_proc__is_bss_raddr(py_proc_t * self, void * raddr) {
-  if (self == NULL || raddr == NULL || self->map.bss.base == NULL)
-    return 0;
-
-  return (raddr >= self->map.bss.base && raddr < self->map.bss.base + self->map.bss.size);
-}
-#endif
-
-
 // ----------------------------------------------------------------------------
 static int
 _py_proc__scan_bss(py_proc_t * self) {
@@ -266,16 +326,32 @@ _py_proc__scan_bss(py_proc_t * self) {
     return 1;
 
   void * upper_bound = self->bss + self->map.bss.size;
+  #ifdef CHECK_HEAP
+  // When the process uses the shared library we need to search in other maps
+  // other than the heap (at least on Linux). This could be optimised by
+  // creating a list of all the maps and checking that a value is valid address
+  // within any of these maps. However, this scan between min and max address
+  // should still be relatively quick so that the extra complexity of a list is
+  // not strictly required.
+  int is_lib = self->lib_path != NULL;
+  #endif
   for (
     register void ** raddr = (void **) self->bss;
     (void *) raddr < upper_bound;
     raddr++
   ) {
-    #ifdef CHECK_HEAP
-    if (_py_proc__is_heap_raddr(self, *raddr) && _py_proc__check_interp_state(self, *raddr) == 0) {
-    #else
-    if (_py_proc__check_interp_state(self, *raddr) == 0) {
-    #endif
+    if (
+      #ifdef CHECK_HEAP
+        (is_lib ? _py_proc__is_raddr_within_max_range(self, *raddr)
+                : _py_proc__is_heap_raddr(self, *raddr)) &&
+      #endif
+      _py_proc__check_interp_state(self, *raddr) == 0
+    ) {
+      log_d(
+        "Possible interpreter state referenced by BSS @ %p (offset %x)",
+        (void *) raddr - (void *) self->bss + (void *) self->map.bss.base,
+        (void *) raddr - (void *) self->bss
+      );
       self->is_raddr = *raddr;
       return 0;
     }
@@ -288,64 +364,95 @@ _py_proc__scan_bss(py_proc_t * self) {
 #ifdef DEREF_SYM
 // ----------------------------------------------------------------------------
 static int
-_py_proc__deref_interp_state(py_proc_t * self) {
-  PyThreadState   tstate_current;
-  _PyRuntimeState py_runtime;
+_py_proc__deref_interp_head(py_proc_t * self) {
+  void * interp_head_raddr;
 
-  if (self == NULL)
+  if (self->py_runtime_raddr != NULL) {
+    _PyRuntimeState py_runtime;
+    if (py_proc__get_type(self, self->py_runtime_raddr, py_runtime))
+      return 1;
+    interp_head_raddr = py_runtime.interpreters.head;
+  }
+  else if (self->interp_head_raddr != NULL) {
+    if (py_proc__get_type(self, self->interp_head_raddr, interp_head_raddr))
+      return 1;
+  }
+  else return 1;
+
+  if (_py_proc__check_interp_state(self, interp_head_raddr))
     return 1;
 
-  if (self->py_runtime_raddr == NULL && self->tstate_curr_raddr == NULL)
-    return -2;
+  self->is_raddr = interp_head_raddr;
 
-  // Python 3.7 exposes the _PyRuntime symbol. This can be used to find the
-  // head interpreter state.
+  #ifdef PYRUNTIME
   if (self->py_runtime_raddr != NULL) {
-    // NOTE: With Python 3.7, this check causes the de-reference to fail even
-    //       in cases where it shouldn't.
-    // if (
-    //   _py_proc__is_bss_raddr(self, self->py_runtime_raddr) == 0 &&
-    //   _py_proc__is_heap_raddr(self, self->py_runtime_raddr) == 0
-    // ) return OUT_OF_BOUND;
-
-    if (py_proc__get_type(self, self->py_runtime_raddr, py_runtime) != 0)
-      return 1;
-
-    if (_py_proc__check_interp_state(self, py_runtime.interpreters.head))
-      return 1;
-
-    self->is_raddr = py_runtime.interpreters.head;
-
-    return 0;
+    // Search offset of current thread in _PyRuntimeState structure
+    PyInterpreterState is;
+    py_proc__get_type(self, interp_head_raddr, is);
+    void * current_thread_raddr;
+    usleep(50000); // Introduce delay to make sure that we don't actually see
+                    // the current thread with the sleepy test. This way we
+                    // determine the offset of the pointer to current tstate.
+    #define PYRUNTIMESTATE_SIZE 2048  // We expect _PyRuntimeState to be < 2K.
+    for (
+      register void ** raddr = (void **) self->py_runtime_raddr;
+      (void *) raddr < self->py_runtime_raddr + PYRUNTIMESTATE_SIZE;
+      raddr++
+    ) {
+      py_proc__get_type(self, raddr, current_thread_raddr);
+      if (current_thread_raddr == is.tstate_head) {
+        log_d(
+          "OFFSETOF(gilstate.tstate_current, _PyRuntime) = %x",
+          (void *) raddr - self->py_runtime_raddr
+        );
+      }
+    }
   }
-
-  // TODO: The quality of this check on Linux is to be further assessed.
-  #ifdef PL_LINUX
-  if (
-    _py_proc__is_bss_raddr(self, self->tstate_curr_raddr) == 0 &&
-    _py_proc__is_heap_raddr(self, self->tstate_curr_raddr) == 0
-  ) return OUT_OF_BOUND;
   #endif
 
-  if (py_proc__get_type(self, self->tstate_curr_raddr, tstate_current) != 0)
-    return 1;
+  return 0;
+}
+
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__find_interpreter_state(py_proc_t * self) {
+  PyThreadState   tstate_current;
+  void          * tstate_current_raddr;
+
+  // First try to de-reference interpreter head as the most reliable method
+  if (_py_proc__deref_interp_head(self)) {
+    // If that fails try to get the current thread state (can be NULL during idle)
+    tstate_current_raddr = py_proc__get_current_thread_state_raddr(self);
+    if (tstate_current_raddr == NULL || tstate_current_raddr == (void *) -1)
+      // Idle or unable to dereference
+      return 1;
+    else {
+      if (py_proc__get_type(self, tstate_current_raddr, tstate_current))
+        return 1;
+
+      if (_py_proc__check_interp_state(
+        self, V_FIELD(void*, tstate_current, py_thread, o_interp)
+      )) return 1;
+
+      self->is_raddr = V_FIELD(void*, tstate_current, py_thread, o_interp);
+      log_d("Interpreter head de-referenced from current thread state symbol.");
+    }
+  } else {
+    log_d("Interpreter head reference from symbol dereferenced successfully.");
+  }
+
+  return 0;
 
   // 3.6.5 -> 3.6.6: _PyThreadState_Current doesn't seem what one would expect
   //                 anymore, but _PyThreadState_Current.prev is.
-  if (
-    V_FIELD(void*, tstate_current, py_thread, o_thread_id) == 0 && \
-    V_FIELD(void*, tstate_current, py_thread, o_prev)      != 0
-  ) {
-    self->tstate_curr_raddr = V_FIELD(void*, tstate_current, py_thread, o_prev);
-    return 1;
-  }
-
-  if (_py_proc__check_interp_state(self, V_FIELD(void*, tstate_current, py_thread, o_interp)))
-    return 1;
-
-  self->is_raddr = V_FIELD(void*, tstate_current, py_thread, o_interp);
-
-  return 0;
+  // if (
+  //   V_FIELD(void*, tstate_current, py_thread, o_thread_id) == 0 && \
+  //   V_FIELD(void*, tstate_current, py_thread, o_prev)      != 0
+  // ) {
+  //   self->tstate_curr_raddr = V_FIELD(void*, tstate_current, py_thread, o_prev);
+  //   return 1;
+  // }
 }
 #endif
 
@@ -353,62 +460,55 @@ _py_proc__deref_interp_state(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__wait_for_interp_state(py_proc_t * self) {
-  #ifdef DEREF_SYM
+  register int attempts = 0;
   TIMER_RESET
   TIMER_START
-    switch (_py_proc__deref_interp_state(self)) {
-    case 1:
-      continue;
-
-    case 0:
-      log_d("Interpreter State de-referenced @ raddr: %p after %d iterations",
-        self->is_raddr,
-        INIT_RETRY_CNT - try_cnt
-      );
-      return 0;
-
-    case OUT_OF_BOUND:
-      log_d("Symbol address not within VM maps (shared object?)");
-      TIMER_STOP
-      break;
-
     #ifdef DEREF_SYM
-    case -2:
-      log_w("Null symbol references. This is unexpected.");
+    if (_py_proc__find_interpreter_state(self)) {
     #endif
+      if (self->bss == NULL) {
+        self->bss = malloc(self->map.bss.size);
+      }
+      if (self->bss == NULL)
+        return 1;
 
-    default:
+      switch (_py_proc__scan_bss(self)) {
+      case 0:
+        log_d("Interpreter state located from BSS scan.");
+
+      case OUT_OF_BOUND:
+        TIMER_STOP
+      }
+    #ifdef DEREF_SYM
+    } else {
       TIMER_STOP
-      break;
     }
+    #endif
+    attempts++;
   TIMER_END
-  #endif
 
-  if (self->map.bss.size == 0) {
-    log_f("Process not properly initialised. Invalid BSS reference found.");
-    error = EPROCVM;
-    return 1;
+  if (self->bss != NULL) {
+    free(self->bss);
+    self->bss = NULL;
   }
 
-  #ifdef DEREF_SYM
-  log_d("Unable to de-reference global symbols. Scanning the bss section...");
-  #else
-  log_d("Scanning the uninitialized data section ...");
-  #endif
+  // NOTE: This case should not happen anymore as the addresses have been
+  //       corrected.
+  //   case OUT_OF_BOUND:
+  //     log_d("Symbol address not within VM maps (shared object?)");
+  //     TIMER_STOP
+  //     break;
 
-  // Copy .bss section from remote location
-  self->bss = malloc(self->map.bss.size);
-  if (self->bss == NULL)
-    return 1;
-
-  try_cnt = 10;
-  TIMER_START
-    if (_py_proc__scan_bss(self) == 0)
-      return 0;
-  TIMER_END
+  if (self->is_raddr != NULL) {
+    log_d("Interpreter State de-referenced @ raddr: %p after %d attempts",
+      self->is_raddr,
+      attempts
+    );
+    return 0;
+  }
 
   #ifdef CHECK_HEAP
-  log_w("Bss scan unsuccessful. Scanning heap directly...");
+  log_w("BSS scan unsuccessful so we scan the heap directly ...");
 
   // TODO: Consider copying heap over and check for pointers
   try_cnt = 10;
@@ -431,33 +531,47 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__run(py_proc_t * self) {
-  log_d("Timeout: %dms", timeout);
+  log_d("Start up timeout: %dms", timeout);
 
   TIMER_RESET
   TIMER_START
     if (_py_proc__init(self) == 0)
       break;
+
+    if (error == EPROCPERM || error == EPROCNPID)
+      return 1;  // Fatal errors
   TIMER_END
 
-  if (self->bin_path == NULL) {
+  if (self->bin_path == NULL && self->lib_path == NULL) {
     log_f("Python binary not found. Not Python?");
     return 1;
   }
 
-  if (self->map.bss.size == 0)
-    log_e("Invalid BSS structure.");
+  if (self->map.bss.size == 0 || self->map.bss.base == NULL)
+    log_e("Unable to fully locate the BSS section.");
+
+  if (self->min_raddr > self->max_raddr)
+    log_w("Invalid remote VM maximal bounds.");
 
   #ifdef CHECK_HEAP
-  if (self->map.heap.size == 0)
-    log_e("Invalid HEAP structure.");
+  if (self->map.heap.size == 0 || self->map.heap.base == NULL)
+    log_w("Unable to fully locate the heap.");
   #endif
 
   #ifdef DEREF_SYM
-  if (self->tstate_curr_raddr == NULL && self->py_runtime_raddr == NULL)
-    log_e("Expecting valid symbol references. Found none.");
+  if (
+    self->tstate_curr_raddr == NULL &&
+    self->py_runtime_raddr  == NULL &&
+    self->interp_head_raddr == NULL
+  )
+    log_w("No remote symbol references have been set.");
   #endif
 
-  log_d("Python binary: %s", self->bin_path);
+  #ifdef DEBUG
+  if (self->bin_path != NULL) log_d("Python binary:  %s", self->bin_path);
+  if (self->lib_path != NULL) log_d("Python library: %s", self->lib_path);
+  log_d("Maximal VM address space: %p-%p", self->min_raddr, self->max_raddr);
+  #endif
 
   // Determine and set version
   if (!self->version) {
@@ -491,6 +605,7 @@ py_proc_new() {
   else {
     py_proc->pid      = 0;
     py_proc->bin_path = NULL;
+    py_proc->lib_path = NULL;
     py_proc->is_raddr = NULL;
 
     py_proc->map.bss.base = NULL;
@@ -503,6 +618,10 @@ py_proc_new() {
 
     py_proc->tstate_curr_raddr = NULL;
     py_proc->py_runtime_raddr  = NULL;
+    py_proc->interp_head_raddr = NULL;
+
+    py_proc->min_raddr = (void *) -1;
+    py_proc->max_raddr = NULL;
 
     py_proc->version = 0;
   }
@@ -524,7 +643,9 @@ int
 py_proc__attach(py_proc_t * self, pid_t pid) {
   log_d("Attaching to process with PID %d", pid);
   #ifdef PL_WIN
-  self->pid = (pid_t) OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
+  self->pid = (pid_t) OpenProcess(
+    PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid
+  );
   if (self->pid == (pid_t) INVALID_HANDLE_VALUE) {
     log_e("Unable to attach to process with PID %d", pid);
     return 1;
@@ -589,6 +710,30 @@ py_proc__get_istate_raddr(py_proc_t * self) {
 
 
 // ----------------------------------------------------------------------------
+void *
+py_proc__get_current_thread_state_raddr(py_proc_t * self) {
+  void * p_tstate_current;
+
+  if (self->py_runtime_raddr != NULL) {
+    if (py_proc__get_type(
+      self,
+      self->py_runtime_raddr + py_v->py_runtime.tstate_current_offset,
+      p_tstate_current
+    )) return (void *) -1;
+  }
+
+  else if (self->tstate_curr_raddr != NULL) {
+    if (py_proc__get_type(self, self->tstate_curr_raddr, p_tstate_current))
+      return (void *) -1;
+  }
+
+  else return (void *) -1;
+
+  return p_tstate_current;
+}
+
+
+// ----------------------------------------------------------------------------
 int
 py_proc__is_running(py_proc_t * self) {
   #ifdef PL_WIN                                                        /* WIN */
@@ -610,6 +755,9 @@ py_proc__destroy(py_proc_t * self) {
 
   if (self->bin_path != NULL)
     free(self->bin_path);
+
+  if (self->lib_path != NULL)
+    free(self->lib_path);
 
   if (self->bss != NULL)
     free(self->bss);

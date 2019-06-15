@@ -72,6 +72,9 @@
   n                                     \
 }
 
+#define PY_RUNTIME(n) {                 \
+  n                                     \
+}
 
 // ---- Python 2 --------------------------------------------------------------
 
@@ -120,7 +123,14 @@ python_v python_v3_7 = {
   PY_FRAME    (PyFrameObject3_7),
   PY_THREAD   (PyThreadState3_4),
   PY_UNICODE  (3),
-  PY_BYTES    (3)
+  PY_BYTES    (3),
+  #if defined PL_LINIX
+  PY_RUNTIME  (0x570)
+  #elif defined PL_WIN
+  PY_RUNTIME  (0x528)
+  #elif defined PL_MACOS
+  PY_RUNTIME  (0x5a0)
+  #endif
 };
 
 

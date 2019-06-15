@@ -43,6 +43,8 @@
 #define HEAP_MAP                 (1 << 3)
 #define BSS_MAP                  (1 << 4)
 
+#define SYMBOLS                        2
+
 
 #define _py_proc__get_elf_type(self, offset, dt) (py_proc__memcpy(self, self->map.elf.base + offset, sizeof(dt), &dt))
 
@@ -60,12 +62,14 @@ union {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__analyze_elf64(py_proc_t * self) {
+  char * object_file = self->lib_path != NULL ? self->lib_path : self->bin_path;
+
   Elf64_Ehdr ehdr = ehdr_v.v64;
 
   // Section header must be read from binary as it is not loaded into memory
   Elf64_Xword   sht_size      = ehdr.e_shnum * ehdr.e_shentsize;
   Elf64_Off     elf_map_size  = ehdr.e_shoff + sht_size;
-  int           fd            = open(self->bin_path, O_RDONLY);
+  int           fd            = open(object_file, O_RDONLY);
   void        * elf_map       = mmap(NULL, elf_map_size, PROT_READ, MAP_SHARED, fd, 0);
   int           map_flag      = 0;
   Elf64_Shdr  * p_shdr;
@@ -109,7 +113,7 @@ _py_proc__analyze_elf64(py_proc_t * self) {
     // }
   }
 
-  register int hit_cnt = 0;
+  register int symbols = 0;
   if (p_dynsym != NULL) {
     if (p_dynsym->sh_offset == 0)
       return 1;
@@ -123,11 +127,11 @@ _py_proc__analyze_elf64(py_proc_t * self) {
     ) {
       Elf64_Sym * sym      = (Elf64_Sym *) (elf_map + tab_off);
       char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
-      // This leads to some good corrections, but it still fails in some cases.
+      // ASLR: This leads to some good corrections, but it still fails in some cases.
       void      * value    = (void *) sym->st_value >= self->map.bss.base && (void *) sym->st_value < self->map.bss.base + self->map.bss.size \
         ? (void *) sym->st_value \
         : (void *) base + (sym->st_value);
-      if ((hit_cnt = _py_proc__check_sym(self, sym_name, value)))
+      if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= SYMBOLS)
         break;
     }
   }
@@ -135,19 +139,21 @@ _py_proc__analyze_elf64(py_proc_t * self) {
   munmap(elf_map, elf_map_size);
   close(fd);
 
-  return 1 - hit_cnt;
+  return !symbols;
 }
 
 
 // ----------------------------------------------------------------------------
 static int
 _py_proc__analyze_elf32(py_proc_t * self) {
+  char * object_file = self->lib_path != NULL ? self->lib_path : self->bin_path;
+
   Elf32_Ehdr ehdr = ehdr_v.v32;
 
   // Section header must be read from binary as it is not loaded into memory
   Elf32_Xword   sht_size      = ehdr.e_shnum * ehdr.e_shentsize;
   Elf32_Off     elf_map_size  = ehdr.e_shoff + sht_size;
-  int           fd            = open(self->bin_path, O_RDONLY);
+  int           fd            = open(object_file, O_RDONLY);
   void        * elf_map       = mmap(NULL, elf_map_size, PROT_READ, MAP_SHARED, fd, 0);
   int           map_flag      = 0;
   Elf32_Shdr  * p_shdr;
@@ -191,7 +197,7 @@ _py_proc__analyze_elf32(py_proc_t * self) {
     // }
   }
 
-  register int hit_cnt = 0;
+  register int symbols = 0;
   if (p_dynsym != NULL) {
     if (p_dynsym->sh_offset == 0)
       return 1;
@@ -205,11 +211,11 @@ _py_proc__analyze_elf32(py_proc_t * self) {
     ) {
       Elf32_Sym * sym      = (Elf32_Sym *) (elf_map + tab_off);
       char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
-      // This leads to some good corrections, but it still fails in some cases.
+      // ASLR: This leads to some good corrections, but it still fails in some cases.
       void      * value    = (void *) sym->st_value >= self->map.bss.base && (void *) sym->st_value < self->map.bss.base + self->map.bss.size \
         ? (void *) sym->st_value \
         : (void *) base + (sym->st_value);
-      if ((hit_cnt = _py_proc__check_sym(self, sym_name, value)))
+      if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= SYMBOLS)
         break;
     }
   }
@@ -217,7 +223,7 @@ _py_proc__analyze_elf32(py_proc_t * self) {
   munmap(elf_map, elf_map_size);
   close(fd);
 
-  return 1 - hit_cnt;
+  return !symbols;
 }
 
 
@@ -261,57 +267,92 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
   sprintf(file_name, "/proc/%d/maps", self->pid);
   fp = fopen(file_name, "r");
-  if (fp == NULL)
-    error = EPROCVM;
+  if (fp == NULL) {
+    switch (errno) {
+    case EACCES:  // Needs elevated privileges
+      error = EPROCPERM;
+      break;
+    case ENOENT:  // Invalid pid
+      error = EPROCNPID;
+      break;
+    default:
+      error = EPROCVM;
+    }
+  }
 
   else {
     ssize_t a, b;  // VM map bounds
+    int path_len;
     char * needle;
-    while (maps_flag != (HEAP_MAP | BSS_MAP) && getline(&line, &len, fp) != -1) {
-      if (self->bin_path == NULL) {
-        // Store binary file name
-        // TODO: Extend to deal with libpython.so
+    register int line_count = 0;  // Used to determine if we need to look for the python or libpython binary.
+
+    self->min_raddr = (void *) -1;
+    self->max_raddr = NULL;
+
+    while (getline(&line, &len, fp) != -1) {
+      ++line_count;
+      // Parse heap bounds
+      get_bounds(line, a, b);
+      if (strstr(line, " [v") == NULL) {
+        // Skip meaningless addresses like [vsyscall] which would give
+        // ridiculous values.
+        if ((void *) a < self->min_raddr) self->min_raddr = (void *) a;
+        if ((void *) b > self->max_raddr) self->max_raddr = (void *) b;
+      }
+
+      if ((maps_flag & HEAP_MAP) == 0 && (needle = strstr(line, "[heap]\n")) != NULL) {
+        self->map.heap.base = (void *) a;
+        self->map.heap.size = b - a;
+
+        maps_flag |= HEAP_MAP;
+
+        log_d("HEAP bounds: %s", line);
+        continue;
+      }
+
+      if (line_count == 1) {
         if ((needle = strstr(line, "python")) == NULL)
-          break;
-
-        while (*((char *) --needle) != ' ');
-        int len = strlen(++needle);
-        if (self->bin_path != NULL)
-          free(self->bin_path);
-        self->bin_path = (char *) malloc(sizeof(char) * len + 1);
-        if (self->bin_path == NULL)
-          error = EPROCVM;
+        // NOTE: The python binary might have a name that doesn't contain python
+        //       but would still be valid. In case of future issues, this
+        //       should be changed so that the binary on the first line is
+        //       checked for, e.g., knownw symbols to determine whether it is a
+        //       valid binary that Austin can handle.
+          continue;
         else {
+          while (*((char *) --needle) != ' ');  // Move to the beginning of the path
+          path_len = strlen(++needle);
+          self->bin_path = (char *) malloc(sizeof(char) * path_len + 1);
           strcpy(self->bin_path, needle);
-          if (self->bin_path[len-1] == '\n')
-            self->bin_path[len-1] = 0;
+          if (self->bin_path[path_len-1] == '\n')
+            self->bin_path[path_len-1] = 0;
 
-          get_bounds(line, a, b);
           self->map.elf.base = (void *) a;
           self->map.elf.size = b - a;
         }
       }
-      else {
-        if ((needle = strstr(line, "[heap]\n")) != NULL) {
-          if ((maps_flag & HEAP_MAP) == 0) {
-            get_bounds(line, a, b);
-            self->map.heap.base = (void *) a;
-            self->map.heap.size = b - a;
 
-            maps_flag |= HEAP_MAP;
+      else if ((self->lib_path == NULL) && ((needle = strstr(line, "libpython")) != NULL)) {
+        maps_flag &= ~BSS_MAP;
 
-            log_d("HEAP bounds: %s", line);
-          }
-        }
-        else if ((maps_flag & BSS_MAP) == 0 && (line[strlen(line)-2] == ' ')) {
-          get_bounds(line, a, b);
-          self->map.bss.base = (void *) a;
-          self->map.bss.size = b - a;
+        while (*((char *) --needle) != ' ');  // Move to the beginning of the path
+        path_len = strlen(++needle);
+        self->lib_path = (char *) malloc(sizeof(char) * path_len + 1);
+        strcpy(self->lib_path, needle);
+        if (self->lib_path[path_len-1] == '\n')
+          self->lib_path[path_len-1] = 0;
 
-          maps_flag |= BSS_MAP;
+        // Override any previous values as this is the binary we need to look into
+        self->map.elf.base = (void *) a;
+        self->map.elf.size = b - a;
+      }
 
-          log_d("BSS bounds: %s", line);
-        }
+      if ((maps_flag & BSS_MAP) == 0 && (line[strlen(line)-2] == ' ')) {
+        self->map.bss.base = (void *) a;
+        self->map.bss.size = b - a;
+
+        maps_flag |= BSS_MAP;
+
+        log_d("BSS bounds: %s", line);
       }
     }
 
@@ -325,7 +366,10 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
   self->maps_loaded = maps_flag == (HEAP_MAP | BSS_MAP);
 
-  return maps_flag != (HEAP_MAP | BSS_MAP);
+  return (
+    (self->bin_path == NULL && self->lib_path == NULL) ||
+    maps_flag != (HEAP_MAP | BSS_MAP)
+  );
 }
 
 

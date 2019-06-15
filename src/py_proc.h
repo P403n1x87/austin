@@ -43,10 +43,13 @@ typedef struct {
   pid_t           pid;
 
   char          * bin_path;
+  char          * lib_path;
 
   proc_vm_map_t   map;
+  void          * min_raddr;
+  void          * max_raddr;
 
-  void          * bss;
+  void          * bss;  // local copy of the remote bss section
 
   int             sym_loaded;
   int             maps_loaded;
@@ -55,6 +58,7 @@ typedef struct {
   // Symbols from .dynsym
   void          * tstate_curr_raddr;
   void          * py_runtime_raddr;
+  void          * interp_head_raddr;
 
   void          * is_raddr;
 } py_proc_t;
@@ -104,6 +108,19 @@ py_proc__attach(py_proc_t *, pid_t);
  */
 void *
 py_proc__get_istate_raddr(py_proc_t *);
+
+
+/**
+ * Get the remote address of the current PyThreadState instance.
+ *
+ * @param  py_proc_t * the process object.
+ *
+ * @return the remote address of the current PyThreadState instance. If no
+ *         thread is currently running then this returns NULL. If an error
+ *         occurred, the return value is (void *) -1.
+ */
+void *
+py_proc__get_current_thread_state_raddr(py_proc_t *);
 
 
 /**

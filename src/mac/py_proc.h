@@ -34,11 +34,17 @@
 #include <sys/param.h>
 #include <unistd.h>
 
+#include "../error.h"
 
+
+#define CHECK_HEAP
 #define DEREF_SYM
 
 
-#define next_lc(cmd) (cmd = (struct segment_command *) ((void *) cmd + cmd->cmdsize));
+#define SYMBOLS              2
+
+
+#define next_lc(cmd)    (cmd = (struct segment_command *)    ((void *) cmd + cmd->cmdsize));
 #define next_lc_64(cmd) (cmd = (struct segment_command_64 *) ((void *) cmd + cmd->cmdsize));
 
 // ---- Endianness ----
@@ -86,7 +92,7 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
     case LC_SYMTAB:
       for (
         register int i = 0;
-        self->sym_loaded == 0 && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
+        self->sym_loaded < SYMBOLS && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
         i++
       ) {
         struct nlist_64 * sym_tab = (struct nlist_64 *) (map + sw32(s, ((struct symtab_command *) cmd)->symoff));
@@ -97,7 +103,7 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
           continue;
 
         char * sym_name = (char *) (str_tab + sym_tab[i].n_un.n_strx);
-        self->sym_loaded = _py_proc__check_sym(self, sym_name, (void *) (img_base + sym_tab[i].n_value));
+        self->sym_loaded += _py_proc__check_sym(self, sym_name, (void *) (img_base + sym_tab[i].n_value));
       }
       cmd_cnt++;
     } // switch
@@ -108,7 +114,7 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
   if (self->map.bss.size == 0)
     return 1;
 
-  return self->sym_loaded;
+  return !self->sym_loaded;
 }
 
 
@@ -144,7 +150,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
     case LC_SYMTAB:
       for (
         register int i = 0;
-        self->sym_loaded == 0 && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
+        self->sym_loaded < SYMBOLS && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
         i++
       ) {
         struct nlist * sym_tab = (struct nlist *) (map + sw32(s, ((struct symtab_command *) cmd)->symoff));
@@ -155,7 +161,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
           continue;
 
         char * sym_name = (char *) (str_tab + sym_tab[i].n_un.n_strx);
-        self->sym_loaded = _py_proc__check_sym(self, sym_name, (void *) (img_base + sym_tab[i].n_value));
+        self->sym_loaded += _py_proc__check_sym(self, sym_name, (void *) (img_base + sym_tab[i].n_value));
       }
       cmd_cnt++;
     } // switch
@@ -166,7 +172,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
   if (self->map.bss.size == 0)
     return 1;
 
-  return self->sym_loaded;
+  return !self->sym_loaded;
 }
 
 
@@ -212,7 +218,7 @@ _py_proc__analyze_fat(py_proc_t * self, void * addr, void * map) {
 
   free(vm_map);
 
-  return 1 - self->sym_loaded;
+  return !self->sym_loaded;
 }
 
 
@@ -254,7 +260,7 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * addr, mach_vm_size
   munmap(map, size);
   close(fd);
 
-  return 1 - self->sym_loaded;
+  return !self->sym_loaded;
 }
 
 
@@ -262,7 +268,11 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * addr, mach_vm_size
 static mach_port_t
 pid_to_task(pid_t pid) {
   mach_port_t task;
-  task_for_pid(mach_task_self(), pid, &task);
+  if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
+    log_f("Insufficient permissions to call task_for_pid.");
+    error = EPROCPERM;
+    return 0;
+  }
   return task;
 }
 
@@ -270,42 +280,67 @@ pid_to_task(pid_t pid) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__get_maps(py_proc_t * self) {
-  mach_vm_address_t           address = 1;
-  mach_vm_size_t              size;
-  vm_region_basic_info_data_t region_info;
-  mach_msg_type_number_t      count = sizeof(vm_region_basic_info_data_t);
-  mach_port_t                 object_name;
+  mach_vm_address_t              address = 0;
+  mach_vm_size_t                 size;
+  vm_region_basic_info_data_64_t region_info;
+  mach_msg_type_number_t         count = sizeof(vm_region_basic_info_data_64_t);
+  mach_port_t                    object_name;
 
-  // NOTE: Mac OS X kernel bug
-  usleep(10000);
+  usleep(10000);  // NOTE: Mac OS X kernel bug
+
+  mach_port_t task_id = pid_to_task(self->pid);
+  if (task_id == 0)
+    return 1;
+
+  self->min_raddr = (void *) -1;
+  self->max_raddr = NULL;
 
   while (mach_vm_region(
-    pid_to_task(self->pid),
+    task_id,
     &address,
     &size,
-    VM_REGION_BASIC_INFO,
+    VM_REGION_BASIC_INFO_64,
     (vm_region_info_t) &region_info,
     &count,
     &object_name
   ) == KERN_SUCCESS) {
+    if ((void *) address < self->min_raddr)
+      self->min_raddr = (void *) address;
+
+    if ((void *) address + size > self->max_raddr)
+      self->max_raddr = (void *) address + size;
+
     char path[MAXPATHLEN];
-    if (size > 0 && proc_regionfilename(self->pid, address, path, MAXPATHLEN)) {
+    int len = proc_regionfilename(self->pid, address, path, MAXPATHLEN);
+    if (size > 0 && len) {
+      path[len] = 0;
       if (self->bin_path == NULL && strstr(path, "python")) {
-        self->bin_path = (char *) malloc(strlen(path) + 1);
-        strcpy(self->bin_path, path);
-      } else if (size > (1 << 12) && strstr(path, "Python")) {
-        self->map.bss.base = (void *) address;  // Not yet the BSS base
-        self->sym_loaded = 1 - _py_proc__analyze_macho(self, path, (void *) address, size);
+        if (strstr(path + strlen(path) - 3, ".so") == NULL) {
+          // check that it is not a .so file
+          self->bin_path = (char *) malloc(strlen(path) + 1);
+          strcpy(self->bin_path, path);
+        }
+      }
+
+      if (self->lib_path == NULL && strstr(path, "Python")) {
+        if (strstr(path + strlen(path) - 3, ".so") == NULL) {
+          self->lib_path = (char *) malloc(strlen(path) + 1);
+          strcpy(self->lib_path, path);
+
+          self->map.bss.base = (void *) address;  // WARNING: Partial result. Not yet the BSS base!!
+          if (_py_proc__analyze_macho(self, path, (void *) address, size))
+            return 1;
+        }
       }
     }
-
-    if (self->sym_loaded)
-      break;
 
     address += size;
   }
 
-  return 1 - self->sym_loaded;
+  if (self->bin_path && self->lib_path && !strcmp(self->bin_path, self->lib_path))
+    self->bin_path = NULL;
+
+  return !self->sym_loaded;
 }
 
 

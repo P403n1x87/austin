@@ -76,9 +76,62 @@ const char * _error_msg_tab[MAXERROR] = {
   "Failed to load memory maps",
   "Interpreter state search timed out",
   "Failed to attach to running process",
+  "Permission denied. Try with elevated privileges.",
+  "No such process.",
   NULL,
-  NULL,
-  NULL,
+};
+
+
+const int _fatal_error_tab[MAXERROR] = {
+  // generic error messages
+  0,
+  1,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+
+  // py_code_t
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+
+  // py_frame_t
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+
+  // py_thread_t
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+
+  // py_proc_t
+  1,
+  1,
+  1,
+  1,
+  1,
+  1,
+  1,
+  0,
 };
 
 
@@ -88,6 +141,15 @@ error_get_msg(error_t n) {
     return "<Unknown error>";
 
   return _error_msg_tab[n];
+}
+
+
+const int
+is_fatal(error_t n) {
+  if (n >= MAXERROR)
+    return 0;
+
+  return _fatal_error_tab[n];
 }
 
 

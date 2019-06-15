@@ -56,6 +56,8 @@
 #define EPROCVM               ((4 << 3) + 2)
 #define EPROCISTIMEOUT        ((4 << 3) + 3)
 #define EPROCATTACH           ((4 << 3) + 4)
+#define EPROCPERM             ((4 << 3) + 5)
+#define EPROCNPID             ((4 << 3) + 6)
 
 
 #ifdef ERROR_C
@@ -68,7 +70,7 @@ extern __thread int error;
 /**
  * Log the last error
  */
-#define log_error() log_e(error_get_msg(error))
+#define log_error() ( is_fatal(error) ? log_f(error_get_msg(error)) : log_e(error_get_msg(error)) )
 
 /**
  * Get the message of the last error.
@@ -89,6 +91,17 @@ typedef int error_t;
  */
 const char *
 error_get_msg(error_t);
+
+
+/**
+ * Determine if the given error is fatal or not.
+ *
+ * @param  error_t  the error number
+ *
+ * @return 1 if the error is fatal, 0 otherwise.
+ */
+const int
+is_fatal(error_t);
 
 
 void

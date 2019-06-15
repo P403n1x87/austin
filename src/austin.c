@@ -48,6 +48,11 @@ static ctime_t t_sample;  // Checkmark for sampling duration calculation
 // ----------------------------------------------------------------------------
 static void
 _print_collapsed_stack(py_thread_t * thread, ctime_t delta) {
+  if (thread->invalid) {
+    printf("Thread %lx;Bad sample %ld\n", thread->tid, delta);
+    return;
+  }
+
   py_frame_t * frame = py_thread__first_frame(thread);
 
   if (frame == NULL && exclude_empty)
@@ -91,11 +96,6 @@ _py_proc__sample(py_proc_t * py_proc) {
     py_thread_t * first_thread = py_thread;
 
     while (py_thread != NULL) {
-      if (py_thread->invalid) {
-        printf("Bad samples %ld\n", delta);
-        break;
-      }
-
       _print_collapsed_stack(py_thread, delta);
       py_thread = py_thread__next(py_thread);
     }
@@ -103,7 +103,7 @@ _py_proc__sample(py_proc_t * py_proc) {
     py_thread__destroy(first_thread);
 
     if (error != EOK)
-      printf("Bad samples %ld\n", delta);
+      printf("Bad sample %ld\n", delta);
   }
 
   t_sample += delta;
