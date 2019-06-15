@@ -316,20 +316,20 @@ _py_proc__get_maps(py_proc_t * self) {
 
     char path[MAXPATHLEN];
     int len = proc_regionfilename(self->pid, address, path, MAXPATHLEN);
+    int path_len = strlen(path);
+
     if (size > 0 && len) {
       path[len] = 0;
       if (self->bin_path == NULL && strstr(path, "python")) {
-        if (strstr(path + strlen(path) - 3, ".so") == NULL) {
+        if (strstr(path + path_len - 3, ".so") == NULL) {
           // check that it is not a .so file
-          self->bin_path = (char *) malloc(strlen(path) + 1);
-          strcpy(self->bin_path, path);
+          self->bin_path = strndup(path, path_len);
         }
       }
 
       if (self->lib_path == NULL && strstr(path, "Python")) {
-        if (strstr(path + strlen(path) - 3, ".so") == NULL) {
-          self->lib_path = (char *) malloc(strlen(path) + 1);
-          strcpy(self->lib_path, path);
+        if (strstr(path + path_len - 3, ".so") == NULL) {
+          self->lib_path = strndup(path, path_len);
 
           self->map.bss.base = (void *) address;  // WARNING: Partial result. Not yet the BSS base!!
           if (_py_proc__analyze_macho(self, path, (void *) address, size))

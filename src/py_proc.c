@@ -54,7 +54,7 @@
 
 // ---- Retry Timer ----
 #define INIT_RETRY_SLEEP             100   /* us */
-#define INIT_RETRY_CNT       (timeout*10)  /* Retry for 0.1s (default) before giving up. */
+#define INIT_RETRY_CNT (pargs.timeout*10)  /* Retry for 0.1s (default) before giving up. */
 
 #define TIMER_RESET                     (try_cnt=INIT_RETRY_CNT);
 #define TIMER_START                     while (--try_cnt>=0) { usleep(INIT_RETRY_SLEEP);
@@ -531,10 +531,20 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__run(py_proc_t * self) {
-  log_d("Start up timeout: %dms", timeout);
+  log_d("Start up timeout: %dms", pargs.timeout);
 
   TIMER_RESET
   TIMER_START
+    if (self->bin_path != NULL) {
+      free(self->bin_path);
+      self->bin_path = NULL;
+    }
+
+    if (self->lib_path != NULL) {
+      free(self->lib_path);
+      self->lib_path = NULL;
+    }
+
     if (_py_proc__init(self) == 0)
       break;
 
@@ -675,7 +685,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   if (self->pid == 0) {
     // If we are not writing to file we need to ensure the child process is
     // not writing to stdout.
-    if (output_file == NULL)
+    if (pargs.output_file == NULL)
       close(STDOUT_FILENO);
 
     execvp(exec, argv);

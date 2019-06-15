@@ -120,16 +120,8 @@ _py_proc__get_modules(py_proc_t * self) {
   self->min_raddr = (void *) -1;
   self->max_raddr = NULL;
 
-  // register int map_cnt = 0;  // TODO: Replace with flags?
-  // proc_vm_map_block_t * vm_maps = (proc_vm_map_block_t *) &(self->map);
   BOOL success = Module32First(mod_hdl, &module);
-  while (success /*&& map_cnt < MODULE_CNT*/) {
-    // log_d(
-    //   "%p-%p  Module: %s",
-    //   module.modBaseAddr, module.modBaseAddr + module.modBaseSize,
-    //   module.szModule
-    // );
-
+  while (success) {
     if (module.modBaseAddr < self->min_raddr)
       self->min_raddr = module.modBaseAddr;
 
@@ -137,20 +129,21 @@ _py_proc__get_modules(py_proc_t * self) {
       self->max_raddr = module.modBaseAddr + module.modBaseSize;
 
     if (strstr(module.szModule, "python")) {
-      if (self->bin_path == NULL && strstr(module.szModule, ".exe")) {
-        self->bin_path = (char *) malloc(strlen(module.szExePath) + 1);
-        strcpy(self->bin_path, module.szExePath);
-      }
+      int path_len = strlen(module.szExePath);
+
+      if (self->bin_path == NULL && strstr(module.szModule, ".exe"))
+        self->bin_path = strndup(module.szExePath, path_len);
+
       if (strstr(module.szModule, ".dll")) {
         self->map.bss.base = module.modBaseAddr;  // Not the BSS base yet
-        self->lib_path = (char *) malloc(strlen(module.szExePath) + 1);
-        strcpy(self->lib_path, module.szExePath);
+        self->lib_path = strndup(module.szExePath, path_len);
         _py_proc__analyze_pe(self, module.szExePath);
       }
-      // vm_maps[map_cnt].base = module.modBaseAddr;
-      // vm_maps[map_cnt].size = module.modBaseSize;
-      // log_d("%p-%p: module %s", module.modBaseAddr, module.modBaseAddr + module.modBaseSize, module.szModule);
-      // map_cnt++;
+      log_t(
+        "%p-%p:  Module %s",
+        module.modBaseAddr, module.modBaseAddr + module.modBaseSize,
+        module.szModule
+      );
     }
 
     success = Module32Next(mod_hdl, &module);

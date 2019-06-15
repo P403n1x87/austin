@@ -326,8 +326,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
         else {
           while (*((char *) --needle) != ' ');  // Move to the beginning of the path
           path_len = strlen(++needle);
-          self->bin_path = (char *) malloc(sizeof(char) * path_len + 1);
-          strcpy(self->bin_path, needle);
+          self->bin_path = strndup(needle, path_len);
           if (self->bin_path[path_len-1] == '\n')
             self->bin_path[path_len-1] = 0;
 
@@ -341,8 +340,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
         while (*((char *) --needle) != ' ');  // Move to the beginning of the path
         path_len = strlen(++needle);
-        self->lib_path = (char *) malloc(sizeof(char) * path_len + 1);
-        strcpy(self->lib_path, needle);
+        self->lib_path = strndup(needle, path_len);
         if (self->lib_path[path_len-1] == '\n')
           self->lib_path[path_len-1] = 0;
 
