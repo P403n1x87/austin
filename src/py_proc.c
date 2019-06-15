@@ -613,7 +613,6 @@ py_proc_new() {
 
     py_proc->bss = NULL;
 
-    py_proc->maps_loaded = 0;
     py_proc->sym_loaded  = 0;
 
     py_proc->tstate_curr_raddr = NULL;
@@ -624,6 +623,8 @@ py_proc_new() {
     py_proc->max_raddr = NULL;
 
     py_proc->version = 0;
+
+    py_proc->extra = NULL;
   }
 
   // Pre-hash symbol names
@@ -672,7 +673,13 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   #else                                                               /* UNIX */
   self->pid = fork();
   if (self->pid == 0) {
+    // If we are not writing to file we need to ensure the child process is
+    // not writing to stdout.
+    if (output_file == NULL)
+      close(STDOUT_FILENO);
+
     execvp(exec, argv);
+
     log_e("Failed to fork process");
     exit(127);
   }
@@ -748,6 +755,17 @@ py_proc__is_running(py_proc_t * self) {
 
 
 // ----------------------------------------------------------------------------
+ssize_t
+py_proc__get_memory_delta(py_proc_t * self) {
+  ssize_t current_memory = _py_proc__get_resident_memory(self);
+  ssize_t delta = current_memory - self->last_resident_memory;
+  self->last_resident_memory = current_memory;
+
+  return delta;
+}
+
+
+// ----------------------------------------------------------------------------
 void
 py_proc__destroy(py_proc_t * self) {
   if (self == NULL)
@@ -761,6 +779,9 @@ py_proc__destroy(py_proc_t * self) {
 
   if (self->bss != NULL)
     free(self->bss);
+
+  if (self->extra != NULL)
+    free(self->extra);
 
   free(self);
 }

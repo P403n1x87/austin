@@ -22,6 +22,7 @@
 
 #ifdef PY_PROC_C
 
+#include <psapi.h>
 #include <tlhelp32.h>
 
 #include "../py_proc.h"
@@ -158,6 +159,16 @@ _py_proc__get_modules(py_proc_t * self) {
   CloseHandle(mod_hdl);
 
   return !self->sym_loaded;
+}
+
+
+// ----------------------------------------------------------------------------
+static ssize_t _py_proc__get_resident_memory(py_proc_t * self) {
+  PROCESS_MEMORY_COUNTERS mem_info;
+
+  return GetProcessMemoryInfo((HANDLE) self->pid, &mem_info, sizeof(mem_info))
+    ? mem_info.WorkingSetSize
+    : -1;
 }
 
 

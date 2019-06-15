@@ -60,6 +60,10 @@
 #define sw32(f, v) (f ? bswap_32(v) : v)
 
 
+struct _proc_extra_info {
+  mach_port_t task_id;
+};
+
 // ----------------------------------------------------------------------------
 static int
 _py_proc__analyze_macho64(py_proc_t * self, void * map) {
@@ -288,15 +292,15 @@ _py_proc__get_maps(py_proc_t * self) {
 
   usleep(10000);  // NOTE: Mac OS X kernel bug
 
-  mach_port_t task_id = pid_to_task(self->pid);
-  if (task_id == 0)
+  self->extra->task_id = pid_to_task(self->pid);
+  if (self->extra->task_id == 0)
     return 1;
 
   self->min_raddr = (void *) -1;
   self->max_raddr = NULL;
 
   while (mach_vm_region(
-    task_id,
+    self->extra->task_id,
     &address,
     &size,
     VM_REGION_BASIC_INFO_64,
@@ -345,10 +349,26 @@ _py_proc__get_maps(py_proc_t * self) {
 
 
 // ----------------------------------------------------------------------------
+static ssize_t _py_proc__get_resident_memory(py_proc_t * self) {
+  struct mach_task_basic_info info;
+	mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+
+  return task_info(
+    self->extra->task_id, MACH_TASK_BASIC_INFO, (task_info_t) &info, &count
+  ) == KERN_SUCCESS
+    ? info.resident_size
+    : -1;
+}
+
+
+// ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t * self) {
   if (self == NULL)
     return 1;
+
+  if (self->extra == NULL)
+    self->extra = (proc_extra_info *) malloc(sizeof(proc_extra_info));
 
   return _py_proc__get_maps(self);
 }

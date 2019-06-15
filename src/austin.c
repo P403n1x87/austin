@@ -47,9 +47,12 @@ static ctime_t t_sample;  // Checkmark for sampling duration calculation
 
 // ----------------------------------------------------------------------------
 static void
-_print_collapsed_stack(py_thread_t * thread, ctime_t delta) {
+_print_collapsed_stack(py_thread_t * thread, ctime_t delta, ssize_t mem_delta) {
+  if (!full && memory && mem_delta <= 0)
+    return;
+
   if (thread->invalid) {
-    printf("Thread %lx;Bad sample %ld\n", thread->tid, delta);
+    fprintf(output_file, "Thread %lx;Bad sample %ld\n", thread->tid, delta);
     return;
   }
 
@@ -60,30 +63,42 @@ _print_collapsed_stack(py_thread_t * thread, ctime_t delta) {
     return;
 
   // Group entries by thread.
-  printf("Thread %lx", thread->tid);
+  fprintf(output_file, "Thread %lx", thread->tid);
 
   // Append frames
   while(frame != NULL) {
     py_code_t * code = frame->code;
     if (sleepless && strstr(code->scope, "wait") != NULL) {
       delta = 0;
-      printf(";<idle>");
+      fprintf(output_file, ";<idle>");
       break;
     }
-    printf(format, code->scope, code->filename, code->lineno);
+    fprintf(output_file, format, code->scope, code->filename, code->lineno);
 
     frame = frame->next;
   }
 
-  // Finish off sample with the sampling time
-  printf(" %lu\n", delta);
+  // Finish off sample with the metric(s)
+  if (full) {
+    fprintf(output_file, " %lu %ld %ld\n",
+      delta, mem_delta >= 0 ? mem_delta : 0, mem_delta < 0 ? mem_delta : 0
+    );
+  }
+  else {
+    if (memory)
+      fprintf(output_file, " %ld\n", mem_delta);
+    else
+      fprintf(output_file, " %lu\n", delta);
+  }
 }
 
 
 // ----------------------------------------------------------------------------
 static int
 _py_proc__sample(py_proc_t * py_proc) {
-  ctime_t delta = gettime() - t_sample;
+  ctime_t   delta     = gettime() - t_sample;
+  ssize_t   mem_delta = 0;
+  void    * current_thread;
   error = EOK;
 
   PyInterpreterState is;
@@ -95,8 +110,20 @@ _py_proc__sample(py_proc_t * py_proc) {
     py_thread_t * py_thread    = py_thread_new_from_raddr(&raddr);
     py_thread_t * first_thread = py_thread;
 
+    if (memory) {
+      // Use the current thread to determine which thread is manipulating memory
+      current_thread = py_proc__get_current_thread_state_raddr(py_proc);
+    }
+
     while (py_thread != NULL) {
-      _print_collapsed_stack(py_thread, delta);
+      if (memory) {
+        mem_delta = 0;
+        if (py_thread->raddr.addr == current_thread) {
+          mem_delta = py_proc__get_memory_delta(py_proc);
+          log_t("Thread %lx holds the GIL", py_thread->tid);
+        }
+      }
+      _print_collapsed_stack(py_thread, delta, mem_delta >> 10);
       py_thread = py_thread__next(py_thread);
     }
 
@@ -166,7 +193,20 @@ int main(int argc, char ** argv) {
         // Register signal handler for Ctrl+C
         signal(SIGINT, signal_callback_handler);
 
-        log_w("Sampling interval: %lu usec", t_sampling_interval);
+        // Redirect output to STDOUT if not output file was given.
+        if (output_file == NULL)
+          output_file = stdout;
+        else
+          log_i("Output file: %s", output_filename);
+
+        log_i("Sampling interval: %lu usec", t_sampling_interval);
+
+        if (full) {
+          if (memory)
+            log_w("Requested full metrics. The memory switch is redundant.");
+          log_i("Producing full set of metrics (time +mem -mem).");
+          memory = 1;
+        }
 
         stats_reset();
 
@@ -193,6 +233,11 @@ int main(int argc, char ** argv) {
         py_proc__wait(py_proc);
       py_proc__destroy(py_proc);
     }
+  }
+
+  if (output_file != stdout) {
+    fclose(output_file);
+    log_d("Output file closed.");
   }
 
   log_footer();

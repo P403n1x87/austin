@@ -23,6 +23,7 @@
 #define ARGPARSE_C
 
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
 
@@ -45,6 +46,10 @@ pid_t   attach_pid          = 0;
 int     exclude_empty       = 0;
 int     sleepless           = 0;
 char *  format              = (char *) SAMPLE_FORMAT_NORMAL;
+int     full                = 0;
+int     memory              = 0;
+FILE *  output_file         = NULL;
+char *  output_filename     = NULL;
 
 static int exec_arg = 0;
 
@@ -91,28 +96,40 @@ typedef struct argp_option {
 
 static struct argp_option options[] = {
   {
-    "interval",     'i', "n_us",      0,
+    "interval",     'i', "n_us",        0,
     "Sampling interval (default is 500us)."
   },
   {
-    "timeout",      't', "n_ms",      0,
+    "timeout",      't', "n_ms",        0,
     "Approximate start up wait time. Increase on slow machines (default is 100ms)."
   },
   {
     "alt-format",   'a', NULL,          0,
-    "alternative collapsed stack sample format."
+    "Alternative collapsed stack sample format."
   },
   {
     "exclude-empty",'e', NULL,          0,
-    "do not output samples of threads with no frame stacks."
+    "Do not output samples of threads with no frame stacks."
   },
   {
     "sleepless",    's', NULL,          0,
-    "suppress idle samples."
+    "Suppress idle samples."
+  },
+  {
+    "memory",       'm', NULL,          0,
+    "Profile memory usage."
+  },
+  {
+    "full",         'f', NULL,          0,
+    "Produce the full set of metrics (time +mem -mem)."
   },
   {
     "pid",          'p', "PID",         0,
     "The the ID of the process to which Austin should attach."
+  },
+  {
+    "output",       'o', "FILE",        0,
+    "Specify an output file for the collected samples."
   },
   #ifndef PL_LINUX
   {
@@ -173,10 +190,26 @@ parse_opt (int key, char *arg, struct argp_state *state)
     sleepless = 1;
     break;
 
+  case 'm':
+    memory = 1;
+    break;
+
+  case 'f':
+    full = 1;
+    break;
+
   case 'p':
     if (strtonum(arg, &l_pid) == 1 || l_pid <= 0)
       argp_error(state, "invalid PID.");
     attach_pid = (pid_t) l_pid;
+    break;
+
+  case 'o':
+    output_file = fopen(arg, "w");
+    if (output_file == NULL) {
+      argp_error(state, "Unable to create the given output file.");
+    }
+    output_filename = arg;
     break;
 
   case ARGP_KEY_ARG:

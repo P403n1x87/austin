@@ -28,6 +28,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 #include "../dict.h"
 #include "../py_proc.h"
@@ -52,6 +53,13 @@
 #define ELF_SH_OFF(ehdr, i)            (ehdr.e_shoff + i * ehdr.e_shentsize)
 
 #define get_bounds(line, a, b)         (sscanf(line, "%lx-%lx", &a, &b))
+
+
+struct _proc_extra_info {
+  unsigned int page_size;
+  char         statm_file[24];
+};
+
 
 union {
   Elf32_Ehdr v32;
@@ -262,9 +270,6 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   size_t    len       = 0;
   int       maps_flag = 0;
 
-  if (self->maps_loaded)
-    return 0;
-
   sprintf(file_name, "/proc/%d/maps", self->pid);
   fp = fopen(file_name, "r");
   if (fp == NULL) {
@@ -364,12 +369,28 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
   if (error & EPROC) log_error();
 
-  self->maps_loaded = maps_flag == (HEAP_MAP | BSS_MAP);
-
   return (
     (self->bin_path == NULL && self->lib_path == NULL) ||
     maps_flag != (HEAP_MAP | BSS_MAP)
   );
+}
+
+
+// ----------------------------------------------------------------------------
+static ssize_t _py_proc__get_resident_memory(py_proc_t * self) {
+  FILE * statm = fopen(self->extra->statm_file, "rb");
+  if (statm == NULL) {
+    error = EPROCVM;
+    return -1;
+  }
+
+  ssize_t size, resident;
+  if (fscanf(statm, "%ld %ld", &size, &resident) != 2)
+    return -1;
+
+  fclose(statm);
+
+  return resident * self->extra->page_size;
 }
 
 
@@ -381,6 +402,14 @@ _py_proc__init(py_proc_t * self) {
     _py_proc__parse_maps_file(self) ||
     _py_proc__analyze_elf(self)
   ) return 1;
+
+  self->extra = (proc_extra_info *) malloc(sizeof(proc_extra_info));
+  self->extra->page_size = getpagesize();
+  log_d("Page size: %ld", self->extra->page_size);
+
+  sprintf(self->extra->statm_file, "/proc/%d/statm", self->pid);
+
+  self->last_resident_memory = _py_proc__get_resident_memory(self);
 
   return 0;
 }

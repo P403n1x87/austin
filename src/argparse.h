@@ -34,6 +34,10 @@ extern pid_t   attach_pid;
 extern int     exclude_empty;
 extern int     sleepless;
 extern char *  format;
+extern int     full;
+extern int     memory;
+extern FILE *  output_file;
+extern char *  output_filename;
 #endif
 
 
