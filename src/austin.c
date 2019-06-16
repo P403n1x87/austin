@@ -235,7 +235,7 @@ int main(int argc, char ** argv) {
     }
   }
 
-  if (pargs.output_file != stdout) {
+  if (pargs.output_file != NULL && pargs.output_file != stdout) {
     fclose(pargs.output_file);
     log_d("Output file closed.");
   }

@@ -81,7 +81,9 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
   // ---- Search for exports ----
   self->sym_loaded = 0;
 
-  IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) map_addr_from_rva(pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress);
+  IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) map_addr_from_rva(
+    pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress
+  );
   if (e_dir != NULL) {
     DWORD * names   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfNames);
     WORD  * idx_tab = (WORD *)  map_addr_from_rva(pMapping, e_dir->AddressOfNameOrdinals);
@@ -122,21 +124,19 @@ _py_proc__get_modules(py_proc_t * self) {
 
   BOOL success = Module32First(mod_hdl, &module);
   while (success) {
-    if (module.modBaseAddr < self->min_raddr)
+    if ((void *) module.modBaseAddr < self->min_raddr)
       self->min_raddr = module.modBaseAddr;
 
-    if (module.modBaseAddr + module.modBaseSize > self->max_raddr)
+    if ((void *) module.modBaseAddr + module.modBaseSize > self->max_raddr)
       self->max_raddr = module.modBaseAddr + module.modBaseSize;
 
     if (strstr(module.szModule, "python")) {
-      int path_len = strlen(module.szExePath);
-
       if (self->bin_path == NULL && strstr(module.szModule, ".exe"))
-        self->bin_path = strndup(module.szExePath, path_len);
+        self->bin_path = strdup(module.szExePath);
 
       if (strstr(module.szModule, ".dll")) {
         self->map.bss.base = module.modBaseAddr;  // Not the BSS base yet
-        self->lib_path = strndup(module.szExePath, path_len);
+        self->lib_path = strdup(module.szExePath);
         _py_proc__analyze_pe(self, module.szExePath);
       }
       log_t(

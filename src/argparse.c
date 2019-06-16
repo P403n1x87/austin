@@ -421,7 +421,10 @@ static int
 cb(const char opt, const char * arg) {
   switch (opt) {
   case 'i':
-    if (strtonum((char *) arg, (long *) &t_sampling_interval) == 1 || t_sampling_interval > LONG_MAX) {
+    if (
+      strtonum((char *) arg, (long *) &(pargs.t_sampling_interval)) == 1 ||
+      pargs.t_sampling_interval > LONG_MAX
+    ) {
       puts(usage_msg);
       return ARG_INVALID_VALUE;
     }
@@ -470,7 +473,7 @@ cb(const char opt, const char * arg) {
   case 'o':
     pargs.output_file = fopen(arg, "w");
     if (pargs.output_file == NULL) {
-      puts(state, "Unable to create the given output file.");
+      puts("Unable to create the given output file.");
       return ARG_INVALID_VALUE;
     }
     pargs.output_filename = arg;
