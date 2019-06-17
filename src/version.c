@@ -126,7 +126,11 @@ python_v python_v3_7 = {
   PY_UNICODE  (3),
   PY_BYTES    (3),
   #if defined PL_LINUX
-  PY_RUNTIME  (0x570)
+    #if defined __i386__
+    PY_RUNTIME  (0x31c)
+    #elif defined __x86_64__
+    PY_RUNTIME  (0x570)
+    #endif
   #elif defined PL_WIN
   PY_RUNTIME  (0x528)
   #elif defined PL_MACOS

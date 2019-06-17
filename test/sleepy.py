@@ -8,6 +8,6 @@ def cpu_bound():
 
 
 if __name__ == "__main__":
-    for n in range(10):
+    for n in range(2):
         cpu_bound()
-        time.sleep(.9)
+        time.sleep(1)
