@@ -38,6 +38,7 @@ typedef struct {
   proc_vm_map_block_t rodata;
 } proc_vm_map_t;
 
+typedef struct _proc_extra_info proc_extra_info;  // Forward declaration.
 
 typedef struct {
   pid_t           pid;
@@ -52,7 +53,6 @@ typedef struct {
   void          * bss;  // local copy of the remote bss section
 
   int             sym_loaded;
-  int             maps_loaded;
   int             version;
 
   // Symbols from .dynsym
@@ -61,6 +61,12 @@ typedef struct {
   void          * interp_head_raddr;
 
   void          * is_raddr;
+
+  // Memory profiling support
+  ssize_t         last_resident_memory;
+
+  // Platform-dependent fields
+  proc_extra_info * extra;
 } py_proc_t;
 
 
@@ -156,6 +162,15 @@ py_proc__wait(py_proc_t *);
  */
 int
 py_proc__is_running(py_proc_t *);
+
+
+/**
+ * Get the memory size delta since last call.
+ *
+ * @param py_proc_t * the process object.
+ */
+ssize_t
+py_proc__get_memory_delta(py_proc_t *);
 
 
 /**

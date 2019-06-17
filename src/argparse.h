@@ -27,13 +27,22 @@
 
 #include "stats.h"
 
+typedef struct {
+  ctime_t   t_sampling_interval;
+  ctime_t   timeout;
+  pid_t     attach_pid;
+  int       exclude_empty;
+  int       sleepless;
+  char    * format;
+  int       full;
+  int       memory;
+  FILE    * output_file;
+  char    * output_filename;
+} parsed_args_t;
+
+
 #ifndef ARGPARSE_C
-extern ctime_t t_sampling_interval;
-extern ctime_t timeout;
-extern pid_t   attach_pid;
-extern int     exclude_empty;
-extern int     sleepless;
-extern char *  format;
+extern parsed_args_t pargs;
 #endif
 
 

@@ -54,7 +54,7 @@
 
 // ---- Retry Timer ----
 #define INIT_RETRY_SLEEP             100   /* us */
-#define INIT_RETRY_CNT       (timeout*10)  /* Retry for 0.1s (default) before giving up. */
+#define INIT_RETRY_CNT (pargs.timeout*10)  /* Retry for 0.1s (default) before giving up. */
 
 #define TIMER_RESET                     (try_cnt=INIT_RETRY_CNT);
 #define TIMER_START                     while (--try_cnt>=0) { usleep(INIT_RETRY_SLEEP);
@@ -531,10 +531,20 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__run(py_proc_t * self) {
-  log_d("Start up timeout: %dms", timeout);
+  log_d("Start up timeout: %dms", pargs.timeout);
 
   TIMER_RESET
   TIMER_START
+    if (self->bin_path != NULL) {
+      free(self->bin_path);
+      self->bin_path = NULL;
+    }
+
+    if (self->lib_path != NULL) {
+      free(self->lib_path);
+      self->lib_path = NULL;
+    }
+
     if (_py_proc__init(self) == 0)
       break;
 
@@ -598,33 +608,12 @@ _py_proc__run(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 py_proc_t *
 py_proc_new() {
-  py_proc_t * py_proc = (py_proc_t *) malloc(sizeof(py_proc_t));
+  py_proc_t * py_proc = (py_proc_t *) calloc(1, sizeof(py_proc_t));
   if (py_proc == NULL)
     error = EPROC;
 
-  else {
-    py_proc->pid      = 0;
-    py_proc->bin_path = NULL;
-    py_proc->lib_path = NULL;
-    py_proc->is_raddr = NULL;
-
-    py_proc->map.bss.base = NULL;
-    py_proc->map.bss.size = 0;
-
-    py_proc->bss = NULL;
-
-    py_proc->maps_loaded = 0;
-    py_proc->sym_loaded  = 0;
-
-    py_proc->tstate_curr_raddr = NULL;
-    py_proc->py_runtime_raddr  = NULL;
-    py_proc->interp_head_raddr = NULL;
-
+  else
     py_proc->min_raddr = (void *) -1;
-    py_proc->max_raddr = NULL;
-
-    py_proc->version = 0;
-  }
 
   // Pre-hash symbol names
   if (_dynsym_hash_array[0] == 0) {
@@ -661,21 +650,79 @@ py_proc__attach(py_proc_t * self, pid_t pid) {
 // ----------------------------------------------------------------------------
 int
 py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
-  log_d("Starting new process with command: %s", exec);
+  log_d("Starting new process using the command: %s", exec);
 
   #ifdef PL_WIN                                                        /* WIN */
-  self->pid = _spawnvp(_P_NOWAIT, exec, (const char * const*) argv);
-  if (self->pid == (pid_t) INVALID_HANDLE_VALUE) {
-    log_e("Failed to spawn command: %s", exec);
+  PROCESS_INFORMATION piProcInfo;
+  STARTUPINFO         siStartInfo;
+
+  ZeroMemory(&piProcInfo,  sizeof(PROCESS_INFORMATION));
+  ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
+
+  if (pargs.output_file == NULL) {
+    HANDLE nullStdOut = CreateFile(
+      TEXT(NULL_DEVICE), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL
+    );
+
+    if (nullStdOut == INVALID_HANDLE_VALUE) {
+      log_e("Unable to redirect STDOUT to " NULL_DEVICE);
+      return 1;
+    }
+
+    log_d("Redirecting child's STDOUT to " NULL_DEVICE);
+    siStartInfo.cb         = sizeof(STARTUPINFO);
+    siStartInfo.hStdOutput = nullStdOut;
+    siStartInfo.dwFlags   |= STARTF_USESTDHANDLES;
+  }
+
+  // Concatenate the command line arguments
+  register int cmd_line_size = strlen(exec) + 1;
+  register int i = 1;
+  while (argv[i]) cmd_line_size += strlen(argv[i++]) + 1;
+
+  char * cmd_line = malloc(sizeof(char) * cmd_line_size);
+  strcpy(cmd_line, exec);
+
+  register int pos = strlen(exec);
+  i = 1;
+  while (argv[i]) {
+    cmd_line[pos++] = ' ';
+    strcpy(cmd_line+pos, argv[i]);
+    pos += strlen(argv[i++]);
+  }
+
+  log_t("Computed command line: %s", cmd_line);
+
+  BOOL process_created = CreateProcess(
+    NULL, cmd_line, NULL, NULL, TRUE, 0, NULL, NULL, &siStartInfo, &piProcInfo
+  );
+
+  if (cmd_line != NULL)
+    free(cmd_line);
+
+  if (!process_created) {
+    log_e("Failed to create child process using the command: %s.", exec);
     return 1;
   }
+
+  self->pid = (pid_t) piProcInfo.hProcess;
+
   #else                                                               /* UNIX */
   self->pid = fork();
   if (self->pid == 0) {
+    // If we are not writing to file we need to ensure the child process is
+    // not writing to stdout.
+    if (pargs.output_file == NULL) {
+      log_d("Redirecting child's STDOUT to " NULL_DEVICE);
+      freopen(NULL_DEVICE, "w", stdout);
+    }
+
     execvp(exec, argv);
+
     log_e("Failed to fork process");
     exit(127);
   }
+
   #endif                                                               /* ANY */
 
   return _py_proc__run(self);
@@ -748,6 +795,17 @@ py_proc__is_running(py_proc_t * self) {
 
 
 // ----------------------------------------------------------------------------
+ssize_t
+py_proc__get_memory_delta(py_proc_t * self) {
+  ssize_t current_memory = _py_proc__get_resident_memory(self);
+  ssize_t delta = current_memory - self->last_resident_memory;
+  self->last_resident_memory = current_memory;
+
+  return delta;
+}
+
+
+// ----------------------------------------------------------------------------
 void
 py_proc__destroy(py_proc_t * self) {
   if (self == NULL)
@@ -761,6 +819,9 @@ py_proc__destroy(py_proc_t * self) {
 
   if (self->bss != NULL)
     free(self->bss);
+
+  if (self->extra != NULL)
+    free(self->extra);
 
   free(self);
 }

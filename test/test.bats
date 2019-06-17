@@ -2,7 +2,7 @@
 
 test_case() {
   run bats test/test_$1.bats
-  echo $output
+  echo "$output"
   [ $status = 0 ]
 }
 

@@ -23,6 +23,7 @@
 #define VERSION_C
 
 #include "logging.h"
+#include "platform.h"
 #include "version.h"
 
 
@@ -124,8 +125,12 @@ python_v python_v3_7 = {
   PY_THREAD   (PyThreadState3_4),
   PY_UNICODE  (3),
   PY_BYTES    (3),
-  #if defined PL_LINIX
-  PY_RUNTIME  (0x570)
+  #if defined PL_LINUX
+    #if defined __i386__
+    PY_RUNTIME  (0x31c)
+    #elif defined __x86_64__
+    PY_RUNTIME  (0x570)
+    #endif
   #elif defined PL_WIN
   PY_RUNTIME  (0x528)
   #elif defined PL_MACOS

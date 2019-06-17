@@ -22,6 +22,7 @@
 
 #ifdef PY_PROC_C
 
+#include <psapi.h>
 #include <tlhelp32.h>
 
 #include "../py_proc.h"
@@ -80,7 +81,9 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
   // ---- Search for exports ----
   self->sym_loaded = 0;
 
-  IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) map_addr_from_rva(pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress);
+  IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) map_addr_from_rva(
+    pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress
+  );
   if (e_dir != NULL) {
     DWORD * names   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfNames);
     WORD  * idx_tab = (WORD *)  map_addr_from_rva(pMapping, e_dir->AddressOfNameOrdinals);
@@ -119,37 +122,28 @@ _py_proc__get_modules(py_proc_t * self) {
   self->min_raddr = (void *) -1;
   self->max_raddr = NULL;
 
-  // register int map_cnt = 0;  // TODO: Replace with flags?
-  // proc_vm_map_block_t * vm_maps = (proc_vm_map_block_t *) &(self->map);
   BOOL success = Module32First(mod_hdl, &module);
-  while (success /*&& map_cnt < MODULE_CNT*/) {
-    // log_d(
-    //   "%p-%p  Module: %s",
-    //   module.modBaseAddr, module.modBaseAddr + module.modBaseSize,
-    //   module.szModule
-    // );
-
-    if (module.modBaseAddr < self->min_raddr)
+  while (success) {
+    if ((void *) module.modBaseAddr < self->min_raddr)
       self->min_raddr = module.modBaseAddr;
 
-    if (module.modBaseAddr + module.modBaseSize > self->max_raddr)
+    if ((void *) module.modBaseAddr + module.modBaseSize > self->max_raddr)
       self->max_raddr = module.modBaseAddr + module.modBaseSize;
 
     if (strstr(module.szModule, "python")) {
-      if (self->bin_path == NULL && strstr(module.szModule, ".exe")) {
-        self->bin_path = (char *) malloc(strlen(module.szExePath) + 1);
-        strcpy(self->bin_path, module.szExePath);
-      }
+      if (self->bin_path == NULL && strstr(module.szModule, ".exe"))
+        self->bin_path = strdup(module.szExePath);
+
       if (strstr(module.szModule, ".dll")) {
         self->map.bss.base = module.modBaseAddr;  // Not the BSS base yet
-        self->lib_path = (char *) malloc(strlen(module.szExePath) + 1);
-        strcpy(self->lib_path, module.szExePath);
+        self->lib_path = strdup(module.szExePath);
         _py_proc__analyze_pe(self, module.szExePath);
       }
-      // vm_maps[map_cnt].base = module.modBaseAddr;
-      // vm_maps[map_cnt].size = module.modBaseSize;
-      // log_d("%p-%p: module %s", module.modBaseAddr, module.modBaseAddr + module.modBaseSize, module.szModule);
-      // map_cnt++;
+      log_t(
+        "%p-%p:  Module %s",
+        module.modBaseAddr, module.modBaseAddr + module.modBaseSize,
+        module.szModule
+      );
     }
 
     success = Module32Next(mod_hdl, &module);
@@ -158,6 +152,16 @@ _py_proc__get_modules(py_proc_t * self) {
   CloseHandle(mod_hdl);
 
   return !self->sym_loaded;
+}
+
+
+// ----------------------------------------------------------------------------
+static ssize_t _py_proc__get_resident_memory(py_proc_t * self) {
+  PROCESS_MEMORY_COUNTERS mem_info;
+
+  return GetProcessMemoryInfo((HANDLE) self->pid, &mem_info, sizeof(mem_info))
+    ? mem_info.WorkingSetSize
+    : -1;
 }
 
 
