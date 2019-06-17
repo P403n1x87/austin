@@ -130,7 +130,7 @@ _py_proc__sample(py_proc_t * py_proc) {
     py_thread__destroy(first_thread);
 
     if (error != EOK)
-      printf("Bad sample %ld\n", delta);
+      fprintf(pargs.output_file, "Bad sample %ld\n", delta);
   }
 
   t_sample += delta;

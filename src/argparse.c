@@ -476,7 +476,7 @@ cb(const char opt, const char * arg) {
       puts("Unable to create the given output file.");
       return ARG_INVALID_VALUE;
     }
-    pargs.output_filename = arg;
+    pargs.output_filename = (char *) arg;
     break;
 
   case '?':
