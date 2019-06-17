@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
@@ -68,6 +69,17 @@ union {
 
 
 // ----------------------------------------------------------------------------
+static Elf64_Addr
+_get_base_64(Elf64_Ehdr * ehdr, void * elf_map)
+{
+  for (int i = 0; i < ehdr->e_phnum; ++i) {
+    Elf64_Phdr * phdr = (Elf64_Phdr *) (elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);
+    if (phdr->p_type == PT_LOAD)
+      return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
+  }
+  return UINT64_MAX;
+}
+
 static int
 _py_proc__analyze_elf64(py_proc_t * self) {
   char * object_file = self->lib_path != NULL ? self->lib_path : self->bin_path;
@@ -85,15 +97,13 @@ _py_proc__analyze_elf64(py_proc_t * self) {
   Elf64_Shdr  * p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr.e_shstrndx);
   char        * sh_name_base = elf_map + p_shstrtab->sh_offset;
   Elf64_Shdr  * p_dynsym     = NULL;
-  Elf64_Addr    base         = 0;
-
-  if (ehdr.e_phnum) {
-    Elf64_Phdr * phdr = (Elf64_Phdr *) (elf_map + ehdr.e_phoff);
-    base = phdr->p_vaddr - phdr->p_offset;
-    if (!base)
-      base = (Elf64_Addr) self->map.elf.base;
-    log_d("Base @ %p", base);
+  Elf64_Addr    base         = _get_base_64(&ehdr, elf_map);
+  if (base == UINT64_MAX) {
+    munmap(elf_map, elf_map_size);
+    close(fd);
+    return 1;
   }
+  log_d("Base @ %p", base);
 
   for (Elf64_Off sh_off = ehdr.e_shoff; \
     map_flag != DYNSYM_MAP && sh_off < elf_map_size; \
@@ -135,10 +145,7 @@ _py_proc__analyze_elf64(py_proc_t * self) {
     ) {
       Elf64_Sym * sym      = (Elf64_Sym *) (elf_map + tab_off);
       char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
-      // ASLR: This leads to some good corrections, but it still fails in some cases.
-      void      * value    = (void *) sym->st_value >= self->map.bss.base && (void *) sym->st_value < self->map.bss.base + self->map.bss.size \
-        ? (void *) sym->st_value \
-        : (void *) base + (sym->st_value);
+      void      * value    = self->map.elf.base + (sym->st_value - base);
       if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= SYMBOLS)
         break;
     }
@@ -152,6 +159,17 @@ _py_proc__analyze_elf64(py_proc_t * self) {
 
 
 // ----------------------------------------------------------------------------
+static Elf32_Addr
+_get_base_32(Elf32_Ehdr * ehdr, void * elf_map)
+{
+  for (int i = 0; i < ehdr->e_phnum; ++i) {
+    Elf32_Phdr * phdr = (Elf32_Phdr *) (elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);
+    if (phdr->p_type == PT_LOAD)
+      return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
+  }
+  return UINT32_MAX;
+}
+
 static int
 _py_proc__analyze_elf32(py_proc_t * self) {
   char * object_file = self->lib_path != NULL ? self->lib_path : self->bin_path;
@@ -169,15 +187,13 @@ _py_proc__analyze_elf32(py_proc_t * self) {
   Elf32_Shdr  * p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr.e_shstrndx);
   char        * sh_name_base = elf_map + p_shstrtab->sh_offset;
   Elf32_Shdr  * p_dynsym     = NULL;
-  Elf32_Addr    base         = 0;
-
-  if (ehdr.e_phnum) {
-    Elf32_Phdr * phdr = (Elf32_Phdr *) (elf_map + ehdr.e_phoff);
-    base = phdr->p_vaddr - phdr->p_offset;
-    if (!base)
-      base = (Elf32_Addr) self->map.elf.base;
-    log_d("Base @ %p", base);
+  Elf32_Addr    base         = _get_base_32(&ehdr, elf_map);
+  if (base == UINT32_MAX) {
+    munmap(elf_map, elf_map_size);
+    close(fd);
+    return 1;
   }
+  log_d("Base @ %p", base);
 
   for (Elf32_Off sh_off = ehdr.e_shoff; \
     map_flag != DYNSYM_MAP && sh_off < elf_map_size; \
@@ -219,10 +235,7 @@ _py_proc__analyze_elf32(py_proc_t * self) {
     ) {
       Elf32_Sym * sym      = (Elf32_Sym *) (elf_map + tab_off);
       char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
-      // ASLR: This leads to some good corrections, but it still fails in some cases.
-      void      * value    = (void *) sym->st_value >= self->map.bss.base && (void *) sym->st_value < self->map.bss.base + self->map.bss.size \
-        ? (void *) sym->st_value \
-        : (void *) base + (sym->st_value);
+      void      * value    = self->map.elf.base + (sym->st_value - base);
       if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= SYMBOLS)
         break;
     }
