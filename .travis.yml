@@ -40,9 +40,9 @@ before_script:
   if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then autoreconf --install; fi
 
 script:
-  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then ./configure && make && sudo make check; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then gcc -s -Wall -O3 -o src/austin src/*.c; fi
-  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then gcc -s -Wall -O3 -o src/austin src/*.c; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then ./configure && make && sudo make check;         fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then gcc -s -Wall -O3 -o src/austin src/*.c;         fi
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then gcc -s -Wall -O3 -o src/austin src/*.c -lpsapi; fi
 
 after_success:
   ./src/austin --usage

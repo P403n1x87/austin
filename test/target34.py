@@ -8,7 +8,7 @@ def keep_cpu_busy():
     for i in range(10000000):
         a.append(i)
         if i % 100000 == 0:
-            print("Unwanted output {}".format(i))
+            print("Unwanted output " + str(i))
 
 
 if __name__ == "__main__":
