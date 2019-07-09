@@ -3,21 +3,35 @@
 invoke_austin() {
   if ! python$1 -V; then return; fi
 
-  run src/austin -i 10000 -t 10000 python$1 test/target34.py
-	[ $status = 0 ]
-  echo "$output" | grep "keep_cpu_busy (test/target34.py);L"
-  ! echo "$output" | grep "Unwanted"
+  for i in {1..3}
+  do
+    run src/austin -i 10000 -t 10000 python$1 test/target34.py
+  	[ $status = 0 ]
+    echo "$output" | grep "keep_cpu_busy (test/target34.py);L"
+    if echo "$output" | grep "Unwanted"
+    then
+      continue
+    fi
 
-  # Memory profiling
-  run src/austin -i 10000 -t 10000 -m python$1 test/target34.py
-	[ $status = 0 ]
-  echo "$output" | grep "keep_cpu_busy (test/target34.py);L"
+    # Memory profiling
+    run src/austin -i 10000 -t 10000 -m python$1 test/target34.py
+  	[ $status = 0 ]
+    if ! echo "$output" | grep "keep_cpu_busy (test/target34.py);L"
+    then
+      continue
+    fi
 
-  # Output file
-  run src/austin -i 100000 -t 10000 -o /tmp/austin_out.txt python$1 test/target34.py
-	[ $status = 0 ]
-  echo "$output" | grep "Unwanted"
-  cat /tmp/austin_out.txt | grep "keep_cpu_busy (test/target34.py);L"
+    # Output file
+    run src/austin -i 100000 -t 10000 -o /tmp/austin_out.txt python$1 test/target34.py
+  	[ $status = 0 ]
+    echo "$output" | grep "Unwanted"
+    if cat /tmp/austin_out.txt | grep "keep_cpu_busy (test/target34.py);L"
+    then
+      return
+    fi
+  done
+
+  false
 }
 
 @test "Test Austin with Python 2.3" {

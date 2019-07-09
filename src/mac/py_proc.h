@@ -258,7 +258,7 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * addr, mach_vm_size
     break;
 
   default:
-    return 1;
+    self->sym_loaded = 0;
   }
 
   munmap(map, size);

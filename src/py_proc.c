@@ -446,13 +446,13 @@ _py_proc__find_interpreter_state(py_proc_t * self) {
 
   // 3.6.5 -> 3.6.6: _PyThreadState_Current doesn't seem what one would expect
   //                 anymore, but _PyThreadState_Current.prev is.
-  // if (
-  //   V_FIELD(void*, tstate_current, py_thread, o_thread_id) == 0 && \
-  //   V_FIELD(void*, tstate_current, py_thread, o_prev)      != 0
-  // ) {
-  //   self->tstate_curr_raddr = V_FIELD(void*, tstate_current, py_thread, o_prev);
-  //   return 1;
-  // }
+  /* if (
+      V_FIELD(void*, tstate_current, py_thread, o_thread_id) == 0 && \
+      V_FIELD(void*, tstate_current, py_thread, o_prev)      != 0
+    ) {
+      self->tstate_curr_raddr = V_FIELD(void*, tstate_current, py_thread, o_prev);
+      return 1;
+    } */
 }
 #endif
 

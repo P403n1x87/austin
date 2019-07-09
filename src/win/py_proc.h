@@ -65,36 +65,38 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
   IMAGE_SECTION_HEADER * s_hdr   = (IMAGE_SECTION_HEADER *) (pMapping + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
 
   if (nt_hdr->Signature != IMAGE_NT_SIGNATURE)
-    return 1;
+    self->sym_loaded = 0;
 
-  void * base = self->map.bss.base;
+  else {
+    void * base = self->map.bss.base;
 
-  // ---- Find the .data section ----
-  for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
-    if (strcmp(".data", (const char *) s_hdr[i].Name) == 0) {
-      self->map.bss.base += s_hdr[i].VirtualAddress;
-      self->map.bss.size = s_hdr[i].Misc.VirtualSize;
-      break;
+    // ---- Find the .data section ----
+    for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
+      if (strcmp(".data", (const char *) s_hdr[i].Name) == 0) {
+        self->map.bss.base += s_hdr[i].VirtualAddress;
+        self->map.bss.size = s_hdr[i].Misc.VirtualSize;
+        break;
+      }
     }
-  }
 
-  // ---- Search for exports ----
-  self->sym_loaded = 0;
+    // ---- Search for exports ----
+    self->sym_loaded = 0;
 
-  IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) map_addr_from_rva(
-    pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress
-  );
-  if (e_dir != NULL) {
-    DWORD * names   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfNames);
-    WORD  * idx_tab = (WORD *)  map_addr_from_rva(pMapping, e_dir->AddressOfNameOrdinals);
-    DWORD * addrs   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfFunctions);
-    for (
-      register int i = 0;
-      self->sym_loaded < SYMBOLS && i < e_dir->NumberOfFunctions;
-      i++
-    ) {
-      char * sym_name = (char *) map_addr_from_rva(pMapping, names[i]);
-      self->sym_loaded += _py_proc__check_sym(self, sym_name, addrs[idx_tab[i]] + base);
+    IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) map_addr_from_rva(
+      pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress
+    );
+    if (e_dir != NULL) {
+      DWORD * names   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfNames);
+      WORD  * idx_tab = (WORD *)  map_addr_from_rva(pMapping, e_dir->AddressOfNameOrdinals);
+      DWORD * addrs   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfFunctions);
+      for (
+        register int i = 0;
+        self->sym_loaded < SYMBOLS && i < e_dir->NumberOfFunctions;
+        i++
+      ) {
+        char * sym_name = (char *) map_addr_from_rva(pMapping, names[i]);
+        self->sym_loaded += _py_proc__check_sym(self, sym_name, addrs[idx_tab[i]] + base);
+      }
     }
   }
 
