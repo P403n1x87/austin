@@ -1,11 +1,19 @@
 attach_austin_2_3() {
   if ! python$1 -V; then return; fi
 
-  python$1 test/sleepy.py &
-  sleep 1
-  run src/austin -i 100000 -t 10000 -p $!
-  [ $status = 0 ]
-  echo "$output" | grep ";? (test/sleepy.py);L13 "
+  for i in {1..3}
+  do
+    python$1 test/sleepy.py &
+    sleep 1
+    run src/austin -i 100000 -t 10000 -p $!
+    [ $status = 0 ]
+    if echo "$output" | grep -q ";? (test/sleepy.py);L13 "
+    then
+      return
+    fi
+  done
+
+  false
 }
 
 attach_austin() {
@@ -15,7 +23,7 @@ attach_austin() {
   sleep 1
   run src/austin -i 10000 -t 10000 -p $!
   [ $status = 0 ]
-  echo "$output" | grep ";<module> (test/sleepy.py);L13 "
+  echo "$output" | grep -q ";<module> (test/sleepy.py);L13 "
 }
 
 @test "Test Austin with Python 2.3" {

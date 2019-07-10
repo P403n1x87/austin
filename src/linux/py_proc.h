@@ -82,6 +82,8 @@ _get_base_64(Elf64_Ehdr * ehdr, void * elf_map)
 
 static int
 _py_proc__analyze_elf64(py_proc_t * self) {
+  register int symbols = 0;
+
   char * object_file = self->lib_path != NULL ? self->lib_path : self->bin_path;
 
   Elf64_Ehdr ehdr = ehdr_v.v64;
@@ -98,56 +100,52 @@ _py_proc__analyze_elf64(py_proc_t * self) {
   char        * sh_name_base = elf_map + p_shstrtab->sh_offset;
   Elf64_Shdr  * p_dynsym     = NULL;
   Elf64_Addr    base         = _get_base_64(&ehdr, elf_map);
-  if (base == UINT64_MAX) {
-    munmap(elf_map, elf_map_size);
-    close(fd);
-    return 1;
-  }
-  log_d("Base @ %p", base);
 
-  for (Elf64_Off sh_off = ehdr.e_shoff; \
-    map_flag != DYNSYM_MAP && sh_off < elf_map_size; \
-    sh_off += ehdr.e_shentsize \
-  ) {
-    p_shdr = (Elf64_Shdr *) (elf_map + sh_off);
+  if (base != UINT64_MAX) {
+    log_d("Base @ %p", base);
 
-    if (
-      !(map_flag & DYNSYM_MAP) &&
-      p_shdr->sh_type == SHT_DYNSYM && \
-      strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
+    for (Elf64_Off sh_off = ehdr.e_shoff; \
+      map_flag != DYNSYM_MAP && sh_off < elf_map_size; \
+      sh_off += ehdr.e_shentsize \
     ) {
-      p_dynsym = p_shdr;
-      map_flag |= DYNSYM_MAP;
+      p_shdr = (Elf64_Shdr *) (elf_map + sh_off);
+
+      if (
+        !(map_flag & DYNSYM_MAP) &&
+        p_shdr->sh_type == SHT_DYNSYM && \
+        strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
+      ) {
+        p_dynsym = p_shdr;
+        map_flag |= DYNSYM_MAP;
+      }
+      // NOTE: This might be required if the Python version is must be retrieved
+      //       from the RO data section
+      // else if (
+      //   p_shdr->sh_type == SHT_PROGBITS &&
+      //   strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
+      // ) {
+      //   self->map.rodata.base = (void *) p_shdr->sh_offset;
+      //   self->map.rodata.size = p_shdr->sh_size;
+      //   map_flag |= RODATA_MAP;
+      // }
     }
-    // NOTE: This might be required if the Python version is must be retrieved
-    //       from the RO data section
-    // else if (
-    //   p_shdr->sh_type == SHT_PROGBITS &&
-    //   strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
-    // ) {
-    //   self->map.rodata.base = (void *) p_shdr->sh_offset;
-    //   self->map.rodata.size = p_shdr->sh_size;
-    //   map_flag |= RODATA_MAP;
-    // }
-  }
 
-  register int symbols = 0;
-  if (p_dynsym != NULL) {
-    if (p_dynsym->sh_offset == 0)
-      return 1;
+    if (p_dynsym != NULL) {
+      if (p_dynsym->sh_offset != 0) {
+        Elf64_Shdr * p_strtabsh = (Elf64_Shdr *) (elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
 
-    Elf64_Shdr * p_strtabsh = (Elf64_Shdr *) (elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
-
-    // Search for dynamic symbols
-    for (Elf64_Off tab_off = p_dynsym->sh_offset; \
-      tab_off < p_dynsym->sh_offset + p_dynsym->sh_size; \
-      tab_off += p_dynsym->sh_entsize
-    ) {
-      Elf64_Sym * sym      = (Elf64_Sym *) (elf_map + tab_off);
-      char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
-      void      * value    = self->map.elf.base + (sym->st_value - base);
-      if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= SYMBOLS)
-        break;
+        // Search for dynamic symbols
+        for (Elf64_Off tab_off = p_dynsym->sh_offset; \
+          tab_off < p_dynsym->sh_offset + p_dynsym->sh_size; \
+          tab_off += p_dynsym->sh_entsize
+        ) {
+          Elf64_Sym * sym      = (Elf64_Sym *) (elf_map + tab_off);
+          char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
+          void      * value    = self->map.elf.base + (sym->st_value - base);
+          if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= SYMBOLS)
+            break;
+        }
+      }
     }
   }
 
@@ -172,6 +170,8 @@ _get_base_32(Elf32_Ehdr * ehdr, void * elf_map)
 
 static int
 _py_proc__analyze_elf32(py_proc_t * self) {
+  register int symbols = 0;
+
   char * object_file = self->lib_path != NULL ? self->lib_path : self->bin_path;
 
   Elf32_Ehdr ehdr = ehdr_v.v32;
@@ -188,56 +188,52 @@ _py_proc__analyze_elf32(py_proc_t * self) {
   char        * sh_name_base = elf_map + p_shstrtab->sh_offset;
   Elf32_Shdr  * p_dynsym     = NULL;
   Elf32_Addr    base         = _get_base_32(&ehdr, elf_map);
-  if (base == UINT32_MAX) {
-    munmap(elf_map, elf_map_size);
-    close(fd);
-    return 1;
-  }
-  log_d("Base @ %p", base);
 
-  for (Elf32_Off sh_off = ehdr.e_shoff; \
-    map_flag != DYNSYM_MAP && sh_off < elf_map_size; \
-    sh_off += ehdr.e_shentsize \
-  ) {
-    p_shdr = (Elf32_Shdr *) (elf_map + sh_off);
+  if (base != UINT32_MAX) {
+    log_d("Base @ %p", base);
 
-    if (
-      !(map_flag & DYNSYM_MAP) &&
-      p_shdr->sh_type == SHT_DYNSYM && \
-      strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
+    for (Elf32_Off sh_off = ehdr.e_shoff; \
+      map_flag != DYNSYM_MAP && sh_off < elf_map_size; \
+      sh_off += ehdr.e_shentsize \
     ) {
-      p_dynsym = p_shdr;
-      map_flag |= DYNSYM_MAP;
+      p_shdr = (Elf32_Shdr *) (elf_map + sh_off);
+
+      if (
+        !(map_flag & DYNSYM_MAP) &&
+        p_shdr->sh_type == SHT_DYNSYM && \
+        strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
+      ) {
+        p_dynsym = p_shdr;
+        map_flag |= DYNSYM_MAP;
+      }
+      // NOTE: This might be required if the Python version is must be retrieved
+      //       from the RO data section
+      // else if (
+      //   p_shdr->sh_type == SHT_PROGBITS &&
+      //   strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
+      // ) {
+      //   self->map.rodata.base = (void *) p_shdr->sh_offset;
+      //   self->map.rodata.size = p_shdr->sh_size;
+      //   map_flag |= RODATA_MAP;
+      // }
     }
-    // NOTE: This might be required if the Python version is must be retrieved
-    //       from the RO data section
-    // else if (
-    //   p_shdr->sh_type == SHT_PROGBITS &&
-    //   strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
-    // ) {
-    //   self->map.rodata.base = (void *) p_shdr->sh_offset;
-    //   self->map.rodata.size = p_shdr->sh_size;
-    //   map_flag |= RODATA_MAP;
-    // }
-  }
 
-  register int symbols = 0;
-  if (p_dynsym != NULL) {
-    if (p_dynsym->sh_offset == 0)
-      return 1;
+    if (p_dynsym != NULL) {
+      if (p_dynsym->sh_offset != 0) {
+        Elf32_Shdr * p_strtabsh = (Elf32_Shdr *) (elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
 
-    Elf32_Shdr * p_strtabsh = (Elf32_Shdr *) (elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
-
-    // Search for dynamic symbols
-    for (Elf32_Off tab_off = p_dynsym->sh_offset; \
-      tab_off < p_dynsym->sh_offset + p_dynsym->sh_size; \
-      tab_off += p_dynsym->sh_entsize
-    ) {
-      Elf32_Sym * sym      = (Elf32_Sym *) (elf_map + tab_off);
-      char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
-      void      * value    = self->map.elf.base + (sym->st_value - base);
-      if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= SYMBOLS)
-        break;
+        // Search for dynamic symbols
+        for (Elf32_Off tab_off = p_dynsym->sh_offset; \
+          tab_off < p_dynsym->sh_offset + p_dynsym->sh_size; \
+          tab_off += p_dynsym->sh_entsize
+        ) {
+          Elf32_Sym * sym      = (Elf32_Sym *) (elf_map + tab_off);
+          char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
+          void      * value    = self->map.elf.base + (sym->st_value - base);
+          if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= SYMBOLS)
+            break;
+        }
+      }
     }
   }
 
