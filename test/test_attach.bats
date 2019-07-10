@@ -7,7 +7,7 @@ attach_austin_2_3() {
     sleep 1
     run src/austin -i 100000 -t 10000 -p $!
     [ $status = 0 ]
-    if echo "$output" | grep ";? (test/sleepy.py);L13 "
+    if echo "$output" | grep -q ";? (test/sleepy.py);L13 "
     then
       return
     fi
@@ -23,7 +23,7 @@ attach_austin() {
   sleep 1
   run src/austin -i 10000 -t 10000 -p $!
   [ $status = 0 ]
-  echo "$output" | grep ";<module> (test/sleepy.py);L13 "
+  echo "$output" | grep -q ";<module> (test/sleepy.py);L13 "
 }
 
 @test "Test Austin with Python 2.3" {
