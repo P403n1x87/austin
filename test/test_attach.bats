@@ -15,9 +15,9 @@ attach_austin_2_3() {
 
     python$1 test/sleepy.py &
     sleep 1
-    run src/austin -mi 100000 -t 10000 -p $!
+    run src/austin -mi 100 -t 10000 -p $!
     [ $status = 0 ]
-    if echo "$output" | grep -q ";? (test/sleepy.py);L"
+    if echo "$output" | grep -q "cpu_bound"
     then
       echo "Python $1: Memory profiling OK"
       return
@@ -46,7 +46,7 @@ attach_austin() {
     sleep 1
     run src/austin -mi 100 -t 10000 -p $!
     [ $status = 0 ]
-    if echo "$output" | grep -q ";<module> (test/sleepy.py);L"
+    if echo "$output" | grep -q "cpu_bound"
     then
       echo "Python $1: Memory profiling OK"
       return
