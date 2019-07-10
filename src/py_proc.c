@@ -384,32 +384,6 @@ _py_proc__deref_interp_head(py_proc_t * self) {
 
   self->is_raddr = interp_head_raddr;
 
-  #ifdef PYRUNTIME
-  if (self->py_runtime_raddr != NULL) {
-    // Search offset of current thread in _PyRuntimeState structure
-    PyInterpreterState is;
-    py_proc__get_type(self, interp_head_raddr, is);
-    void * current_thread_raddr;
-    usleep(50000); // Introduce delay to make sure that we don't actually see
-                    // the current thread with the sleepy test. This way we
-                    // determine the offset of the pointer to current tstate.
-    #define PYRUNTIMESTATE_SIZE 2048  // We expect _PyRuntimeState to be < 2K.
-    for (
-      register void ** raddr = (void **) self->py_runtime_raddr;
-      (void *) raddr < self->py_runtime_raddr + PYRUNTIMESTATE_SIZE;
-      raddr++
-    ) {
-      py_proc__get_type(self, raddr, current_thread_raddr);
-      if (current_thread_raddr == is.tstate_head) {
-        log_d(
-          "OFFSETOF(gilstate.tstate_current, _PyRuntime) = %x",
-          (void *) raddr - self->py_runtime_raddr
-        );
-      }
-    }
-  }
-  #endif
-
   return 0;
 }
 
@@ -762,7 +736,7 @@ py_proc__get_current_thread_state_raddr(py_proc_t * self) {
   void * p_tstate_current;
 
   if (self->py_runtime_raddr != NULL) {
-    if (py_proc__get_type(
+    if (py_v->py_runtime.tstate_current_offset == 0 || py_proc__get_type(
       self,
       self->py_runtime_raddr + py_v->py_runtime.tstate_current_offset,
       p_tstate_current
@@ -777,6 +751,50 @@ py_proc__get_current_thread_state_raddr(py_proc_t * self) {
   else return (void *) -1;
 
   return p_tstate_current;
+}
+
+
+// ----------------------------------------------------------------------------
+#define PYRUNTIMESTATE_SIZE 2048  // We expect _PyRuntimeState to be < 2K.
+
+int
+py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
+  if (self->py_runtime_raddr == NULL)
+    return 1;
+
+  void            * interp_head_raddr;
+  _PyRuntimeState   py_runtime;
+
+  if (py_proc__get_type(self, self->py_runtime_raddr, py_runtime))
+    return 1;
+
+  interp_head_raddr = py_runtime.interpreters.head;
+
+  // Search offset of current thread in _PyRuntimeState structure
+  PyInterpreterState is;
+  py_proc__get_type(self, interp_head_raddr, is);
+  void * current_thread_raddr;
+
+  register int hit_count = 0;
+  for (
+    register void ** raddr = (void **) self->py_runtime_raddr;
+    (void *) raddr < self->py_runtime_raddr + PYRUNTIMESTATE_SIZE;
+    raddr++
+  ) {
+    py_proc__get_type(self, raddr, current_thread_raddr);
+    if (current_thread_raddr == thread_raddr) {
+      if (++hit_count == 2) {
+        py_v->py_runtime.tstate_current_offset = (void *) raddr - self->py_runtime_raddr;
+        log_d(
+          "Offset of _PyRuntime.gilstate.tstate_current found at %x",
+          py_v->py_runtime.tstate_current_offset
+        );
+        return 0;
+      }
+    }
+  }
+
+  return 1;
 }
 
 

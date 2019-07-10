@@ -118,6 +118,12 @@ _py_proc__sample(py_proc_t * py_proc) {
     while (py_thread != NULL) {
       if (pargs.memory) {
         mem_delta = 0;
+        if (py_proc->py_runtime_raddr != NULL && current_thread == (void *) -1) {
+          if (py_proc__find_current_thread_offset(py_proc, py_thread->raddr.addr))
+            continue;
+          else
+            current_thread = py_proc__get_current_thread_state_raddr(py_proc);
+        }
         if (py_thread->raddr.addr == current_thread) {
           mem_delta = py_proc__get_memory_delta(py_proc);
           log_t("Thread %lx holds the GIL", py_thread->tid);

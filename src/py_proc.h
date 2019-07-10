@@ -154,6 +154,19 @@ py_proc__wait(py_proc_t *);
 
 
 /**
+ * Find the offset of the pointer to the current thread structure from the
+ * beginning of the _PyRuntimeState structure (Python 3.7+ only).
+ *
+ * @param py_proc_t * the process object.
+ * @param void      * the remote address of the thread to use for comparison.
+ *
+ * @return 0 on success, 1 otherwise.
+ */
+int
+py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr);
+
+
+/**
  * Check if the process is still running
  *
  * @param py_proc_t * the process object.
