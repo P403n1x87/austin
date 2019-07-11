@@ -38,6 +38,7 @@ invoke_austin() {
 }
 
 @test "Test Austin with Python 2.4" {
+  skip "Disabled"
 	invoke_austin "2.4"
 }
 
