@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 
 invoke_austin() {
-  if ! python$1 -V; then return; fi
+  if ! python$1 -V; then skip "Python $1 not found."; fi
 
   for i in {1..3}
   do
