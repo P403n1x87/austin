@@ -80,6 +80,7 @@ attach_austin() {
 
 
 @test "Test Austin with Python 2.3" {
+  skip "Disabled"
 	attach_austin_2_3 "2.3"
 }
 
