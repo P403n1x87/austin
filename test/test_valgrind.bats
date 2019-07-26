@@ -1,10 +1,15 @@
 #!/usr/bin/env bats
 
 invoke_austin() {
-  if ! python$1 -V; then return; fi
+  if ! python$1 -V; then skip "Python $1 not found."; fi
 
   for i in {1..3}
   do
+    echo "> Run $i of 3"
+
+    # -------------------------------------------------------------------------
+
+    echo "  :: Valgrind test"
     run valgrind \
       --error-exitcode=42 \
       --leak-check=full \
@@ -12,7 +17,8 @@ invoke_austin() {
       --errors-for-leak-kinds=all \
       --track-fds=yes \
       src/austin -i 100000 -t 10000 python$1 test/target34.py
-    echo "Exit code:" $status
+    echo "       Exit code: $status"
+    echo "       Valgrind report: <"
     echo "$output"
   	if [ $status = 0 ]
     then
@@ -23,11 +29,16 @@ invoke_austin() {
   false
 }
 
+
+# -----------------------------------------------------------------------------
+
+
 @test "Test Austin with Python 2.3" {
 	invoke_austin "2.3"
 }
 
 @test "Test Austin with Python 2.4" {
+  skip "Disabled"
 	invoke_austin "2.4"
 }
 
