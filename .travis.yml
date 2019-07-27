@@ -1,7 +1,26 @@
-os:
-  - windows
-  - linux
-  - osx
+matrix:
+  include:
+    # Linux
+    - env: TARGET=arm-unknown-linux-gnueabi
+    - env: TARGET=armv7-unknown-linux-gnueabihf
+    - env: TARGET=i686-unknown-linux-gnu
+    - env: TARGET=i686-unknown-linux-musl
+    - env: TARGET=x86_64-unknown-linux-gnu
+    - env: TARGET=x86_64-unknown-linux-musl
+
+    # OSX
+    - env: TARGET=i686-apple-darwin
+      os: osx
+    - env: TARGET=x86_64-apple-darwin
+      os: osx
+
+    # Windows
+    - env: TARGET=x86_64-pc-windows-gnu
+
+# os:
+#   - windows
+#   - linux
+#   - osx
 
 language: c
 
@@ -14,6 +33,7 @@ git:
 osx_image: xcode10
 
 sudo: required
+dist: bionic
 
 addons:
   apt:
@@ -40,6 +60,7 @@ before_script:
   if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then autoreconf --install; fi
 
 script:
+  - echo $TRAVIS_OS_NAME -- $TARGET
   - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then ./configure && make && sudo make check;         fi
   - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then gcc -s -Wall -O3 -o src/austin src/*.c;         fi
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then gcc -s -Wall -O3 -o src/austin src/*.c -lpsapi; fi
