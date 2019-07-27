@@ -36,12 +36,12 @@ matrix:
 
 before_script:
   # Linux Dependencies
-  if [[ "$TRAVIS_OS_NAME" == "linux" ]]
+  if [[ "$TRAVIS_OS_NAME" == "linux" ]];
   then
-    sudo add-apt-repository ppa:deadsnakes/ppa -y
-    sudo add-apt-repository ppa:duggan/bats -y
+    sudo add-apt-repository ppa:deadsnakes/ppa -y;
+    sudo add-apt-repository ppa:duggan/bats -y;
 
-    sudo apt install bats valgrind python2.{3..7} python3.{3..7} -y
+    sudo apt install bats valgrind python2.{3..7} python3.{3..7} -y;
   fi
 
   if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then autoreconf --install; fi
