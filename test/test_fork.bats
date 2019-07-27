@@ -15,8 +15,8 @@ invoke_austin() {
     echo "       Exit code: $status"
     if [ $status != 0 ]; then continue; fi
 
-    echo "$output" | grep -q "keep_cpu_busy (test/target34.py);L"
-    if echo "$output" | grep -q "Unwanted"
+    if ! echo "$output" | grep -q "keep_cpu_busy (test/target34.py);L" \
+    || echo "$output" | grep -q "Unwanted"
     then
       continue
     fi
@@ -44,8 +44,8 @@ invoke_austin() {
     echo "       Exit code: $status"
     if [ $status != 0 ]; then continue; fi
 
-    echo "$output" | grep -q "Unwanted"
-    if cat /tmp/austin_out.txt | grep -q "keep_cpu_busy (test/target34.py);L"
+    if ! echo "$output" | grep -q "Unwanted" \
+    || cat /tmp/austin_out.txt | grep -q "keep_cpu_busy (test/target34.py);L"
     then
       echo "       Output: OK"
       return
