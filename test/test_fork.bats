@@ -10,7 +10,7 @@ invoke_austin() {
     # -------------------------------------------------------------------------
 
     echo "  :: Standard profiling"
-    run src/austin -i 10000 -t 10000 python$1 test/target34.py
+    run src/austin -i 5000 -t 10000 python$1 test/target34.py
     echo "       Exit code: $status"
   	[ $status = 0 ]
     echo "$output" | grep -q "keep_cpu_busy (test/target34.py);L"
@@ -23,7 +23,7 @@ invoke_austin() {
     # -------------------------------------------------------------------------
 
     echo "  :: Memory profiling"
-    run src/austin -i 10000 -t 10000 -m python$1 test/target34.py
+    run src/austin -i 5000 -t 10000 -m python$1 test/target34.py
     echo "       Exit code: $status"
   	[ $status = 0 ]
     if ! echo "$output" | grep -q "keep_cpu_busy (test/target34.py);L"
