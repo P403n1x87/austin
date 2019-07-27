@@ -46,21 +46,21 @@ static ctime_t t_sample;  // Checkmark for sampling duration calculation
 // ---- HELPERS ---------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-static void
+static int
 _print_collapsed_stack(py_thread_t * thread, ctime_t delta, ssize_t mem_delta) {
   if (!pargs.full && pargs.memory && mem_delta <= 0)
-    return;
+    return 1;
 
   if (thread->invalid) {
     fprintf(pargs.output_file, "Thread %lx;Bad sample %ld\n", thread->tid, delta);
-    return;
+    return 0;
   }
 
   py_frame_t * frame = py_thread__first_frame(thread);
 
   if (frame == NULL && pargs.exclude_empty)
     // Skip if thread has no frames and we want to exclude empty threads
-    return;
+    return 1;
 
   // Group entries by thread.
   fprintf(pargs.output_file, "Thread %lx", thread->tid);
@@ -90,6 +90,8 @@ _print_collapsed_stack(py_thread_t * thread, ctime_t delta, ssize_t mem_delta) {
     else
       fprintf(pargs.output_file, " %lu\n", delta);
   }
+
+  return 0;
 }
 
 
@@ -99,6 +101,7 @@ _py_proc__sample(py_proc_t * py_proc) {
   ctime_t   delta     = gettime() - t_sample;
   ssize_t   mem_delta = 0;
   void    * current_thread;
+  int       sample_printed = 0;
   error = EOK;
 
   PyInterpreterState is;
@@ -129,7 +132,7 @@ _py_proc__sample(py_proc_t * py_proc) {
           log_t("Thread %lx holds the GIL", py_thread->tid);
         }
       }
-      _print_collapsed_stack(py_thread, delta, mem_delta >> 10);
+      sample_printed = !_print_collapsed_stack(py_thread, delta, mem_delta >> 10);
       py_thread = py_thread__next(py_thread);
     }
 
@@ -140,7 +143,7 @@ _py_proc__sample(py_proc_t * py_proc) {
   }
 
   t_sample += delta;
-  return 0;
+  return !sample_printed;
 }
 
 
@@ -219,7 +222,7 @@ int main(int argc, char ** argv) {
         t_sample = gettime();  // Prime sample checkmark
         while(py_proc__is_running(py_proc) && !interrupt) {
           if (_py_proc__sample(py_proc))
-            break;
+            continue;
 
           stats_check_error();
 
