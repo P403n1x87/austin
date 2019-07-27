@@ -11,9 +11,12 @@ invoke_austin() {
 
     echo "  :: Standard profiling"
     run src/austin -i 1000 -t 10000 python$1 test/target34.py
+
     echo "       Exit code: $status"
+    if [ $status != 0 ]; then continue; fi
+
     echo "$output" | grep -q "keep_cpu_busy (test/target34.py);L"
-    if echo "$output" | grep -q "Unwanted" && [ $status != 0 ]
+    if echo "$output" | grep -q "Unwanted"
     then
       continue
     fi
@@ -23,8 +26,11 @@ invoke_austin() {
 
     echo "  :: Memory profiling"
     run src/austin -i 1000 -t 10000 -m python$1 test/target34.py
+
     echo "       Exit code: $status"
-    if ! echo "$output" | grep -q "keep_cpu_busy (test/target34.py);L" && [ $status != 0 ]
+    if [ $status != 0 ]; then continue; fi
+
+    if ! echo "$output" | grep -q "keep_cpu_busy (test/target34.py);L"
     then
       continue
     fi
@@ -34,9 +40,12 @@ invoke_austin() {
 
     echo "  :: Output file"
     run src/austin -i 10000 -t 10000 -o /tmp/austin_out.txt python$1 test/target34.py
+
     echo "       Exit code: $status"
+    if [ $status != 0 ]; then continue; fi
+
     echo "$output" | grep -q "Unwanted"
-    if cat /tmp/austin_out.txt | grep -q "keep_cpu_busy (test/target34.py);L" && [ $status = 0 ]
+    if cat /tmp/austin_out.txt | grep -q "keep_cpu_busy (test/target34.py);L"
     then
       echo "       Output: OK"
       return

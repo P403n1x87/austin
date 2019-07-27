@@ -11,8 +11,11 @@ attach_austin_2_3() {
     python$1 test/sleepy.py &
     sleep 1
     run src/austin -i 100000 -t 10000 -p $!
+
     echo "       Exit code: $status"
-    if ! echo "$output" | grep -q ";? (test/sleepy.py);L13 "  && [ $status != 0 ]
+    if [ $status != 0 ]; then continue; fi
+
+    if ! echo "$output" | grep -q ";? (test/sleepy.py);L13 "
     then
       continue
     fi
@@ -24,8 +27,11 @@ attach_austin_2_3() {
     python$1 test/sleepy.py &
     sleep 1
     run src/austin -mi 100 -t 10000 -p $!
+
     echo "       Exit code: $status"
-    if echo "$output" | grep -q "cpu_bound" && [ $status = 0 ]
+    if [ $status != 0 ]; then continue; fi
+
+    if echo "$output" | grep -q "cpu_bound"
     then
       echo "       Output: OK"
       return
@@ -53,8 +59,11 @@ attach_austin() {
     python$1 test/sleepy.py &
     sleep 1
     run src/austin -i 10000 -t 10000 -p $!
+
     echo "       Exit code: $status"
-    if ! echo "$output" | grep -q ";<module> (test/sleepy.py);L13 " && [ $status != 0 ]
+    if [ $status != 0 ]; then continue; fi
+
+    if ! echo "$output" | grep -q ";<module> (test/sleepy.py);L13 "
     then
       continue
     fi
@@ -65,8 +74,11 @@ attach_austin() {
     python$1 test/sleepy.py &
     sleep 1
     run src/austin -mi 100 -t 10000 -p $!
+
     echo "       Exit code: $status"
-    if echo "$output" | grep -q "cpu_bound" && [ $status = 0 ]
+    if [ $status != 0 ]; then continue; fi
+
+    if echo "$output" | grep -q "cpu_bound"
     then
       echo "       Output: OK"
       return
