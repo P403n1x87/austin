@@ -38,25 +38,35 @@ typedef struct {
   proc_vm_map_block_t rodata;
 } proc_vm_map_t;
 
+typedef struct _proc_extra_info proc_extra_info;  // Forward declaration.
 
 typedef struct {
   pid_t           pid;
 
   char          * bin_path;
+  char          * lib_path;
 
   proc_vm_map_t   map;
+  void          * min_raddr;
+  void          * max_raddr;
 
-  void          * bss;
+  void          * bss;  // local copy of the remote bss section
 
   int             sym_loaded;
-  int             maps_loaded;
   int             version;
 
   // Symbols from .dynsym
   void          * tstate_curr_raddr;
   void          * py_runtime_raddr;
+  void          * interp_head_raddr;
 
   void          * is_raddr;
+
+  // Memory profiling support
+  ssize_t         last_resident_memory;
+
+  // Platform-dependent fields
+  proc_extra_info * extra;
 } py_proc_t;
 
 
@@ -107,6 +117,19 @@ py_proc__get_istate_raddr(py_proc_t *);
 
 
 /**
+ * Get the remote address of the current PyThreadState instance.
+ *
+ * @param  py_proc_t * the process object.
+ *
+ * @return the remote address of the current PyThreadState instance. If no
+ *         thread is currently running then this returns NULL. If an error
+ *         occurred, the return value is (void *) -1.
+ */
+void *
+py_proc__get_current_thread_state_raddr(py_proc_t *);
+
+
+/**
  * Copy a chunk of memory from the process.
  *
  * @param py_proc_t * the process object.
@@ -131,6 +154,19 @@ py_proc__wait(py_proc_t *);
 
 
 /**
+ * Find the offset of the pointer to the current thread structure from the
+ * beginning of the _PyRuntimeState structure (Python 3.7+ only).
+ *
+ * @param py_proc_t * the process object.
+ * @param void      * the remote address of the thread to use for comparison.
+ *
+ * @return 0 on success, 1 otherwise.
+ */
+int
+py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr);
+
+
+/**
  * Check if the process is still running
  *
  * @param py_proc_t * the process object.
@@ -139,6 +175,15 @@ py_proc__wait(py_proc_t *);
  */
 int
 py_proc__is_running(py_proc_t *);
+
+
+/**
+ * Get the memory size delta since last call.
+ *
+ * @param py_proc_t * the process object.
+ */
+ssize_t
+py_proc__get_memory_delta(py_proc_t *);
 
 
 /**

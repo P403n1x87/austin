@@ -23,6 +23,7 @@
 #define ARGPARSE_C
 
 #include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
 
@@ -39,12 +40,18 @@ const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s (%s:%d)";
 
 
 // Globals for command line arguments
-ctime_t t_sampling_interval = DEFAULT_SAMPLING_INTERVAL;
-ctime_t timeout             = DEFAULT_INIT_RETRY_CNT;
-pid_t   attach_pid          = 0;
-int     exclude_empty       = 0;
-int     sleepless           = 0;
-char *  format              = (char *) SAMPLE_FORMAT_NORMAL;
+parsed_args_t pargs = {
+  /* t_sampling_interval */ DEFAULT_SAMPLING_INTERVAL,
+  /* timeout             */ DEFAULT_INIT_RETRY_CNT,
+  /* attach_pid          */ 0,
+  /* exclude_empty       */ 0,
+  /* sleepless           */ 0,
+  /* format              */ (char *) SAMPLE_FORMAT_NORMAL,
+  /* full                */ 0,
+  /* memory              */ 0,
+  /* output_file         */ NULL,
+  /* output_filename     */ NULL,
+};
 
 static int exec_arg = 0;
 
@@ -91,28 +98,40 @@ typedef struct argp_option {
 
 static struct argp_option options[] = {
   {
-    "interval",     'i', "n_us",      0,
+    "interval",     'i', "n_us",        0,
     "Sampling interval (default is 500us)."
   },
   {
-    "timeout",      't', "n_ms",      0,
+    "timeout",      't', "n_ms",        0,
     "Approximate start up wait time. Increase on slow machines (default is 100ms)."
   },
   {
     "alt-format",   'a', NULL,          0,
-    "alternative collapsed stack sample format."
+    "Alternative collapsed stack sample format."
   },
   {
     "exclude-empty",'e', NULL,          0,
-    "do not output samples of threads with no frame stacks."
+    "Do not output samples of threads with no frame stacks."
   },
   {
     "sleepless",    's', NULL,          0,
-    "suppress idle samples."
+    "Suppress idle samples."
+  },
+  {
+    "memory",       'm', NULL,          0,
+    "Profile memory usage."
+  },
+  {
+    "full",         'f', NULL,          0,
+    "Produce the full set of metrics (time +mem -mem)."
   },
   {
     "pid",          'p', "PID",         0,
     "The the ID of the process to which Austin should attach."
+  },
+  {
+    "output",       'o', "FILE",        0,
+    "Specify an output file for the collected samples."
   },
   #ifndef PL_LINUX
   {
@@ -152,36 +171,58 @@ parse_opt (int key, char *arg, struct argp_state *state)
   long l_pid;
   switch(key) {
   case 'i':
-    if (strtonum(arg, (long *) &t_sampling_interval) == 1 || t_sampling_interval > LONG_MAX)
+    if (
+      strtonum(arg, (long *) &(pargs.t_sampling_interval)) == 1 ||
+      pargs.t_sampling_interval > LONG_MAX
+    )
       argp_error(state, "the sampling interval must be a positive integer");
     break;
 
   case 't':
-    if (strtonum(arg, (long *) &timeout) == 1 || timeout > LONG_MAX)
+    if (
+      strtonum(arg, (long *) &(pargs.timeout)) == 1 ||
+      pargs.timeout > LONG_MAX
+    )
       argp_error(state, "timeout must be a positive integer");
     break;
 
   case 'a':
-    format = (char *) SAMPLE_FORMAT_ALTERNATIVE;
+    pargs.format = (char *) SAMPLE_FORMAT_ALTERNATIVE;
     break;
 
   case 'e':
-    exclude_empty = 1;
+    pargs.exclude_empty = 1;
     break;
 
   case 's':
-    sleepless = 1;
+    pargs.sleepless = 1;
+    break;
+
+  case 'm':
+    pargs.memory = 1;
+    break;
+
+  case 'f':
+    pargs.full = 1;
     break;
 
   case 'p':
     if (strtonum(arg, &l_pid) == 1 || l_pid <= 0)
       argp_error(state, "invalid PID.");
-    attach_pid = (pid_t) l_pid;
+    pargs.attach_pid = (pid_t) l_pid;
+    break;
+
+  case 'o':
+    pargs.output_file = fopen(arg, "w");
+    if (pargs.output_file == NULL) {
+      argp_error(state, "Unable to create the given output file.");
+    }
+    pargs.output_filename = arg;
     break;
 
   case ARGP_KEY_ARG:
   case ARGP_KEY_END:
-    if (attach_pid != 0 && exec_arg != 0)
+    if (pargs.attach_pid != 0 && exec_arg != 0)
       argp_error(state, "the -p option is incompatible with the command argument.");
     break;
 
@@ -348,13 +389,16 @@ static const char * help_msg = \
 "Usage: austin [OPTION...] command [ARG...]\n"
 "Austin -- A frame stack sampler for Python.\n"
 "\n"
-"  -a, --alt-format           alternative collapsed stack sample format.\n"
-"  -e, --exclude-empty        do not output samples of threads with no frame\n"
+"  -a, --alt-format           Alternative collapsed stack sample format.\n"
+"  -e, --exclude-empty        Do not output samples of threads with no frame\n"
 "                             stacks.\n"
+"  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
 "  -i, --interval=n_us        Sampling interval (default is 500us).\n"
+"  -m, --memory               Profile memory usage.\n"
+"  -o, --output=FILE          Specify an output file for the collected samples.\n"
 "  -p, --pid=PID              The the ID of the process to which Austin should\n"
 "                             attach.\n"
-"  -s, --sleepless            suppress idle samples.\n"
+"  -s, --sleepless            Suppress idle samples.\n"
 "  -t, --timeout=n_ms         Approximate start up wait time. Increase on slow\n"
 "                             machines (default is 100ms).\n"
 "  -?, --help                 Give this help list\n"
@@ -367,9 +411,9 @@ static const char * help_msg = \
 "Report bugs to <https://github.com/P403n1x87/austin/issues>.\n";
 
 static const char * usage_msg = \
-"Usage: austin [-aes?V] [-i n_us] [-p PID] [--alt-format] [--exclude-empty]\n"
-"            [--interval=n_us] [--pid=PID] [--sleepless] [--help] [--usage]\n"
-"            [--version] command [ARG...]\n";
+"Usage: austin [-aes?V] [-i n_us] [-p PID] [-t n_ms] [--alt-format]\n"
+"            [--exclude-empty] [--interval=n_us] [--pid=PID] [--sleepless]\n"
+"            [--timeout=n_ms] [--help] [--usage] [--version] command [ARG...]\n";
 
 
 // ----------------------------------------------------------------------------
@@ -377,36 +421,62 @@ static int
 cb(const char opt, const char * arg) {
   switch (opt) {
   case 'i':
-    if (strtonum((char *) arg, (long *) &t_sampling_interval) == 1 || t_sampling_interval > LONG_MAX) {
+    if (
+      strtonum((char *) arg, (long *) &(pargs.t_sampling_interval)) == 1 ||
+      pargs.t_sampling_interval > LONG_MAX
+    ) {
       puts(usage_msg);
       return ARG_INVALID_VALUE;
     }
     break;
 
   case 't':
-    if (strtonum((char *) arg, (long *) &timeout) == 1 || timeout > LONG_MAX) {
+    if (
+      strtonum((char *) arg, (long *) &(pargs.timeout)) == 1 ||
+      pargs.timeout > LONG_MAX
+    ) {
       puts(usage_msg);
       return ARG_INVALID_VALUE;
     }
     break;
 
   case 'a':
-    format = (char *) SAMPLE_FORMAT_ALTERNATIVE;
+    pargs.format = (char *) SAMPLE_FORMAT_ALTERNATIVE;
     break;
 
   case 'e':
-    exclude_empty = 1;
+    pargs.exclude_empty = 1;
     break;
 
   case 's':
-    sleepless = 1;
+    pargs.sleepless = 1;
+    break;
+
+  case 'm':
+    pargs.memory = 1;
+    break;
+
+  case 'f':
+    pargs.full = 1;
     break;
 
   case 'p':
-    if (strtonum((char *) arg, (long *) &attach_pid) == 1 || attach_pid <= 0) {
+    if (
+      strtonum((char *) arg, (long *) &pargs.attach_pid) == 1 ||
+      pargs.attach_pid <= 0
+    ) {
       puts(usage_msg);
       return ARG_INVALID_VALUE;
     }
+    break;
+
+  case 'o':
+    pargs.output_file = fopen(arg, "w");
+    if (pargs.output_file == NULL) {
+      puts("Unable to create the given output file.");
+      return ARG_INVALID_VALUE;
+    }
+    pargs.output_filename = (char *) arg;
     break;
 
   case '?':

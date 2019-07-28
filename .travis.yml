@@ -1,8 +1,3 @@
-os:
-  - windows
-  - linux
-  - osx
-
 language: c
 
 compiler:
@@ -14,35 +9,43 @@ git:
 osx_image: xcode10
 
 sudo: required
+dist: bionic
 
-addons:
-  apt:
-    sources:
-    - sourceline: 'ppa:deadsnakes/ppa'
-    - sourceline: 'ppa:duggan/bats'
-    packages:
-    - bats
-    - valgrind
+matrix:
+  include:
+    # Linux
+    - env: TARGET=arm-unknown-linux-gnueabi
+    - env: TARGET=armv7-unknown-linux-gnueabihf
+    - env: TARGET=i686-unknown-linux-gnu
+    - env: TARGET=x86_64-unknown-linux-gnu
 
-    - python2.3
-    - python2.4
-    - python2.5
-    - python2.6
-    - python2.7
+    # OSX
+    - env: TARGET=i686-apple-darwin
+      os: osx
+    - env: TARGET=x86_64-apple-darwin
+      os: osx
 
-    - python3.3
-    - python3.4
-    - python3.5
-    - python3.6
-    - python3.7
+    # Windows
+    - env: TARGET=x86_64-pc-windows-gnu
+      os: windows
 
 before_script:
+  # Linux Dependencies
+  if [[ "$TRAVIS_OS_NAME" == "linux" ]];
+  then
+    sudo add-apt-repository ppa:deadsnakes/ppa -y;
+    sudo add-apt-repository ppa:duggan/bats -y;
+
+    sudo apt install bats valgrind python2.{3..7} python3.{3..7} -y;
+  fi
+
   if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then autoreconf --install; fi
 
 script:
-  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then ./configure && make && sudo make check; fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then gcc -s -Wall -O3 -o src/austin src/*.c; fi
-  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then gcc -s -Wall -O3 -o src/austin src/*.c; fi
+  - echo $TRAVIS_OS_NAME -- $TARGET
+  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then ./configure && make && sudo make check;         fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then gcc -s -Wall -O3 -o src/austin src/*.c;         fi
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then gcc -s -Wall -O3 -o src/austin src/*.c -lpsapi; fi
 
 after_success:
   ./src/austin --usage
@@ -56,9 +59,9 @@ before_deploy:
   - export TRAVIS_TAG=v$VERSION
   - echo "==== Preparing to create GitHub Release for version $VERSION ===="
 
-  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then export ZIP_CMD="tar -Jcf"   && export ZIP_SUFFIX="linux-amd64.tar.xz" && export AUSTIN_EXE=austin;     fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then export ZIP_CMD="zip -r"     && export ZIP_SUFFIX="mac-x86_64.zip"     && export AUSTIN_EXE=austin;     fi
-  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then export ZIP_CMD="7z a -tzip" && export ZIP_SUFFIX="win64.zip"          && export AUSTIN_EXE=austin.exe; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then export ZIP_CMD="tar -Jcf"   && export ZIP_SUFFIX="linux-${TARGET%-*}.tar.xz" && export AUSTIN_EXE=austin;     fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then export ZIP_CMD="zip -r"     && export ZIP_SUFFIX="mac-${TARGET%-*}.zip"      && export AUSTIN_EXE=austin;     fi
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then export ZIP_CMD="7z a -tzip" && export ZIP_SUFFIX="win-${TARGET%-*}.zip"      && export AUSTIN_EXE=austin.exe; fi
   - export ARTEFACT="austin-${VERSION}-${ZIP_SUFFIX}"
   - echo " - Using command $ZIP_CMD to create artefact $ARTEFACT"
 

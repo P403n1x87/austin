@@ -1,3 +1,10 @@
+austin (0.7.0-1) unstable; urgency=medium
+
+  * Austin can now profile memory usage and output samples to a file.
+
+ -- Gabriele N. Tornetta <phoenix1987@gmail.com>  Sun, 28 Jul 2019 12:55:00 +0100
+
+
 austin (0.6.1~beta-1) unstable; urgency=medium
 
   * Initial release (Closes: #918518)

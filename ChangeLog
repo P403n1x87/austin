@@ -1,3 +1,24 @@
+2019-07-28 v0.7.0
+
+  Austin can now profile memory usage and output samples to a file.
+
+  Added new command line options:
+
+    - --memory, -m:
+
+        Switch to memory profling mode
+
+    - --full, -f:
+
+        Generate samples with a full set of metrics, which include timing and
+        memory prifiling information. Note that the output from this mode needs
+        to be processed before it can be used with FlameGraph.
+
+    - --output, -o:
+
+        Designate an output file for the collected samples.
+
+
 2018-10-15 v0.6.0-beta
 
   Introduced native support for MacOS and Windows.

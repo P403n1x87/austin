@@ -22,85 +22,89 @@
 
 #ifdef PY_PROC_C
 
+#include <psapi.h>
 #include <tlhelp32.h>
 
 #include "../py_proc.h"
 
 
+#define CHECK_HEAP
+#define DEREF_SYM
+
+
 #define MODULE_CNT                     2
+#define SYMBOLS                        2
 
 
 // ----------------------------------------------------------------------------
 // TODO: Optimise by avoiding executing the same code over and over again
-// static void *
-// map_addr_from_rva(void * bin, DWORD rva) {
-//   IMAGE_DOS_HEADER     * dos_hdr = (IMAGE_DOS_HEADER *) bin;
-//   IMAGE_NT_HEADERS     * nt_hdr  = (IMAGE_NT_HEADERS *) (bin + dos_hdr->e_lfanew);
-//   IMAGE_SECTION_HEADER * s_hdr   = (IMAGE_SECTION_HEADER *) (bin + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
-//
-//   for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
-//     if (rva >= s_hdr[i].VirtualAddress && rva < s_hdr[i].VirtualAddress + s_hdr[i].SizeOfRawData)
-//       return bin + s_hdr[i].PointerToRawData + (rva - s_hdr[i].VirtualAddress);
-//   }
-//
-//   return NULL;
-// }
+static void *
+map_addr_from_rva(void * bin, DWORD rva) {
+  IMAGE_DOS_HEADER     * dos_hdr = (IMAGE_DOS_HEADER *) bin;
+  IMAGE_NT_HEADERS     * nt_hdr  = (IMAGE_NT_HEADERS *) (bin + dos_hdr->e_lfanew);
+  IMAGE_SECTION_HEADER * s_hdr   = (IMAGE_SECTION_HEADER *) (bin + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
+
+  for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
+    if (rva >= s_hdr[i].VirtualAddress && rva < s_hdr[i].VirtualAddress + s_hdr[i].SizeOfRawData)
+      return bin + s_hdr[i].PointerToRawData + (rva - s_hdr[i].VirtualAddress);
+  }
+
+  return NULL;
+}
 
 
 // ----------------------------------------------------------------------------
 static int
 _py_proc__analyze_pe(py_proc_t * self, char * path) {
   HANDLE hFile    = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-  HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READONLY,0,0,0);
-  LPVOID pMapping = MapViewOfFile(hMapping,FILE_MAP_READ,0,0,0);
+  HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READONLY, 0, 0, 0);
+  LPVOID pMapping = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
 
   IMAGE_DOS_HEADER     * dos_hdr = (IMAGE_DOS_HEADER *)     pMapping;
   IMAGE_NT_HEADERS     * nt_hdr  = (IMAGE_NT_HEADERS *)     (pMapping + dos_hdr->e_lfanew);
   IMAGE_SECTION_HEADER * s_hdr   = (IMAGE_SECTION_HEADER *) (pMapping + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
 
   if (nt_hdr->Signature != IMAGE_NT_SIGNATURE)
-    return 1;
+    self->sym_loaded = 0;
 
-  // void * base = self->map.bss.base;
+  else {
+    void * base = self->map.bss.base;
 
-  // ---- Find the .data section ----
-  for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
-    if (strcmp(".data", (const char *) s_hdr[i].Name) == 0) {
-      self->map.bss.base += s_hdr[i].VirtualAddress;
-      self->map.bss.size = s_hdr[i].Misc.VirtualSize;
-      break;
+    // ---- Find the .data section ----
+    for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
+      if (strcmp(".data", (const char *) s_hdr[i].Name) == 0) {
+        self->map.bss.base += s_hdr[i].VirtualAddress;
+        self->map.bss.size = s_hdr[i].Misc.VirtualSize;
+        break;
+      }
+    }
+
+    // ---- Search for exports ----
+    self->sym_loaded = 0;
+
+    IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) map_addr_from_rva(
+      pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress
+    );
+    if (e_dir != NULL) {
+      DWORD * names   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfNames);
+      WORD  * idx_tab = (WORD *)  map_addr_from_rva(pMapping, e_dir->AddressOfNameOrdinals);
+      DWORD * addrs   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfFunctions);
+      for (
+        register int i = 0;
+        self->sym_loaded < SYMBOLS && i < e_dir->NumberOfFunctions;
+        i++
+      ) {
+        char * sym_name = (char *) map_addr_from_rva(pMapping, names[i]);
+        self->sym_loaded += _py_proc__check_sym(self, sym_name, addrs[idx_tab[i]] + base);
+      }
     }
   }
-
-  // ---- Search for exports ----
-  // register int hit_cnt = 0;
-  //
-  // IMAGE_EXPORT_DIRECTORY * e_dir = (IMAGE_EXPORT_DIRECTORY *) map_addr_from_rva(pMapping, nt_hdr->OptionalHeader.DataDirectory[0].VirtualAddress);
-  // if (e_dir != NULL) {
-  //   DWORD * names   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfNames);
-  //   WORD  * idx_tab = (WORD *)  map_addr_from_rva(pMapping, e_dir->AddressOfNameOrdinals);
-  //   DWORD * addrs   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfFunctions);
-  //   for (register int i = 0; i < e_dir->NumberOfFunctions; i++) {
-  //     char * sym_name = (char *) map_addr_from_rva(pMapping, names[i]);
-  //     // log_d("Symbol: %s", sym_name);
-  //     long hash = string_hash(sym_name);
-  //     for (register int i = 0; i < DYNSYM_COUNT; i++) {
-  //       if (hash == _dynsym_hash_array[i] && strcmp(sym_name, _dynsym_array[i]) == 0) {
-  //         *(&(self->tstate_curr_raddr) + i) = (void *) (addrs[idx_tab[i]] + base);
-  //         hit_cnt++;
-  //         #ifdef DEBUG
-  //         log_d("Symbol %s found at %p", sym_name, addrs[idx_tab[i]] + base);
-  //         #endif
-  //       }
-  //     }
-  //   }
-  // }
 
   UnmapViewOfFile(pMapping);
   CloseHandle(hMapping);
   CloseHandle(hFile);
 
-  return 0;
+  return !self->sym_loaded;
 }
 
 
@@ -117,24 +121,31 @@ _py_proc__get_modules(py_proc_t * self) {
   MODULEENTRY32 module;
   module.dwSize = sizeof(module);
 
-  register int map_cnt = 0;  // TODO: Replace with flags?
-  // proc_vm_map_block_t * vm_maps = (proc_vm_map_block_t *) &(self->map);
+  self->min_raddr = (void *) -1;
+  self->max_raddr = NULL;
+
   BOOL success = Module32First(mod_hdl, &module);
-  while (success && map_cnt < MODULE_CNT) {
-    // log_d("%p-%p  Module: %s", module.modBaseAddr, module.modBaseAddr + module.modBaseSize, module.szModule);
+  while (success) {
+    if ((void *) module.modBaseAddr < self->min_raddr)
+      self->min_raddr = module.modBaseAddr;
+
+    if ((void *) module.modBaseAddr + module.modBaseSize > self->max_raddr)
+      self->max_raddr = module.modBaseAddr + module.modBaseSize;
+
     if (strstr(module.szModule, "python")) {
-      if (self->bin_path == NULL && strstr(module.szModule, "python.exe")) {
-        self->bin_path = (char *) malloc(strlen(module.szExePath) + 1);
-        strcpy(self->bin_path, module.szExePath);
-      }
+      if (self->bin_path == NULL && strstr(module.szModule, ".exe"))
+        self->bin_path = strdup(module.szExePath);
+
       if (strstr(module.szModule, ".dll")) {
         self->map.bss.base = module.modBaseAddr;  // Not the BSS base yet
+        self->lib_path = strdup(module.szExePath);
         _py_proc__analyze_pe(self, module.szExePath);
       }
-      // vm_maps[map_cnt].base = module.modBaseAddr;
-      // vm_maps[map_cnt].size = module.modBaseSize;
-      // log_d("%p-%p: module %s", module.modBaseAddr, module.modBaseAddr + module.modBaseSize, module.szModule);
-      map_cnt++;
+      log_t(
+        "%p-%p:  Module %s",
+        module.modBaseAddr, module.modBaseAddr + module.modBaseSize,
+        module.szModule
+      );
     }
 
     success = Module32Next(mod_hdl, &module);
@@ -142,7 +153,17 @@ _py_proc__get_modules(py_proc_t * self) {
 
   CloseHandle(mod_hdl);
 
-  return map_cnt == MODULE_CNT ? 0 : 1;
+  return !self->sym_loaded;
+}
+
+
+// ----------------------------------------------------------------------------
+static ssize_t _py_proc__get_resident_memory(py_proc_t * self) {
+  PROCESS_MEMORY_COUNTERS mem_info;
+
+  return GetProcessMemoryInfo((HANDLE) self->pid, &mem_info, sizeof(mem_info))
+    ? mem_info.WorkingSetSize
+    : -1;
 }
 
 
