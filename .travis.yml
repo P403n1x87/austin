@@ -1,8 +1,3 @@
-# os:
-#   - windows
-#   - linux
-#   - osx
-
 language: c
 
 compiler:
