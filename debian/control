@@ -6,7 +6,7 @@ Build-Depends: debhelper (>= 11~),
  bats,
  valgrind,
  python3 (>= 3.3)
-Standards-Version: 4.3.0
+Standards-Version: 4.4.0
 Homepage: https://github.com/P403n1x87/austin
 Vcs-Git: https://github.com/P403n1x87/austin
 Vcs-Browser: https://github.com/P403n1x87/austin
