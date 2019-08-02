@@ -110,11 +110,14 @@ stats_get_avg_sampling_time(void) {
 
 
 void
-stats_check_error(void) {
+stats_count_sample(void) {
   _sample_cnt++;
+}
 
-  if (error != EOK)
-    _error_cnt++;
+
+void
+stats_count_error(void) {
+  _error_cnt++;
 }
 
 
