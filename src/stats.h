@@ -66,12 +66,17 @@ stats_get_avg_sampling_time(void);
 
 
 /**
- * Check if any errors have occurred. This requires that the error global
- * variable is cleared (i.e. set to EOK) before calling the function whose
- * error status is to be checked.
+ * Increase the sample counter.
  */
 void
-stats_check_error(void);
+stats_count_sample(void);
+
+
+/**
+ * Increase the counter of samples with errors.
+ */
+void
+stats_count_error(void);
 
 
 /**

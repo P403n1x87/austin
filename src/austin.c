@@ -53,6 +53,7 @@ _print_collapsed_stack(py_thread_t * thread, ctime_t delta, ssize_t mem_delta) {
 
   if (thread->invalid) {
     fprintf(pargs.output_file, "Thread %lx;Bad sample %ld\n", thread->tid, delta);
+    stats_count_error();
     return 0;
   }
 
@@ -138,8 +139,10 @@ _py_proc__sample(py_proc_t * py_proc) {
 
     py_thread__destroy(first_thread);
 
-    if (error != EOK)
+    if (error != EOK) {
       fprintf(pargs.output_file, "Bad sample %ld\n", delta);
+      stats_count_error();
+    }
   }
 
   t_sample += delta;
@@ -224,7 +227,7 @@ int main(int argc, char ** argv) {
           if (_py_proc__sample(py_proc))
             continue;
 
-          stats_check_error();
+          stats_count_sample();
 
           ctime_t delta = gettime() - t_sample;  // Time spent sampling
           stats_check_duration(delta, pargs.t_sampling_interval);

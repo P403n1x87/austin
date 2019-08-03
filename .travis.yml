@@ -59,9 +59,9 @@ before_deploy:
   - export TRAVIS_TAG=v$VERSION
   - echo "==== Preparing to create GitHub Release for version $VERSION ===="
 
-  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then export ZIP_CMD="tar -Jcf"   && export ZIP_SUFFIX="linux-${TARGET%-*}.tar.xz" && export AUSTIN_EXE=austin;     fi
-  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then export ZIP_CMD="zip -r"     && export ZIP_SUFFIX="mac-${TARGET%-*}.zip"      && export AUSTIN_EXE=austin;     fi
-  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then export ZIP_CMD="7z a -tzip" && export ZIP_SUFFIX="win-${TARGET%-*}.zip"      && export AUSTIN_EXE=austin.exe; fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]]; then export ZIP_CMD="tar -Jcf"   && export ZIP_SUFFIX="linux-${TARGET%%-*}.tar.xz" && export AUSTIN_EXE=austin;     fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]]; then export ZIP_CMD="zip -r"     && export ZIP_SUFFIX="mac-${TARGET%%-*}.zip"      && export AUSTIN_EXE=austin;     fi
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]]; then export ZIP_CMD="7z a -tzip" && export ZIP_SUFFIX="win-${TARGET%%-*}.zip"      && export AUSTIN_EXE=austin.exe; fi
   - export ARTEFACT="austin-${VERSION}-${ZIP_SUFFIX}"
   - echo " - Using command $ZIP_CMD to create artefact $ARTEFACT"
 

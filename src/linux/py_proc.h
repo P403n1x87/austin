@@ -48,12 +48,10 @@
 #define SYMBOLS                        2
 
 
-#define _py_proc__get_elf_type(self, offset, dt) (py_proc__memcpy(self, self->map.elf.base + offset, sizeof(dt), &dt))
+#define _py_proc__get_elf_type(self, offset, dt) /* as */ (py_proc__memcpy(self, self->map.elf.base + offset, sizeof(dt), &dt))
 
 // Get the offset of the ith section header
-#define ELF_SH_OFF(ehdr, i)            (ehdr.e_shoff + i * ehdr.e_shentsize)
-
-#define get_bounds(line, a, b)         (sscanf(line, "%lx-%lx", &a, &b))
+#define ELF_SH_OFF(ehdr, i) /* as */ (ehdr.e_shoff + i * ehdr.e_shentsize)
 
 
 struct _proc_extra_info {
@@ -295,9 +293,6 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   }
 
   else {
-    ssize_t a, b;  // VM map bounds
-    int path_len;
-    char * needle;
     register int line_count = 0;  // Used to determine if we need to look for the python or libpython binary.
 
     self->min_raddr = (void *) -1;
@@ -305,66 +300,72 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
     while (getline(&line, &len, fp) != -1) {
       ++line_count;
-      // Parse heap bounds
-      get_bounds(line, a, b);
-      if (strstr(line, " [v") == NULL) {
-        // Skip meaningless addresses like [vsyscall] which would give
-        // ridiculous values.
-        if ((void *) a < self->min_raddr) self->min_raddr = (void *) a;
-        if ((void *) b > self->max_raddr) self->max_raddr = (void *) b;
-      }
 
-      if ((maps_flag & HEAP_MAP) == 0 && (needle = strstr(line, "[heap]\n")) != NULL) {
-        self->map.heap.base = (void *) a;
-        self->map.heap.size = b - a;
+      ssize_t lower, upper;
+      char    pathname[1024];
+      char    m[sizeof(void *)]; // We don't care about these values.
 
-        maps_flag |= HEAP_MAP;
+      int field_count = sscanf(line, "%lx-%lx %4c %lx %x:%x %x %s\n",
+        &lower, &upper,                                             // Map bounds
+        (char *) m, (ssize_t *) m, (int *) m, (int *) m, (int *) m, // Ignored
+        pathname                                                    // Binary path
+      ) - 7; // We expect between 7 and 8 matches.
 
-        log_d("HEAP bounds: %s", line);
-        continue;
-      }
-
-      if (line_count == 1) {
-        if ((needle = strstr(line, "python")) == NULL)
-        // NOTE: The python binary might have a name that doesn't contain python
-        //       but would still be valid. In case of future issues, this
-        //       should be changed so that the binary on the first line is
-        //       checked for, e.g., knownw symbols to determine whether it is a
-        //       valid binary that Austin can handle.
-          continue;
-        else {
-          while (*((char *) --needle) != ' ');  // Move to the beginning of the path
-          path_len = strlen(++needle);
-          self->bin_path = strndup(needle, path_len);
-          if (self->bin_path[path_len-1] == '\n')
-            self->bin_path[path_len-1] = 0;
-
-          self->map.elf.base = (void *) a;
-          self->map.elf.size = b - a;
+      if (field_count >= 0) {
+        if (field_count == 0 || strstr(pathname, "[v") == NULL) {
+          // Skip meaningless addresses like [vsyscall] which would give
+          // ridiculous values.
+          if ((void *) lower < self->min_raddr) self->min_raddr = (void *) lower;
+          if ((void *) upper > self->max_raddr) self->max_raddr = (void *) upper;
         }
-      }
 
-      else if ((self->lib_path == NULL) && ((needle = strstr(line, "libpython")) != NULL)) {
-        maps_flag &= ~BSS_MAP;
+        if ((maps_flag & HEAP_MAP) == 0 && strstr(line, "[heap]\n") != NULL) {
+          self->map.heap.base = (void *) lower;
+          self->map.heap.size = upper - lower;
 
-        while (*((char *) --needle) != ' ');  // Move to the beginning of the path
-        path_len = strlen(++needle);
-        self->lib_path = strndup(needle, path_len);
-        if (self->lib_path[path_len-1] == '\n')
-          self->lib_path[path_len-1] = 0;
+          maps_flag |= HEAP_MAP;
 
-        // Override any previous values as this is the binary we need to look into
-        self->map.elf.base = (void *) a;
-        self->map.elf.size = b - a;
-      }
+          log_d("HEAP bounds %lx-%lx", lower, upper);
+          continue;
+        }
 
-      if ((maps_flag & BSS_MAP) == 0 && (line[strlen(line)-2] == ' ')) {
-        self->map.bss.base = (void *) a;
-        self->map.bss.size = b - a;
+        if (line_count == 1) {
+          if (strstr(line, "python") == NULL)
+          // NOTE: The python binary might have a name that doesn't contain python
+          //       but would still be valid. In case of future issues, this
+          //       should be changed so that the binary on the first line is
+          //       checked for, e.g., knownw symbols to determine whether it is a
+          //       valid binary that Austin can handle.
+            continue;
+          else {
+            if (self->bin_path != NULL)
+              free(self->bin_path);
+            self->bin_path = strndup(pathname, strlen(pathname));
+            self->map.elf.base = (void *) lower;
+            self->map.elf.size = upper - lower;
+          }
+        }
 
-        maps_flag |= BSS_MAP;
+        else if ((self->lib_path == NULL) && (strstr(line, "libpython") != NULL)) {
+          maps_flag &= ~BSS_MAP;
 
-        log_d("BSS bounds: %s", line);
+          if (self->lib_path != NULL)
+            free(self->lib_path);
+          self->lib_path = strndup(pathname, strlen(pathname));
+
+          // Override any previous values as this is the binary we need to look into
+          self->map.elf.base = (void *) lower;
+          self->map.elf.size = upper - lower;
+        }
+
+        if ((maps_flag & BSS_MAP) == 0 && field_count == 0) {
+          self->map.bss.base = (void *) lower;
+          self->map.bss.size = upper - lower;
+
+          maps_flag |= BSS_MAP;
+
+          log_d("BSS bounds %lx-%lx", lower, upper);
+        }
       }
     }
 
