@@ -42,7 +42,7 @@ class SampledFrame:
             "function": self.function,
             "line_number": self.line_number,
             "tot_time": self.total_time,
-            "own_time": self.own_time
+            "own_time": self.own_time,
         }
 
     def __eq__(self, other):
@@ -53,23 +53,24 @@ class SampledFrame:
 # -----------------------------------------------------------------------------
 
 
-def parse_line(line):
+def parse_line(line, full=False):
     """
     Split a collapsed frame stack sample into its components.
 
     These are: the thread ID, the list of frames and the duration of the
     samplingself.
     """
+    splits = 3 if full else 1
     try:
-        thread, rest = line.decode().strip('\n').split(';', maxsplit=1)
-        frames, duration = rest.rsplit(maxsplit=1)
+        thread, rest = line.decode().strip("\n").split(";", maxsplit=1)
+        frames, *metrics = rest.rsplit(maxsplit=splits)
         frames = frames.split(";")
     except ValueError:
         # Probably an "empty" thread
-        thread, duration = line.decode().rsplit(maxsplit=1)
+        thread, *metrics = line.decode().rsplit(maxsplit=splits)
         frames = []
 
-    return thread, frames, int(duration)
+    return thread, frames, [int(metric) for metric in metrics]
 
 
 class Stats:
