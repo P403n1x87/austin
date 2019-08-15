@@ -23,6 +23,10 @@
     <img src="https://build.snapcraft.io/badge/P403n1x87/austin.svg"
          alt="Snap Status">
   </a>
+  <a href="https://packages.debian.org/unstable/austin">
+    <img src="https://badges.debian.net/badges/debian/unstable/austin/version.svg"
+         alt="Debian package status">
+  </a>
   <img src="https://img.shields.io/badge/version-0.7.0-blue.svg"
        alt="Version 0.7.0">
   <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md">
