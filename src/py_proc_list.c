@@ -22,9 +22,16 @@
 
 #include "platform.h"
 
-#ifdef PL_LINUX
+#if defined PL_LINUX
 #include <dirent.h>
+#elif defined PL_MACOS
+#include <libproc.h>
+#include <sys/proc_internal.h>
+#elif defined PL_WIN
+#include <windows.h>
+#include <tlhelp32.h>
 #endif
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -61,14 +68,14 @@ _py_proc_list__add(py_proc_list_t * self, py_proc_t * py_proc) {
   self->count++;
 
   log_d("Added process with PID %d (total number of processes: %d)", py_proc->pid, self->count);
-}
+} /* _py_proc_list__add */
 
 
 // ----------------------------------------------------------------------------
 static int
 _py_proc_list__has_pid(py_proc_list_t * self, pid_t pid) {
   return self->index[pid] != NULL;
-}
+} /* _py_proc_list__has_pid */
 
 
 // ----------------------------------------------------------------------------
@@ -95,7 +102,7 @@ _py_proc_list__remove(py_proc_list_t * self, py_proc_item_t * item) {
   self->count--;
 
   log_d("Removed process with PID %d. Items left: %d", pid, self->count);
-}
+} /* _py_proc_list__remove */
 
 
 // ----------------------------------------------------------------------------
@@ -105,6 +112,7 @@ py_proc_list_new(py_proc_t * parent_py_proc) {
   if (list == NULL)
     return NULL;
 
+  #if defined PL_LINUX                                               /* LINUX */
   FILE * pid_max_file = fopen("/proc/sys/kernel/pid_max", "rb");
   if (pid_max_file == NULL)
     return NULL;
@@ -113,6 +121,14 @@ py_proc_list_new(py_proc_t * parent_py_proc) {
   fclose(pid_max_file);
   if (!has_pid_max)
     return NULL;
+
+  #elif defined PL_MACOS                                             /* MACOS */
+  list->pids = PID_MAX;
+
+  #elif defined PL_WIN                                                 /* WIN */
+  list->pids = (1 << 22);  // 4M.  WARNING: This could potentially be violated!
+
+  #endif
 
   log_t("Maximum number of PIDs: %d", list->pids);
 
@@ -130,13 +146,13 @@ py_proc_list_new(py_proc_t * parent_py_proc) {
   _py_proc_list__add(list, parent_py_proc);
 
   return list;
-}
+} /* py_proc_list_new */
 
 
 // ----------------------------------------------------------------------------
 void
 py_proc_list__add_proc_children(py_proc_list_t * self, pid_t ppid) {
-  for (register pid_t pid = 0; pid < self->max_pid; pid++) {
+  for (register pid_t pid = 0; pid <= self->max_pid; pid++) {
     if (self->pid_table[pid] == ppid && !_py_proc_list__has_pid(self, pid)) {
       py_proc_t * child_proc = py_proc_new();
       if (child_proc == NULL)
@@ -151,14 +167,14 @@ py_proc_list__add_proc_children(py_proc_list_t * self, pid_t ppid) {
       py_proc_list__add_proc_children(self, pid);
     }
   }
-}
+} /* py_proc_list__add_proc_children */
 
 
 // ----------------------------------------------------------------------------
 int
 py_proc_list__is_empty(py_proc_list_t * self) {
   return self->first == NULL;
-}
+} /* py_proc_list__is_empty */
 
 
 // ----------------------------------------------------------------------------
@@ -171,7 +187,7 @@ py_proc_list__sample(py_proc_list_t * self) {
     if (py_proc__is_running(item->py_proc))
       py_proc__sample(item->py_proc);
   }
-}
+} /* py_proc_list__sample */
 
 
 // ----------------------------------------------------------------------------
@@ -181,40 +197,81 @@ py_proc_list__update(py_proc_list_t * self) {
   if (now - self->timestamp < UPDATE_INTERVAL)
     return;  // Do not update too frequently as this is an expensive operation.
 
-  #ifdef PL_LINUX                                                    /* LINUX */
+  memset(self->pid_table, 0, self->pids * sizeof(pid_t));
+  self->max_pid = 0;
+
+  // Update PID table
+  #if defined PL_LINUX                                               /* LINUX */
   char stat_path[32];
   char buffer[1024];
   struct dirent *ent;
 
-  memset(self->pid_table, 0, self->pids * sizeof(pid_t));
-  self->max_pid = 0;
-
   DIR * proc_dir = opendir("/proc");
-  {
-    for (;;) {
-      // This code is inspired by the ps util
-      ent = readdir(proc_dir);
-      if (!ent || !ent->d_name) break;
-      if ((*ent->d_name <= '0') || (*ent->d_name > '9')) continue;
+  if (proc_dir == NULL)
+    goto finally;
 
-      unsigned long pid = strtoul(ent->d_name, NULL, 10);
-      sprintf(stat_path, "/proc/%ld/stat", pid);
+  for (;;) {
+    // This code is inspired by the ps util
+    ent = readdir(proc_dir);
+    if (!ent || !ent->d_name) break;
+    if ((*ent->d_name <= '0') || (*ent->d_name > '9')) continue;
 
-      FILE * stat_file = fopen(stat_path, "rb");
-      if (stat_file != NULL) {
-        fscanf(
-          stat_file, "%d %s %c %d",
-          (int *) buffer, buffer, (char *) buffer, &(self->pid_table[pid])
-        );
+    unsigned long pid = strtoul(ent->d_name, NULL, 10);
+    sprintf(stat_path, "/proc/%ld/stat", pid);
 
-        if (pid > self->max_pid)
-          self->max_pid = pid;
+    FILE * stat_file = fopen(stat_path, "rb");
+    if (stat_file == NULL)
+      continue;
 
-        fclose(stat_file);
-      }
-    }
+    fscanf(
+      stat_file, "%d %s %c %d",
+      (int *) buffer, buffer, (char *) buffer, &(self->pid_table[pid])
+    );
+
+    if (pid > self->max_pid)
+      self->max_pid = pid;
+
+    fclose(stat_file);
   }
+
   closedir(proc_dir);
+
+  #elif defined PL_MACOS                                             /* MACOS */
+  int pid_list[PID_MAX];
+
+  int n_pids = proc_listallpids(NULL, 0);
+  if (!n_pids || proc_listallpids(pid_list, sizeof(pid_list)) == -1)
+    goto finally;
+
+  for (register int i = 0; i < n_pids; i++) {
+    struct proc_bsdinfo proc;
+
+    if (proc_pidinfo(pid_list[i], PROC_PIDTBSDINFO, 0, &proc, PROC_PIDTBSDINFO_SIZE) == -1)
+      continue;
+
+    self->pid_table[pid_list[i]] = proc.pbi_ppid;
+    if (pid_list[i] > self->max_pid)
+      self->max_pid = pid_list[i];
+  }
+
+  #elif defined PL_WIN                                                 /* WIN */
+  HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (h == INVALID_HANDLE_VALUE)
+    goto finally;
+
+  PROCESSENTRY32 pe = { 0 };
+  pe.dwSize = sizeof(PROCESSENTRY32);
+
+  if (Process32First(h, &pe)) {
+    do {
+      self->pid_table[pe.th32ProcessID] = pe.th32ParentProcessID;
+
+      if (pe.th32ProcessID > self->max_pid)
+        self->max_pid = pe.th32ProcessID;
+    } while (Process32Next(h, &pe));
+  }
+
+  CloseHandle(h);
   #endif
 
   log_t("PID table populated");
@@ -232,8 +289,9 @@ py_proc_list__update(py_proc_list_t * self) {
     }
   }
 
+finally:
   self->timestamp = now;
-}
+} /* py_proc_list__update */
 
 
 // ----------------------------------------------------------------------------
@@ -245,7 +303,7 @@ py_proc_list__wait(py_proc_list_t * self) {
     if (py_proc__is_running(item->py_proc))
       py_proc__wait(item->py_proc);
   }
-}
+} /* py_proc_list__wait */
 
 
 // ----------------------------------------------------------------------------
@@ -262,4 +320,4 @@ py_proc_list__destroy(py_proc_list_t * self) {
     free(self->pid_table);
 
   free(self);
-}
+} /* py_proc_list__destroy */

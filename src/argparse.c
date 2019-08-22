@@ -23,7 +23,6 @@
 #define ARGPARSE_C
 
 #include <limits.h>
-#include <sys/types.h>
 
 #include "argparse.h"
 #include "austin.h"
