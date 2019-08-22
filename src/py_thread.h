@@ -23,7 +23,11 @@
 #ifndef PY_THREAD_H
 #define PY_THREAD_H
 
+#include <sys/types.h>
+
 #include "mem.h"
+#include "stats.h"
+
 #include "py_frame.h"
 
 
@@ -61,10 +65,24 @@ py_thread__first_frame(py_thread_t *);
  * Get the next thread, if any.
  *
  * @param  py_thread_t  self.
+ *
  * @return a pointer to the next py_thread_t instance.
  */
 py_thread_t *
 py_thread__next(py_thread_t *);
+
+
+/**
+ * Print the frame stack using the collapsed format.
+ *
+ * @param  py_thread_t  self.
+ * @param  ctime_t      the time delta.
+ * @param  ssize_t      the memory delta.
+ *
+ * @return 0 if the frame stack was printed, 1 otherwise.
+ */
+int
+py_thread__print_collapsed_stack(py_thread_t *, ctime_t, ssize_t);
 
 
 void

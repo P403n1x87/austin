@@ -36,7 +36,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/types.h>
 #include <unistd.h>
 
 #include "argparse.h"
@@ -699,6 +698,8 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
 
   #endif                                                               /* ANY */
 
+  log_d("New process created with PID %d", self->pid);
+
   return _py_proc__run(self);
 }
 
@@ -820,6 +821,67 @@ py_proc__get_memory_delta(py_proc_t * self) {
   self->last_resident_memory = current_memory;
 
   return delta;
+}
+
+
+// ----------------------------------------------------------------------------
+void
+py_proc__sample(py_proc_t * self) {
+  ctime_t   delta;
+  ssize_t   mem_delta = 0;
+  void    * current_thread;
+
+  // Compute time delta since last sample.
+  if (!self->timestamp) {
+    self->timestamp = gettime();
+    delta = 0;
+  } else {
+    delta = gettime() - self->timestamp;
+  }
+
+  PyInterpreterState is;
+  if (py_proc__get_type(self, self->is_raddr, is) != 0)
+    return;
+
+  if (is.tstate_head != NULL) {
+    raddr_t       raddr        = { .pid = self->pid, .addr = is.tstate_head };
+    py_thread_t * first_thread = py_thread_new_from_raddr(&raddr);
+
+    if (pargs.memory) {
+      // Use the current thread to determine which thread is manipulating memory
+      current_thread = py_proc__get_current_thread_state_raddr(self);
+    }
+
+    for (
+      py_thread_t * py_thread = first_thread;
+      py_thread != NULL;
+      py_thread = py_thread__next(py_thread)
+    ) {
+      if (pargs.memory) {
+        mem_delta = 0;
+        if (self->py_runtime_raddr != NULL && current_thread == (void *) -1) {
+          if (py_proc__find_current_thread_offset(self, py_thread->raddr.addr))
+            continue;
+          else
+            current_thread = py_proc__get_current_thread_state_raddr(self);
+        }
+        if (py_thread->raddr.addr == current_thread) {
+          mem_delta = py_proc__get_memory_delta(self);
+          log_t("Thread %lx holds the GIL", py_thread->tid);
+        }
+      }
+
+      if (pargs.children)
+        fprintf(pargs.output_file, "Process %d;", self->pid);
+
+      if (!py_thread__print_collapsed_stack(py_thread, delta, mem_delta >> 10))
+        stats_count_sample();
+    }
+
+    py_thread__destroy(first_thread);
+  }
+
+  self->timestamp += delta;
 }
 
 

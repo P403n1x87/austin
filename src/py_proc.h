@@ -24,6 +24,11 @@
 #define PY_PROC_H
 
 
+#include <sys/types.h>
+
+#include "stats.h"
+
+
 typedef struct {
   void    * base;
   ssize_t   size;
@@ -61,6 +66,9 @@ typedef struct {
   void          * interp_head_raddr;
 
   void          * is_raddr;
+
+  // Temporal profiling support
+  ctime_t         timestamp;
 
   // Memory profiling support
   ssize_t         last_resident_memory;
@@ -181,9 +189,20 @@ py_proc__is_running(py_proc_t *);
  * Get the memory size delta since last call.
  *
  * @param py_proc_t * the process object.
+ *
+ * @return the computed memory usage delta in KB.
  */
 ssize_t
 py_proc__get_memory_delta(py_proc_t *);
+
+
+/**
+ * Sample the frame stack of each thread of the given Python process.
+ *
+ * @param  py_proc_t *  self.
+ */
+void
+py_proc__sample(py_proc_t *);
 
 
 /**

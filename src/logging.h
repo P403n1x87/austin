@@ -23,6 +23,11 @@
 #ifndef LOGGING_H
 #define LOGGING_H
 
+#ifdef TRACE
+#define DEBUG
+#endif
+
+
 #define log_header() log_i("============================  AUSTIN  ╦̵̵̿╤─ ҉ ~ •  ============================")
 #define log_footer() log_i("============================================================================")
 
@@ -43,7 +48,7 @@ log_w(const char *, ...);
 void
 log_i(const char *, ...);
 
-#if defined(DEBUG) || defined(TRACE)
+#ifdef DEBUG
 void
 log_d(const char *, ...);
 #else
