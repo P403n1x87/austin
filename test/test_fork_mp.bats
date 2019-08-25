@@ -43,14 +43,17 @@ invoke_austin() {
 
 
 @test "Test Austin with Python 2.3" {
-	invoke_austin "2.3" ignore
+  skip "Multiprocessing library introduced in Python 2.6"
+	invoke_austin "2.3"
 }
 
 @test "Test Austin with Python 2.4" {
-	invoke_austin "2.4" ignore
+  skip "Multiprocessing library introduced in Python 2.6"
+	invoke_austin "2.4"
 }
 
 @test "Test Austin with Python 2.5" {
+  skip "Multiprocessing library introduced in Python 2.6"
 	invoke_austin "2.5"
 }
 
