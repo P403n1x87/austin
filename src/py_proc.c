@@ -802,6 +802,9 @@ py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
 // ----------------------------------------------------------------------------
 int
 py_proc__is_running(py_proc_t * self) {
+  if (self->is_raddr == NULL)
+    return 0;
+  
   #ifdef PL_WIN                                                        /* WIN */
   DWORD ec;
   return GetExitCodeProcess((HANDLE) self->pid, &ec) ? ec : -1;

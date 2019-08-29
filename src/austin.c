@@ -167,7 +167,7 @@ int main(int argc, char ** argv) {
       goto finally;
     }
   } else {
-    if (py_proc__attach(py_proc, pargs.attach_pid)) {
+    if (py_proc__attach(py_proc, pargs.attach_pid) && !pargs.children) {
       retval = EPROCATTACH;
       goto finally;
     }

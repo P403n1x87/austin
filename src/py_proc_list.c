@@ -26,7 +26,7 @@
 #include <dirent.h>
 #elif defined PL_MACOS
 #include <libproc.h>
-#include <sys/proc_internal.h>
+#define PID_MAX 99999  // From sys/proc_internal.h
 #elif defined PL_WIN
 #include <windows.h>
 #include <tlhelp32.h>
