@@ -109,7 +109,10 @@ do_child_processes(py_proc_t * py_proc) {
   // Austin to them.
   if (!py_proc__is_running(py_proc)) {
     log_d("Parent process is not running. Trying with its children.");
-    pid_t ppid = py_proc->pid;  // Store the PID before being deleted by the update.
+
+    // Store the PID before it gets deleted by the update.
+    pid_t ppid = py_proc->pid;
+
     py_proc_list__update(list);
     py_proc_list__add_proc_children(list, ppid);
   }

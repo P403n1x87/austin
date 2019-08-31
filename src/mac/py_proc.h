@@ -367,9 +367,6 @@ _py_proc__init(py_proc_t * self) {
   if (self == NULL)
     return 1;
 
-  if (self->extra == NULL)
-    self->extra = (proc_extra_info *) malloc(sizeof(proc_extra_info));
-
   return _py_proc__get_maps(self);
 }
 

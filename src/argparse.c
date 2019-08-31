@@ -30,7 +30,7 @@
 
 
 #define DEFAULT_SAMPLING_INTERVAL    100
-#define DEFAULT_INIT_RETRY_CNT      1000
+#define DEFAULT_INIT_RETRY_CNT       100
 
 const char SAMPLE_FORMAT_NORMAL[]      = ";%s (%s);L%d";
 const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s (%s:%d)";

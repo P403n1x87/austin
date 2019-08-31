@@ -53,7 +53,7 @@
 
 // ---- Retry Timer ----
 #define INIT_RETRY_SLEEP             100   /* us */
-#define INIT_RETRY_CNT (pargs.timeout*10)  /* Retry for 0.1s (default) before giving up. */
+#define INIT_RETRY_CNT                  (pargs.timeout * 1000 / INIT_RETRY_SLEEP)  /* Retry for 0.1s (default) before giving up. */
 
 #define TIMER_RESET                     (try_cnt=INIT_RETRY_CNT);
 #define TIMER_START                     while (--try_cnt>=0) { usleep(INIT_RETRY_SLEEP);
@@ -246,7 +246,11 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   // As an extra sanity check, verify that the thread state is valid
   error = EOK;
+  #if defined PL_WIN                                                   /* WIN */
+  raddr_t thread_raddr = { .pid = self->extra->h_proc, .addr = is.tstate_head };
+  #else                                                               /* UNIX */
   raddr_t thread_raddr = { .pid = self->pid, .addr = is.tstate_head };
+  #endif
   py_thread_t * thread = py_thread_new_from_raddr(&thread_raddr);
 
   if (thread == NULL)
@@ -523,6 +527,11 @@ _py_proc__run(py_proc_t * self) {
 
     if (error == EPROCPERM || error == EPROCNPID)
       return 1;  // Fatal errors
+
+    log_d(
+      "Process not ready :: bin_path: %p, lib_path: %p, symbols: %d",
+      self->bin_path, self->lib_path, self->sym_loaded
+    );
   TIMER_END
 
   if (self->bin_path == NULL && self->lib_path == NULL) {
@@ -595,6 +604,8 @@ py_proc_new() {
     }
   }
 
+  py_proc->extra = (proc_extra_info *) calloc(1, sizeof(proc_extra_info));
+
   check_not_null(py_proc);
   return py_proc;
 }
@@ -604,17 +615,18 @@ py_proc_new() {
 int
 py_proc__attach(py_proc_t * self, pid_t pid) {
   log_d("Attaching to process with PID %d", pid);
-  #ifdef PL_WIN
-  self->pid = (pid_t) OpenProcess(
+
+  #ifdef PL_WIN                                                        /* WIN */
+  self->extra->h_proc = OpenProcess(
     PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid
   );
-  if (self->pid == (pid_t) INVALID_HANDLE_VALUE) {
+  if (self->extra->h_proc == INVALID_HANDLE_VALUE) {
     log_e("Unable to attach to process with PID %d", pid);
     return 1;
   }
-  #else
-  self->pid = pid;
   #endif
+
+  self->pid = pid;
 
   return _py_proc__run(self);
 }
@@ -677,8 +689,8 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
     log_e("Failed to create child process using the command: %s.", exec);
     return 1;
   }
-
-  self->pid = (pid_t) piProcInfo.hProcess;
+  self->extra->h_proc = piProcInfo.hProcess;
+  self->pid = (pid_t) piProcInfo.dwProcessId;
 
   #else                                                               /* UNIX */
   self->pid = fork();
@@ -707,7 +719,11 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
 // ----------------------------------------------------------------------------
 int
 py_proc__memcpy(py_proc_t * self, void * raddr, ssize_t size, void * dest) {
+  #if defined PL_WIN                                                   /* WIN */
+  return copy_memory(self->extra->h_proc, raddr, size, dest) == size ? 0 : 1;
+  #else                                                               /* UNIX */
   return copy_memory(self->pid, raddr, size, dest) == size ? 0 : 1;
+  #endif
 }
 
 
@@ -717,7 +733,7 @@ py_proc__wait(py_proc_t * self) {
   log_d("Waiting for process to terminate");
 
   #ifdef PL_WIN                                                        /* WIN */
-  WaitForSingleObject((HANDLE) self->pid, INFINITE);
+  WaitForSingleObject(self->extra->h_proc, INFINITE);
   #else                                                               /* UNIX */
   waitpid(self->pid, 0, 0);
   #endif
@@ -804,10 +820,10 @@ int
 py_proc__is_running(py_proc_t * self) {
   if (self->is_raddr == NULL)
     return 0;
-  
+
   #ifdef PL_WIN                                                        /* WIN */
   DWORD ec;
-  return GetExitCodeProcess((HANDLE) self->pid, &ec) ? ec : -1;
+  return GetExitCodeProcess(self->extra->h_proc, &ec) ? ec : -1;
 
   #else                                                               /* UNIX */
   kill(self->pid, 0);
@@ -847,7 +863,11 @@ py_proc__sample(py_proc_t * self) {
     return;
 
   if (is.tstate_head != NULL) {
-    raddr_t       raddr        = { .pid = self->pid, .addr = is.tstate_head };
+    #if defined PL_WIN
+    raddr_t raddr = { .pid = self->extra->h_proc, .addr = is.tstate_head };
+    #else
+    raddr_t raddr = { .pid = self->pid, .addr = is.tstate_head };
+    #endif
     py_thread_t * first_thread = py_thread_new_from_raddr(&raddr);
 
     if (pargs.memory) {
