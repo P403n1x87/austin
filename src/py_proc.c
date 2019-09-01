@@ -825,7 +825,10 @@ py_proc__is_running(py_proc_t * self) {
   DWORD ec;
   return GetExitCodeProcess(self->extra->h_proc, &ec) ? ec : -1;
 
-  #else                                                               /* UNIX */
+  #elif defined PL_MACOS                                             /* MACOS */
+  return pid_to_task(self->pid) != 0;
+
+  #else                                                              /* LINUX */
   kill(self->pid, 0);
   return errno == ESRCH ? 0 : 1;
   #endif
