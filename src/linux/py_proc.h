@@ -76,7 +76,8 @@ _get_base_64(Elf64_Ehdr * ehdr, void * elf_map)
       return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
   }
   return UINT64_MAX;
-}
+} /* _get_base_64 */
+
 
 static int
 _py_proc__analyze_elf64(py_proc_t * self) {
@@ -151,7 +152,7 @@ _py_proc__analyze_elf64(py_proc_t * self) {
   close(fd);
 
   return !symbols;
-}
+} /* _py_proc__analyze_elf64 */
 
 
 // ----------------------------------------------------------------------------
@@ -164,7 +165,8 @@ _get_base_32(Elf32_Ehdr * ehdr, void * elf_map)
       return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
   }
   return UINT32_MAX;
-}
+} /* _get_base_32 */
+
 
 static int
 _py_proc__analyze_elf32(py_proc_t * self) {
@@ -239,7 +241,7 @@ _py_proc__analyze_elf32(py_proc_t * self) {
   close(fd);
 
   return !symbols;
-}
+} /* _py_proc__analyze_elf32 */
 
 
 // ----------------------------------------------------------------------------
@@ -265,7 +267,7 @@ _py_proc__analyze_elf(py_proc_t * self) {
   default:
     return 1;
   }
-}
+} /* _py_proc__analyze_elf */
 
 
 // ----------------------------------------------------------------------------
@@ -381,11 +383,12 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     (self->bin_path == NULL && self->lib_path == NULL) ||
     maps_flag != (HEAP_MAP | BSS_MAP)
   );
-}
+} /* _py_proc__parse_maps_file */
 
 
 // ----------------------------------------------------------------------------
-static ssize_t _py_proc__get_resident_memory(py_proc_t * self) {
+static ssize_t
+_py_proc__get_resident_memory(py_proc_t * self) {
   FILE * statm = fopen(self->extra->statm_file, "rb");
   if (statm == NULL) {
     error = EPROCVM;
@@ -399,7 +402,7 @@ static ssize_t _py_proc__get_resident_memory(py_proc_t * self) {
   fclose(statm);
 
   return resident * self->extra->page_size;
-}
+} /* _py_proc__get_resident_memory */
 
 
 // ----------------------------------------------------------------------------
@@ -411,7 +414,6 @@ _py_proc__init(py_proc_t * self) {
     _py_proc__analyze_elf(self)
   ) return 1;
 
-  self->extra = (proc_extra_info *) malloc(sizeof(proc_extra_info));
   self->extra->page_size = getpagesize();
   log_d("Page size: %ld", self->extra->page_size);
 
@@ -420,7 +422,7 @@ _py_proc__init(py_proc_t * self) {
   self->last_resident_memory = _py_proc__get_resident_memory(self);
 
   return 0;
-}
+} /* _py_proc__init */
 
 
 #endif

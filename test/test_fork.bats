@@ -64,6 +64,11 @@ invoke_austin() {
 # -----------------------------------------------------------------------------
 
 
+teardown() {
+  if [ -f /tmp/austin_out.txt ]; then rm /tmp/austin_out.txt; fi
+}
+
+
 @test "Test Austin with Python 2.3" {
 	invoke_austin "2.3" ignore
 }

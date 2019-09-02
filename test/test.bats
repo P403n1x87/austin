@@ -10,6 +10,10 @@ test_case() {
   test_case fork
 }
 
+@test "Test Austin: fork multi-process" {
+  test_case fork_mp
+}
+
 @test "Test Austin: attach" {
   if [[ $EUID -ne 0 ]]; then
    skip "requires root"

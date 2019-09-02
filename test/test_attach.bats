@@ -15,7 +15,7 @@ attach_austin_2_3() {
     echo "       Exit code: $status"
     if [ $status != 0 ]; then continue; fi
 
-    if ! echo "$output" | grep -q ";? (test/sleepy.py);L13 "
+    if ! echo "$output" | grep -q ";? (test/sleepy.py);L[[:digit:]]* "
     then
       continue
     fi
@@ -63,7 +63,7 @@ attach_austin() {
     echo "       Exit code: $status"
     if [ $status != 0 ]; then continue; fi
 
-    if ! echo "$output" | grep -q ";<module> (test/sleepy.py);L13 "
+    if ! echo "$output" | grep -q ";<module> (test/sleepy.py);L[[:digit:]]* "
     then
       continue
     fi
@@ -89,6 +89,7 @@ attach_austin() {
   then
     skip "Test failed but marked as 'Ignore'"
   else
+    echo "$output"
     false
   fi
 }

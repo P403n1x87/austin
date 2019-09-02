@@ -20,6 +20,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#include <string.h>
+
+#include "argparse.h"
 #include "error.h"
 #include "logging.h"
 #include "version.h"
@@ -136,6 +139,57 @@ py_thread__next(py_thread_t * self) {
 
   check_not_null(self->next);
   return self->next;
+}
+
+
+// ----------------------------------------------------------------------------
+int
+py_thread__print_collapsed_stack(py_thread_t * thread, ctime_t delta, ssize_t mem_delta) {
+  if (!pargs.full && pargs.memory && mem_delta <= 0)
+    return 1;
+  
+  if (thread->invalid) {
+    fprintf(pargs.output_file, "Thread %lx;Bad sample %ld\n", thread->tid, delta);
+    stats_count_error();
+    return 0;
+  }
+
+  py_frame_t * frame = py_thread__first_frame(thread);
+
+  if (frame == NULL && pargs.exclude_empty)
+    // Skip if thread has no frames and we want to exclude empty threads
+    return 1;
+
+  // Group entries by thread.
+  fprintf(pargs.output_file, "Thread %lx", thread->tid);
+
+  // Append frames
+  while(frame != NULL) {
+    py_code_t * code = frame->code;
+    if (pargs.sleepless && strstr(code->scope, "wait") != NULL) {
+      delta = 0;
+      fprintf(pargs.output_file, ";<idle>");
+      break;
+    }
+    fprintf(pargs.output_file, pargs.format, code->scope, code->filename, code->lineno);
+
+    frame = frame->next;
+  }
+
+  // Finish off sample with the metric(s)
+  if (pargs.full) {
+    fprintf(pargs.output_file, " %lu %ld %ld\n",
+      delta, mem_delta >= 0 ? mem_delta : 0, mem_delta < 0 ? mem_delta : 0
+    );
+  }
+  else {
+    if (pargs.memory)
+      fprintf(pargs.output_file, " %ld\n", mem_delta);
+    else
+      fprintf(pargs.output_file, " %lu\n", delta);
+  }
+
+  return 0;
 }
 
 

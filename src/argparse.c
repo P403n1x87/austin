@@ -23,9 +23,6 @@
 #define ARGPARSE_C
 
 #include <limits.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <sys/types.h>
 
 #include "argparse.h"
 #include "austin.h"
@@ -33,7 +30,7 @@
 
 
 #define DEFAULT_SAMPLING_INTERVAL    100
-#define DEFAULT_INIT_RETRY_CNT      1000
+#define DEFAULT_INIT_RETRY_CNT       100
 
 const char SAMPLE_FORMAT_NORMAL[]      = ";%s (%s);L%d";
 const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s (%s:%d)";
@@ -51,6 +48,7 @@ parsed_args_t pargs = {
   /* memory              */ 0,
   /* output_file         */ NULL,
   /* output_filename     */ NULL,
+  /* children            */ 0,
 };
 
 static int exec_arg = 0;
@@ -132,6 +130,10 @@ static struct argp_option options[] = {
   {
     "output",       'o', "FILE",        0,
     "Specify an output file for the collected samples."
+  },
+  {
+    "children",     'C', NULL,          0,
+    "Attach to child processes."
   },
   #ifndef PL_LINUX
   {
@@ -218,6 +220,10 @@ parse_opt (int key, char *arg, struct argp_state *state)
       argp_error(state, "Unable to create the given output file.");
     }
     pargs.output_filename = arg;
+    break;
+
+  case 'C':
+    pargs.children = 1;
     break;
 
   case ARGP_KEY_ARG:
@@ -390,6 +396,7 @@ static const char * help_msg = \
 "Austin -- A frame stack sampler for Python.\n"
 "\n"
 "  -a, --alt-format           Alternative collapsed stack sample format.\n"
+"  -C, --children             Attach to child processes.\n"
 "  -e, --exclude-empty        Do not output samples of threads with no frame\n"
 "                             stacks.\n"
 "  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
@@ -411,8 +418,9 @@ static const char * help_msg = \
 "Report bugs to <https://github.com/P403n1x87/austin/issues>.\n";
 
 static const char * usage_msg = \
-"Usage: austin [-aes?V] [-i n_us] [-p PID] [-t n_ms] [--alt-format]\n"
-"            [--exclude-empty] [--interval=n_us] [--pid=PID] [--sleepless]\n"
+"Usage: austin [-aCefms?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [--alt-format]\n"
+"            [--children] [--exclude-empty] [--full] [--interval=n_us]\n"
+"            [--memory] [--output=FILE] [--pid=PID] [--sleepless]\n"
 "            [--timeout=n_ms] [--help] [--usage] [--version] command [ARG...]\n";
 
 
@@ -477,6 +485,10 @@ cb(const char opt, const char * arg) {
       return ARG_INVALID_VALUE;
     }
     pargs.output_filename = (char *) arg;
+    break;
+
+  case 'C':
+    pargs.children = 1;
     break;
 
   case '?':

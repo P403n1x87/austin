@@ -36,6 +36,11 @@
 #define SYMBOLS                        2
 
 
+struct _proc_extra_info {
+  HANDLE h_proc;
+};
+
+
 // ----------------------------------------------------------------------------
 // TODO: Optimise by avoiding executing the same code over and over again
 static void *
@@ -111,10 +116,8 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__get_modules(py_proc_t * self) {
-  DWORD pid = GetProcessId((HANDLE) self->pid);
-
   HANDLE mod_hdl;
-  mod_hdl = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, pid);
+  mod_hdl = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, self->pid);
   if (mod_hdl == INVALID_HANDLE_VALUE)
     return 1;
 
@@ -133,20 +136,23 @@ _py_proc__get_modules(py_proc_t * self) {
       self->max_raddr = module.modBaseAddr + module.modBaseSize;
 
     if (strstr(module.szModule, "python")) {
-      if (self->bin_path == NULL && strstr(module.szModule, ".exe"))
-        self->bin_path = strdup(module.szExePath);
-
-      if (strstr(module.szModule, ".dll")) {
-        self->map.bss.base = module.modBaseAddr;  // Not the BSS base yet
-        self->lib_path = strdup(module.szExePath);
-        _py_proc__analyze_pe(self, module.szExePath);
-      }
       log_t(
         "%p-%p:  Module %s",
         module.modBaseAddr, module.modBaseAddr + module.modBaseSize,
         module.szModule
       );
+      if (self->bin_path == NULL && strstr(module.szModule, ".exe"))
+        self->bin_path = strdup(module.szExePath);
+
+      if (!self->sym_loaded && strstr(module.szModule, ".dll")) {
+        self->map.bss.base = module.modBaseAddr;  // WARNING: Not the BSS base yet!
+        self->lib_path = strdup(module.szExePath);
+        _py_proc__analyze_pe(self, module.szExePath);
+      }
     }
+
+    if (self->bin_path != NULL && self->lib_path != NULL && self->sym_loaded)
+      break;
 
     success = Module32Next(mod_hdl, &module);
   }
@@ -161,7 +167,7 @@ _py_proc__get_modules(py_proc_t * self) {
 static ssize_t _py_proc__get_resident_memory(py_proc_t * self) {
   PROCESS_MEMORY_COUNTERS mem_info;
 
-  return GetProcessMemoryInfo((HANDLE) self->pid, &mem_info, sizeof(mem_info))
+  return GetProcessMemoryInfo(self->extra->h_proc, &mem_info, sizeof(mem_info))
     ? mem_info.WorkingSetSize
     : -1;
 }

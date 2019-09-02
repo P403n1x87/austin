@@ -34,5 +34,6 @@ austin_SOURCES = \
   stats.c        \
   py_code.c      \
   py_frame.c     \
+  py_proc_list.c \
   py_proc.c      \
   py_thread.c

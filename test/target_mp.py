@@ -20,16 +20,32 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+# source: https://lobste.rs/s/qairy5/austin_python_frame_stack_sampler_for
+
 import time
+import multiprocessing
 
 
-def cpu_bound():
-    a = []
-    for i in range(100000):
-        a.append(i)
+def fact(n):
+    f = 1
+    for i in range(1, n + 1):
+        f *= i
+    return f
+
+
+def do(N):
+    n = 1
+    for _ in range(N):
+        fact(n)
+        n += 1
 
 
 if __name__ == "__main__":
-    for n in range(2):
-        cpu_bound()
-        time.sleep(1)
+    processes = []
+    for _ in range(2):
+        process = multiprocessing.Process(target=do, args=(2000,))
+        process.start()
+        processes.append(process)
+
+    for process in processes:
+        process.join(timeout=5)
