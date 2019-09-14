@@ -42,6 +42,12 @@ attach_austin_2_3() {
   then
     skip "Test failed but marked as 'Ignore'"
   else
+    echo
+    echo "Collected Output"
+    echo "================"
+    echo
+    echo "$output"
+    echo
     false
   fi
 }
@@ -136,4 +142,8 @@ attach_austin() {
 
 @test "Test Austin with Python 3.7" {
   attach_austin "3.7"
+}
+
+@test "Test Austin with Python 3.8" {
+  attach_austin "3.8"
 }
