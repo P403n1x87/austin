@@ -1,3 +1,4 @@
+from collections import deque
 import curses
 
 
@@ -277,3 +278,36 @@ class CommandBar(Widget):
 
     def get_height(self):
         return self.h
+
+
+class BarPlot(Label):
+
+    STEPS = [" ", "▁", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
+
+    @staticmethod
+    def bar_icon(i):
+        return BarPlot.STEPS[int(i * (len(BarPlot.STEPS) - 1))]
+
+    def __init__(self, y, x, width=8, scale=None, init=None, attr=0):
+        super().__init__(y, x, attr=attr)
+
+        self._values = deque([init] * width if init is not None else [], maxlen=width)
+        self.scale = scale or 0
+        self.auto = not scale
+
+    def push(self, value):
+        self._values.append(value)
+        if self.auto:
+            self.scale = max(self._values)
+
+        self.plot()
+
+        return value
+
+    def plot(self):
+        self.set_text(
+            "".join(
+                BarPlot.bar_icon(v / self.scale if self.scale else v)
+                for v in self._values
+            )
+        )

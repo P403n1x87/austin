@@ -1,6 +1,7 @@
 import curses
 import sys
 
+from austin import AustinArgumentParser
 from austin.tui import AustinTUI
 
 
@@ -11,7 +12,7 @@ def curses_app(scr):
         exit(1)
 
     with AustinTUI(scr) as austin_tui:
-        austin_tui.start(args[1:])
+        austin_tui.start(AustinArgumentParser().parse_args(args[1:]))
 
 
 def main():
