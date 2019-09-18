@@ -17,6 +17,7 @@ class AustinError(Exception):
 class AustinArgumentParser(ArgumentParser):
     def __init__(
         self,
+        name="austin",
         alt_format=True,
         children=True,
         exclude_empty=True,
@@ -29,7 +30,7 @@ class AustinArgumentParser(ArgumentParser):
         command=True,
         **kwargs,
     ):
-        super().__init__(**kwargs)
+        super().__init__(prog=name, **kwargs)
 
         if bool(pid) != bool(command):
             raise RuntimeError(

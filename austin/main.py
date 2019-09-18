@@ -5,19 +5,24 @@ from austin import AustinArgumentParser
 from austin.tui import AustinTUI
 
 
-def curses_app(scr):
-    args = sys.argv
-    if len(args) == 1:
-        print("Usage: austin-tui  command  [ARG...]")
-        exit(1)
-
+def curses_app(scr, args):
     with AustinTUI(scr) as austin_tui:
-        austin_tui.start(AustinArgumentParser().parse_args(args[1:]))
+        austin_tui.start(args)
 
 
 def main():
+    arg_parser = AustinArgumentParser(
+        name="austin-tui", full=False, alt_format=False, children=False
+    )
+
+    arg_parser.add_argument(
+        "-l", "--linenos", action="store_true", help="Show line numbers"
+    )
+
+    parsed_args = arg_parser.parse_args(sys.argv[1:])
+
     try:
-        curses.wrapper(curses_app)
+        curses.wrapper(lambda scr: curses_app(scr, parsed_args))
     except KeyboardInterrupt:
         pass
 

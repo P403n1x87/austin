@@ -286,6 +286,7 @@ class BarPlot(Label):
 
     @staticmethod
     def bar_icon(i):
+        i = max(0, min(i, 1))
         return BarPlot.STEPS[int(i * (len(BarPlot.STEPS) - 1))]
 
     def __init__(self, y, x, width=8, scale=None, init=None, attr=0):

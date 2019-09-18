@@ -285,8 +285,8 @@ class AustinTUI(Window):
         curses.init_pair(Color.INACTIVE, 246, -1)
         curses.init_pair(Color.RUNNING, 10, -1)
         curses.init_pair(Color.STOPPED, 1, -1)
-        curses.init_pair(Color.CPU, curses.COLOR_BLUE, curses.COLOR_BLACK)
-        curses.init_pair(Color.MEMORY, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(Color.CPU, curses.COLOR_BLUE, -1)  # 17
+        curses.init_pair(Color.MEMORY, curses.COLOR_GREEN, -1)  # 22
         j = Color.HEAT_ACTIVE
         for i in [-1, 226, 208, 202, 196]:
             curses.init_pair(j, i, -1)
@@ -374,7 +374,9 @@ class AustinTUI(Window):
                 self.scaler(frame["tot_time"]),
                 [
                     ellipsis(
-                        frame["function"][:-1] + ":" + frame["line_number"] + ")",
+                        frame["function"][:-1] + ":" + frame["line_number"] + ")"
+                        if self.args.linenos
+                        else frame["function"],
                         w - TABHEAD_FUNCTION_PAD,
                     ),
                     0,
