@@ -73,7 +73,7 @@ class AustinArgumentParser(ArgumentParser):
             self.add_argument(
                 "-i",
                 "--interval",
-                help="Sampling interval (default is 500us).",
+                help="Sampling interval (default is 100us).",
                 type=int,
             )
 
@@ -142,7 +142,7 @@ class AustinArgumentParser(ArgumentParser):
         if getattr(args, "sleepless", None):
             arg_list.append("-s")
         if getattr(args, "timeout", None):
-            arg_list += ["-i", str(args.timeout)]
+            arg_list += ["-t", str(args.timeout)]
         if getattr(args, "command", None):
             arg_list.append(args.command)
         if getattr(args, "args", None):

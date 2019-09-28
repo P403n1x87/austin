@@ -74,7 +74,7 @@ def parse_line(line: bytes, full: bool = False) -> tuple:
     process = None
     frames = []
 
-    if line[0] == "P":
+    if rest[0] == "P":
         process, rest = rest.split(";", maxsplit=1)
 
     try:
@@ -83,7 +83,7 @@ def parse_line(line: bytes, full: bool = False) -> tuple:
         frames = frames.split(";")
     except ValueError:
         # Probably an "empty" thread
-        thread, *metrics = line.decode().rsplit(maxsplit=1)
+        thread, *metrics = rest.rsplit(maxsplit=1)
 
     return process, thread, frames, tuple(int(m) for m in metrics)
 
@@ -136,21 +136,26 @@ class Stats:
         self.current_stack = deque()
 
         i = 0
-        if thread in self.threads:
-            for frame_stack in self.threads[thread]:
+        thread_id = (
+            f"{process.split()[1]}:{thread.split()[1]}"
+            if process
+            else thread.split()[1]
+        )
+        if thread_id in self.threads:
+            for frame_stack in self.threads[thread_id]:
                 if frame_stack == sample_stack:
                     self._update_frame(frame_stack, sample_stack)
                     break
                 i += 1
             else:
-                self.threads[thread].append(sample_stack)
+                self.threads[thread_id].append(sample_stack)
 
         else:
-            self.threads[thread] = [sample_stack]
+            self.threads[thread_id] = [sample_stack]
 
         self.current_stack.appendleft(i)
 
-        self.current_threads[thread] = self.current_stack
+        self.current_threads[thread_id] = self.current_stack
 
         self.samples += 1
 

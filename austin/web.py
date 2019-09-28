@@ -198,10 +198,8 @@ class WebAustin(AsyncAustin):
         self.html = load_site()
         web.run_app(app, host=host, port=port, print=None)
 
-    def start(self):
-        self.args = AustinArgumentParser(full=False).parse_args(sys.argv[1:])
-
-        super().start(self.args)
+    def start(self, args):
+        super().start(args)
 
         if self.wait():
             self.start_server()
@@ -213,7 +211,11 @@ class WebAustin(AsyncAustin):
 def main():
     austin = WebAustin()
     try:
-        austin.start()
+        austin.start(
+            AustinArgumentParser(
+                name="austin-web", full=False, alt_format=False
+            ).parse_args(sys.argv[1:])
+        )
     except AustinError:
         print(
             "Cannot start Web Austin. Please check that the command line "

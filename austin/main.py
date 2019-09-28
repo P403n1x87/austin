@@ -11,9 +11,7 @@ def curses_app(scr, args):
 
 
 def main():
-    arg_parser = AustinArgumentParser(
-        name="austin-tui", full=False, alt_format=False, children=False
-    )
+    arg_parser = AustinArgumentParser(name="austin-tui", full=False, alt_format=False)
 
     arg_parser.add_argument(
         "-l", "--linenos", action="store_true", help="Show line numbers"

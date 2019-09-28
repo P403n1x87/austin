@@ -76,6 +76,7 @@ class Color:
     STOPPED = 3
     CPU = 4
     MEMORY = 5
+    THREAD = 6
 
 
 def color_level(p, a=True):
@@ -106,7 +107,10 @@ class AustinTUI(Window):
 
         self.add_child("title_line", Line(TITLE_LINE, 0, "Austin TUI"))
 
-        self.add_child("pid_label", Label(PROC_LINE, 0, "PID"))
+        self.add_child(
+            "pid_label",
+            Label(PROC_LINE, 0, lambda: "PPID" if self.args.children else "PID"),
+        )
         self.add_child(
             "pid",
             Label(
@@ -144,9 +148,11 @@ class AustinTUI(Window):
             Label(
                 THREAD_LINE,
                 0,
-                lambda: "{:24}".format(
-                    self.current_thread if self.current_thread else "Sampling ..."
-                ),
+                lambda: "{}TID {:24}".format(
+                    "PID:" if self.args.children else "", self.current_thread
+                )
+                if self.current_thread
+                else "Sampling ...",
             ),
         )
         self.add_child(
@@ -165,12 +171,12 @@ class AustinTUI(Window):
             Label(
                 THREAD_LINE,
                 24,
-                lambda: "{:^5}".format(
+                lambda: "{:5}".format(
                     self.current_thread_index + 1
                     if self.current_thread_index is not None
                     else ""
                 ),
-                attr=curses.A_REVERSE,
+                attr=curses.color_pair(Color.THREAD) | curses.A_BOLD,
             ),
         )
 
@@ -287,6 +293,7 @@ class AustinTUI(Window):
         curses.init_pair(Color.STOPPED, 1, -1)
         curses.init_pair(Color.CPU, curses.COLOR_BLUE, -1)  # 17
         curses.init_pair(Color.MEMORY, curses.COLOR_GREEN, -1)  # 22
+        curses.init_pair(Color.THREAD, 11, -1)  # 22
         j = Color.HEAT_ACTIVE
         for i in [-1, 226, 208, 202, 196]:
             curses.init_pair(j, i, -1)
@@ -394,19 +401,23 @@ class AustinTUI(Window):
 
             a = getattr(node, "is_active", False)
             attr = curses.color_pair(1) if not a else 0
-            line = (
-                [self.formatter(node.own_time), attr],
-                [self.formatter(node.total_time), attr],
-                self.scaler(node.own_time, a),
-                self.scaler(node.total_time, a),
-                [
-                    ellipsis(
-                        node.function[:-1] + ":" + node.line_number + ")", name_len - 1
-                    ),
-                    attr,
-                ],
+            line_store.append(
+                (
+                    [self.formatter(node.own_time), attr],
+                    [self.formatter(node.total_time), attr],
+                    self.scaler(node.own_time, a),
+                    self.scaler(node.total_time, a),
+                    [
+                        ellipsis(
+                            node.function[:-1] + ":" + node.line_number + ")"
+                            if self.args.linenos
+                            else node.function,
+                            name_len - 1,
+                        ),
+                        attr,
+                    ],
+                )
             )
-            line_store.append(line)
 
         def add_children(nodes, level=2):
             if not nodes:
@@ -517,11 +528,13 @@ class AustinTUI(Window):
                 await asyncio.sleep(1)
 
         try:
-            self.austin.get_event_loop().run_until_complete(
+            done, pending = self.austin.get_event_loop().run_until_complete(
                 asyncio.wait(
                     (input_loop(), update_loop()), return_when=asyncio.FIRST_EXCEPTION
                 )
             )
+            for task in done:
+                task.result()
         except asyncio.CancelledError:
             pass
 
