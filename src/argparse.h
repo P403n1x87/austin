@@ -23,7 +23,9 @@
 #ifndef ARGPARSE_H
 #define ARGPARSE_H
 
+#include <stdio.h>
 #include <stdlib.h>
+#include <sys/types.h>
 
 #include "stats.h"
 
@@ -38,6 +40,7 @@ typedef struct {
   int       memory;
   FILE    * output_file;
   char    * output_filename;
+  int       children;
 } parsed_args_t;
 
 

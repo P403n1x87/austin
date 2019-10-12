@@ -1,4 +1,4 @@
-// ---- Web Socket ----
+// ---- Web Socket ------------------------------------------------------------
 
 function get_ws_url() {
   var loc = window.location, new_uri;
@@ -30,6 +30,8 @@ webSocket.onmessage = function (event) {
   case "info":
     document.getElementById('pid').innerHTML = payload.pid;
     document.getElementById('command').innerHTML = payload.command;
+    document.getElementById('profiletype').innerHTML = payload.metric == "t" ? "Time Profile" : "Memory Profile";
+    label = label_map[payload.metric];
   }
 }
 

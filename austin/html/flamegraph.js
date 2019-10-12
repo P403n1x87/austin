@@ -1,4 +1,4 @@
-// ---- Manage the Flame Graph view ----
+// ---- Manage the Flame Graph view -------------------------------------------
 
 String.prototype.toHHMMSS = function () {
   var sec_num = parseInt(this, 10); // don't forget the second param
@@ -11,6 +11,30 @@ String.prototype.toHHMMSS = function () {
   if (seconds < 10) {seconds = "0"+seconds;}
   return hours+':'+minutes+':'+seconds;
 }
+
+function time_label(d, parent) {
+  return (
+    d.data.name + " 🕘 " + (d.data.value/1000000).toString().toHHMMSS() +
+    " (" + (d.data.value / parent.data.value * 100).toFixed(2) + "%)"
+  )
+}
+
+function memory_label(d, parent) {
+  value = d.data.value < 1024
+    ? (d.data.value.toString() + " KB")
+    : (d.data.value >> 10).toString() + " MB";
+
+  return (
+    d.data.name + " " + value +
+    " (" + (d.data.value / parent.data.value * 100).toFixed(2) + "%)"
+  )
+}
+
+var label_map = {"t": time_label, "m": memory_label};
+
+var label = time_label;  // This gets set by webocket.js
+
+// ----------------------------------------------------------------------------
 
 var flameGraph = d3.flamegraph()
   .height(0)
@@ -33,7 +57,7 @@ var flameGraph = d3.flamegraph()
     catch(err) {
       // parent.parent is undefied
     }
-    return d.data.name + " 🕘 " + (d.data.value/1000000).toString().toHHMMSS() + " (" + (d.data.value / parent.data.value * 100).toFixed(2) + "%)"
+    return label(d, parent)
   }
 );
 
@@ -60,7 +84,7 @@ d3.select("#chart")
   .datum(start)
   .call(flameGraph);
 
-document.getElementById("form").addEventListener("submit", function(event){
+document.getElementById("form").addEventListener("submit", function (event) {
   event.preventDefault();
   search();
 });
