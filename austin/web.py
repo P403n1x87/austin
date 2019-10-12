@@ -7,10 +7,13 @@ from os import environ as env
 
 from aiohttp import WSMsgType, web
 from aiohttp.test_utils import unused_port
-from austin import AsyncAustin
+import psutil
+from pyfiglet import Figlet
+
+
+from austin import AsyncAustin, AustinArgumentParser, AustinError
 from austin.html import load_site
 from austin.stats import parse_line
-from pyfiglet import Figlet
 
 
 class WebFrame:
@@ -57,9 +60,16 @@ class WebFrame:
                 frame.value = value
             return frame
 
-        thread, frames, value = parse_line(text.encode())
-        frame = WebFrame(thread, value)
+        process, thread, frames, (value,) = parse_line(text.encode())
+        thread_frame = WebFrame(thread, value)
+        if process:
+            process_frame = WebFrame(process, value)
+            process_frame.add_child(thread_frame)
+            frame = process_frame
+        else:
+            frame = thread_frame
         frame.height = len(frames) + 1
+
         if frames:
             frame.add_child(build_frame(frames))
 
@@ -89,7 +99,7 @@ class WebFrame:
         return {
             "name": self.name,
             "value": self.value,
-            "children": [c.to_dict() for c in self.children]
+            "children": [c.to_dict() for c in self.children],
         }
 
 
@@ -116,7 +126,7 @@ class DataPool:
             "height": self.max,
             "samples": self.samples,
             "cpu": self._austin.get_child().cpu_percent(),
-            "memory": self._austin.get_child().memory_full_info()[0] >> 20
+            "memory": self._austin.get_child().memory_full_info()[0] >> 20,
         }
 
         await ws.send_str(json.dumps(payload))
@@ -129,6 +139,7 @@ class WebAustin(AsyncAustin):
         super().__init__(*args, **kwargs)
 
         self.data_pools = weakref.WeakSet()
+        self.args = None
 
     def on_sample_received(self, text):
         for data_pool in self.data_pools:
@@ -143,10 +154,7 @@ class WebAustin(AsyncAustin):
         self.data_pools.discard(data_pool)
 
     async def handle_home(self, request):
-        return web.Response(
-            body=self.html,
-            content_type='text/html'
-        )
+        return web.Response(body=self.html, content_type="text/html")
 
     async def handle_websocket(self, request):
         ws = web.WebSocketResponse()
@@ -154,59 +162,67 @@ class WebAustin(AsyncAustin):
 
         data_pool = self.new_data_pool()
 
-        payload = {
-            "type": "info",
-            "pid": self.get_pid(),
-            "command": self.get_cmd_line(),
-        }
+        try:
+            payload = {
+                "type": "info",
+                "pid": self.get_pid(),
+                "command": self.get_cmd_line(),
+                "metric": "m" if self.args.memory else "t",
+            }
 
-        await ws.send_str(json.dumps(payload))
+            await ws.send_str(json.dumps(payload))
 
-        async for msg in ws:
-            await data_pool.send(ws)
+            async for msg in ws:
+                await data_pool.send(ws)
 
-        self.discard_data_pool(data_pool)
+            self.discard_data_pool(data_pool)
+
+        except psutil.NoSuchProcess:
+            pass
 
         return ws
 
     def start_server(self):
         app = web.Application()
         app.add_routes(
-            [
-                web.get('/', self.handle_home),
-                web.get('/ws', self.handle_websocket)
-            ]
+            [web.get("/", self.handle_home), web.get("/ws", self.handle_websocket)]
         )
 
         port = int(env.get("WEBAUSTIN_PORT", 0)) or unused_port()
         host = env.get("WEBAUSTIN_HOST") or "localhost"
 
         print(Figlet(font="speed", width=240).renderText("* Web Austin *"))
-        print(
-            f"* Sampling process with PID {self.get_pid()} "
-            f"({self.get_cmd_line()})"
-        )
-        print(
-            f"* Web Austin is running on http://{host}:{port}. "
-            "Press Ctrl+C to stop."
-        )
+        print(f"* Sampling process with PID {self.get_pid()} ({self.get_cmd_line()})")
+        print(f"* Web Austin is running on http://{host}:{port}. Press Ctrl+C to stop.")
 
         self.html = load_site()
         web.run_app(app, host=host, port=port, print=None)
 
-    def start(self):
-        super().start(sys.argv[1:])
+    def start(self, args):
+        super().start(args)
 
         if self.wait():
             self.start_server()
         else:
-            print("Unable to start Austin")
-            exit(1)
+            self.join()
+            # exit(1)
 
 
 def main():
     austin = WebAustin()
-    austin.start()
+    try:
+        austin.start(
+            AustinArgumentParser(
+                name="austin-web", full=False, alt_format=False
+            ).parse_args(sys.argv[1:])
+        )
+    except AustinError:
+        print(
+            "Cannot start Web Austin. Please check that the command line "
+            "values are valid."
+        )
+        exit(1)
+
 
 if __name__ == "__main__":
     main()
