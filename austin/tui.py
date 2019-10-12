@@ -4,18 +4,63 @@ import time
 
 from austin import AsyncAustin
 from austin.stats import Stats
-from austin.widget import BarPlot, CommandBar, Label, Line, Table, Window
+from austin.widget import BarPlot, CommandBar, Label, Line, Table, TaggedLabel, Window
 
-# Widget positions
-TITLE_LINE = 0
-PROC_LINE = TITLE_LINE + 2
-THREAD_LINE = PROC_LINE + 1
-SAMPLES_LINE = THREAD_LINE + 1
-TABHEAD_LINE = THREAD_LINE + 2
-TAB_START = TABHEAD_LINE + 1
+
+# ---- Widget Positions -------------------------------------------------------
+
+TITLE_LINE = (0, 0)
+LOGO = (1, 0)
+LOGO_WIDTH = 13
+INFO_AREA_X = LOGO_WIDTH + 1
+
+PID = (TITLE_LINE[0] + 1, INFO_AREA_X)
+
+CMD_LINE = (PID[0], INFO_AREA_X + 12)
+
+THREAD = (PID[0] + 1, INFO_AREA_X)
+THREAD_NUM = (PID[0] + 1, INFO_AREA_X + 24)
+THREAD_TOTAL = (PID[0] + 1, INFO_AREA_X + 31)
+
+SAMPLES = (THREAD[0] + 1, INFO_AREA_X)
+
+DURATION = (SAMPLES[0], INFO_AREA_X + 18)
+
+CPU = (THREAD[0], INFO_AREA_X + 40)
+CPU_PLOT = (THREAD[0], INFO_AREA_X + 54)
+
+MEM = (SAMPLES[0], INFO_AREA_X + 40)
+MEM_PLOT = (SAMPLES[0], INFO_AREA_X + 54)
+
+TABHEAD_LINE = (THREAD[0] + 2, 0)
+TAB_START = (TABHEAD_LINE[0] + 1, 0)
 
 TABHEAD_TEMPLATE = " {:^6}  {:^6}  {:^6}  {:^6}  {}"
 TABHEAD_FUNCTION_PAD = len(TABHEAD_TEMPLATE.format("", "", "", "", ""))
+
+
+# ---- Color Palette ----------------------------------------------------------
+
+
+class Color:
+    INACTIVE = 1
+    HEAT_ACTIVE = 10
+    HEAT_INACTIVE = 20
+    RUNNING = 2
+    STOPPED = 3
+    CPU = 4
+    MEMORY = 5
+    THREAD = 6
+
+
+PALETTE = {
+    Color.INACTIVE: (246, -1),
+    Color.RUNNING: (10, -1),
+    Color.STOPPED: (1, -1),
+    Color.CPU: (curses.COLOR_BLUE, -1),  # 17
+    Color.MEMORY: (curses.COLOR_GREEN, -1),  # 22
+    Color.THREAD: (11, -1),  # 22
+}
 
 
 # ---- Local Helpers ----------------------------------------------------------
@@ -68,17 +113,6 @@ def fmt_mem(s):
     return f"{int(s)>>10: 5d}"
 
 
-class Color:
-    INACTIVE = 1
-    HEAT_ACTIVE = 10
-    HEAT_INACTIVE = 20
-    RUNNING = 2
-    STOPPED = 3
-    CPU = 4
-    MEMORY = 5
-    THREAD = 6
-
-
 def color_level(p, a=True):
     d = 10 if a else 20
     return curses.color_pair(d + int(p / 20))
@@ -103,63 +137,69 @@ class AustinTUI(Window):
         self.current_memory = 0
         self.is_full_view = False
 
-        # ---- Header ---------------------------------------------------------
+        # ---- Logo -----------------------------------------------------------
 
-        self.add_child("title_line", Line(TITLE_LINE, 0, "Austin TUI"))
+        self.add_child("title_line", Line(*TITLE_LINE, "  Austin TUI", curses.A_BOLD))
 
         self.add_child(
-            "pid_label",
-            Label(PROC_LINE, 0, lambda: "PPID" if self.args.children else "PID"),
+            "logo",
+            Label(
+                *LOGO,
+                ["  _________  ", "  ⎝__⎠ ⎝__⎠  "],
+                lambda: curses.color_pair(
+                    (Color.RUNNING if self.austin.is_running() else Color.STOPPED)
+                )
+                | curses.A_BOLD,
+            ),
         )
+
+        # ---- Process Information --------------------------------------------
+
         self.add_child(
             "pid",
-            Label(
-                PROC_LINE,
-                5,
-                lambda: "{:5}".format(self.austin.get_pid()),
-                curses.A_BOLD,
-            ),
-        )
-        self.add_child(
-            "pid_status",
-            Label(
-                PROC_LINE,
-                11,
-                "◉",
-                lambda: curses.color_pair(
-                    Color.RUNNING if self.austin.is_running() else Color.STOPPED
-                ),
+            TaggedLabel(
+                *PID,
+                tag=(lambda: "PPID" if self.args.children else "PID", 0),
+                text=lambda: "{:5}".format(self.austin.get_pid()),
+                attr=curses.A_BOLD,
             ),
         )
 
-        self.add_child("cmd_line_label", Label(PROC_LINE, 14, "CMD"))
+        # ---- Command Line ---------------------------------------------------
+
         self.add_child(
             "cmd_line",
-            Label(
-                PROC_LINE,
-                19,
-                lambda: ell(self.austin.get_cmd_line(), self.get_size()[1] - 19),
-                curses.A_BOLD,
+            TaggedLabel(
+                *CMD_LINE,
+                tag=("CMD", 0),
+                text=lambda: ell(self.austin.get_cmd_line(), self.get_size()[1] - 19),
+                attr=curses.A_BOLD,
             ),
         )
+
+        # ---- Threads --------------------------------------------------------
 
         self.add_child(
             "thread_name",
-            Label(
-                THREAD_LINE,
-                0,
-                lambda: "{}TID {:24}".format(
-                    "PID:" if self.args.children else "", self.current_thread
-                )
-                if self.current_thread
-                else "Sampling ...",
+            TaggedLabel(
+                *THREAD,
+                tag=(
+                    lambda: (
+                        "{}TID".format("PID:" if self.args.children else "")
+                        if self.current_thread
+                        else "Sampling ..."
+                    ),
+                    0,
+                ),
+                text=lambda: "{:24}".format(self.current_thread or ""),
+                attr=curses.A_BOLD,
             ),
         )
+
         self.add_child(
             "thread_total",
             Label(
-                THREAD_LINE,
-                31,
+                *THREAD_TOTAL,
                 lambda: "of {:^5}".format(
                     len(self.current_threads) if self.current_threads else 0
                 ),
@@ -169,8 +209,7 @@ class AustinTUI(Window):
         self.add_child(
             "thread_num",
             Label(
-                THREAD_LINE,
-                24,
+                *THREAD_NUM,
                 lambda: "{:5}".format(
                     self.current_thread_index + 1
                     if self.current_thread_index is not None
@@ -180,62 +219,65 @@ class AustinTUI(Window):
             ),
         )
 
-        self.add_child("samples_label", Label(SAMPLES_LINE, 0, "Samples"))
+        # ---- Samples --------------------------------------------------------
+
         self.add_child(
-            "samples_count",
-            Label(
-                SAMPLES_LINE,
-                7,
+            "samples",
+            TaggedLabel(
+                *SAMPLES,
                 lambda: "{:8}".format(self.stats.samples),
+                tag=("Samples", 0),
                 attr=curses.A_BOLD,
             ),
         )
 
-        self.add_child("duration_label", Label(SAMPLES_LINE, 18, "Duration"))
+        # ---- Duration -------------------------------------------------------
+
         self.add_child(
             "duration",
-            Label(
-                SAMPLES_LINE,
-                26,
-                lambda: "{:>8}".format(fmt_time(int(self.duration * 1e6))),
+            TaggedLabel(
+                *DURATION,
+                tag=("Duration", 0),
+                text=lambda: "{:>8}".format(fmt_time(int(self.duration * 1e6))),
                 attr=curses.A_BOLD,
             ),
         )
 
-        self.add_child("cpu_label", Label(THREAD_LINE, 40, "CPU"))
+        # ---- CPU ------------------------------------------------------------
+
         self.add_child(
             "cpu",
-            Label(
-                THREAD_LINE,
-                44,
-                lambda: "{: >5} %".format(
+            TaggedLabel(
+                *CPU,
+                tag=("CPU", 0),
+                text=lambda: "{: >5}%".format(
                     self.current_cpu if self.austin.is_running() else ""
                 ),
                 attr=curses.A_BOLD,
             ),
         )
+
         self.add_child(
             "cpu_plot",
-            BarPlot(
-                THREAD_LINE, 54, scale=100, init=0, attr=curses.color_pair(Color.CPU)
-            ),
+            BarPlot(*CPU_PLOT, scale=100, init=0, attr=curses.color_pair(Color.CPU)),
         )
 
-        self.add_child("mem_label", Label(SAMPLES_LINE, 40, "MEM"))
+        # ---- Memory ---------------------------------------------------------
+
         self.add_child(
             "mem",
-            Label(
-                SAMPLES_LINE,
-                44,
-                lambda: "{: >5} M".format(
+            TaggedLabel(
+                *MEM,
+                tag=("MEM", 0),
+                text=lambda: "{: >5}M".format(
                     self.current_memory if self.austin.is_running() else ""
                 ),
                 attr=curses.A_BOLD,
             ),
         )
+
         self.add_child(
-            "mem_plot",
-            BarPlot(SAMPLES_LINE, 54, init=0, attr=curses.color_pair(Color.MEMORY)),
+            "mem_plot", BarPlot(*MEM_PLOT, init=0, attr=curses.color_pair(Color.MEMORY))
         )
 
         # ---- Footer ---------------------------------------------------------
@@ -263,8 +305,7 @@ class AustinTUI(Window):
         self.add_child(
             "table_header",
             Line(
-                TABHEAD_LINE,
-                0,
+                *TABHEAD_LINE,
                 TABHEAD_TEMPLATE.format("OWN", "TOTAL", "%OWN", "%TOTAL", "FUNCTION"),
                 curses.A_REVERSE | curses.A_BOLD,
             ),
@@ -273,10 +314,10 @@ class AustinTUI(Window):
             "table_pad",
             Table(
                 size_policy=lambda: [
-                    (h - TAB_START - self.cmd_bar.get_height(), w)
+                    (h - TAB_START[0] - self.cmd_bar.get_height(), w)
                     for h, w in [self.get_size()]
                 ][0],
-                position_policy=lambda: (TAB_START, 0),
+                position_policy=lambda: (TAB_START[0], 0),
                 columns=[" {:^6} ", " {:^6} ", " {:5.2f}% ", " {:5.2f}% ", " {}"],
                 data_policy=self.generate_data,
                 hook=self.draw_tree,
@@ -288,12 +329,9 @@ class AustinTUI(Window):
     def __enter__(self):
         super().__enter__()
 
-        curses.init_pair(Color.INACTIVE, 246, -1)
-        curses.init_pair(Color.RUNNING, 10, -1)
-        curses.init_pair(Color.STOPPED, 1, -1)
-        curses.init_pair(Color.CPU, curses.COLOR_BLUE, -1)  # 17
-        curses.init_pair(Color.MEMORY, curses.COLOR_GREEN, -1)  # 22
-        curses.init_pair(Color.THREAD, 11, -1)  # 22
+        for color, values in PALETTE.items():
+            curses.init_pair(color, *values)
+
         j = Color.HEAT_ACTIVE
         for i in [-1, 226, 208, 202, 196]:
             curses.init_pair(j, i, -1)
@@ -544,7 +582,7 @@ class AustinTUI(Window):
         self.args = args
 
         self.get_child("title_line").set_text(
-            "Austin TUI | {} Profile".format("Memory" if args.memory else "Time")
+            " Austin  TUI  {} Profile".format("Memory" if args.memory else "Time")
         )
 
         # Set scaler and formatter
@@ -553,8 +591,10 @@ class AustinTUI(Window):
         )
 
         self.refresh()
-        if self.austin.wait(1):
-            self.run(self._scr)
-        else:
-            print("Austin took too long to start. Terminating...")
-            exit(1)
+        try:
+            if self.austin.wait(1):
+                self.run(self._scr)
+            else:
+                raise AustinError("Took too long to start.")
+        finally:
+            self.austin.join()

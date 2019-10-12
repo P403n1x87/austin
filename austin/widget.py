@@ -106,12 +106,34 @@ class Label(Widget):
 
         self.refresh()
 
+    def get_text(self):
+        return self.current_text
+
     def refresh(self):
         if not self.scr:
             self.scr = self.get_toplevel().get_screen()
-        text = self.text() if callable(self.text) else self.text
-        attr = self.attr() if callable(self.attr) else self.attr
-        self.scr.addstr(self.y, self.x, text if text else "", attr)
+        self.current_text = self.text() if callable(self.text) else self.text
+        self.current_attr = self.attr() if callable(self.attr) else self.attr
+        if isinstance(self.current_text, list):
+            for i, line in enumerate(self.current_text):
+                self.scr.addstr(self.y + i, self.x, line or "", self.current_attr)
+        else:
+            self.scr.addstr(self.y, self.x, self.current_text or "", self.current_attr)
+
+
+class TaggedLabel(Label):
+    def __init__(self, y, x, text=None, tag=None, attr=0):
+        super().__init__(y, x, text, attr)
+        self.orig_x, self.orig_y = x, y
+
+        self.add_child("tag", Label(y, x, *tag))
+
+    def refresh(self):
+        tag = self.get_child("tag")
+        tag.refresh()
+        self.x = self.orig_x + len(tag.get_text()) + 1
+        super().refresh()
+        self.scr.addstr(self.y, self.x - 1, " ")
 
 
 class Line(Label):

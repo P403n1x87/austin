@@ -174,7 +174,12 @@ class BaseAustin(ABC):
             if child_process.pid is not None:
                 self._pid = child_process.pid
         else:  # Austin is attaching
-            child_process = psutil.Process(self._pid)
+            try:
+                child_process = psutil.Process(self._pid)
+            except psutil.NoSuchProcess:
+                raise AustinError(
+                    f"Cannot attach to process with PID {self._pid} because it does not seem to exist."
+                )
 
         self._child = child_process
         self._cmd_line = " ".join(child_process.cmdline())
@@ -207,16 +212,16 @@ class AsyncAustin(BaseAustin):
 
     def start(self, args, loop=None):
         async def _start():
-            self.proc = await asyncio.create_subprocess_exec(
-                "austin",
-                *AustinArgumentParser.to_list(args),
-                stdout=asyncio.subprocess.PIPE,
-            )
-
             try:
-                self.post_process_start()
-            except psutil.NoSuchProcess as e:
-                raise AustinError("Unable to start Austin") from e
+                self.proc = await asyncio.create_subprocess_exec(
+                    "austin",
+                    *AustinArgumentParser.to_list(args),
+                    stdout=asyncio.subprocess.PIPE,
+                )
+            except FileNotFoundError:
+                raise AustinError("Executable not found.")
+
+            self.post_process_start()
 
             # Signal that we are good to go
             self.start_event.set()
@@ -264,7 +269,10 @@ class AsyncAustin(BaseAustin):
         return True
 
     def join(self):
-        self._loop.run_until_complete(self._start_task)
+        try:
+            return self._loop.run_until_complete(self._start_task)
+        except asyncio.CancelledError:
+            pass
 
 
 class ThreadedAustin(BaseAustin, Thread):
