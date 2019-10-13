@@ -1,6 +1,6 @@
 <h1 align="center">
   <br>
-  <img src="art/austin_mark.png" alt="Austin">
+  <img src="art/austin_die_cut_sticker.png" alt="Austin">
   <br>
 </h1>
 
@@ -502,6 +502,26 @@ Web Austin will use an ephemeral port.
 
 <p align="center"><img src="art/web-austin.gif" /></p>
 
+
+## Speedscope
+
+Austin output format can be converted easily into the [Speedscope](speedscope.app) JSON format. You can find a sample utility along with the TUI and Austin Web.
+
+If you want to give it a go you can install it using `pip` with
+
+~~~ bash
+pip install git+https://github.com/P403n1x87/austin.git
+~~~
+
+and run it with
+
+~~~ bash
+austin2speedscope [-h] [--indent INDENT] [-V] input output
+~~~
+
+where `input` is a file containing the output from Austin and `output` is the name of the JSON file to use to save the result of the conversion, ready to be used on [Speedscope](speedscope.app).
+
+<p align="center"><img src="art/speedscope.png" /></p>
 
 # Contribute
 

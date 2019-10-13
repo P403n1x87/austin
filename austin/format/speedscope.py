@@ -48,16 +48,18 @@ def _generate_profiles(source: any):
     full = True
     try:
         parse_line(line, True)
-    except ValueError:
+    except ValueError as e:
         full = False
 
     for line in source:
         if b"Bad sample" in line:
             continue
 
-        thread, frames, metrics = parse_line(line, full)
+        process, thread, frames, metrics = parse_line(line, full)
 
         frames = [(frames[2 * i], frames[2 * i + 1]) for i in range(len(frames) >> 1)]
+        if process:
+            thread = f"Thread {process.split()[1]}:{thread.split()[1]}"
 
         add_frames_to_thread_profile(
             get_profile(f"Time profile of {thread}", "microseconds"), frames, metrics[0]
@@ -118,7 +120,7 @@ def main():
     from argparse import ArgumentParser
 
     arg_parser = ArgumentParser(
-        prog="Austin2Speedscope Converter",
+        prog="austin2speedscope",
         description=(
             "Convert Austin generated profiles to the Speedscope JSON format "
             "accepted by https://speedscope.app. The output will contain a profile "
@@ -142,12 +144,16 @@ def main():
 
     args = arg_parser.parse_args()
 
-    with open(args.input, "rb") as fin:
-        json.dump(
-            to_speedscope(fin, os.path.basename(args.input)),
-            open(args.output, "w"),
-            indent=args.indent,
-        )
+    try:
+        with open(args.input, "rb") as fin:
+            json.dump(
+                to_speedscope(fin, os.path.basename(args.input)),
+                open(args.output, "w"),
+                indent=args.indent,
+            )
+    except FileNotFoundError:
+        print(f"No such input file: {args.input}")
+        exit(1)
 
 
 if __name__ == "__main__":
