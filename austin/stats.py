@@ -83,7 +83,7 @@ def parse_line(line: bytes, full: bool = False) -> tuple:
         frames = frames.split(";")
     except ValueError:
         # Probably an "empty" thread
-        thread, *metrics = rest.rsplit(maxsplit=1)
+        thread, *metrics = rest.rsplit(maxsplit=3 if full else 1)
 
     return process, thread, frames, tuple(int(m) for m in metrics)
 

@@ -32,7 +32,11 @@ setup(
     install_requires=["aiohttp", "psutil", "pyfiglet"],
     extras_require={"dev": ["check-manifest"], "test": ["coverage"]},  # TODO
     entry_points={
-        "console_scripts": ["austin-tui=austin.main:main", "austin-web=austin.web:main"]
+        "console_scripts": [
+            "austin-tui=austin.main:main",
+            "austin-web=austin.web:main",
+            "austin2speedscope=austin.format.speedscope:main",
+        ]
     },
     project_urls={  # TODO
         "Bug Reports": "https://github.com/P403n1x87/austin/issues",
