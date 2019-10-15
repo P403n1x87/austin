@@ -29,7 +29,7 @@
 
 #define UNSUPPORTED_VERSION             log_w("Unsupported Python version detected. Austin might not work as expected.")
 
-#define LATEST_VERSION                  &python_v3_7
+#define LATEST_VERSION                  (&python_v3_8)
 
 #define PY_CODE(s) {                    \
   sizeof(s),                            \
@@ -128,6 +128,17 @@ python_v python_v3_7 = {
   PY_RUNTIME  (0)
 };
 
+// ---- Python 3.8 ------------------------------------------------------------
+
+python_v python_v3_8 = {
+  PY_CODE     (PyCodeObject3_8),
+  PY_FRAME    (PyFrameObject3_7),
+  PY_THREAD   (PyThreadState3_4),
+  PY_UNICODE  (3),
+  PY_BYTES    (3),
+  PY_RUNTIME  (0)
+};
+
 
 // ----------------------------------------------------------------------------
 void
@@ -178,6 +189,9 @@ set_version(int version) {
 
     // 3.7
     case 7: py_v = &python_v3_7; break;
+
+    // 3.8
+    case 8: py_v = &python_v3_8; break;
 
     default: py_v = LATEST_VERSION;
       UNSUPPORTED_VERSION;

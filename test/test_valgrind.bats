@@ -30,6 +30,12 @@ invoke_austin() {
   then
     skip "Test failed but marked as 'Ignore'"
   else
+    echo
+    echo "Collected Output"
+    echo "================"
+    echo
+    echo "$output"
+    echo
     false
   fi
 }
@@ -76,4 +82,8 @@ invoke_austin() {
 
 @test "Test Austin with Python 3.7" {
   invoke_austin "3.7"
+}
+
+@test "Test Austin with Python 3.8" {
+  invoke_austin "3.8"
 }
