@@ -223,10 +223,11 @@ py_proc_list__update(py_proc_list_t * self) {
     if (stat_file == NULL)
       continue;
 
-    fscanf(
+    if (fscanf(
       stat_file, "%d %s %c %d",
       (int *) buffer, buffer, (char *) buffer, &(self->pid_table[pid])
-    );
+    ) != 4)
+      log_w("Failed to parse stat file for process %d", pid);
 
     if (pid > self->max_pid)
       self->max_pid = pid;
@@ -284,7 +285,7 @@ py_proc_list__update(py_proc_list_t * self) {
     }
     else {
       py_proc__wait(item->py_proc);
-      
+
       py_proc_item_t * next = item->next;
       _py_proc_list__remove(self, item);
       item = next;

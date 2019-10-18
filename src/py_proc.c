@@ -699,7 +699,8 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
     // not writing to stdout.
     if (pargs.output_file == NULL) {
       log_d("Redirecting child's STDOUT to " NULL_DEVICE);
-      freopen(NULL_DEVICE, "w", stdout);
+      if (freopen(NULL_DEVICE, "w", stdout) == NULL)
+        log_e("Unable to redirect child's STDOUT to " NULL_DEVICE);
     }
 
     execvp(exec, argv);

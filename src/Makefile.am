@@ -20,9 +20,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http:#www.gnu.org/licenses/>.
 
-AM_CFLAGS =-I$(top_srcdir)/src -Wall -O3
-
-AM_LDFLAGS = -lpthread
+AM_CFLAGS =-I$(top_srcdir)/src -Wall -O3 -pthread
 
 bin_PROGRAMS = austin
 austin_SOURCES = \
