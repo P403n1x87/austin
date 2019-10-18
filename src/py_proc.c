@@ -226,11 +226,6 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   if (py_proc__get_type(self, raddr, is))
     return OUT_OF_BOUND;
 
-  log_t(
-    "PyInterpreterState loaded @ %p. Thread State head @ %p",
-    raddr, is.tstate_head
-  );
-
   if (py_proc__get_type(self, is.tstate_head, tstate_head))
     return 1;
 
@@ -242,6 +237,11 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   log_d(
     "Found possible interpreter state @ %p (offset %p).",
     raddr, raddr - self->map.heap.base
+  );
+
+  log_t(
+    "PyInterpreterState loaded @ %p. Thread State head @ %p",
+    raddr, is.tstate_head
   );
 
   // As an extra sanity check, verify that the thread state is valid
@@ -707,8 +707,14 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
     log_e("Failed to fork process");
     exit(127);
   }
-
   #endif                                                               /* ANY */
+
+  #if defined PL_LINUX
+  // On Linux we need to wait for the forked process or otherwise it will
+  // become a zombie and we cannot tell with kill if it has terminated.
+  pthread_create(&(self->extra->wait_thread_id), NULL, wait_thread, (void *) self);
+  log_d("Wait thread created with ID %x", self->extra->wait_thread_id);
+  #endif
 
   log_d("New process created with PID %d", self->pid);
 
@@ -731,6 +737,12 @@ py_proc__memcpy(py_proc_t * self, void * raddr, ssize_t size, void * dest) {
 void
 py_proc__wait(py_proc_t * self) {
   log_d("Waiting for process to terminate");
+
+  #if defined PL_LINUX
+  if (self->extra->wait_thread_id) {
+    pthread_join(self->extra->wait_thread_id, NULL);
+  }
+  #endif
 
   #ifdef PL_WIN                                                        /* WIN */
   WaitForSingleObject(self->extra->h_proc, INFINITE);
@@ -829,8 +841,7 @@ py_proc__is_running(py_proc_t * self) {
   return pid_to_task(self->pid) != 0;
 
   #else                                                              /* LINUX */
-  kill(self->pid, 0);
-  return errno == ESRCH ? 0 : 1;
+  return !(kill(self->pid, 0) == -1 && errno == ESRCH);
   #endif
 }
 

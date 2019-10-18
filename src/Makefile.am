@@ -22,6 +22,8 @@
 
 AM_CFLAGS =-I$(top_srcdir)/src -Wall -O3
 
+AM_LDFLAGS = -lpthread
+
 bin_PROGRAMS = austin
 austin_SOURCES = \
   argparse.c     \
