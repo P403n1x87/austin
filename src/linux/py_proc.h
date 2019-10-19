@@ -24,6 +24,7 @@
 
 #include <elf.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -57,6 +58,7 @@
 struct _proc_extra_info {
   unsigned int page_size;
   char         statm_file[24];
+  pthread_t    wait_thread_id;
 };
 
 
@@ -64,6 +66,14 @@ union {
   Elf32_Ehdr v32;
   Elf64_Ehdr v64;
 } ehdr_v;
+
+
+// ----------------------------------------------------------------------------
+static void *
+wait_thread(void * py_proc) {
+  waitpid(((py_proc_t *) py_proc)->pid, 0, 0);
+  return NULL;
+}
 
 
 // ----------------------------------------------------------------------------

@@ -112,7 +112,7 @@ do_child_processes(py_proc_t * py_proc) {
 
     // Since the parent process is not running we probably have waited long
     // enough so we can try to attach to child processes straight away.
-    pargs.timeout = 0;
+    pargs.timeout = 1;
 
     // Store the PID before it gets deleted by the update.
     pid_t ppid = py_proc->pid;
