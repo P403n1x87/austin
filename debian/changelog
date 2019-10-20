@@ -1,3 +1,12 @@
+austin (1.0.0-1) unstable; urgency=medium
+
+  * Added support for multi-process Python applications
+  * Added support for Python 3.8
+  * Fixed support for WSL
+
+ -- Gabriele N. Tornetta <phoenix1987@gmail.com>  Sun, 20 Oct 2019 17:10:00 +0100
+
+
 austin (0.7.0-1) unstable; urgency=medium
 
   * Austin can now profile memory usage and output samples to a file.

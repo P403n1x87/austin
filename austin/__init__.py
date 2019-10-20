@@ -217,6 +217,7 @@ class AsyncAustin(BaseAustin):
                     "austin",
                     *AustinArgumentParser.to_list(args),
                     stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
                 )
             except FileNotFoundError:
                 raise AustinError("Executable not found.")
