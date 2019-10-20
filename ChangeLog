@@ -1,3 +1,17 @@
+2019-07-28 v1.0.0
+
+  Austin can now profile multi-process Python application:
+
+    When attaching Austin to an already running multi-process application it is
+    enough to provide the process ID of the parent process. Austin will then
+    discover all the child processes and profile those too.
+
+    To tell Austin to look for child processes, use the new -C switch from the
+    command line.
+
+  Austin can now profile Python 3.8 applications.
+
+
 2019-07-28 v0.7.0
 
   Austin can now profile memory usage and output samples to a file.

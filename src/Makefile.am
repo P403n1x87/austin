@@ -20,7 +20,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http:#www.gnu.org/licenses/>.
 
-AM_CFLAGS =-I$(top_srcdir)/src -Wall -O3
+AM_CFLAGS =-I$(top_srcdir)/src -Wall -O3 -pthread
 
 bin_PROGRAMS = austin
 austin_SOURCES = \
@@ -34,5 +34,6 @@ austin_SOURCES = \
   stats.c        \
   py_code.c      \
   py_frame.c     \
+  py_proc_list.c \
   py_proc.c      \
   py_thread.c

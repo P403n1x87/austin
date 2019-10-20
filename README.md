@@ -1,8 +1,8 @@
-<h1 align="center">
+<p align="center">
   <br>
-  <img src="art/austin_mark.png" alt="Austin">
+  <img src="art/austin_die_cut_sticker.png" alt="Austin">
   <br>
-</h1>
+</p>
 
 <h3 align="center">A Frame Stack Sampler for CPython</h3>
 
@@ -23,8 +23,12 @@
     <img src="https://build.snapcraft.io/badge/P403n1x87/austin.svg"
          alt="Snap Status">
   </a>
-  <img src="https://img.shields.io/badge/version-0.7.0-blue.svg"
-       alt="Version 0.7.0">
+  <a href="https://packages.debian.org/unstable/austin">
+    <img src="https://badges.debian.net/badges/debian/unstable/austin/version.svg"
+         alt="Debian package status">
+  </a>
+  <img src="https://img.shields.io/badge/version-1.0.0-blue.svg"
+       alt="Version 1.0.0">
   <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md">
     <img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg"
          alt="LICENSE">
@@ -57,57 +61,78 @@
   </a>
 </p>
 
+
 <!--
 
 ![austin](art/austin.png)
 
 <h3 align="center">A frame stack sampler for CPython</h3>
 
-[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-0.7.0-blue.svg) [![License](https://img.shields.io/badge/license-GPLv3-ff69b4.svg)](https://github.com/P403n1x87/austin/blob/master/LICENSE.md)
+[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg) [![License](https://img.shields.io/badge/license-GPLv3-ff69b4.svg)](https://github.com/P403n1x87/austin/blob/master/LICENSE.md)
 
 -->
+
+----
+
+<p align="center"><i>This is the nicest profiler I’ve found for Python. It’s
+cross-platform, doesn’t need me to change the code that’s being profiled, and
+its output can be piped directly into <code>flamegraph.pl</code>. I just used it
+to pinpoint a gross misuse of SQLAlchemy at work that’s run in some code at the
+end of each day, and now I can go home earlier.</i><br/><br/>-- gthm on <a
+href="https://lobste.rs/s/qairy5/austin_python_frame_stack_sampler_for">lobste.rs</a></p>
+
+<p align="center">
+<a href="https://twitter.com/AustinSampler">Follow <img src="art/austin_logo.svg" height="20px" /> on <img src="https://upload.wikimedia.org/wikipedia/en/thumb/9/9f/Twitter_bird_logo_2012.svg/1024px-Twitter_bird_logo_2012.svg.png" height="18px" alt="Twitter" /></a>
+</p>
+
+----
 
 
 # Synopsis
 
-Austin is a Python frame stack sampler for CPython written in pure C. It
-samples the stack traces of a Python application so that they can be visualised
-and analysed. As such, it serves the basis for building powerful profilers for
-Python.
+Austin is a Python frame stack sampler for CPython written in pure C. Samples
+are collected by reading the CPython interpreter virtual memory space in
+order to retrieve information about the currently running threads along with
+the stack of the frames that are being executed. Hence, one can use Austin to
+easily make powerful statistical profilers that have minimal impact on the
+target application and that don't require any instrumentation.
 
-Key features are:
-- no instrumentation required;
-- minimal impact on the performance of the profiling target;
-- fast and lightweight;
-- time and memory profiling modes.
 
-The most interesting use of Austin is probably in conjunction with
-[FlameGraph](https://github.com/brendangregg/FlameGraph) to profile Python
-applications while they are running, without the need of instrumentation. This
-means that Austin can be used on production code with little or even no impact
-on performance.
+The key features of Austin are:
+- Zero instrumentation;
+- Minimal impact;
+- Fast and lightweight;
+- Time and memory profiling;
+- Built-in support for multi-process applications (e.g. `mod_wsgi`).
 
-However, the output format can be grabbed from any other external tool for
-further processing. Look, for instance, at the following Python TUI, similar in
-spirit to [py-spy](https://github.com/benfred/py-spy).
+The simplest way to turn Austin into a full-fledged profiler is to combine it
+with [FlameGraph](https://github.com/brendangregg/FlameGraph). However, Austin's
+simple output format can be piped into any other external or custom tool for
+further processing. Look, for instance, at the following Python TUI
 
-<!-- ![tui](art/austin-tui_wip.png) -->
+
 <p align="center">
   <img src="art/austin-tui.png" />
 </p>
 
+Keep reading for more tools ideas and examples!
+
 
 # Installation
 
-Austin is available from the major software repositories of the most popular platforms.
+Austin is available from the major software repositories of the most popular
+platforms.
 
-On Linux, it can be installed using `autotools` or as a snap from the Snap Store. The
-latter will automatically perform the steps of the `autotools` method with a
-single command. On distributions derived from Debian, Austin can be installed from the official repositores with Aptitude.
+On Linux, it can be installed using `autotools` or as a snap from the Snap
+Store. The latter will automatically perform the steps of the `autotools` method
+with a single command. On distributions derived from Debian, Austin can be
+installed from the official repositores with Aptitude.
 
-On Windows, Austin can be easily installed from the command line from the Chocolatey repositories.
+On Windows, Austin can be easily installed from the command line from the
+Chocolatey repositories.
 
-For any other platform, compiling Austin from sources is as easy as cloning the repository and running the C compiler.
+For any other platform, compiling Austin from sources is as easy as cloning the
+repository and running the C compiler.
 
 ## With `autotools`
 
@@ -123,41 +148,30 @@ make
 make install
 ~~~
 
-Compilation has been tested with GNU GCC 7.3.0 on Linux, MinGW 2.28-1 on Windows
-and LLVM 8.0.0 with clang-800.0.42.1. The code is so simple that it really
-compiles with just
+Alternatively, sources can be compiled with just a C compiler (see below).
 
-~~~ bash
-gcc -O3 -Wall src/*.c -o src/austin
-~~~
-
-so you can use just this command if you don't have `autoreconf` installed.
-
-Add `-DDEBUG` if you want a more verbose syslog output on UNIX-like systems,
-or `%TEMP%/austin.log` on Windows.
 
 ## From the Snap Store
 
-Austin can be installed from the Snap Store with the following command
+Austin can be installed on [many major Linux
+distributions](https://snapcraft.io/docs/installing-snapd) from the Snap Store
+with the following command
 
 ~~~ bash
 sudo snap install austin --classic
 ~~~
 
-[![Get it from the Snap Store](https://snapcraft.io/static/images/badges/en/snap-store-white.svg)](https://snapcraft.io/austin)
 
+## On Debian and Derivatives
 
-## On Debian and derivatives
+On March 30 2019 Austin was accepted into the official Debian
+repositories and can therefore be installed with the `apt` utility.
 
-On March 30 2019, Austin has been accepted into the official Debian
-repositories and can therefore be installed with `apt`. The first Ubuntu
-release to include Austin is 19.10.
 
 ## From Chocolatey
 
-To install [Austin](https://chocolatey.org/packages/austin) from
-[Chocolatey](https://chocolatey.org/), run the following command from the
-command line or from PowerShell
+To install [Austin from Chocolatey](https://chocolatey.org/packages/austin), run
+the following command from the command line or from PowerShell
 
 ~~~ shell
 choco install austin
@@ -170,25 +184,35 @@ choco upgrade austin
 ~~~
 
 
-## From sources
+## From Sources
 
-To install Austin from sources using the GNU C compiler, without `autotools`, clone the repository with
+To install Austin from sources using the GNU C compiler, without `autotools`,
+clone the repository with
 
 ~~~ bash
 git clone --depth=1 https://github.com/P403n1x87/austin.git
 ~~~
 
-and then run
+On Linux one can then use the command
 
 ~~~ bash
-gcc -s -Wall -O3 -o src/austin src/*.c
+gcc -O3 -Wall -pthread src/*.c -o src/austin
 ~~~
 
-An extra flag is required on Windows, so the command to use in this case is
+whereas on Mac OS it is enough to run
 
 ~~~ bash
-gcc -s -Wall -O3 -o src/austin src/*.c -lpsapi
+gcc -O3 -Wall src/*.c -o src/austin
 ~~~
+
+On Windows, the `-lpsapi` switch is needed
+
+~~~ bash
+gcc -O3 -Wall -lpsapi src/*.c -o src/austin
+~~~
+
+Add `-DDEBUG` if you need a more verbose log. This is useful if you encounter a
+bug with Austin and you want to report it here.
 
 
 # Usage
@@ -198,6 +222,7 @@ Usage: austin [OPTION...] command [ARG...]
 Austin -- A frame stack sampler for Python.
 
   -a, --alt-format           Alternative collapsed stack sample format.
+  -C, --children             Attach to child processes.
   -e, --exclude-empty        Do not output samples of threads with no frame
                              stacks.
   -f, --full                 Produce the full set of metrics (time +mem -mem).
@@ -215,49 +240,71 @@ Austin -- A frame stack sampler for Python.
 
 Mandatory or optional arguments to long options are also mandatory or optional
 for any corresponding short options.
+
+Report bugs to <https://github.com/P403n1x87/austin/issues>.
 ~~~
 
 The output is a sequence of frame stack samples, one on each line. The format is
 the collapsed one that is recognised by
 [FlameGraph](https://github.com/brendangregg/FlameGraph) so that it can be piped
-to `flamegraph.pl` in order to produce flame graphs, or redirected to a file for
-some further processing.
-
-## Normal mode
+straight to `flamegraph.pl` for a quick visualisation, or redirected to a file
+for some further processing.
 
 By default, each line has the following structure:
 
 ~~~
-Thread [tid];[func] ([mod]);#[line no];[func] ...;L[line no] [usec]
+[Process <pid>;]?Thread <tid>[;[frame]]* [metric]*
 ~~~
 
-The reason why the line number is not included in the `([mod])` part, as done
-by py-spy, is that, this way, the flame graph will show the total time spent at
-each function, plus the finer detail of the time spent on each line. A drawback
-of this format is that frame stacks double in height. If you prefer something
-more conventional, you can use the `-a` option to switch to the alternative
-format
+where the presence of the process ID, the structure of `[frame]` and the number
+and type of metrics on each line depend on the mode.
+
+
+## Normal Mode
+
+When no special switch are passed to Austin from the command line, the process
+identifier is omitted and `[frame]` has the structure
 
 ~~~
-Thread [tid];[func] ([mod]:[line no]);#[line no];[func] ... ([mod]:[line no]) [usec]
+[frame] := <function> (<module>);L<line number>
 ~~~
 
-## Memory and Full modes
+The reason for not including the line number in the `([module])` part, as one
+might have expected, is that this way the flame graph will show the total time
+spent in each function, plus the finer detail of the time spent on each line. A
+drawback of this format is that frame stacks double in height. If you prefer
+something more conventional, you can use the `-a` option to switch to the
+alternative format in which `[frame]` has the structure
+
+~~~
+[frame] := <function> (<module>:<line number>)
+~~~
+
+Each line then ends with a single `[metric]`, i.e. the sampling time measured in
+microseconds.
+
+
+## Memory and Full Metrics
 
 When profiling in memory mode with the `-m` or `--memory` switch, the metric
 value at the end of each line is the memory delta between samples, measured in
-KB. In full mode (`-f` or `--full` switches), the last three values on each line
-are the time delta, any positive memory delta (memory allocations) or zero and
-any negative memory delta (memory releases) or zero, i.e.
+KB. In full mode (`-f` or `--full` switches), each samples ends with three
+values: the time delta, any positive memory delta (memory allocations) or zero
+and any negative memory delta (memory releases) or zero.
 
-~~~
-Thread [tid];[func] ([mod]:[line no]);#[line no];[func] ... ([mod]:[line no]) [usec] [+KB] [-KB]
-~~~
+
+## Multi-process Applications
+
+Austin can be told to profile multi-process applications with the `-C` or
+`--children` switch. This way Austin will look for new children of the parent
+process. In this case, each sample will contain the process identifier to help
+determine from which process the sample came from.
+
 
 ## Logging
 
 Austin uses `syslog` on Linux and Mac OS, and `%TEMP%\austin.log` on Windows
-for log messages so make sure to watch these to get execution details and
+for log messages, so make sure to watch these to get execution details and
 statistics. _Bad_ frames are output together with the other frames. In general,
 entries for bad frames will not be visible in a flame graph as all tests show
 error rates below 1% on average.
@@ -265,49 +312,21 @@ error rates below 1% on average.
 
 # Compatibility
 
-Austin has been tested on the following systems (both 32- and 64-bit, unless
-otherwise specified).
+Austin supports Python 2.3-2.7 and 3.3-3.8 and has been tested on the following
+platforms and architectures
+
+
+|| <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" /> | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/> | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" /> |
+|---         |---|---|---|
+| **x86_64** | ✓ | ✓ | ✓ |
+| **i686**   | ✓ |   | ✓ |
+| **arm**    | ✓ |   |   |
+| **armv7**  | ✓ |   |   |
+
 
 > **NOTE** Austin *might* work with other versions of Python on all the
 > platforms and architectures above. So it is worth giving it a try even if
 > your system is not listed below.
-
-
-## <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" /> Linux
-
-- Python 2.3 (2.3.7) on Ubuntu 18.04.1
-- Python 2.4 (2.4.6) on Ubuntu 18.04.1
-- Python 2.5 (2.5.6) on Ubuntu 18.04.1
-- Python 2.6 (2.6.9) on Ubuntu 18.04.1
-- Python 2.7 (2.7.15rc1) on Ubuntu 18.04.1
-
-- Python 3.3 (3.3.7) on Ubuntu 18.04.1
-- Python 3.4 (3.4.9+) on Ubuntu 18.04.1
-- Python 3.5 (3.5.2) on Ubuntu 18.04.1
-- Python 3.6 (3.6.5, 3.6.6, 3.6.7) on Ubuntu 18.04.x
-- Python 3.7 (3.7.0, 3.7.1, 3.7.3, 3.7.4) on Ubuntu 18.04.x
-
-
-## <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" /> Mac OS
-
-- Python 2.7 (2.7.10) on OS X "El Capitan" 10.11.4
-
-- Python 3.7 (3.7.0) on OS X "El Capitan" 10.11.4
-
-
-> Due to the introduction of the System Integrity Protection, Austin
-> cannot be used to profile Python applications that run using binaries located
-> in system folders. The simplest solution is to create a virtual environment
-> and use the local Python binaries instead.
-
-## <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/> Windows
-
-- Python 2.7 (2.7.13) on windows 10 64-bit
-
-- Python 3.6 (3.6.6) on Windows 10 64-bit
-- Python 3.7 (3.7.0) on Windows 10 64-bit
-
-- Python 3.6 (3.6.5, 3.6.6) on Ubuntu 18.04 x86-64 via WSL
 
 
 # Why <img src="art/austin_logo_black.svg" height="32px" /> Austin
@@ -340,87 +359,12 @@ need to be adjusted to new releases. However, given that Austin, like CPython,
 is written in C, implementing the new changes is rather straight-forward.
 
 
-<!-- TODO: These notes are slightly outdated
-
-# A Note on How Austin Works
-
-
-To understand how Python works internally in terms of keeping track of all the
-function calls, you can have a look at similar projects like
-[py-spy](https://github.com/benfred/py-spy) and follow the references therein
-(in particular the [pyflame](https://github.com/uber/pyflame) project).
-
-The approach taken by Austin is similar to py-spy in the sense that it too
-peeks at the process memory while it is running, instead of pausing it with
-`ptrace`.
-
-Austin forks itself and executes the program specified at the command line. It
-waits until python has mapped its memory and uses the information contained in
-`/proc/[pid]/maps` to retrieve the location of the binary. It then looks at its
-header in memory to find the location and size of the section header table and
-maps the executable in memory.
-
-The next thing that we need is the Python version, which is contained in the
-`.rodata` section. It is located somewhere at the beginning of it, but since we
-don't know exactly where, we scan for a string that looks like a Python version.
-Based on the result we determine how to proceed, as the next step are, in
-general, dependant on the Python release (due to changes in the ABI that can
-happen even across different minor versions). For the time being, only version
-3.6 is supported.
-
-In order to get to the interpreter state, we can choose between two approaches.
-One is to scan the `.bss` section multiple times until we find a pointer to the
-heap that points to an instance of `PyInterpreterState`. To determine whether it
-is a valid pointer or not we can use the relation between `PyInterpreterState`
-and the `PyThreadState` it points to with the `tstate_head` field. Indeed, the
-`PyThreadState` instance has a field, `interp`, that points back to the
-`PyInterpreterState` instance. So, if we find this cyclic reference, we can be
-quite certain that we have found the `PyInterpreterState` instance that we were
-looking for.
-
-Another approach is to look for the `_PyThreadState_Current` symbol in the
-`.dynsym` section, which is just a pointer to an instance of `PyThreadState`,
-and watch its de-referenced value until it points to a valid
-`PyInterpreterState` instance. For the check we can use the same criterion as
-before, bearing in mind that, in principle, the `tstate_head` of
-`PyInterpreterState` can point to some other instance of `PyThreadState`.
-
-At this point we are ready to navigate all the threads and traverse their frame
-stacks at regular interval of times to sample them.
-
-Starting with Python 3.7, the symbol `_PyRuntime` is exposed in the `.dynsym`
-section. This is a pointer to an internal structure of type `_PyRuntimeState`.
-The sub-field `interpreters.head` points to the head `PyInterpreterState`
-instance that can then be de-referenced directly.
-
-## Concurrency
-
-Since the python process being sampled is not stopped, but a snapshot of its
-threads and frame stacks is taken on the fly, some samples might end up being
-invalid. Given that the Austin is written in pure C, it is bound to outperform
-the Python process and give statistically reliable result at high sampling
-rates.
-
-Plans for the future involve the development of a hybrid mode that would allow
-Austin to determine whether it is the case to pause the Python process in case
-of a high invalid rate. Such a mode should be implemented judiciously, as even
-when pausing the Python process there is no guarantee that one can read a valid
-interpreter state. For example, it can easily happen that Austin decides to
-pause the Python process while CPython is in the middle of updating the frame
-stack. In this case, we would still read some potentially invalid or stale
-memory references. A solution is to step over a few instructions and try again,
-but even this approach doesn't guarantee 100% accuracy. It might be that a new
-read now succeeds, but there is no way of telling whether the references are
-genuine or not.
-
--->
-
 # Examples
 
 The following flame graph has been obtained with the command
 
-~~~
-./austin -i 50 ./test.py | ./flamegraph.pl --countname=us > test.svg
+~~~ bash
+austin -i 50 ./test.py | ./flamegraph.pl --countname=us > test.svg
 ~~~
 
 where the sample `test.py` script has the following content
@@ -436,6 +380,16 @@ for i in range(1000):
   <img src="art/process_iter_fg.svg" style="width:100%;"/>
 </object>
 
+To profile Apache2 WSGI application, one can attach Austin to the web server
+with
+
+~~~ bash
+austin -Cp `pgrep apache2 | head -n 1`
+~~~
+
+Any child processes will be automatically detected as they are created and
+Austin will sample them too.
+
 
 ## Austin TUI
 
@@ -447,7 +401,7 @@ application runs.
 If you want to give it a go you can install it using `pip` with
 
 ~~~ bash
-pip install git+https://github.com/P403n1x87/austin.git
+pip install git+https://github.com/P403n1x87/austin.git --upgrade
 ~~~
 
 and run it with
@@ -467,7 +421,7 @@ with the same command line as Austin.
 > page.
 
 <!-- ![austin-tui thread navigation](art/austin-tui_threads_nav.gif) -->
-<p align="center"><img src="art/austin-tui_threads_nav.gif" /></p>
+<p align="center"><img src="art/austin-tui_threads_nav.gif" style="box-shadow: #111 0px 0px 16px;"/></p>
 
 
 ## Web Austin
@@ -482,7 +436,7 @@ setting the `WEBAUSTIN_HOST` and `WEBAUSTIN_PORT` environment variables.
 If you want to give it a go you can install it using `pip` with
 
 ~~~ bash
-pip install git+https://github.com/P403n1x87/austin.git
+pip install git+https://github.com/P403n1x87/austin.git --upgrade
 ~~~
 
 and run it with
@@ -496,8 +450,32 @@ serves on `WEBAUSTIN_HOST` if set or on `localhost` otherwise. The port can be
 controlled with the `WEBAUSTIN_PORT` environment variable. If it is not set,
 Web Austin will use an ephemeral port.
 
-<p align="center"><img src="art/web-austin.gif" /></p>
+<p align="center"><img src="art/web-austin.gif" style="box-shadow: #111 0px 0px 16px;"/></p>
 
+
+## Speedscope
+
+Austin output format can be converted easily into the
+[Speedscope](speedscope.app) JSON format. You can find a sample utility along
+with the TUI and Austin Web.
+
+If you want to give it a go you can install it using `pip` with
+
+~~~ bash
+pip install git+https://github.com/P403n1x87/austin.git --upgrade
+~~~
+
+and run it with
+
+~~~ bash
+austin2speedscope [-h] [--indent INDENT] [-V] input output
+~~~
+
+where `input` is a file containing the output from Austin and `output` is the
+name of the JSON file to use to save the result of the conversion, ready to be
+used on [Speedscope](speedscope.app).
+
+<p align="center"><img src="art/speedscope.png" /></p>
 
 # Contribute
 
@@ -523,9 +501,9 @@ by [buying me a coffee](https://www.buymeacoffee.com/Q9C1Hnm28) on BMC
 or by chipping in a few pennies on
 [PayPal.Me](https://www.paypal.me/gtornetta/1).
 
+
 ----
 
-
-# License
-
-GNU GPLv3
+<p align="center">
+<a href="https://twitter.com/AustinSampler">Follow <img src="art/austin_logo.svg" height="20px" /> on <img src="https://upload.wikimedia.org/wikipedia/en/thumb/9/9f/Twitter_bird_logo_2012.svg/1024px-Twitter_bird_logo_2012.svg.png" height="18px" alt="Twitter" /></a>
+</p>

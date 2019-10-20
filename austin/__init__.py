@@ -10,58 +10,109 @@ from threading import Thread, Event
 import subprocess
 
 
+class AustinError(Exception):
+    pass
+
+
 class AustinArgumentParser(ArgumentParser):
+    def __init__(
+        self,
+        name="austin",
+        alt_format=True,
+        children=True,
+        exclude_empty=True,
+        full=True,
+        interval=True,
+        memory=True,
+        pid=True,
+        sleepless=True,
+        timeout=True,
+        command=True,
+        **kwargs,
+    ):
+        super().__init__(prog=name, **kwargs)
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        if bool(pid) != bool(command):
+            raise RuntimeError(
+                "Austin command line parser must have either pid or command."
+            )
 
-        self.add_argument(
-            "-a", "--alt-format",
-            help="alternative collapsed stack sample format.",
-            action="store_true",
-        )
+        if alt_format:
+            self.add_argument(
+                "-a",
+                "--alt-format",
+                help="Alternative collapsed stack sample format.",
+                action="store_true",
+            )
 
-        self.add_argument(
-            "-e", "--exclude-empty",
-            help="do not output samples of threads with no frame stacks.",
-            action="store_true",
-        )
+        if children:
+            self.add_argument(
+                "-C",
+                "--children",
+                help="Attach to child processes.",
+                action="store_true",
+            )
 
-        self.add_argument(
-            "-i", "--interval",
-            help="Sampling interval (default is 500us).",
-            type=int,
-        )
+        if exclude_empty:
+            self.add_argument(
+                "-e",
+                "--exclude-empty",
+                help="Do not output samples of threads with no frame stacks.",
+                action="store_true",
+            )
 
-        self.add_argument(
-            "-p", "--pid",
-            help="The the ID of the process to which Austin should attach.",
-            type=int,
-        )
+        if full:
+            self.add_argument(
+                "-f",
+                "--full",
+                help="Produce the full set of metrics (time +mem -mem).",
+                action="store_true",
+            )
 
-        self.add_argument(
-            "-s", "--sleepless",
-            help="suppress idle samples.",
-            action="store_true",
-        )
+        if interval:
+            self.add_argument(
+                "-i",
+                "--interval",
+                help="Sampling interval (default is 100us).",
+                type=int,
+            )
 
-        self.add_argument(
-            "-t", "--timeout",
-            help="Approximate start up wait time. Increase on slow machines (default is 100ms).",
-            type=int,
-        )
+        if memory:
+            self.add_argument(
+                "-m", "--memory", help="Profile memory usage.", action="store_true"
+            )
 
-        self.add_argument(
-            "command",
-            nargs="?",
-            help="The command to execute if no PID is provided, followed by its arguments."
-        )
+        if pid:
+            self.add_argument(
+                "-p",
+                "--pid",
+                help="The the ID of the process to which Austin should attach.",
+                type=int,
+            )
 
-        self.add_argument(
-            "args",
-            nargs="*",
-            help="The arguments for the command."
-        )
+        if sleepless:
+            self.add_argument(
+                "-s", "--sleepless", help="Suppress idle samples.", action="store_true"
+            )
+
+        if timeout:
+            self.add_argument(
+                "-t",
+                "--timeout",
+                help="Approximate start up wait time. Increase on slow machines (default is 100ms).",
+                type=int,
+            )
+
+        if command:
+            self.add_argument(
+                "command",
+                nargs="?",
+                help="The command to execute if no PID is provided, followed by its arguments.",
+            )
+
+            self.add_argument(
+                "args", nargs="*", help="Arguments to pass to the command to run."
+            )
 
     def parse_args(self, args):
         parsed_args = super().parse_args(args)
@@ -70,6 +121,34 @@ class AustinArgumentParser(ArgumentParser):
             raise RuntimeError("No PID or command given.")
 
         return parsed_args
+
+    @staticmethod
+    def to_list(args):
+        arg_list = []
+        if getattr(args, "alt_format", None):
+            arg_list.append("-a")
+        if getattr(args, "children", None):
+            arg_list.append("-C")
+        if getattr(args, "exclude_empty", None):
+            arg_list.append("-e")
+        if getattr(args, "full", None):
+            arg_list.append("-f")
+        if getattr(args, "interval", None):
+            arg_list += ["-i", str(args.interval)]
+        if getattr(args, "memory", None):
+            arg_list.append("-m")
+        if getattr(args, "pid", None):
+            arg_list += ["-p", str(args.pid)]
+        if getattr(args, "sleepless", None):
+            arg_list.append("-s")
+        if getattr(args, "timeout", None):
+            arg_list += ["-t", str(args.timeout)]
+        if getattr(args, "command", None):
+            arg_list.append(args.command)
+        if getattr(args, "args", None):
+            arg_list += args.args
+
+        return arg_list
 
 
 class BaseAustin(ABC):
@@ -84,9 +163,7 @@ class BaseAustin(ABC):
                 sample_callback if sample_callback else self.on_sample_received
             )
         except AttributeError as e:
-            raise RuntimeError(
-                "No sample callback given or implemented."
-            ) from e
+            raise RuntimeError("No sample callback given or implemented.") from e
 
     def post_process_start(self):
         if not self._pid or self._pid < 0:  # Austin is forking
@@ -94,9 +171,15 @@ class BaseAustin(ABC):
             while not austin_process.children():
                 pass
             child_process = austin_process.children()[0]
-            self._pid = child_process.pid
+            if child_process.pid is not None:
+                self._pid = child_process.pid
         else:  # Austin is attaching
-            child_process = psutil.Process(self._pid)
+            try:
+                child_process = psutil.Process(self._pid)
+            except psutil.NoSuchProcess:
+                raise AustinError(
+                    f"Cannot attach to process with PID {self._pid} because it does not seem to exist."
+                )
 
         self._child = child_process
         self._cmd_line = " ".join(child_process.cmdline())
@@ -129,9 +212,15 @@ class AsyncAustin(BaseAustin):
 
     def start(self, args, loop=None):
         async def _start():
-            self.proc = await asyncio.create_subprocess_exec(
-                "austin", *args, stdout=asyncio.subprocess.PIPE
-            )
+            try:
+                self.proc = await asyncio.create_subprocess_exec(
+                    "austin",
+                    *AustinArgumentParser.to_list(args),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
+            except FileNotFoundError:
+                raise AustinError("Executable not found.")
 
             self.post_process_start()
 
@@ -144,16 +233,15 @@ class AsyncAustin(BaseAustin):
                 data = await self.proc.stdout.readline()
                 if not data:
                     break
-                self._callback(data.decode('ascii').rstrip())
+                self._callback(data.decode("ascii").rstrip())
 
             # Wait for the subprocess exit
             await self.proc.wait()
             self._running = False
 
-        parsed_args = AustinArgumentParser().parse_args(args)
-
         try:
-            self._pid = parsed_args.pid
+            if args.pid is not None:
+                self._pid = args.pid
         except AttributeError:
             self._pid = -1
 
@@ -182,7 +270,10 @@ class AsyncAustin(BaseAustin):
         return True
 
     def join(self):
-        self._loop.run_until_complete(self._start_task)
+        try:
+            return self._loop.run_until_complete(self._start_task)
+        except asyncio.CancelledError:
+            pass
 
 
 class ThreadedAustin(BaseAustin, Thread):
@@ -200,25 +291,23 @@ class ThreadedAustin(BaseAustin, Thread):
             line = self.proc.stdout.readline()
             if not line:
                 break
-            self._callback(line.decode('ascii').rstrip())
+            self._callback(line.decode("ascii").rstrip())
 
         self.proc.wait()
         self._running = False
 
     def start(self, args):
-        parsed_args = AustinArgumentParser().parse_args(args)
-
         try:
-            self._pid = parsed_args.pid
+            self._pid = args.pid
         except AttributeError:
             self._pid = -1
 
-        self.proc = subprocess.Popen(
-            ["austin"] + args,
-            stdout=subprocess.PIPE,
-        )
+        self.proc = subprocess.Popen(["austin"] + args, stdout=subprocess.PIPE)
 
-        self.post_process_start()
+        try:
+            self.post_process_start()
+        except psutil.NoSuchProcess as e:
+            raise AustinError("Unable to start Austin.") from e
 
         Thread.start(self)
 
@@ -232,6 +321,7 @@ class ThreadedAustin(BaseAustin, Thread):
 # ---- TEST -------------------------------------------------------------------
 
 if __name__ == "__main__":
+
     class MyAsyncAustin(AsyncAustin):
         def on_sample_received(self, line):
             print(line)
@@ -242,7 +332,6 @@ if __name__ == "__main__":
         austin.join()
     except KeyboardInterrupt:
         print("Bye!")
-
 
     class MyThreadedAustin(ThreadedAustin):
         def on_sample_received(self, line):

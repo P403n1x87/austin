@@ -9,43 +9,21 @@ invoke_austin() {
 
     # -------------------------------------------------------------------------
 
-    echo "  :: Standard profiling"
-    run src/austin -i 1000 -t 10000 python$1 test/target34.py
+    echo "  :: Profiling of multi-process program"
+    run src/austin -i 10000 -C python$1 test/target_mp.py
 
     echo "       Exit code: $status"
     if [ $status != 0 ]; then continue; fi
 
-    if ! echo "$output" | grep -q "keep_cpu_busy (test/target34.py);L" \
-    || echo "$output" | grep -q "Unwanted"
-    then
-      continue
-    fi
-    echo "       Output: OK"
+    echo "       - Check expected number of processes."
+    expected=3
+    n_procs=$( echo "$output" | sed -r 's/Process ([0-9]+);.+/\1/' | sort | uniq | wc -l )
+    echo "         Expected $expected and got $n_procs"
+    if [ $n_procs != $expected ]
+    then continue; fi
 
-    # -------------------------------------------------------------------------
-
-    echo "  :: Memory profiling"
-    run src/austin -i 1000 -t 10000 -m python$1 test/target34.py
-
-    echo "       Exit code: $status"
-    if [ $status != 0 ]; then continue; fi
-
-    if ! echo "$output" | grep -q "keep_cpu_busy (test/target34.py);L"
-    then
-      continue
-    fi
-    echo "       Output: OK"
-
-    # -------------------------------------------------------------------------
-
-    echo "  :: Output file"
-    run src/austin -i 10000 -t 10000 -o /tmp/austin_out.txt python$1 test/target34.py
-
-    echo "       Exit code: $status"
-    if [ $status != 0 ]; then continue; fi
-
-    if ! echo "$output" | grep -q "Unwanted" \
-    || cat /tmp/austin_out.txt | grep -q "keep_cpu_busy (test/target34.py);L"
+    echo "       - Check output contains frames."
+    if echo "$output" | grep -q "do (test/target_mp.py);L[[:digit:]]*;fact (test/target_mp.py);L"
     then
       echo "       Output: OK"
       return
@@ -61,7 +39,7 @@ invoke_austin() {
     echo "================"
     echo
     echo "$output"
-    echo
+    echo 
     false
   fi
 }
@@ -70,20 +48,18 @@ invoke_austin() {
 # -----------------------------------------------------------------------------
 
 
-teardown() {
-  if [ -f /tmp/austin_out.txt ]; then rm /tmp/austin_out.txt; fi
-}
-
-
 @test "Test Austin with Python 2.3" {
-	invoke_austin "2.3" ignore
+  skip "Multiprocessing library introduced in Python 2.6"
+	invoke_austin "2.3"
 }
 
 @test "Test Austin with Python 2.4" {
-	invoke_austin "2.4" ignore
+  skip "Multiprocessing library introduced in Python 2.6"
+	invoke_austin "2.4"
 }
 
 @test "Test Austin with Python 2.5" {
+  skip "Multiprocessing library introduced in Python 2.6"
 	invoke_austin "2.5"
 }
 

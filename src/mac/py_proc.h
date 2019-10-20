@@ -64,6 +64,7 @@ struct _proc_extra_info {
   mach_port_t task_id;
 };
 
+
 // ----------------------------------------------------------------------------
 static int
 _py_proc__analyze_macho64(py_proc_t * self, void * map) {
@@ -273,7 +274,7 @@ static mach_port_t
 pid_to_task(pid_t pid) {
   mach_port_t task;
   if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
-    log_f("Insufficient permissions to call task_for_pid.");
+    log_e("Insufficient permissions to call task_for_pid.");
     error = EPROCPERM;
     return 0;
   }
@@ -366,9 +367,6 @@ static int
 _py_proc__init(py_proc_t * self) {
   if (self == NULL)
     return 1;
-
-  if (self->extra == NULL)
-    self->extra = (proc_extra_info *) malloc(sizeof(proc_extra_info));
 
   return _py_proc__get_maps(self);
 }

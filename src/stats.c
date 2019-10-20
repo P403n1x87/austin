@@ -110,11 +110,14 @@ stats_get_avg_sampling_time(void) {
 
 
 void
-stats_check_error(void) {
+stats_count_sample(void) {
   _sample_cnt++;
+}
 
-  if (error != EOK)
-    _error_cnt++;
+
+void
+stats_count_error(void) {
+  _error_cnt++;
 }
 
 
@@ -136,6 +139,11 @@ stats_check_duration(ctime_t delta, ctime_t sampling_interval) {
 
 void
 stats_log_metrics(void) {
+  if (!_sample_cnt) {
+    log_i("No samples collected.");
+    return;
+  }
+
   log_i("Sampling time statistics (min/avg/max) : %lu/%lu/%lu us",
     stats_get_min_sampling_time(),
     stats_get_avg_sampling_time(),

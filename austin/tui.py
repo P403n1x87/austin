@@ -4,21 +4,67 @@ import time
 
 from austin import AsyncAustin
 from austin.stats import Stats
-from austin.widget import CommandBar, Label, Line, Table, Window
+from austin.widget import BarPlot, CommandBar, Label, Line, Table, TaggedLabel, Window
 
-# Widget positions
-TITLE_LINE = 0
-PROC_LINE = TITLE_LINE + 2
-THREAD_LINE = PROC_LINE + 1
-SAMPLES_LINE = THREAD_LINE + 1
-TABHEAD_LINE = THREAD_LINE + 2
-TAB_START = TABHEAD_LINE + 1
+
+# ---- Widget Positions -------------------------------------------------------
+
+TITLE_LINE = (0, 0)
+LOGO = (1, 0)
+LOGO_WIDTH = 13
+INFO_AREA_X = LOGO_WIDTH + 1
+
+PID = (TITLE_LINE[0] + 1, INFO_AREA_X)
+
+CMD_LINE = (PID[0], INFO_AREA_X + 12)
+
+THREAD = (PID[0] + 1, INFO_AREA_X)
+THREAD_NUM = (PID[0] + 1, INFO_AREA_X + 24)
+THREAD_TOTAL = (PID[0] + 1, INFO_AREA_X + 31)
+
+SAMPLES = (THREAD[0] + 1, INFO_AREA_X)
+
+DURATION = (SAMPLES[0], INFO_AREA_X + 18)
+
+CPU = (THREAD[0], INFO_AREA_X + 40)
+CPU_PLOT = (THREAD[0], INFO_AREA_X + 54)
+
+MEM = (SAMPLES[0], INFO_AREA_X + 40)
+MEM_PLOT = (SAMPLES[0], INFO_AREA_X + 54)
+
+TABHEAD_LINE = (THREAD[0] + 2, 0)
+TAB_START = (TABHEAD_LINE[0] + 1, 0)
 
 TABHEAD_TEMPLATE = " {:^6}  {:^6}  {:^6}  {:^6}  {}"
 TABHEAD_FUNCTION_PAD = len(TABHEAD_TEMPLATE.format("", "", "", "", ""))
 
 
+# ---- Color Palette ----------------------------------------------------------
+
+
+class Color:
+    INACTIVE = 1
+    HEAT_ACTIVE = 10
+    HEAT_INACTIVE = 20
+    RUNNING = 2
+    STOPPED = 3
+    CPU = 4
+    MEMORY = 5
+    THREAD = 6
+
+
+PALETTE = {
+    Color.INACTIVE: (246, -1),
+    Color.RUNNING: (10, -1),
+    Color.STOPPED: (1, -1),
+    Color.CPU: (curses.COLOR_BLUE, -1),  # 17
+    Color.MEMORY: (curses.COLOR_GREEN, -1),  # 22
+    Color.THREAD: (11, -1),  # 22
+}
+
+
 # ---- Local Helpers ----------------------------------------------------------
+
 
 def ell(text, length, sep=".."):
     if len(text) <= length:
@@ -32,7 +78,7 @@ def ell(text, length, sep=".."):
     a = len(sep) >> 1
     b = len(sep) - a
 
-    return text[:n - b - 1] + sep + text[-m + a - 1:]
+    return text[: n - b - 1] + sep + text[-m + a - 1 :]
 
 
 def ellipsis(text, length):
@@ -45,31 +91,26 @@ def ellipsis(text, length):
         f, rest = text, ""
 
     if len(f) > length:
-        return f[:length-3]+"..."
+        return f[: length - 3] + "..."
 
     if len(f) + 6 <= length:
         length -= len(f) + 1
-        return f + " " + rest[:(length >> 1)-2] + "..." + \
-            rest[-(length >> 1) + 1:]
+        return f + " " + rest[: (length >> 1) - 2] + "..." + rest[-(length >> 1) + 1 :]
 
     return f
 
 
 def fmt_time(s):
-    m = int(s // 60)
-    ret = '{:02d}"'.format(round(s) % 60)
+    m = int(s // 60e6)
+    ret = '{:02d}"'.format(round(s / 1e6) % 60)
     if m:
         ret = str(m) + "'" + ret
 
     return ret
 
 
-class Color:
-    INACTIVE = 1
-    HEAT_ACTIVE = 10
-    HEAT_INACTIVE = 20
-    RUNNING = 2
-    STOPPED = 3
+def fmt_mem(s):
+    return f"{int(s)>>10: 5d}"
 
 
 def color_level(p, a=True):
@@ -79,8 +120,8 @@ def color_level(p, a=True):
 
 # ---- AustinTUI --------------------------------------------------------------
 
-class AustinTUI(Window):
 
+class AustinTUI(Window):
     def __init__(self, *args):
         super().__init__(*args)
 
@@ -91,109 +132,167 @@ class AustinTUI(Window):
         self.current_thread = None
         self.current_thread_index = None
         self.duration = 0
+        self.max_memory = 0
+        self.current_cpu = 0
+        self.current_memory = 0
         self.is_full_view = False
 
-        # ---- Header ---------------------------------------------------------
+        # ---- Logo -----------------------------------------------------------
 
-        self.add_child("title_line", Line(
-            TITLE_LINE, 0,
-            "Austin -- Frame stack sampler for CPython."
-        ))
+        self.add_child("title_line", Line(*TITLE_LINE, "  Austin TUI", curses.A_BOLD))
 
-        self.add_child("pid_label", Label(PROC_LINE, 0, "PID"))
-        self.add_child("pid", Label(
-            PROC_LINE, 5,
-            lambda: "{:5}".format(self.austin.get_pid()),
-            curses.A_BOLD
-        ))
-        self.add_child("pid_status", Label(
-            PROC_LINE, 11,
-            "◉",
-            lambda: curses.color_pair(
-                Color.RUNNING if self.austin.is_running() else Color.STOPPED
-            )
-        ))
-
-        self.add_child("cmd_line_label", Label(PROC_LINE, 14, "CMD"))
-        self.add_child("cmd_line", Label(
-            PROC_LINE, 19,
-            lambda: ell(self.austin.get_cmd_line(), self.get_size()[1] - 19),
-            curses.A_BOLD
-        ))
-
-        self.add_child("thread_name", Label(
-            THREAD_LINE, 0,
-            lambda: "{:24}".format(
-                self.current_thread if self.current_thread else "Sampling ..."
-        )))
-        self.add_child("thread_total", Label(
-            THREAD_LINE, 31,
-            lambda: "of {:^5}".format(
-                len(self.current_threads) if self.current_threads else 0
-        )))
-
-        self.add_child("thread_num", Label(
-            THREAD_LINE, 24,
-            lambda: "{:^5}".format(
-                self.current_thread_index + 1
-                if self.current_thread_index is not None
-                else ""
+        self.add_child(
+            "logo",
+            Label(
+                *LOGO,
+                ["  _________  ", "  ⎝__⎠ ⎝__⎠  "],
+                lambda: curses.color_pair(
+                    (Color.RUNNING if self.austin.is_running() else Color.STOPPED)
+                )
+                | curses.A_BOLD,
             ),
-            attr=curses.A_REVERSE
-        ))
-
-        self.add_child("samples_label", Label(
-            SAMPLES_LINE, 0,
-            "Samples"
-            )
         )
-        self.add_child("samples_count", Label(
-            SAMPLES_LINE, 7,
-            lambda: "{:8}".format(self.stats.samples),
-            attr = curses.A_BOLD
-        ))
 
-        self.add_child("duration_label", Label(
-            SAMPLES_LINE, 18,
-            "Duration"
-            )
+        # ---- Process Information --------------------------------------------
+
+        self.add_child(
+            "pid",
+            TaggedLabel(
+                *PID,
+                tag=(lambda: "PPID" if self.args.children else "PID", 0),
+                text=lambda: "{:5}".format(self.austin.get_pid()),
+                attr=curses.A_BOLD,
+            ),
         )
-        self.add_child("duration", Label(
-            SAMPLES_LINE, 26,
-            lambda: "{:>8}".format(fmt_time(int(self.duration))),
-            attr = curses.A_BOLD
-        ))
 
-        self.add_child("cpu_label", Label(THREAD_LINE, 40, "CPU"))
-        self.add_child("cpu", Label(
-            THREAD_LINE, 44,
-            lambda: "{: >4}%".format(
-                int(self.austin.get_child().cpu_percent())
-                if self.austin.is_running() else
-                ""
-            ),
-            attr = curses.A_BOLD
-        ))
+        # ---- Command Line ---------------------------------------------------
 
-        self.add_child("mem_label", Label(SAMPLES_LINE, 40, "MEM"))
-        self.add_child("mem", Label(
-            SAMPLES_LINE, 44,
-            lambda: "{: >4}MB".format(
-                self.austin.get_child().memory_full_info()[0] >> 20
-                if self.austin.is_running() else
-                ""
+        self.add_child(
+            "cmd_line",
+            TaggedLabel(
+                *CMD_LINE,
+                tag=("CMD", 0),
+                text=lambda: ell(self.austin.get_cmd_line(), self.get_size()[1] - 19),
+                attr=curses.A_BOLD,
             ),
-            attr = curses.A_BOLD
-        ))
+        )
+
+        # ---- Threads --------------------------------------------------------
+
+        self.add_child(
+            "thread_name",
+            TaggedLabel(
+                *THREAD,
+                tag=(
+                    lambda: (
+                        "{}TID".format("PID:" if self.args.children else "")
+                        if self.current_thread
+                        else "Sampling ..."
+                    ),
+                    0,
+                ),
+                text=lambda: "{:24}".format(self.current_thread or ""),
+                attr=curses.A_BOLD,
+            ),
+        )
+
+        self.add_child(
+            "thread_total",
+            Label(
+                *THREAD_TOTAL,
+                lambda: "of {:^5}".format(
+                    len(self.current_threads) if self.current_threads else 0
+                ),
+            ),
+        )
+
+        self.add_child(
+            "thread_num",
+            Label(
+                *THREAD_NUM,
+                lambda: "{:5}".format(
+                    self.current_thread_index + 1
+                    if self.current_thread_index is not None
+                    else ""
+                ),
+                attr=curses.color_pair(Color.THREAD) | curses.A_BOLD,
+            ),
+        )
+
+        # ---- Samples --------------------------------------------------------
+
+        self.add_child(
+            "samples",
+            TaggedLabel(
+                *SAMPLES,
+                lambda: "{:8}".format(self.stats.samples),
+                tag=("Samples", 0),
+                attr=curses.A_BOLD,
+            ),
+        )
+
+        # ---- Duration -------------------------------------------------------
+
+        self.add_child(
+            "duration",
+            TaggedLabel(
+                *DURATION,
+                tag=("Duration", 0),
+                text=lambda: "{:>8}".format(fmt_time(int(self.duration * 1e6))),
+                attr=curses.A_BOLD,
+            ),
+        )
+
+        # ---- CPU ------------------------------------------------------------
+
+        self.add_child(
+            "cpu",
+            TaggedLabel(
+                *CPU,
+                tag=("CPU", 0),
+                text=lambda: "{: >5}%".format(
+                    self.current_cpu if self.austin.is_running() else ""
+                ),
+                attr=curses.A_BOLD,
+            ),
+        )
+
+        self.add_child(
+            "cpu_plot",
+            BarPlot(*CPU_PLOT, scale=100, init=0, attr=curses.color_pair(Color.CPU)),
+        )
+
+        # ---- Memory ---------------------------------------------------------
+
+        self.add_child(
+            "mem",
+            TaggedLabel(
+                *MEM,
+                tag=("MEM", 0),
+                text=lambda: "{: >5}M".format(
+                    self.current_memory if self.austin.is_running() else ""
+                ),
+                attr=curses.A_BOLD,
+            ),
+        )
+
+        self.add_child(
+            "mem_plot", BarPlot(*MEM_PLOT, init=0, attr=curses.color_pair(Color.MEMORY))
+        )
 
         # ---- Footer ---------------------------------------------------------
 
-        self.add_child("cmd_bar", CommandBar({
-            "Exit": " Q ",
-            "PrevThread": "PgUp",
-            "NextThread": "PgDn",
-            "ToggleFullView": " F ",
-        }))
+        self.add_child(
+            "cmd_bar",
+            CommandBar(
+                {
+                    "Exit": " Q ",
+                    "PrevThread": "PgUp",
+                    "NextThread": "PgDn",
+                    "ToggleFullView": " F ",
+                }
+            ),
+        )
 
         # Conect signal handlers
         self.connect("q", self.on_quit)
@@ -203,43 +302,44 @@ class AustinTUI(Window):
 
         # ---- Table ----------------------------------------------------------
 
-        self.add_child("table_header", Line(
-            TABHEAD_LINE, 0,
-            TABHEAD_TEMPLATE.format(
-                "OWN",
-                "TOTAL",
-                "%OWN",
-                "%TOTAL",
-                "FUNCTION"
-                ),
-            curses.A_REVERSE | curses.A_BOLD
-        ))
-        self.add_child("table_pad", Table(
-            size_policy=lambda: [
-                (h - TAB_START - self.cmd_bar.get_height(), w) for h, w in [self.get_size()]
-            ][0],
-            position_policy=lambda: (TAB_START, 0),
-            columns=[" {:^6} ", " {:^6} ", " {:5.2f}% ", " {:5.2f}% ", " {}"],
-            data_policy=self.generate_data,
-            hook=self.draw_tree
-        ))
+        self.add_child(
+            "table_header",
+            Line(
+                *TABHEAD_LINE,
+                TABHEAD_TEMPLATE.format("OWN", "TOTAL", "%OWN", "%TOTAL", "FUNCTION"),
+                curses.A_REVERSE | curses.A_BOLD,
+            ),
+        )
+        self.add_child(
+            "table_pad",
+            Table(
+                size_policy=lambda: [
+                    (h - TAB_START[0] - self.cmd_bar.get_height(), w)
+                    for h, w in [self.get_size()]
+                ][0],
+                position_policy=lambda: (TAB_START[0], 0),
+                columns=[" {:^6} ", " {:^6} ", " {:5.2f}% ", " {:5.2f}% ", " {}"],
+                data_policy=self.generate_data,
+                hook=self.draw_tree,
+            ),
+        )
 
         # ---- END OF UI DEFINITION -------------------------------------------
 
     def __enter__(self):
         super().__enter__()
 
-        curses.init_pair(Color.INACTIVE, 246, -1)
-        curses.init_pair(Color.RUNNING, 10, -1)
-        curses.init_pair(Color.STOPPED, 1, -1)
+        for color, values in PALETTE.items():
+            curses.init_pair(color, *values)
+
         j = Color.HEAT_ACTIVE
         for i in [-1, 226, 208, 202, 196]:
             curses.init_pair(j, i, -1)
-            j+=1
+            j += 1
         j = Color.HEAT_INACTIVE
         for i in [246, 100, 130, 94, 88]:
             curses.init_pair(j, i, -1)
-            j+=1
+            j += 1
 
         return self
 
@@ -255,8 +355,7 @@ class AustinTUI(Window):
         if self.current_threads:
             if self.current_thread_index < len(self.current_threads) - 1:
                 self.current_thread_index += 1
-                self.current_thread = \
-                    self.current_threads[self.current_thread_index]
+                self.current_thread = self.current_threads[self.current_thread_index]
 
                 self.refresh()
 
@@ -264,8 +363,7 @@ class AustinTUI(Window):
         if self.current_threads:
             if self.current_thread_index > 0:
                 self.current_thread_index -= 1
-                self.current_thread = \
-                    self.current_threads[self.current_thread_index]
+                self.current_thread = self.current_threads[self.current_thread_index]
 
                 self.refresh()
 
@@ -279,6 +377,28 @@ class AustinTUI(Window):
         ratio = time / 1e4 / self.duration
         return ratio, color_level(ratio, active)
 
+    def scale_memory(self, memory, active=True):
+        ratio = (memory >> 10) / self.max_memory * 100
+        return ratio, color_level(ratio, active)
+
+    def get_current_cpu(self):
+        if not self.austin.is_running():
+            return 0
+
+        value = int(self.austin.get_child().cpu_percent())
+        self.current_cpu = value
+        return value
+
+    def get_current_memory(self):
+        if not self.austin.is_running():
+            return 0
+
+        value = self.austin.get_child().memory_full_info()[0] >> 20
+        self.current_memory = value
+        if value > self.max_memory:
+            self.max_memory = value
+        return value
+
     def current_data(self):
         stacks = self.stats.get_current_stacks()
         if not stacks:
@@ -290,14 +410,24 @@ class AustinTUI(Window):
             return []
 
         _, w = self.table_pad.get_inner_size()
+
         return [
             (
-                [fmt_time(frame["own_time"] / 1e6), 0],
-                [fmt_time(frame["tot_time"] / 1e6), 0],
-                self.scale_time(frame["own_time"]),
-                self.scale_time(frame["tot_time"]),
-                [ellipsis(frame["function"], w - TABHEAD_FUNCTION_PAD), 0]
-            ) for frame in stack
+                [self.formatter(frame["own_time"]), 0],
+                [self.formatter(frame["tot_time"]), 0],
+                self.scaler(frame["own_time"]),
+                self.scaler(frame["tot_time"]),
+                [
+                    ellipsis(
+                        frame["function"][:-1] + ":" + frame["line_number"] + ")"
+                        if self.args.linenos
+                        else frame["function"],
+                        w - TABHEAD_FUNCTION_PAD,
+                    ),
+                    0,
+                ],
+            )
+            for frame in stack
         ]
 
     def full_data(self):
@@ -309,14 +439,23 @@ class AustinTUI(Window):
 
             a = getattr(node, "is_active", False)
             attr = curses.color_pair(1) if not a else 0
-            line = (
-                [fmt_time(node.own_time / 1e6), attr],
-                [fmt_time(node.total_time / 1e6), attr],
-                self.scale_time(node.own_time, a),
-                self.scale_time(node.total_time, a),
-                [ellipsis(node.function, name_len - 1), attr],
+            line_store.append(
+                (
+                    [self.formatter(node.own_time), attr],
+                    [self.formatter(node.total_time), attr],
+                    self.scaler(node.own_time, a),
+                    self.scaler(node.total_time, a),
+                    [
+                        ellipsis(
+                            node.function[:-1] + ":" + node.line_number + ")"
+                            if self.args.linenos
+                            else node.function,
+                            name_len - 1,
+                        ),
+                        attr,
+                    ],
+                )
             )
-            line_store.append(line)
 
         def add_children(nodes, level=2):
             if not nodes:
@@ -384,16 +523,11 @@ class AustinTUI(Window):
         if not self.current_threads:
             return []
 
-        if (
-            not self.current_thread or
-            self.current_thread not in self.current_threads
-        ):
+        if not self.current_thread or self.current_thread not in self.current_threads:
             self.current_thread = self.current_threads[0]
             self.current_thread_index = 0
 
-        self.current_thread_index = self.current_threads.index(
-            self.current_thread
-        )
+        self.current_thread_index = self.current_threads.index(self.current_thread)
 
         if self.is_full_view:
             return self.full_data()
@@ -416,33 +550,51 @@ class AustinTUI(Window):
                 except curses.error:
                     pass
 
-                await asyncio.sleep(.015)
+                await asyncio.sleep(0.015)
 
         async def update_loop():
             while True:
-                if self.austin.is_running():
-                    self.duration = time.time() - self.start_time
+                self.duration = time.time() - self.start_time
+                self.get_child("cpu_plot").push(self.get_current_cpu())
+                self.get_child("mem_plot").push(self.get_current_memory())
                 self.refresh()
                 scr.refresh()
-                
+
+                if not self.austin.is_running():
+                    break
+
                 await asyncio.sleep(1)
 
         try:
-            self.austin.get_event_loop().run_until_complete(
+            done, pending = self.austin.get_event_loop().run_until_complete(
                 asyncio.wait(
-                    (input_loop(), update_loop()),
-                    return_when=asyncio.FIRST_EXCEPTION
+                    (input_loop(), update_loop()), return_when=asyncio.FIRST_EXCEPTION
                 )
             )
+            for task in done:
+                task.result()
         except asyncio.CancelledError:
             pass
 
     def start(self, args):
         # Fork Austin
         self.austin.start(args)
+        self.args = args
+
+        self.get_child("title_line").set_text(
+            " Austin  TUI  {} Profile".format("Memory" if args.memory else "Time")
+        )
+
+        # Set scaler and formatter
+        self.formatter, self.scaler = (
+            (fmt_mem, self.scale_memory) if args.memory else (fmt_time, self.scale_time)
+        )
+
         self.refresh()
-        if self.austin.wait(1):
-            self.run(self._scr)
-        else:
-            print("Austin took too long to start. Terminating...")
-            exit(1)
+        try:
+            if self.austin.wait(1):
+                self.run(self._scr)
+            else:
+                raise AustinError("Took too long to start.")
+        finally:
+            self.austin.join()

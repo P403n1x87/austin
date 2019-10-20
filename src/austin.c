@@ -37,138 +37,120 @@
 
 #include "py_frame.h"
 #include "py_proc.h"
+#include "py_proc_list.h"
 #include "py_thread.h"
 
 
-static ctime_t t_sample;  // Checkmark for sampling duration calculation
+// ---- TIMING ----------------------------------------------------------------
+
+static ctime_t _sample_timestamp;
 
 
-// ---- HELPERS ---------------------------------------------------------------
-
-// ----------------------------------------------------------------------------
-static int
-_print_collapsed_stack(py_thread_t * thread, ctime_t delta, ssize_t mem_delta) {
-  if (!pargs.full && pargs.memory && mem_delta <= 0)
-    return 1;
-
-  if (thread->invalid) {
-    fprintf(pargs.output_file, "Thread %lx;Bad sample %ld\n", thread->tid, delta);
-    return 0;
-  }
-
-  py_frame_t * frame = py_thread__first_frame(thread);
-
-  if (frame == NULL && pargs.exclude_empty)
-    // Skip if thread has no frames and we want to exclude empty threads
-    return 1;
-
-  // Group entries by thread.
-  fprintf(pargs.output_file, "Thread %lx", thread->tid);
-
-  // Append frames
-  while(frame != NULL) {
-    py_code_t * code = frame->code;
-    if (pargs.sleepless && strstr(code->scope, "wait") != NULL) {
-      delta = 0;
-      fprintf(pargs.output_file, ";<idle>");
-      break;
-    }
-    fprintf(pargs.output_file, pargs.format, code->scope, code->filename, code->lineno);
-
-    frame = frame->next;
-  }
-
-  // Finish off sample with the metric(s)
-  if (pargs.full) {
-    fprintf(pargs.output_file, " %lu %ld %ld\n",
-      delta, mem_delta >= 0 ? mem_delta : 0, mem_delta < 0 ? mem_delta : 0
-    );
-  }
-  else {
-    if (pargs.memory)
-      fprintf(pargs.output_file, " %ld\n", mem_delta);
-    else
-      fprintf(pargs.output_file, " %lu\n", delta);
-  }
-
-  return 0;
-}
+static void
+timer_start(void) {
+  _sample_timestamp = gettime();
+} /* timer_start */
 
 
-// ----------------------------------------------------------------------------
-static int
-_py_proc__sample(py_proc_t * py_proc) {
-  ctime_t   delta     = gettime() - t_sample;
-  ssize_t   mem_delta = 0;
-  void    * current_thread;
-  int       sample_printed = 0;
-  error = EOK;
+static void
+timer_stop(void) {
+  ctime_t delta = gettime() - _sample_timestamp;
 
-  PyInterpreterState is;
-  if (py_proc__get_type(py_proc, py_proc->is_raddr, is) != 0)
-    return 1;
+  // Record stats
+  stats_check_duration(delta, pargs.t_sampling_interval);
 
-  if (is.tstate_head != NULL) {
-    raddr_t       raddr        = { .pid = py_proc->pid, .addr = is.tstate_head };
-    py_thread_t * py_thread    = py_thread_new_from_raddr(&raddr);
-    py_thread_t * first_thread = py_thread;
-
-    if (pargs.memory) {
-      // Use the current thread to determine which thread is manipulating memory
-      current_thread = py_proc__get_current_thread_state_raddr(py_proc);
-    }
-
-    while (py_thread != NULL) {
-      if (pargs.memory) {
-        mem_delta = 0;
-        if (py_proc->py_runtime_raddr != NULL && current_thread == (void *) -1) {
-          if (py_proc__find_current_thread_offset(py_proc, py_thread->raddr.addr))
-            continue;
-          else
-            current_thread = py_proc__get_current_thread_state_raddr(py_proc);
-        }
-        if (py_thread->raddr.addr == current_thread) {
-          mem_delta = py_proc__get_memory_delta(py_proc);
-          log_t("Thread %lx holds the GIL", py_thread->tid);
-        }
-      }
-      sample_printed = !_print_collapsed_stack(py_thread, delta, mem_delta >> 10);
-      py_thread = py_thread__next(py_thread);
-    }
-
-    py_thread__destroy(first_thread);
-
-    if (error != EOK)
-      fprintf(pargs.output_file, "Bad sample %ld\n", delta);
-  }
-
-  t_sample += delta;
-  return !sample_printed;
-}
+  // Pause if sampling took less than the sampling interval.
+  if (delta < pargs.t_sampling_interval)
+    usleep(pargs.t_sampling_interval - delta);
+} /* timer_stop */
 
 
 // ---- SIGNAL HANDLING -------------------------------------------------------
 
 static int interrupt = 0;
 
+
 static void
 signal_callback_handler(int signum)
 {
   if (signum == SIGINT)
     interrupt++;
-}
+} /* signal_callback_handler */
+
+// ----------------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+void
+do_single_process(py_proc_t * py_proc) {
+  while(py_proc__is_running(py_proc) && !interrupt) {
+    timer_start();
+    {
+      py_proc__sample(py_proc);
+    }
+    timer_stop();
+  }
+
+  if (!interrupt)
+    py_proc__wait(py_proc);
+
+  py_proc__destroy(py_proc);
+} /* do_single_process */
+
+
+// ----------------------------------------------------------------------------
+void
+do_child_processes(py_proc_t * py_proc) {
+  py_proc_list_t * list = py_proc_list_new(py_proc);
+  if (list == NULL)
+    return;
+
+  // If the parent process is not running maybe it wasn't a Python
+  // process. However, its children might be, so we attempt to attach
+  // Austin to them.
+  if (!py_proc__is_running(py_proc)) {
+    log_d("Parent process is not running. Trying with its children.");
+
+    // Since the parent process is not running we probably have waited long
+    // enough so we can try to attach to child processes straight away.
+    pargs.timeout = 1;
+
+    // Store the PID before it gets deleted by the update.
+    pid_t ppid = py_proc->pid;
+
+    py_proc_list__update(list);
+    py_proc_list__add_proc_children(list, ppid);
+  }
+
+  while (!py_proc_list__is_empty(list) && !interrupt) {
+    timer_start();
+    {
+      py_proc_list__update(list);
+      py_proc_list__sample(list);
+    }
+    timer_stop();
+  }
+
+  if (!interrupt) {
+    py_proc_list__update(list);
+    py_proc_list__wait(list);
+  }
+
+  py_proc_list__destroy(list);
+} /* do_child_processes */
 
 
 // ---- MAIN ------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
 int main(int argc, char ** argv) {
-  int code = 0;
+  int retval = 0;
 
   int exec_arg = parse_args(argc, argv);
 
-  if (exec_arg == 0 && pargs.attach_pid == 0)
-    return -1;
+  if (exec_arg == 0 && pargs.attach_pid == 0) {
+    retval = -1;
+    goto release;
+  }
 
   logger_init();
   log_header();
@@ -176,81 +158,66 @@ int main(int argc, char ** argv) {
 
   if (pargs.attach_pid == 0 && argv[exec_arg] == NULL) {
     log_f("Null command and invalid PID. Austin doesn't know what to do.");
-    code = EPROC;
+    retval = EPROC;
+    goto finally;
   }
 
-  else {
-    error = EOK;
+  py_proc_t * py_proc = py_proc_new();
+  if (py_proc == NULL) {
+    retval = EPROC;
+    goto finally;
+  }
 
-    py_proc_t * py_proc = py_proc_new();
-    if (py_proc == NULL)
-      return EPROC;
-
-    if (pargs.attach_pid == 0) {
-      if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg]) != 0)
-        code = EPROCFORK;
-    } else {
-      if (py_proc__attach(py_proc, pargs.attach_pid) != 0)
-        code = EPROCATTACH;
+  if (pargs.attach_pid == 0) {
+    if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg])) {
+      retval = EPROCFORK;
+      goto finally;
     }
-
-    if (code == EOK) {
-      if (py_proc->is_raddr == NULL)
-        code = EPROC;
-
-      else {
-        // Register signal handler for Ctrl+C
-        signal(SIGINT, signal_callback_handler);
-
-        // Redirect output to STDOUT if not output file was given.
-        if (pargs.output_file == NULL)
-          pargs.output_file = stdout;
-        else
-          log_i("Output file: %s", pargs.output_filename);
-
-        log_i("Sampling interval: %lu usec", pargs.t_sampling_interval);
-
-        if (pargs.full) {
-          if (pargs.memory)
-            log_w("Requested full metrics. The memory switch is redundant.");
-          log_i("Producing full set of metrics (time +mem -mem).");
-          pargs.memory = 1;
-        }
-
-        stats_reset();
-
-        t_sample = gettime();  // Prime sample checkmark
-        while(py_proc__is_running(py_proc) && !interrupt) {
-          if (_py_proc__sample(py_proc))
-            continue;
-
-          stats_check_error();
-
-          ctime_t delta = gettime() - t_sample;  // Time spent sampling
-          stats_check_duration(delta, pargs.t_sampling_interval);
-
-          if (delta < pargs.t_sampling_interval)
-            usleep(pargs.t_sampling_interval - delta);
-        }
-
-        stats_log_metrics();
-      }
-    }
-
-    if (py_proc != NULL) {
-      if (!interrupt)
-        py_proc__wait(py_proc);
-      py_proc__destroy(py_proc);
+  } else {
+    if (py_proc__attach(py_proc, pargs.attach_pid) && !pargs.children) {
+      retval = EPROCATTACH;
+      goto finally;
     }
   }
 
+  // Register signal handler for Ctrl+C
+  signal(SIGINT, signal_callback_handler);
+
+  // Redirect output to STDOUT if not output file was given.
+  if (pargs.output_file == NULL)
+    pargs.output_file = stdout;
+  else
+    log_i("Output file: %s", pargs.output_filename);
+
+  log_i("Sampling interval: %lu usec", pargs.t_sampling_interval);
+
+  if (pargs.full) {
+    if (pargs.memory)
+      log_w("Requested full metrics. The memory switch is redundant.");
+    log_i("Producing full set of metrics (time +mem -mem).");
+    pargs.memory = 1;
+  }
+
+  stats_reset();
+  {
+    if (pargs.children)
+      do_child_processes(py_proc);
+    else
+      do_single_process(py_proc);
+  }
+  stats_log_metrics();
+
+finally:
+  if (retval && error != EOK)
+    log_i("Last error code: %d", error);
+  log_footer();
+  logger_close();
+
+release:
   if (pargs.output_file != NULL && pargs.output_file != stdout) {
     fclose(pargs.output_file);
     log_d("Output file closed.");
   }
 
-  log_footer();
-  logger_close();
-
-  return code;
-}
+  return retval;
+} /* main */

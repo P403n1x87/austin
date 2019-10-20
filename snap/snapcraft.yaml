@@ -1,14 +1,14 @@
-name: austin # you probably want to 'snapcraft register <name>'
-version: '0.7.0+git' # just for humans, typically '1.2+git' or '1.3.2'
-summary: A Python frame stack sampler for CPython # 79 char long summary
+name: austin
+version: '1.0.0+git'
+summary: A Python frame stack sampler for CPython
 description: |
   Austin is a Python frame stack sampler for CPython written in pure C. It
   samples the stack traces of a Python application so that they can be
   visualised and analysed. As such, it serves the basis for building powerful
   profilers for Python.
 
-grade: stable # must be 'stable' to release into candidate/stable channels
-confinement: classic # use 'strict' once you have the right plugs and slots
+grade: stable
+confinement: classic
 
 architectures:
   - build-on: amd64
