@@ -48,6 +48,9 @@ log_w(const char *, ...);
 void
 log_i(const char *, ...);
 
+void
+log_m(const char *, ...);  // metrics
+
 #ifdef DEBUG
 void
 log_d(const char *, ...);

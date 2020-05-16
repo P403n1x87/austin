@@ -27,8 +27,8 @@
     <img src="https://badges.debian.net/badges/debian/unstable/austin/version.svg"
          alt="Debian package status">
   </a>
-  <img src="https://img.shields.io/badge/version-1.0.0-blue.svg"
-       alt="Version 1.0.0">
+  <img src="https://img.shields.io/badge/version-1.0.1-blue.svg"
+       alt="Version 1.0.1">
   <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md">
     <img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg"
          alt="LICENSE">
@@ -68,7 +68,7 @@
 
 <h3 align="center">A frame stack sampler for CPython</h3>
 
-[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-1.0.0-blue.svg) [![License](https://img.shields.io/badge/license-GPLv3-ff69b4.svg)](https://github.com/P403n1x87/austin/blob/master/LICENSE.md)
+[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-1.0.1-blue.svg) [![License](https://img.shields.io/badge/license-GPLv3-ff69b4.svg)](https://github.com/P403n1x87/austin/blob/master/LICENSE.md)
 
 -->
 

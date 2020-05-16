@@ -291,19 +291,41 @@ typedef union {
 
 typedef void *PyThread_type_lock;
 
-typedef struct pyruntimestate {
+typedef struct pyruntimestate3_7 {
     int initialized;
     int core_initialized;
     PyThreadState *finalizing;
 
-    struct pyinterpreters {
+    struct pyinterpreters3_7 {
         PyThread_type_lock mutex;
         PyInterpreterState *head;
         PyInterpreterState *main;
         int64_t next_id;
     } interpreters;
-} _PyRuntimeState;
+} _PyRuntimeState3_7;
 
+// ---- internal/pycore_pystate.h ---------------------------------------------
+
+typedef struct pyruntimestate3_8 {
+    int preinitializing;
+    int preinitialized;
+    int core_initialized;
+    int initialized;
+    PyThreadState *finalizing;
+
+    struct pyinterpreters3_8 {
+        PyThread_type_lock mutex;
+        PyInterpreterState *head;
+        PyInterpreterState *main;
+        int64_t next_id;
+    } interpreters;
+} _PyRuntimeState3_8;
+
+
+typedef union {
+  _PyRuntimeState3_7 v3_7;
+  _PyRuntimeState3_8 v3_8;
+} _PyRuntimeState;
 
 // ---- unicodeobject.h -------------------------------------------------------
 

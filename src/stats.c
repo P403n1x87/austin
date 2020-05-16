@@ -140,23 +140,23 @@ stats_check_duration(ctime_t delta, ctime_t sampling_interval) {
 void
 stats_log_metrics(void) {
   if (!_sample_cnt) {
-    log_i("No samples collected.");
+    log_m("😣 No samples collected.");
     return;
   }
 
-  log_i("Sampling time statistics (min/avg/max) : %lu/%lu/%lu us",
+  log_m("🕑 Sampling time (min/avg/max) : %lu/%lu/%lu us",
     stats_get_min_sampling_time(),
     stats_get_avg_sampling_time(),
     stats_get_max_sampling_time()
   );
 
-  log_i("Long-running sample rate: %d samples over sampling interval/%d (%.2f %%)", \
+  log_m("🐢 Long sampling rate : %d/%d (%.2f %%) samples took longer than the sampling interval", \
     _long_cnt,                                           \
     _sample_cnt,                                         \
     (float) _long_cnt / _sample_cnt * 100                \
   );
 
-  log_i("Error rate: %d invalid samples/%d (%.2f %%)",   \
+  log_m("💀 Error rate : %d/%d (%.2f %%) invalid samples",   \
     _error_cnt,                                          \
     _sample_cnt,                                         \
     (float) _error_cnt / _sample_cnt * 100               \

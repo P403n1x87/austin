@@ -1,3 +1,10 @@
+austin (1.0.1-1) unstable; urgency=medium
+
+  * Fixed support for Python 3.8
+
+ -- Gabriele N. Tornetta <phoenix1987@gmail.com>  Sat, 16 May 2020 12:36:00 +0100
+
+
 austin (1.0.0-1) unstable; urgency=medium
 
   * Added support for multi-process Python applications

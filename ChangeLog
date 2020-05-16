@@ -1,3 +1,8 @@
+2020-05-16 v1.0.1
+
+  Bugfix: Fixed broken support for Python 3.8 on MacOS.
+
+
 2019-07-28 v1.0.0
 
   Austin can now profile multi-process Python application:
@@ -25,7 +30,7 @@
     - --full, -f:
 
         Generate samples with a full set of metrics, which include timing and
-        memory prifiling information. Note that the output from this mode needs
+        memory profiling information. Note that the output from this mode needs
         to be processed before it can be used with FlameGraph.
 
     - --output, -o:

@@ -37,6 +37,20 @@
 #include "python.h"
 
 
+/**
+ * Get the value of a field of a versioned structure.
+ *
+ * It works by retrieving the field offset from the offset table set at
+ * runtime, depending on the detected version of Python.
+ *
+ * @param  ctype   the C type of the field to retrieve, e.g. void *.
+ * @param  py_obj  the address of the beginning of the actual Python structure.
+ * @param  py_type the Austin representation of the Python structure, e.g. py_thread.
+ * @param  field   the field of py_type to retrieve
+ *
+ * @return         the value of of the field of py_obj at the offset specified
+ *                 by the field argument.
+ */
 #define V_FIELD(ctype, py_obj, py_type, field) (*((ctype*) (((void *) &py_obj) + py_v->py_type.field)))
 
 
@@ -82,9 +96,13 @@ typedef struct {
   int version;
 } py_bytes_v;
 
+
 typedef struct {
-  unsigned int tstate_current_offset;
-} py_runtime;
+  ssize_t  size;
+
+  offset_t o_interp_head;
+} py_runtime_v;
+
 
 typedef struct {
   py_code_v    py_code;
@@ -92,7 +110,7 @@ typedef struct {
   py_thread_v  py_thread;
   py_unicode_v py_unicode;
   py_bytes_v   py_bytes;
-  py_runtime   py_runtime;
+  py_runtime_v py_runtime;
 } python_v;
 
 
