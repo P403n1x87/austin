@@ -18,9 +18,8 @@ invoke_austin() {
     echo "       - Check expected number of processes."
     expected=3
     n_procs=$( echo "$output" | sed -r 's/Process ([0-9]+);.+/\1/' | sort | uniq | wc -l )
-    echo "         Expected $expected and got $n_procs"
-    if [ $n_procs != $expected ]
-    then continue; fi
+    echo "         Expected at least $expected and got $n_procs"
+    if [ $n_procs < $expected ]; then continue; fi
 
     echo "       - Check output contains frames."
     if echo "$output" | grep -q "do (test/target_mp.py);L[[:digit:]]*;fact (test/target_mp.py);L"
@@ -39,7 +38,7 @@ invoke_austin() {
     echo "================"
     echo
     echo "$output"
-    echo 
+    echo
     false
   fi
 }
