@@ -87,6 +87,7 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
           if (strcmp(sec[j].sectname, "__bss") == 0) {
             self->map.bss.base += sec[j].addr;
             self->map.bss.size = sec[j].size;
+            log_d("BSS bounds [%p - %p]", self->map.bss.base, self->map.bss.base + self->map.bss.size);
             break;
           }
         }
@@ -145,6 +146,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
           if (strcmp(sec[j].sectname, "__bss") == 0) {
             self->map.bss.base += sec[j].addr;
             self->map.bss.size = sec[j].size;
+            log_d("BSS bounds [%p - %p]", self->map.bss.base, self->map.bss.base + self->map.bss.size);
             break;
           }
         }
@@ -291,7 +293,9 @@ _py_proc__get_maps(py_proc_t * self) {
   mach_msg_type_number_t         count = sizeof(vm_region_basic_info_data_64_t);
   mach_port_t                    object_name;
 
-  usleep(10000);  // NOTE: Mac OS X kernel bug
+  // NOTE: Mac OS X kernel bug. This also gives time to the VM maps to
+  // stabilise.
+  usleep(100000);
 
   self->extra->task_id = pid_to_task(self->pid);
   if (self->extra->task_id == 0)
@@ -321,26 +325,38 @@ _py_proc__get_maps(py_proc_t * self) {
 
     if (size > 0 && len) {
       path[len] = 0;
-      if (self->bin_path == NULL && strstr(path, "python")) {
+      if (self->bin_path == NULL && strstr(path, "ython") && size < (1 << 20)) {
         if (strstr(path + path_len - 3, ".so") == NULL) {
           // check that it is not a .so file
           self->bin_path = strndup(path, path_len);
+          goto next_map;
         }
       }
 
-      if (self->lib_path == NULL && strstr(path, "Python")) {
+      if (self->lib_path == NULL && strstr(path, "Python") && size > (1 << 20)) {
         if (strstr(path + path_len - 3, ".so") == NULL) {
           self->lib_path = strndup(path, path_len);
 
           self->map.bss.base = (void *) address;  // WARNING: Partial result. Not yet the BSS base!!
           if (_py_proc__analyze_macho(self, path, (void *) address, size))
             return 1;
+          goto next_map;
         }
       }
-    }
 
+      // Make a best guess for the heap boundary. This would only work for
+      // 64-bit architectures.
+      if (address & 0x0000700000000000) {
+        if (self->map.heap.base == NULL)
+          self->map.heap.base = (void *) address;
+        self->map.heap.size += size;
+      }
+    }
+  next_map:
     address += size;
   }
+
+  log_d("HEAP bounds [%p - %p]", self->map.heap.base, self->map.heap.base + self->map.heap.size);
 
   if (self->bin_path && self->lib_path && !strcmp(self->bin_path, self->lib_path))
     self->bin_path = NULL;
