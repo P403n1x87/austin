@@ -325,9 +325,10 @@ platforms and architectures
 
 Due to the **System Integrity Protection** introduced in **MacOS** with El
 Capitan, Austin cannot profile Python processes that use an executable located
-in the `/bin` folder. Hence, either run the interpreter from a virtual
-environment or use a Python interpreter that is installed in, e.g.,
-`/Applications`.
+in the `/bin` folder, even with `sudo`. Hence, either run the interpreter from a
+virtual environment or use a Python interpreter that is installed in, e.g.,
+`/Applications` or via `brew` with the default prefix (`/usr/local`). Even in
+these cases, though, the use of `sudo` is required.
 
 > **NOTE** Austin *might* work with other versions of Python on all the
 > platforms and architectures above. So it is worth giving it a try even if
