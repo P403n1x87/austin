@@ -79,7 +79,10 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
   for (register int i = 0; cmd_cnt < 2 && i < ncmds; i++) {
     switch (cmd->cmd) {
     case LC_SEGMENT_64:
-      if (strcmp(cmd->segname, "__DATA") == 0) {
+      if (strcmp(cmd->segname, "__TEXT") == 0) {
+        img_base -= cmd->vmaddr;
+      }
+      else if (strcmp(cmd->segname, "__DATA") == 0) {
         int nsects = cmd->nsects;
         struct section_64 * sec = (struct section_64 *) ((void *) cmd + sizeof(struct segment_command_64));
         self->map.bss.size = 0;
@@ -87,6 +90,7 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
           if (strcmp(sec[j].sectname, "__bss") == 0) {
             self->map.bss.base += sec[j].addr;
             self->map.bss.size = sec[j].size;
+            log_d("BSS bounds [%p - %p]", self->map.bss.base, self->map.bss.base + self->map.bss.size);
             break;
           }
         }
@@ -137,7 +141,10 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
   for (register int i = 0; cmd_cnt < 2 && i < ncmds; i++) {
     switch (cmd->cmd) {
     case LC_SEGMENT:
-      if (strcmp(cmd->segname, "__DATA") == 0) {
+      if (strcmp(cmd->segname, "__TEXT") == 0) {
+        img_base -= cmd->vmaddr;
+      }
+      else if (strcmp(cmd->segname, "__DATA") == 0) {
         int nsects = cmd->nsects;
         struct section * sec = (struct section *) ((void *) cmd + sizeof(struct segment_command));
         self->map.bss.size = 0;
@@ -145,6 +152,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
           if (strcmp(sec[j].sectname, "__bss") == 0) {
             self->map.bss.base += sec[j].addr;
             self->map.bss.size = sec[j].size;
+            log_d("BSS bounds [%p - %p]", self->map.bss.base, self->map.bss.base + self->map.bss.size);
             break;
           }
         }
@@ -291,7 +299,9 @@ _py_proc__get_maps(py_proc_t * self) {
   mach_msg_type_number_t         count = sizeof(vm_region_basic_info_data_64_t);
   mach_port_t                    object_name;
 
-  usleep(10000);  // NOTE: Mac OS X kernel bug
+  // NOTE: Mac OS X kernel bug. This also gives time to the VM maps to
+  // stabilise.
+  usleep(100000);
 
   self->extra->task_id = pid_to_task(self->pid);
   if (self->extra->task_id == 0)
@@ -321,26 +331,43 @@ _py_proc__get_maps(py_proc_t * self) {
 
     if (size > 0 && len) {
       path[len] = 0;
-      if (self->bin_path == NULL && strstr(path, "python")) {
+      if (self->bin_path == NULL && strstr(path, "ython")) {
         if (strstr(path + path_len - 3, ".so") == NULL) {
-          // check that it is not a .so file
+          // not a .so file
           self->bin_path = strndup(path, path_len);
+          self->map.bss.base = (void *) address;  // WARNING: Image base. Not yet the BSS base!!
+          if (_py_proc__analyze_macho(self, path, (void *) address, size)) {
+            // We haven't found the symbols in the binary so we look for a library.
+            self->map.bss.base = NULL;
+          }
+          goto next_map;
         }
       }
 
-      if (self->lib_path == NULL && strstr(path, "Python")) {
+      if (self->map.bss.base == NULL && self->lib_path == NULL && strstr(path, "ython") && size > (1 << 20)) {
         if (strstr(path + path_len - 3, ".so") == NULL) {
           self->lib_path = strndup(path, path_len);
 
-          self->map.bss.base = (void *) address;  // WARNING: Partial result. Not yet the BSS base!!
+          self->map.bss.base = (void *) address;  // WARNING: Image base. Not yet the BSS base!!
           if (_py_proc__analyze_macho(self, path, (void *) address, size))
             return 1;
+          goto next_map;
         }
       }
-    }
 
+      // Make a best guess for the heap boundary. This would only work for
+      // 64-bit architectures.
+      if (address & 0x0000700000000000) {
+        if (self->map.heap.base == NULL)
+          self->map.heap.base = (void *) address;
+        self->map.heap.size += size;
+      }
+    }
+  next_map:
     address += size;
   }
+
+  log_d("HEAP bounds [%p - %p]", self->map.heap.base, self->map.heap.base + self->map.heap.size);
 
   if (self->bin_path && self->lib_path && !strcmp(self->bin_path, self->lib_path))
     self->bin_path = NULL;

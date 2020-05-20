@@ -73,6 +73,9 @@ typedef struct {
   // Memory profiling support
   ssize_t         last_resident_memory;
 
+  // Offset of the tstate_current field within the _PyRuntimeState structure
+  unsigned int    tstate_current_offset;
+
   // Platform-dependent fields
   proc_extra_info * extra;
 } py_proc_t;

@@ -226,8 +226,13 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   if (py_proc__get_type(self, raddr, is))
     return OUT_OF_BOUND;
 
-  if (py_proc__get_type(self, is.tstate_head, tstate_head))
+  if (py_proc__get_type(self, is.tstate_head, tstate_head)) {
+    log_t(
+      "Cannot copy PyThreadState head at %p from PyInterpreterState instance",
+      is.tstate_head
+    );
     return 1;
+  }
 
   log_t("PyThreadState head loaded @ %p", is.tstate_head);
 
@@ -328,6 +333,8 @@ _py_proc__scan_bss(py_proc_t * self) {
   if (py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss))
     return 1;
 
+  log_d("Scanning the BSS section for PyInterpreterState");
+
   void * upper_bound = self->bss + self->map.bss.size;
   #ifdef CHECK_HEAP
   // When the process uses the shared library we need to search in other maps
@@ -372,13 +379,23 @@ _py_proc__deref_interp_head(py_proc_t * self) {
 
   if (self->py_runtime_raddr != NULL) {
     _PyRuntimeState py_runtime;
-    if (py_proc__get_type(self, self->py_runtime_raddr, py_runtime))
+    if (py_proc__get_type(self, self->py_runtime_raddr, py_runtime)) {
+      log_d(
+        "Cannot copy _PyRuntimeState structure from remote address %p",
+        self->py_runtime_raddr
+      );
       return 1;
-    interp_head_raddr = py_runtime.interpreters.head;
+    }
+    interp_head_raddr = V_FIELD(void *, py_runtime, py_runtime, o_interp_head);
   }
   else if (self->interp_head_raddr != NULL) {
-    if (py_proc__get_type(self, self->interp_head_raddr, interp_head_raddr))
+    if (py_proc__get_type(self, self->interp_head_raddr, interp_head_raddr)) {
+      log_d(
+        "Cannot copy PyInterpreterState structure from remote address %p",
+        self->interp_head_raddr
+      );
       return 1;
+    }
   }
   else return 1;
 
@@ -399,6 +416,7 @@ _py_proc__find_interpreter_state(py_proc_t * self) {
 
   // First try to de-reference interpreter head as the most reliable method
   if (_py_proc__deref_interp_head(self)) {
+    log_d("Cannot dereference PyInterpreterState head from symbols");
     // If that fails try to get the current thread state (can be NULL during idle)
     tstate_current_raddr = py_proc__get_current_thread_state_raddr(self);
     if (tstate_current_raddr == NULL || tstate_current_raddr == (void *) -1)
@@ -766,9 +784,9 @@ py_proc__get_current_thread_state_raddr(py_proc_t * self) {
   void * p_tstate_current;
 
   if (self->py_runtime_raddr != NULL) {
-    if (py_v->py_runtime.tstate_current_offset == 0 || py_proc__get_type(
+    if (self->tstate_current_offset == 0 || py_proc__get_type(
       self,
-      self->py_runtime_raddr + py_v->py_runtime.tstate_current_offset,
+      self->py_runtime_raddr + self->tstate_current_offset,
       p_tstate_current
     )) return (void *) -1;
   }
@@ -798,7 +816,7 @@ py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
   if (py_proc__get_type(self, self->py_runtime_raddr, py_runtime))
     return 1;
 
-  interp_head_raddr = py_runtime.interpreters.head;
+  interp_head_raddr = V_FIELD(void *, py_runtime, py_runtime, o_interp_head);
 
   // Search offset of current thread in _PyRuntimeState structure
   PyInterpreterState is;
@@ -814,10 +832,10 @@ py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
     py_proc__get_type(self, raddr, current_thread_raddr);
     if (current_thread_raddr == thread_raddr) {
       if (++hit_count == 2) {
-        py_v->py_runtime.tstate_current_offset = (void *) raddr - self->py_runtime_raddr;
+        self->tstate_current_offset = (void *) raddr - self->py_runtime_raddr;
         log_d(
           "Offset of _PyRuntime.gilstate.tstate_current found at %x",
-          py_v->py_runtime.tstate_current_offset
+          self->tstate_current_offset
         );
         return 0;
       }

@@ -32,6 +32,7 @@
 #elif defined(PL_MACOS)
   #include <mach/mach.h>
   #include <mach/mach_vm.h>
+  #include <mach/machine/kern_return.h>
 
 #endif
 
@@ -60,14 +61,22 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
   #elif defined(PL_MACOS)                                              /* MAC */
   mach_port_t task;
   if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
-    log_d("Failed to obtain task from PID. Are you running austin with the right privileges?");
+    log_d(
+      "Failed to obtain task from PID. Are you running austin with the right privileges?"
+    );
     return -1;
   }
 
   mach_vm_size_t nread;
-  mach_vm_read_overwrite(task, (mach_vm_address_t) addr, len, (mach_vm_address_t) buf, &nread);
+  kern_return_t kr = mach_vm_read_overwrite(
+    task, (mach_vm_address_t) addr, len, (mach_vm_address_t) buf, &nread
+  );
+  if (kr != KERN_SUCCESS) {
+    log_t("copy_memory: mach_vm_read_overwrite returned %d", kr);
+    return -1;
+  }
 
-  return nread == len ? nread : -1;
+  return nread;
 
   #endif
 }

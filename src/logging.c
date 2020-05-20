@@ -43,7 +43,7 @@
 #define	LOG_INFO	6	/* informational */
 #define	LOG_DEBUG	7	/* debug-level messages */
 
-FILE * lf = NULL;
+FILE * logfile = NULL;
 #endif
 
 #include "austin.h"
@@ -56,12 +56,12 @@ _log_writer(int prio, const char * fmt, va_list ap) {
   vsyslog(prio, fmt, ap);
 
   #else
-  if (lf == NULL) {
+  if (logfile == NULL) {
     vfprintf(stderr, fmt, ap); fputc('\n', stderr);
   }
   else {
-    vfprintf(lf, fmt, ap); fputc('\n', lf);
-    fflush(lf);
+    vfprintf(logfile, fmt, ap); fputc('\n', logfile);
+    fflush(logfile);
   }
 
   #endif
@@ -75,10 +75,10 @@ logger_init(void) {
   openlog ("austin", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
 
   #else
-  if (lf == NULL) {
+  if (logfile == NULL) {
     char path[MAX_PATH];
     ExpandEnvironmentStrings("%TEMP%\\austin.log", path, MAX_PATH);
-    lf = fopen(path, "a");
+    logfile = fopen(path, "a");
   }
   #endif
 }
@@ -87,11 +87,13 @@ logger_init(void) {
 void
 log_f(const char * fmt, ...) {
   va_list args;
+
   va_start(args, fmt);
+    _log_writer(LOG_CRIT, fmt, args);
+  va_end(args);
 
-  _log_writer(LOG_CRIT, fmt, args);
-  vfprintf(stderr, fmt, args); fputc('\n', stderr);
-
+  va_start(args, fmt);
+    vfprintf(stderr, fmt, args); fputc('\n', stderr);
   va_end(args);
 }
 
@@ -125,7 +127,20 @@ log_i(const char * fmt, ...) {
   va_end(args);
 }
 
-#if defined(DEBUG) || defined(TRACE)
+void
+log_m(const char * fmt, ...) {
+  va_list args;
+
+  va_start(args, fmt);
+    _log_writer(LOG_INFO, fmt, args);
+  va_end(args);
+
+  va_start(args, fmt);
+    vfprintf(stderr, fmt, args); fputc('\n', stderr);
+  va_end(args);
+}
+
+#ifdef DEBUG
 void
 log_d(const char * fmt, ...) {
   va_list args;
@@ -161,7 +176,7 @@ logger_close(void) {
   closelog();
 
   #else
-  if (lf != NULL)
-    fclose(lf);
+  if (logfile != NULL)
+    fclose(logfile);
   #endif
 }
