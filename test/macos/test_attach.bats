@@ -61,12 +61,12 @@ attach_austin() {
 # -----------------------------------------------------------------------------
 
 
-@test "Test Austin with the default Python 3" {
-  python -m venv /tmp/py3
-  source /tmp/py3/bin/activate
-	attach_austin "python"
-  test -d /tmp/py3 && rm -rf /tmp/py3
-}
+# @test "Test Austin with the default Python 3" {
+#   /usr/bin/python3 -m venv /tmp/py3
+#   source /tmp/py3/bin/activate
+# 	attach_austin "python3"
+#   test -d /tmp/py3 && rm -rf /tmp/py3
+# }
 
 @test "Test Austin with default Python 3 from Homebrew" {
 	attach_austin "/usr/local/bin/python3"

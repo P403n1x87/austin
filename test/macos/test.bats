@@ -17,6 +17,8 @@ test_case() {
 }
 
 @test "Test Austin: valgrind" {
+  skip "We skip valgrind on Mac OS for now"
+  
   if ! which valgrind; then skip "Valgrind not found"; fi
 
   test_case valgrind
