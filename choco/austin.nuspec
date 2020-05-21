@@ -1,0 +1,35 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Do not remove this test for UTF-8: if “Ω” doesn’t appear as greek uppercase
+  omega letter enclosed in quotation marks, you should use an editor that
+  supports UTF-8, not this one.
+-->
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>austin</id>
+    <version>%VERSION%</version>
+    <packageSourceUrl>https://github.com/P403n1x87/austin/tree/release/choco/choco</packageSourceUrl>
+    <owners>Gabriele N. Tornetta</owners>
+
+    <title>Austin (Install)</title>
+    <authors>Gabriele N. Tornetta</authors>
+    <projectUrl>https://github.com/P403n1x87/austin</projectUrl>
+    <iconUrl>https://rawcdn.githack.com/P403n1x87/austin/8bea939fc7088a7ed1d2012d819890eecd8753c4/art/austin_logo.png</iconUrl>
+    <copyright>2018 Gabriele N. Tornetta</copyright>
+    <licenseUrl>https://github.com/P403n1x87/austin/raw/master/LICENSE.md</licenseUrl>
+    <requireLicenseAcceptance>true</requireLicenseAcceptance>
+    <projectSourceUrl>https://github.com/P403n1x87/austin</projectSourceUrl>
+    <bugTrackerUrl>https://github.com/P403n1x87/austin/issues</bugTrackerUrl>
+    <tags>python profiling</tags>
+    <summary>A Frame Stack Sampler for CPython</summary>
+    <description>
+      Austin is a Python frame stack sampler for CPython written in pure C. It
+      samples the stack traces of a Python application so that they can be
+      visualised and analysed. As such, it serves the basis for building
+      powerful profilers for Python.
+    </description>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>
