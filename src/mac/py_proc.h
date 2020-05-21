@@ -294,11 +294,15 @@ pid_to_task(pid_t pid) {
 static int
 _py_proc__get_maps(py_proc_t * self) {
   mach_vm_address_t              address = 0;
-  mach_vm_size_t                 size;
+  mach_vm_size_t                 size = 0;
   vm_region_basic_info_data_64_t region_info;
   mach_msg_type_number_t         count = sizeof(vm_region_basic_info_data_64_t);
   mach_port_t                    object_name;
-
+  
+  char * path = (char *) calloc(MAXPATHLEN + 1, sizeof(char));
+  if (path == NULL) 
+    return 1;
+  
   // NOTE: Mac OS X kernel bug. This also gives time to the VM maps to
   // stabilise.
   usleep(100000);
@@ -325,7 +329,6 @@ _py_proc__get_maps(py_proc_t * self) {
     if ((void *) address + size > self->max_raddr)
       self->max_raddr = (void *) address + size;
 
-    char path[MAXPATHLEN];
     int len = proc_regionfilename(self->pid, address, path, MAXPATHLEN);
     int path_len = strlen(path);
 
@@ -350,7 +353,7 @@ _py_proc__get_maps(py_proc_t * self) {
 
           self->map.bss.base = (void *) address;  // WARNING: Image base. Not yet the BSS base!!
           if (_py_proc__analyze_macho(self, path, (void *) address, size))
-            return 1;
+            goto error;
           goto next_map;
         }
       }
@@ -371,6 +374,9 @@ _py_proc__get_maps(py_proc_t * self) {
 
   if (self->bin_path && self->lib_path && !strcmp(self->bin_path, self->lib_path))
     self->bin_path = NULL;
+
+error:
+  free(path);
 
   return !self->sym_loaded;
 }
