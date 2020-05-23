@@ -1,0 +1,83 @@
+<?xml version='1.0' encoding='windows-1252'?>
+<Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
+  <Product
+    Name='Austin %VERSION%'
+    Manufacturer='Gabriele N. Tornetta'
+
+    Id='2c5be9da-e66c-4eec-a8ea-facaedaa17e3'
+    UpgradeCode='7ae63393-fefa-49c2-bb04-41ce4a552d59'
+
+    Language='1033'
+    Codepage='1252'
+    Version='%VERSION%'>
+
+    <Package Id='*'
+      Keywords='Installer'
+      Platform="x64"
+
+      Description="Austin %VERSION% Installer"
+      Comments='Austin is an open source frame stack sampler for CPython'
+      Manufacturer='Gabriele N. Tornetta'
+
+      InstallerVersion='200'
+      Languages='1033'
+      Compressed='yes'
+      SummaryCodepage='1252'
+    />
+
+    <Media Id='1' Cabinet='Austin.cab' EmbedCab='yes' />
+
+    <Condition Message="This version of Austin requires a 64-bit version of Windows.">
+      Msix64
+    </Condition>
+
+    <Directory Id='TARGETDIR' Name='SourceDir'>
+      <Directory Id='ProgramFiles64Folder' Name='PFiles'>
+        <Directory Id='PhoenixDir' Name='P403n1x87'>
+          <Directory Id='INSTALLDIR' Name='Austin'>
+            <Component Id='MainExecutable' Win64='yes' Guid='7e897bf3-8bc4-470e-bab3-376bc89ba1d1'>
+              <File Id='AustinEXE'
+                Name='austin.exe'
+                Source='../src/austin.exe'
+                ProcessorArchitecture='x64'
+                KeyPath='yes'
+              />
+              <Environment Id="PATH"
+                Name="PATH"
+                Value="[INSTALLDIR]"
+                Permanent="no"
+                Part="last"
+                Action="set"
+                System="yes"
+              />
+              <RemoveFolder Id='AustinRemoval' On='uninstall' Directory="PhoenixDir" />
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <UI>
+      <UIRef Id="WixUI_InstallDir" />
+      <Publish Dialog="WelcomeDlg"
+        Control="Next"
+        Event="NewDialog"
+        Value="InstallDirDlg"
+        Order="2">1</Publish>
+      <Publish Dialog="InstallDirDlg"
+        Control="Back"
+        Event="NewDialog"
+        Value="WelcomeDlg"
+        Order="2">1</Publish>
+    </UI>
+
+    <Feature Id='Complete'
+      Level='1'
+      Title='Austin %VERSION%'
+      ConfigurableDirectory='INSTALLDIR'>
+      <ComponentRef Id='MainExecutable' />
+    </Feature>
+
+  </Product>
+</Wix>
