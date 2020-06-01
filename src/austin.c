@@ -32,6 +32,7 @@
 #include "error.h"
 #include "logging.h"
 #include "mem.h"
+#include "platform.h"
 #include "python.h"
 #include "stats.h"
 
@@ -208,8 +209,24 @@ int main(int argc, char ** argv) {
   stats_log_metrics();
 
 finally:
-  if (retval && error != EOK)
+  if (retval && error != EOK) {
     log_i("Last error code: %d", error);
+#if defined PL_MACOS
+    if (error == EPROCPERM) {
+      log_f(
+        "\n"
+        "🔒 Insufficient permissions. Austin requires the use of sudo on Mac OS in\n"
+        "order to read the memory of even its child processes. Furthermore, the System\n"
+        "Integrity Protection prevents Austin from working with Python binaries installed\n"
+        "in certain areas of the file system. See\n"
+        "\n"
+        "    🌐 https://github.com/P403n1x87/austin#compatibility\n"
+        "\n"
+        "for more details."
+      );
+    }
+#endif
+  }
   log_footer();
   logger_close();
 

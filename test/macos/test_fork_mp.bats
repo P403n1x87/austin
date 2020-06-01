@@ -18,7 +18,7 @@ invoke_austin() {
 
     echo "       - Check expected number of processes."
     expected=3
-    n_procs=$( echo "$output" | sed -E 's/Process ([0-9]+);.+/\1/' | sort | uniq | wc -l )
+    n_procs=$( echo "$output" | sed -E 's/P([0-9]+);.+/\1/' | sort | uniq | wc -l )
     echo "         Expected at least $expected and got $n_procs"
     if [ $n_procs -lt $expected ]; then continue; fi
 

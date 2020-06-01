@@ -284,7 +284,7 @@ static mach_port_t
 pid_to_task(pid_t pid) {
   mach_port_t task;
   if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
-    log_e("Insufficient permissions to call task_for_pid.");
+    log_d("Call to task_for_pid failed.");
     error = EPROCPERM;
     return 0;
   }

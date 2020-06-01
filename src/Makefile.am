@@ -29,10 +29,8 @@ austin_SOURCES = \
   dict.c         \
   error.c        \
   logging.c      \
-  mem.c          \
   version.c      \
   stats.c        \
-  py_code.c      \
   py_frame.c     \
   py_proc_list.c \
   py_proc.c      \

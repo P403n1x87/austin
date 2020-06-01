@@ -13,7 +13,7 @@ attach_austin() {
     echo "  :: Time profiling"
     $python_bin test/sleepy.py &
     sleep 1
-    run sudo src/austin -i 10000 -t 10000 -p $!
+    run sudo src/austin -i 10000 -t 100 -p $!
 
     echo "       Exit code: $status"
     if [ $status != 0 ]; then continue; fi
@@ -30,12 +30,12 @@ attach_austin() {
     echo "  :: Memory profiling"
     $python_bin test/sleepy.py &
     sleep 1
-    run sudo src/austin -mi 100 -t 10000 -p $!
+    run sudo src/austin -mi 100 -t 100 -p $!
 
     echo "       Exit code: $status"
     if [ $status != 0 ]; then continue; fi
 
-    if echo "$output" | grep -q "Thread "
+    if echo "$output" | grep -q "sleepy"
     then
       echo "       Output: OK"
       return
