@@ -253,11 +253,11 @@ for some further processing.
 By default, each line has the following structure:
 
 ~~~
-[Process <pid>;]?Thread <tid>[;[frame]]* [metric]*
+P<pid>;T<tid>[;[frame]]* [metric]*
 ~~~
 
-where the presence of the process ID, the structure of `[frame]` and the number
-and type of metrics on each line depend on the mode.
+where the structure of `[frame]` and the number and type of metrics on each line
+depend on the mode.
 
 
 ## Normal Mode
@@ -297,8 +297,7 @@ and any negative memory delta (memory releases) or zero.
 
 Austin can be told to profile multi-process applications with the `-C` or
 `--children` switch. This way Austin will look for new children of the parent
-process. In this case, each sample will contain the process identifier to help
-determine from which process the sample came from.
+process.
 
 
 ## Logging

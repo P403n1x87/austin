@@ -25,6 +25,7 @@
 #include "argparse.h"
 #include "error.h"
 #include "logging.h"
+#include "platform.h"
 #include "version.h"
 
 #include "py_thread.h"
@@ -95,7 +96,7 @@ py_thread_new_from_raddr(raddr_t * raddr) {
 
       py_thread->tid  = V_FIELD(long, ts, py_thread, o_thread_id);
       if (py_thread->tid == 0)
-        py_thread->tid = (long) raddr->addr;
+        py_thread->tid = (uintptr_t) raddr->addr;
       py_thread->next = NULL;
 
       py_thread->first_frame = first_frame;
@@ -141,15 +142,26 @@ py_thread__next(py_thread_t * self) {
   return self->next;
 }
 
+#if defined PL_WIN
+#define SAMPLE_HEAD "P%I64d;T%I64d"
+#define MEM_METRIC " %I64d"
+#else
+#define SAMPLE_HEAD "P%d;T%lx"
+#define MEM_METRIC " %ld"
+#endif
 
 // ----------------------------------------------------------------------------
 int
 py_thread__print_collapsed_stack(py_thread_t * thread, ctime_t delta, ssize_t mem_delta) {
   if (!pargs.full && pargs.memory && mem_delta <= 0)
     return 1;
-  
+
   if (thread->invalid) {
-    fprintf(pargs.output_file, "Thread %lx;Bad sample %ld\n", thread->tid, delta);
+    fprintf(
+      pargs.output_file,
+      SAMPLE_HEAD ";Bad sample %ld\n",
+      thread->raddr.pid, thread->tid, delta
+    );
     stats_count_error();
     return 0;
   }
@@ -161,7 +173,7 @@ py_thread__print_collapsed_stack(py_thread_t * thread, ctime_t delta, ssize_t me
     return 1;
 
   // Group entries by thread.
-  fprintf(pargs.output_file, "Thread %lx", thread->tid);
+  fprintf(pargs.output_file, SAMPLE_HEAD, thread->raddr.pid, thread->tid);
 
   // Append frames
   while(frame != NULL) {
@@ -178,13 +190,13 @@ py_thread__print_collapsed_stack(py_thread_t * thread, ctime_t delta, ssize_t me
 
   // Finish off sample with the metric(s)
   if (pargs.full) {
-    fprintf(pargs.output_file, " %lu %ld %ld\n",
+    fprintf(pargs.output_file, " %lu" MEM_METRIC MEM_METRIC "\n",
       delta, mem_delta >= 0 ? mem_delta : 0, mem_delta < 0 ? mem_delta : 0
     );
   }
   else {
     if (pargs.memory)
-      fprintf(pargs.output_file, " %ld\n", mem_delta);
+      fprintf(pargs.output_file, MEM_METRIC "\n", mem_delta);
     else
       fprintf(pargs.output_file, " %lu\n", delta);
   }

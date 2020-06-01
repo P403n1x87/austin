@@ -23,6 +23,7 @@
 #ifndef PY_THREAD_H
 #define PY_THREAD_H
 
+#include <stdint.h>
 #include <sys/types.h>
 
 #include "mem.h"
@@ -35,7 +36,7 @@ typedef struct thread {
   raddr_t         raddr;
   raddr_t         next_raddr;
 
-  long            tid;
+  uintptr_t       tid;
   struct thread * next;
 
   py_frame_t    * first_frame;
