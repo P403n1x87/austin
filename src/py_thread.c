@@ -177,7 +177,7 @@ py_thread__print_collapsed_stack(py_thread_t * thread, ctime_t delta, ssize_t me
 
   // Append frames
   while(frame != NULL) {
-    py_code_t * code = frame->code;
+    py_code_t * code = &(frame->code);
     if (pargs.sleepless && strstr(code->scope, "wait") != NULL) {
       delta = 0;
       fprintf(pargs.output_file, ";<idle>");

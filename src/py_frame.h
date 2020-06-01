@@ -24,7 +24,13 @@
 #define PY_FRAME_H
 
 #include "mem.h"
-#include "py_code.h"
+
+
+typedef struct {
+  char          * filename;
+  char          * scope;
+  int             lineno;
+} py_code_t;
 
 
 typedef struct frame {
@@ -34,7 +40,7 @@ typedef struct frame {
   int            frame_no;
   struct frame * prev;
   struct frame * next;     // Make it a double-linked list for easier reverse navigation
-  py_code_t    * code;
+  py_code_t      code;
 
   int            invalid;  // Set when prev_radd != null but prev == null.
 } py_frame_t;
