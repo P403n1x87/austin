@@ -41,7 +41,9 @@
 #define DEREF_SYM
 
 
-#define SYMBOLS              2
+#define SYMBOLS                        2
+
+#define SELF_PID                        (self->pid)
 
 
 #define next_lc(cmd)    (cmd = (struct segment_command *)    ((void *) cmd + cmd->cmdsize));
@@ -298,11 +300,11 @@ _py_proc__get_maps(py_proc_t * self) {
   vm_region_basic_info_data_64_t region_info;
   mach_msg_type_number_t         count = sizeof(vm_region_basic_info_data_64_t);
   mach_port_t                    object_name;
-  
+
   char * path = (char *) calloc(MAXPATHLEN + 1, sizeof(char));
-  if (path == NULL) 
+  if (path == NULL)
     return 1;
-  
+
   // NOTE: Mac OS X kernel bug. This also gives time to the VM maps to
   // stabilise.
   usleep(100000);

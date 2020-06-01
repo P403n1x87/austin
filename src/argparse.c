@@ -359,38 +359,6 @@ _handle_opts(arg_option * opts, arg_callback cb, int * argi, int argc, char ** a
 }
 
 
-// ----------------------------------------------------------------------------
-// Return 0 if all the arguments have been parsed. If interrupted, returns the
-// number of arguments consumed so far. Otherwise return an error code.
-static int
-arg_parse(arg_option * opts, arg_callback cb, int argc, char ** argv) {
-  int a      = 1;
-  int cb_res = 0;
-
-  while (a < argc) {
-    if (argv[a][0] == '-') {
-      if (argv[a][1] == '-') {
-        // Long option
-        cb_res = _handle_long_opt(opts, cb, &a, argc, argv);
-      }
-      else {
-        // Simple option
-        cb_res = _handle_opts(opts, cb, &a, argc, argv);
-      }
-    }
-    else {
-      // Argument
-      cb_res = cb(0, argv[a++]);
-    }
-
-    if (cb_res)
-      return cb_res < 0 ? cb_res : a;
-  }
-
-  return 0;
-}
-
-
 static const char * help_msg = \
 "Usage: austin [OPTION...] command [ARG...]\n"
 "Austin -- A frame stack sampler for Python.\n"
@@ -422,6 +390,42 @@ static const char * usage_msg = \
 "            [--children] [--exclude-empty] [--full] [--interval=n_us]\n"
 "            [--memory] [--output=FILE] [--pid=PID] [--sleepless]\n"
 "            [--timeout=n_ms] [--help] [--usage] [--version] command [ARG...]\n";
+
+
+// ----------------------------------------------------------------------------
+// Return 0 if all the arguments have been parsed. If interrupted, returns the
+// number of arguments consumed so far. Otherwise return an error code.
+static int
+arg_parse(arg_option * opts, arg_callback cb, int argc, char ** argv) {
+  int a      = 1;
+  int cb_res = 0;
+
+  if (argc <= 1) {
+    puts(usage_msg);
+  }
+
+  while (a < argc) {
+    if (argv[a][0] == '-') {
+      if (argv[a][1] == '-') {
+        // Long option
+        cb_res = _handle_long_opt(opts, cb, &a, argc, argv);
+      }
+      else {
+        // Simple option
+        cb_res = _handle_opts(opts, cb, &a, argc, argv);
+      }
+    }
+    else {
+      // Argument
+      cb_res = cb(0, argv[a++]);
+    }
+
+    if (cb_res)
+      return cb_res < 0 ? cb_res : a;
+  }
+
+  return 0;
+}
 
 
 // ----------------------------------------------------------------------------

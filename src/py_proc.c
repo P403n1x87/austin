@@ -251,11 +251,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   // As an extra sanity check, verify that the thread state is valid
   error = EOK;
-  #if defined PL_WIN                                                   /* WIN */
-  raddr_t thread_raddr = { .pid = self->extra->h_proc, .addr = is.tstate_head };
-  #else                                                               /* UNIX */
-  raddr_t thread_raddr = { .pid = self->pid, .addr = is.tstate_head };
-  #endif
+  raddr_t thread_raddr = { .pid = SELF_PID, .addr = is.tstate_head };
   py_thread_t * thread = py_thread_new_from_raddr(&thread_raddr);
 
   if (thread == NULL)
@@ -599,6 +595,8 @@ _py_proc__run(py_proc_t * self) {
     return 1;
   }
 
+  self->timestamp = gettime();
+
   return 0;
 }
 
@@ -744,11 +742,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
 // ----------------------------------------------------------------------------
 int
 py_proc__memcpy(py_proc_t * self, void * raddr, ssize_t size, void * dest) {
-  #if defined PL_WIN                                                   /* WIN */
-  return copy_memory(self->extra->h_proc, raddr, size, dest) == size ? 0 : 1;
-  #else                                                               /* UNIX */
-  return copy_memory(self->pid, raddr, size, dest) == size ? 0 : 1;
-  #endif
+  return !(copy_memory(SELF_PID, raddr, size, dest) == size);
 }
 
 
@@ -853,8 +847,8 @@ py_proc__is_running(py_proc_t * self) {
     return 0;
 
   #ifdef PL_WIN                                                        /* WIN */
-  DWORD ec;
-  return GetExitCodeProcess(self->extra->h_proc, &ec) ? ec : -1;
+  DWORD ec = 0;
+  return GetExitCodeProcess(self->extra->h_proc, &ec) ? ec == STILL_ACTIVE : 0;
 
   #elif defined PL_MACOS                                             /* MACOS */
   return pid_to_task(self->pid) != 0;
@@ -879,28 +873,16 @@ py_proc__get_memory_delta(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 void
 py_proc__sample(py_proc_t * self) {
-  ctime_t   delta;
   ssize_t   mem_delta = 0;
-  void    * current_thread;
-
-  // Compute time delta since last sample.
-  if (!self->timestamp) {
-    self->timestamp = gettime();
-    delta = 0;
-  } else {
-    delta = gettime() - self->timestamp;
-  }
+  void    * current_thread = NULL;
+  ctime_t   delta = gettime() - self->timestamp;  // Time delta since last sample.
 
   PyInterpreterState is;
   if (py_proc__get_type(self, self->is_raddr, is) != 0)
     return;
 
   if (is.tstate_head != NULL) {
-    #if defined PL_WIN
-    raddr_t raddr = { .pid = self->extra->h_proc, .addr = is.tstate_head };
-    #else
-    raddr_t raddr = { .pid = self->pid, .addr = is.tstate_head };
-    #endif
+    raddr_t raddr = { .pid = SELF_PID, .addr = is.tstate_head };
     py_thread_t * first_thread = py_thread_new_from_raddr(&raddr);
 
     if (pargs.memory) {
@@ -927,10 +909,7 @@ py_proc__sample(py_proc_t * self) {
         }
       }
 
-      if (pargs.children)
-        fprintf(pargs.output_file, "Process %d;", self->pid);
-
-      if (!py_thread__print_collapsed_stack(py_thread, delta, mem_delta >> 10))
+      if ((delta || mem_delta) && !py_thread__print_collapsed_stack(py_thread, delta, mem_delta >> 10))
         stats_count_sample();
     }
 

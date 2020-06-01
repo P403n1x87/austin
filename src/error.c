@@ -151,10 +151,3 @@ is_fatal(error_t n) {
 
   return _fatal_error_tab[n];
 }
-
-
-void
-check_not_null(void * p) {
-  if (p != NULL) error = EOK;
-  else           log_error();
-}

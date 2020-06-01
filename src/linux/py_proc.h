@@ -48,6 +48,8 @@
 
 #define SYMBOLS                        2
 
+#define SELF_PID                        (self->pid)
+
 
 #define _py_proc__get_elf_type(self, offset, dt) /* as */ (py_proc__memcpy(self, self->map.elf.base + offset, sizeof(dt), &dt))
 
