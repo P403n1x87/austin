@@ -143,11 +143,11 @@ py_thread__next(py_thread_t * self) {
 }
 
 #if defined PL_WIN
-#define SAMPLE_HEAD "P%I64d;T%I64d"
-#define MEM_METRIC " %I64d"
+  #define SAMPLE_HEAD "P%I64d;T%I64x"
+  #define MEM_METRIC " %I64d"
 #else
-#define SAMPLE_HEAD "P%d;T%lx"
-#define MEM_METRIC " %ld"
+  #define SAMPLE_HEAD "P%d;T%lx"
+  #define MEM_METRIC " %ld"
 #endif
 
 // ----------------------------------------------------------------------------

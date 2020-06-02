@@ -172,6 +172,13 @@ int main(int argc, char ** argv) {
   if (pargs.attach_pid == 0) {
     if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg])) {
       retval = EPROCFORK;
+      if (py_proc->pid) {
+        #if defined PL_UNIX
+        kill(py_proc->pid, SIGTERM);
+        #else
+        TerminateProcess(py_proc->extra->h_proc, 42);
+        #endif
+      }
       goto finally;
     }
   } else {
@@ -211,8 +218,8 @@ int main(int argc, char ** argv) {
 finally:
   if (retval && error != EOK) {
     log_i("Last error code: %d", error);
-#if defined PL_MACOS
     if (error == EPROCPERM) {
+      #if defined PL_MACOS
       log_f(
         "\n"
         "🔒 Insufficient permissions. Austin requires the use of sudo on Mac OS in\n"
@@ -224,8 +231,14 @@ finally:
         "\n"
         "for more details."
       );
+      #elif defined PL_LINUX
+      log_f(
+        "\n"
+        "🔒 Insufficient permissions. Austin requires the use of sudo on Linux in\n"
+        "order to attach to a running Python process."
+      );
+      #endif
     }
-#endif
   }
   log_footer();
   logger_close();

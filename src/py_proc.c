@@ -549,7 +549,10 @@ _py_proc__run(py_proc_t * self) {
   TIMER_END
 
   if (self->bin_path == NULL && self->lib_path == NULL) {
-    log_f("Python binary not found. Not Python?");
+    log_f(
+      "\n👽 No Python binaries found from process %d. Perhaps you are trying to\n"
+      "start or attach to a non-Python process.", self->pid
+    );
     return 1;
   }
 
