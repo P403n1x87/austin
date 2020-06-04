@@ -1,120 +1,117 @@
-#!/usr/bin/env bats
+# This file is part of "austin" which is released under GPL.
+#
+# See file LICENCE or go to http://www.gnu.org/licenses/ for full license
+# details.
+#
+# Austin is a Python frame stack sampler for CPython.
+#
+# Copyright (c) 2019 Gabriele N. Tornetta <phoenix1987@gmail.com>.
+# All rights reserved.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-invoke_austin() {
-  if ! python$1 -V; then skip "Python $1 not found."; fi
+load "common"
 
-  for i in {1..3}
-  do
-    echo "> Run $i of 3"
 
-    # -------------------------------------------------------------------------
+function invoke_austin {
+  local version="${1}"
 
-    echo "  :: Standard profiling"
-    run src/austin -i 1000 -t 10000 python$1 test/target34.py
+  check_python $version
 
-    echo "       Exit code: $status"
-    if [ $status != 0 ]; then continue; fi
+  log "Fork [Python $version]"
 
-    if ! echo "$output" | grep -q "keep_cpu_busy (test/target34.py);L" \
-    || echo "$output" | grep -q "Unwanted"
-    then
-      continue
-    fi
-    echo "       Output: OK"
+  # -------------------------------------------------------------------------
+  step "Standard profiling"
+  # -------------------------------------------------------------------------
+    run $AUSTIN -i 1000 -t 10000 $PYTHON test/target34.py
 
-    # -------------------------------------------------------------------------
+    assert_success
+    assert_output "keep_cpu_busy (test/target34.py);L"
+    assert_not_output "Unwanted"
 
-    echo "  :: Memory profiling"
-    run src/austin -i 1000 -t 10000 -m python$1 test/target34.py
+  # -------------------------------------------------------------------------
+  step "Memory profiling"
+  # -------------------------------------------------------------------------
+    run $AUSTIN -i 1000 -t 10000 -m $PYTHON test/target34.py
 
-    echo "       Exit code: $status"
-    if [ $status != 0 ]; then continue; fi
+    assert_success
+    assert_output "keep_cpu_busy (test/target34.py);L"
 
-    if ! echo "$output" | grep -q "keep_cpu_busy (test/target34.py);L"
-    then
-      continue
-    fi
-    echo "       Output: OK"
+  # -------------------------------------------------------------------------
+  step "Output file"
+  # -------------------------------------------------------------------------
+    run $AUSTIN -i 10000 -t 10000 -o /tmp/austin_out.txt $PYTHON test/target34.py
 
-    # -------------------------------------------------------------------------
+    assert_success
+    assert_output "Unwanted"
+    assert_not_output "keep_cpu_busy (test/target34.py);L"
+    assert_file "/tmp/austin_out.txt" "keep_cpu_busy (test/target34.py);L"
 
-    echo "  :: Output file"
-    run src/austin -i 10000 -t 10000 -o /tmp/austin_out.txt python$1 test/target34.py
-
-    echo "       Exit code: $status"
-    if [ $status != 0 ]; then continue; fi
-
-    if ! echo "$output" | grep -q "Unwanted" \
-    || cat /tmp/austin_out.txt | grep -q "keep_cpu_busy (test/target34.py);L"
-    then
-      echo "       Output: OK"
-      return
-    fi
-  done
-
-  if [ $2 ]
-  then
-    skip "Test failed but marked as 'Ignore'"
-  else
-    echo
-    echo "Collected Output"
-    echo "================"
-    echo
-    echo "$output"
-    echo
-    false
-  fi
 }
-
 
 # -----------------------------------------------------------------------------
 
-
-teardown() {
+function teardown {
   if [ -f /tmp/austin_out.txt ]; then rm /tmp/austin_out.txt; fi
 }
 
 
+# -----------------------------------------------------------------------------
+# -- Test Cases
+# -----------------------------------------------------------------------------
+
 @test "Test Austin with Python 2.3" {
-	invoke_austin "2.3" ignore
+  ignore
+	repeat 3 invoke_austin "2.3"
 }
 
 @test "Test Austin with Python 2.4" {
-	invoke_austin "2.4" ignore
+  ignore
+	repeat 3 invoke_austin "2.4"
 }
 
 @test "Test Austin with Python 2.5" {
-	invoke_austin "2.5"
+	repeat 3 invoke_austin "2.5"
 }
 
 @test "Test Austin with Python 2.6" {
-	invoke_austin "2.6"
+	repeat 3 invoke_austin "2.6"
 }
 
 @test "Test Austin with Python 2.7" {
-	invoke_austin "2.7"
+	repeat 3 invoke_austin "2.7"
 }
 
 @test "Test Austin with Python 3.3" {
-	invoke_austin "3.3"
+	repeat 3 invoke_austin "3.3"
 }
 
 @test "Test Austin with Python 3.4" {
-	invoke_austin "3.4"
+	repeat 3 invoke_austin "3.4"
 }
 
 @test "Test Austin with Python 3.5" {
-	invoke_austin "3.5"
+	repeat 3 invoke_austin "3.5"
 }
 
 @test "Test Austin with Python 3.6" {
-  invoke_austin "3.6"
+  repeat 3 invoke_austin "3.6"
 }
 
 @test "Test Austin with Python 3.7" {
-  invoke_austin "3.7"
+  repeat 3 invoke_austin "3.7"
 }
 
 @test "Test Austin with Python 3.8" {
-  invoke_austin "3.8"
+  repeat 3 invoke_austin "3.8"
 }

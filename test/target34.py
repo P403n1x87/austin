@@ -5,7 +5,7 @@
 # See file LICENCE or go to http://www.gnu.org/licenses/ for full license
 # details.
 #
-# Sibilla is a Python ORM for the Oracle Database.
+# Austin is a Python frame stack sampler for CPython.
 #
 # Copyright (c) 2019 Gabriele N. Tornetta <phoenix1987@gmail.com>.
 # All rights reserved.
@@ -29,7 +29,7 @@ def keep_cpu_busy():
     a = []
     for i in range(2000000):
         a.append(i)
-        if i % 100000 == 0:
+        if i % 1000000 == 0:
             print("Unwanted output " + str(i))
 
 

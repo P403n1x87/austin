@@ -1,149 +1,94 @@
-attach_austin_2_3() {
-  if ! python$1 -V; then skip "Python $1 not found."; fi
+# This file is part of "austin" which is released under GPL.
+#
+# See file LICENCE or go to http://www.gnu.org/licenses/ for full license
+# details.
+#
+# Austin is a Python frame stack sampler for CPython.
+#
+# Copyright (c) 2019 Gabriele N. Tornetta <phoenix1987@gmail.com>.
+# All rights reserved.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-  for i in {1..3}
-  do
-    echo "> Run $i of 3"
+load "common"
 
-    # -------------------------------------------------------------------------
 
-    echo "  :: Standard profiling"
-    python$1 test/sleepy.py &
+function attach_austin {
+  local version="${1}"
+
+  check_python $version
+
+  log "Attach [Python $version]"
+
+  # -------------------------------------------------------------------------
+  step "Standard profiling"
+  # -------------------------------------------------------------------------
+    $PYTHON test/sleepy.py &
     sleep 1
-    run src/austin -i 100000 -t 10000 -p $!
+    run $AUSTIN -i 100 -t 100 -p $!
 
-    echo "       Exit code: $status"
-    if [ $status != 0 ]; then continue; fi
+    assert_success
+    assert_output "(test/sleepy.py);L[[:digit:]]* "
 
-    if ! echo "$output" | grep -q ";? (test/sleepy.py);L[[:digit:]]* "
-    then
-      continue
-    fi
-    echo "       Output: OK"
-
-    # -------------------------------------------------------------------------
-
-    echo "  :: Memory profiling"
-    python$1 test/sleepy.py &
-    sleep 1
-    run src/austin -mi 100 -t 10000 -p $!
-
-    echo "       Exit code: $status"
-    if [ $status != 0 ]; then continue; fi
-
-    if echo "$output" | grep -q "cpu_bound"
-    then
-      echo "       Output: OK"
-      return
-    fi
-  done
-
-  if [ $2 ]
-  then
-    skip "Test failed but marked as 'Ignore'"
-  else
-    echo
-    echo "Collected Output"
-    echo "================"
-    echo
-    echo "$output"
-    echo
-    false
-  fi
-}
-
-attach_austin() {
-  if ! python$1 -V; then skip "Python $1 not found."; fi
-
-  for i in {1..3}
-  do
-    echo "> Run $i of 3"
-
-    # -------------------------------------------------------------------------
-
-    echo "  :: Standard profiling"
-    python$1 test/sleepy.py &
-    sleep 1
-    run src/austin -i 10000 -t 10000 -p $!
-
-    echo "       Exit code: $status"
-    if [ $status != 0 ]; then continue; fi
-
-    if ! echo "$output" | grep -q ";<module> (test/sleepy.py);L[[:digit:]]* "
-    then
-      continue
-    fi
-    echo "       Output: OK"
-
-    # -------------------------------------------------------------------------
-
-    python$1 test/sleepy.py &
-    sleep 1
-    run src/austin -mi 100 -t 10000 -p $!
-
-    echo "       Exit code: $status"
-    if [ $status != 0 ]; then continue; fi
-
-    if echo "$output" | grep -q "cpu_bound"
-    then
-      echo "       Output: OK"
-      return
-    fi
-  done
-
-  if [ $2 ]
-  then
-    skip "Test failed but marked as 'Ignore'"
-  else
-    echo "$output"
-    false
-  fi
 }
 
 
 # -----------------------------------------------------------------------------
-
+# -- Test Cases
+# -----------------------------------------------------------------------------
 
 @test "Test Austin with Python 2.3" {
-	attach_austin_2_3 "2.3" ignore
+  ignore
+	repeat 3 attach_austin "2.3"
 }
 
 @test "Test Austin with Python 2.4" {
-	attach_austin_2_3 "2.4" ignore
+  ignore
+	repeat 3 attach_austin "2.4"
 }
 
 @test "Test Austin with Python 2.5" {
-	attach_austin "2.5"
+	repeat 3 attach_austin "2.5"
 }
 
 @test "Test Austin with Python 2.6" {
-	attach_austin "2.6"
+	repeat 3 attach_austin "2.6"
 }
 
 @test "Test Austin with Python 2.7" {
-	attach_austin "2.7"
+	repeat 3 attach_austin "2.7"
 }
 
 @test "Test Austin with Python 3.3" {
-	attach_austin "3.3"
+	repeat 3 attach_austin "3.3"
 }
 
 @test "Test Austin with Python 3.4" {
-	attach_austin "3.4"
+	repeat 3 attach_austin "3.4"
 }
 
 @test "Test Austin with Python 3.5" {
-	attach_austin "3.5"
+	repeat 3 attach_austin "3.5"
 }
 
 @test "Test Austin with Python 3.6" {
-  attach_austin "3.6"
+  repeat 3 attach_austin "3.6"
 }
 
 @test "Test Austin with Python 3.7" {
-  attach_austin "3.7"
+  repeat 3 attach_austin "3.7"
 }
 
 @test "Test Austin with Python 3.8" {
-  attach_austin "3.8"
+  repeat 3 attach_austin "3.8"
 }

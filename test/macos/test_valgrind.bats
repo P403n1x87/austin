@@ -1,50 +1,76 @@
-invoke_austin() {
-  python_bin=$1
-  ignore=$2
+# This file is part of "austin" which is released under GPL.
+#
+# See file LICENCE or go to http://www.gnu.org/licenses/ for full license
+# details.
+#
+# Austin is a Python frame stack sampler for CPython.
+#
+# Copyright (c) 2019 Gabriele N. Tornetta <phoenix1987@gmail.com>.
+# All rights reserved.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-  if ! $python_bin -V; then skip "$python not found."; fi
+load "../common"
 
-  for i in {1..3}
-  do
-    echo "> Run $i of 3"
 
-    # -------------------------------------------------------------------------
+function invoke_austin {
+  python_bin="${1}"
 
-    echo "  :: Valgrind test"
-    run sudo valgrind \
+  if ! $python_bin -V; then skip "$python_bin not found."; fi
+
+  log "Valgrind [Python $version]"
+
+  # -------------------------------------------------------------------------
+  step "Valgrind test"
+  # -------------------------------------------------------------------------
+    run valgrind \
       --error-exitcode=42 \
       --leak-check=full \
       --show-leak-kinds=all \
       --errors-for-leak-kinds=all \
       --track-fds=yes \
-      --track-origins=yes \
-      src/austin -i 100000 -t 10000 $python_bin test/target34.py
-    echo "       Exit code: $status"
-    echo "       Valgrind report: <"
-    echo "$output"
-  	if [ $status = 0 ]
-    then
-      return
-    fi
-  done
+      $AUSTIN -i 100000 -t 10000 -o /dev/null $PYTHON test/target34.py
 
-  if [ $ignore ]
-  then
-    echo "Test marked as 'Ignore' failed"
-  fi
-  echo
-  echo "Collected Output"
-  echo "================"
-  echo
-  echo "$output"
-  echo
-  
-  false
+    if [ ! $status == 0 ]
+    then
+      log "       Valgrind Report"
+      log "       ==============="
+      for line in "${lines[@]}"
+      do
+        log "       $line"
+      done
+      check_ignored
+    fi
 }
 
 
 # -----------------------------------------------------------------------------
+# -- Test Cases
+# -----------------------------------------------------------------------------
 
+@test "Test Austin with default Python 3 from Homebrew" {
+	repeat 3 invoke_austin "/usr/local/bin/python3"
+}
+
+@test "Test Austin with Python 3.8 from Homebrew (if available)" {
+  ignore
+  repeat 3 invoke_austin "/usr/local/opt/python@3.8/bin/python3"
+}
+
+@test "Test Austin with Python 3 from Anaconda (if available)" {
+  ignore
+  repeat 3 invoke_austin "/usr/local/anaconda3/bin/python"
+}
 
 # @test "Test Austin with the default Python 3" {
 #   /usr/bin/python3 -m venv /tmp/py3
@@ -52,15 +78,3 @@ invoke_austin() {
 # 	invoke_austin "python3"
 #   test -d /tmp/py3 && rm -rf /tmp/py3
 # }
-
-@test "Test Austin with default Python 3 from Homebrew" {
-	invoke_austin "/usr/local/bin/python3"
-}
-
-@test "Test Austin with Python 3.8 from Homebrew (if available)" {
-  invoke_austin "/usr/local/opt/python@3.8/bin/python3" ignore
-}
-
-@test "Test Austin with Python 3 from Anaconda (if available)" {
-  invoke_austin "/usr/local/anaconda3/bin/python" ignore
-}
