@@ -25,9 +25,11 @@
 #include <limits.h>
 #include <time.h>
 
-#ifdef PL_MACOS
+#if defined PL_MACOS
 #include <mach/clock.h>
 #include <mach/mach.h>
+#elif defined PL_WIN
+#include <profileapi.h>
 #endif
 
 #include "error.h"
@@ -54,11 +56,19 @@ static ctime_t _avg_sampling_time;
 static ustat_t _error_cnt;
 static ustat_t _long_cnt;
 
+#if defined PL_WIN
+// On Windows we have to use the QueryPerformance APIs in order to get the
+// right time resolution. We use this variable to cache the inverse frequency
+// (counts per second), that is the period of each count, in units of us.
+static double _period;
+#endif
+
 
 // ---- PUBLIC ----------------------------------------------------------------
 
 ctime_t
 gettime(void) {
+  #if defined PL_UNIX                                                 /* UNIX */
   struct timespec ts;
 
   #ifdef PL_MACOS
@@ -77,6 +87,13 @@ gettime(void) {
   #endif
 
   return ts.tv_sec * 1e6 + ts.tv_nsec / 1e3;
+
+  #else                                                                /* WIN */
+  LARGE_INTEGER count;
+  QueryPerformanceCounter(&count);
+
+  return count.QuadPart * _period;
+  #endif
 }
 
 
@@ -88,6 +105,12 @@ stats_reset(void) {
   _min_sampling_time = ULONG_MAX;
   _max_sampling_time = 0;
   _avg_sampling_time = 0;
+
+  #if defined PL_WIN
+  LARGE_INTEGER freq;
+  QueryPerformanceFrequency(&freq);
+  _period = ((double) 1e6) / ((double) freq.QuadPart);
+  #endif
 }
 
 

@@ -151,26 +151,19 @@ py_thread__next(py_thread_t * self) {
 #endif
 
 // ----------------------------------------------------------------------------
-int
+void
 py_thread__print_collapsed_stack(py_thread_t * thread, ctime_t delta, ssize_t mem_delta) {
   if (!pargs.full && pargs.memory && mem_delta <= 0)
-    return 1;
+    return;
 
-  if (thread->invalid) {
-    fprintf(
-      pargs.output_file,
-      SAMPLE_HEAD ";Bad sample %ld\n",
-      thread->raddr.pid, thread->tid, delta
-    );
-    stats_count_error();
-    return 0;
-  }
+  if (thread->invalid)
+    return;
 
   py_frame_t * frame = py_thread__first_frame(thread);
 
   if (frame == NULL && pargs.exclude_empty)
     // Skip if thread has no frames and we want to exclude empty threads
-    return 1;
+    return;
 
   // Group entries by thread.
   fprintf(pargs.output_file, SAMPLE_HEAD, thread->raddr.pid, thread->tid);
@@ -200,8 +193,6 @@ py_thread__print_collapsed_stack(py_thread_t * thread, ctime_t delta, ssize_t me
     else
       fprintf(pargs.output_file, " %lu\n", delta);
   }
-
-  return 0;
 }
 
 

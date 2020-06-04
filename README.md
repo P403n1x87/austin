@@ -288,7 +288,7 @@ microseconds.
 
 When profiling in memory mode with the `-m` or `--memory` switch, the metric
 value at the end of each line is the memory delta between samples, measured in
-KB. In full mode (`-f` or `--full` switches), each samples ends with three
+bytes. In full mode (`-f` or `--full` switches), each samples ends with three
 values: the time delta, any positive memory delta (memory allocations) or zero
 and any negative memory delta (memory releases) or zero.
 

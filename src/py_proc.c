@@ -874,7 +874,7 @@ py_proc__get_memory_delta(py_proc_t * self) {
 
 
 // ----------------------------------------------------------------------------
-void
+int
 py_proc__sample(py_proc_t * self) {
   ssize_t   mem_delta = 0;
   void    * current_thread = NULL;
@@ -882,7 +882,7 @@ py_proc__sample(py_proc_t * self) {
 
   PyInterpreterState is;
   if (py_proc__get_type(self, self->is_raddr, is) != 0)
-    return;
+    return 1;
 
   if (is.tstate_head != NULL) {
     raddr_t raddr = { .pid = SELF_PID, .addr = is.tstate_head };
@@ -912,14 +912,28 @@ py_proc__sample(py_proc_t * self) {
         }
       }
 
-      if ((delta || mem_delta) && !py_thread__print_collapsed_stack(py_thread, delta, mem_delta >> 10))
-        stats_count_sample();
+      py_thread__print_collapsed_stack(py_thread, delta, mem_delta);
     }
 
     py_thread__destroy(first_thread);
   }
 
   self->timestamp += delta;
+
+  return 0;
+} /* py_proc__sample */
+
+
+// ----------------------------------------------------------------------------
+void
+py_proc__terminate(py_proc_t * self) {
+  if (self->pid) {
+    #if defined PL_UNIX
+    kill(self->pid, SIGTERM);
+    #else
+    TerminateProcess(self->extra->h_proc, 42);
+    #endif
+  }
 }
 
 

@@ -79,10 +79,8 @@ py_thread__next(py_thread_t *);
  * @param  py_thread_t  self.
  * @param  ctime_t      the time delta.
  * @param  ssize_t      the memory delta.
- *
- * @return 0 if the frame stack was printed, 1 otherwise.
  */
-int
+void
 py_thread__print_collapsed_stack(py_thread_t *, ctime_t, ssize_t);
 
 

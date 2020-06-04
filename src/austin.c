@@ -35,35 +35,12 @@
 #include "platform.h"
 #include "python.h"
 #include "stats.h"
+#include "timer.h"
 
 #include "py_frame.h"
 #include "py_proc.h"
 #include "py_proc_list.h"
 #include "py_thread.h"
-
-
-// ---- TIMING ----------------------------------------------------------------
-
-static ctime_t _sample_timestamp;
-
-
-static void
-timer_start(void) {
-  _sample_timestamp = gettime();
-} /* timer_start */
-
-
-static void
-timer_stop(void) {
-  ctime_t delta = gettime() - _sample_timestamp;
-
-  // Record stats
-  stats_check_duration(delta, pargs.t_sampling_interval);
-
-  // Pause if sampling took less than the sampling interval.
-  if (delta < pargs.t_sampling_interval)
-    usleep(pargs.t_sampling_interval - delta);
-} /* timer_stop */
 
 
 // ---- SIGNAL HANDLING -------------------------------------------------------
@@ -83,12 +60,10 @@ signal_callback_handler(int signum)
 // ----------------------------------------------------------------------------
 void
 do_single_process(py_proc_t * py_proc) {
-  while(py_proc__is_running(py_proc) && !interrupt) {
+  while(!interrupt) {
     timer_start();
-    {
-      py_proc__sample(py_proc);
-    }
-    timer_stop();
+    if (py_proc__sample(py_proc)) break;
+    timer_pause(timer_stop());
   }
 
   if (!interrupt)
@@ -123,12 +98,10 @@ do_child_processes(py_proc_t * py_proc) {
   }
 
   while (!py_proc_list__is_empty(list) && !interrupt) {
-    timer_start();
-    {
-      py_proc_list__update(list);
-      py_proc_list__sample(list);
-    }
-    timer_stop();
+    ctime_t start_time = gettime();
+    py_proc_list__update(list);
+    py_proc_list__sample(list);
+    timer_pause(gettime() - start_time);
   }
 
   if (!interrupt) {
@@ -172,13 +145,7 @@ int main(int argc, char ** argv) {
   if (pargs.attach_pid == 0) {
     if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg])) {
       retval = EPROCFORK;
-      if (py_proc->pid) {
-        #if defined PL_UNIX
-        kill(py_proc->pid, SIGTERM);
-        #else
-        TerminateProcess(py_proc->extra->h_proc, 42);
-        #endif
-      }
+      py_proc__terminate(py_proc);
       goto finally;
     }
   } else {
@@ -218,6 +185,7 @@ int main(int argc, char ** argv) {
 finally:
   if (retval && error != EOK) {
     log_i("Last error code: %d", error);
+    #if defined PL_UNIX
     if (error == EPROCPERM) {
       #if defined PL_MACOS
       log_f(
@@ -239,6 +207,16 @@ finally:
       );
       #endif
     }
+    #elif defined PL_WIN
+    if (error == EPROCISTIMEOUT) {
+      log_f(
+        "On Windows, this error could indicate that you are starting Python from\n"
+        "a wrapper. This is often the case if you have installed Python via, e.g.,\n"
+        "Scoop or some other package manager. Try starting Python from within a\n"
+        "virtual environment or use the actual Python executable if you can."
+      );
+    }
+    #endif
   }
   log_footer();
   logger_close();
