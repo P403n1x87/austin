@@ -28,8 +28,7 @@
 
 #include "platform.h"
 
-#if defined(PL_LINUX)
-  #define _GNU_SOURCE
+#if defined PL_LINUX
   #include <sys/uio.h>
   ssize_t process_vm_readv(
     pid_t, const struct iovec *, unsigned long liovcnt,

@@ -127,12 +127,12 @@ _get_string_from_raddr(pid_t pid, void * raddr, char * buffer) {
 static inline int
 _get_bytes_from_raddr(pid_t pid, void * raddr, unsigned char * array) {
   PyStringObject string;
-  PyBytesObject bytes;
+  PyBytesObject  bytes;
+  ssize_t        len = 0;
 
   if (!isvalid(array))
     goto error;
 
-  ssize_t len = 0;
   switch (py_v->py_bytes.version) {
   case 2:  // Python 2
     if (copy_datatype(pid, raddr, string) != sizeof(string)) {

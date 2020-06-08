@@ -26,6 +26,7 @@
 
 #if defined(__linux__)
   #define PL_LINUX
+  #define _GNU_SOURCE
 
 #elif defined(__APPLE__) && defined(__MACH__)
   #define PL_MACOS

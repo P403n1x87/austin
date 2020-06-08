@@ -22,6 +22,7 @@
 
 #ifdef PY_PROC_C
 
+#include <stddef.h>
 #include <stdio.h>
 #include <libproc.h>
 #include <mach/mach.h>
@@ -65,6 +66,33 @@
 struct _proc_extra_info {
   mach_port_t task_id;
 };
+
+
+// ----------------------------------------------------------------------------
+// NOTE: This is inspired by glibc/posix/execvpe.c
+extern char **environ;
+
+static void
+_maybe_script_execute(const char * file, char * const argv[]) {
+  ptrdiff_t argc = 0;
+  for (ptrdiff_t argc = 0; argv[argc] != NULL; argc++);
+
+  char *new_argv[argc > 1 ? 2 + argc : 3];
+  new_argv[0] = (char *) "/bin/sh";
+  new_argv[1] = (char *) file;
+  if (argc > 1)
+    memcpy (new_argv + 2, argv + 1, argc * sizeof (char *));
+  else
+    new_argv[2] = NULL;
+  /* Execute the shell.  */
+  execve(new_argv[0], new_argv, environ);
+}
+
+
+#define execvpe(file, argv, environ) { \
+  execvp(file, argv);                  \
+  _maybe_script_execute(file, argv);   \
+}
 
 
 // ----------------------------------------------------------------------------

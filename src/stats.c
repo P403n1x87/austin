@@ -61,7 +61,7 @@ ustat_t _long_cnt;
 #if defined PL_WIN
 // On Windows we have to use the QueryPerformance APIs in order to get the
 // right time resolution. We use this variable to cache the inverse frequency
-// (counts per second), that is the period of each count, in units of us.
+// (counts per second), that is the period of each count, in units of μs.
 static double _period;
 #endif
 
@@ -141,7 +141,7 @@ stats_log_metrics(void) {
     return;
   }
 
-  log_m("🕑 Sampling time (min/avg/max) : %lu/%lu/%lu us",
+  log_m("🕑 Sampling time (min/avg/max) : %lu/%lu/%lu μs",
     stats_get_min_sampling_time(),
     stats_get_avg_sampling_time(),
     stats_get_max_sampling_time()

@@ -369,7 +369,7 @@ is written in C, implementing the new changes is rather straight-forward.
 The following flame graph has been obtained with the command
 
 ~~~ bash
-austin -i 50 ./test.py | ./flamegraph.pl --countname=us > test.svg
+austin -i 50 ./test.py | ./flamegraph.pl --countname=μs > test.svg
 ~~~
 
 where the sample `test.py` script has the following content
