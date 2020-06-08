@@ -31,8 +31,6 @@
 #include "stats.h"
 
 
-// ---- TIMING ----------------------------------------------------------------
-
 static ctime_t _sample_timestamp;
 static ctime_t _sample_delta;
 

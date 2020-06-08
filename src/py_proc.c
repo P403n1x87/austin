@@ -41,6 +41,7 @@
 #include "argparse.h"
 #include "dict.h"
 #include "error.h"
+#include "hints.h"
 #include "logging.h"
 #include "mem.h"
 #include "version.h"
@@ -252,18 +253,16 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   // As an extra sanity check, verify that the thread state is valid
   error = EOK;
   raddr_t thread_raddr = { .pid = SELF_PID, .addr = is.tstate_head };
-  py_thread_t * thread = py_thread_new_from_raddr(&thread_raddr);
-
-  if (thread == NULL)
-    return 1;
-
-  if (thread->invalid) {
-    py_thread__destroy(thread);
-    log_d("... but Head Thread State is invalid!");
-    return 1;
+  py_thread_t thread;
+  if (!success(py_thread__fill_from_raddr(&thread, &thread_raddr))) {
+    log_d("Failed to fill thread structure");
+    FAIL;
   }
 
-  py_thread__destroy(thread);
+  if (thread.invalid) {
+    log_d("... but Head Thread State is invalid!");
+    FAIL;
+  }
 
   log_d(
     "Stack trace constructed from possible interpreter state (error code: %d)",
@@ -540,7 +539,7 @@ _py_proc__run(py_proc_t * self) {
       break;
 
     if (error == EPROCPERM || error == EPROCNPID)
-      return 1;  // Fatal errors
+      FAIL;  // Fatal errors
 
     log_d(
       "Process not ready :: bin_path: %p, lib_path: %p, symbols: %d",
@@ -553,7 +552,7 @@ _py_proc__run(py_proc_t * self) {
       "\n👽 No Python binaries found from process %d. Perhaps you are trying to\n"
       "start or attach to a non-Python process.", self->pid
     );
-    return 1;
+    FAIL;
   }
 
   if (self->map.bss.size == 0 || self->map.bss.base == NULL)
@@ -587,7 +586,7 @@ _py_proc__run(py_proc_t * self) {
     self->version = _py_proc__get_version(self);
     if (!self->version) {
       log_f("Python version is unknown.");
-      return 1;
+      FAIL;
     }
 
     set_version(self->version);
@@ -595,13 +594,13 @@ _py_proc__run(py_proc_t * self) {
 
   if (_py_proc__wait_for_interp_state(self)) {
     log_error();
-    return 1;
+    FAIL;
   }
 
   self->timestamp = gettime();
 
-  return 0;
-}
+  SUCCESS;
+} /* _py_proc__run */
 
 
 // ---- PUBLIC ----------------------------------------------------------------
@@ -886,41 +885,37 @@ py_proc__sample(py_proc_t * self) {
 
   if (is.tstate_head != NULL) {
     raddr_t raddr = { .pid = SELF_PID, .addr = is.tstate_head };
-    py_thread_t * first_thread = py_thread_new_from_raddr(&raddr);
+    py_thread_t py_thread;
+    if (!success(py_thread__fill_from_raddr(&py_thread, &raddr)))
+      FAIL;
 
     if (pargs.memory) {
       // Use the current thread to determine which thread is manipulating memory
       current_thread = py_proc__get_current_thread_state_raddr(self);
     }
 
-    for (
-      py_thread_t * py_thread = first_thread;
-      py_thread != NULL;
-      py_thread = py_thread__next(py_thread)
-    ) {
+    do {
       if (pargs.memory) {
         mem_delta = 0;
         if (self->py_runtime_raddr != NULL && current_thread == (void *) -1) {
-          if (py_proc__find_current_thread_offset(self, py_thread->raddr.addr))
+          if (py_proc__find_current_thread_offset(self, py_thread.raddr.addr))
             continue;
           else
             current_thread = py_proc__get_current_thread_state_raddr(self);
         }
-        if (py_thread->raddr.addr == current_thread) {
+        if (py_thread.raddr.addr == current_thread) {
           mem_delta = py_proc__get_memory_delta(self);
-          log_t("Thread %lx holds the GIL", py_thread->tid);
+          log_t("Thread %lx holds the GIL", py_thread.tid);
         }
       }
 
-      py_thread__print_collapsed_stack(py_thread, delta, mem_delta);
-    }
-
-    py_thread__destroy(first_thread);
+      py_thread__print_collapsed_stack(&py_thread, delta, mem_delta);
+    } while (success(py_thread__next(&py_thread)));
   }
 
   self->timestamp += delta;
 
-  return 0;
+  SUCCESS;
 } /* py_proc__sample */
 
 

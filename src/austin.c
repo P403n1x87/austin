@@ -30,6 +30,7 @@
 #include "argparse.h"
 #include "austin.h"
 #include "error.h"
+#include "hints.h"
 #include "logging.h"
 #include "mem.h"
 #include "platform.h"
@@ -37,7 +38,6 @@
 #include "stats.h"
 #include "timer.h"
 
-#include "py_frame.h"
 #include "py_proc.h"
 #include "py_proc_list.h"
 #include "py_thread.h"
@@ -142,6 +142,15 @@ int main(int argc, char ** argv) {
     goto finally;
   }
 
+  if (!success(py_thread_allocate_stack())) {
+    log_f(
+      "\n"
+      "😵 Failed to allocate the memory for dumping frame stacks. This is pretty bad\n"
+      "as Austin doesn't require much memory to run. Try to free up some memory."
+    );
+    goto finally;
+  }
+
   if (pargs.attach_pid == 0) {
     if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg])) {
       retval = EPROCFORK;
@@ -183,6 +192,8 @@ int main(int argc, char ** argv) {
   stats_log_metrics();
 
 finally:
+  py_thread_free_stack();
+
   if (retval && error != EOK) {
     log_i("Last error code: %d", error);
     #if defined PL_UNIX

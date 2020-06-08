@@ -20,49 +20,18 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef PY_FRAME_H
-#define PY_FRAME_H
+#ifndef HINTS_H
+#define HINTS_H
 
-#include "mem.h"
+#define SUCCESS                         return 0
+#define FAIL                            return 1
 
+#define TRUE                           1
+#define FALSE                          0
 
-typedef struct {
-  char          * filename;
-  char          * scope;
-  int             lineno;
-} py_code_t;
+#define success(x)                      (!(x))
+#define sfree(x)                        {if ((x) != NULL) free(x);}
 
+#define isvalid(x)                      ((x) != NULL)
 
-typedef struct frame {
-  raddr_t        raddr;
-  raddr_t        prev_raddr;
-
-  int            frame_no;
-  struct frame * prev;
-  struct frame * next;     // Make it a double-linked list for easier reverse navigation
-  py_code_t      code;
-
-  int            invalid;  // Set when prev_radd != null but prev == null.
-} py_frame_t;
-
-
-py_frame_t *
-py_frame_new_from_raddr(raddr_t *);
-
-/**
- * Navigate to the previous frame in the stack.
- *
- * @param   py_frame_t  self
- *
- * @return  the pointer to the previous py_frame_t object or NULL if self is
- *          at the bottom of the stack.
- */
-py_frame_t *
-py_frame__prev(py_frame_t *);
-
-
-void
-py_frame__destroy(py_frame_t *);
-
-
-#endif // PY_FRAME_H
+#endif
