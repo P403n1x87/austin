@@ -1,3 +1,10 @@
+austin (1.0.1-2) unstable; urgency=medium
+
+  Enhanced test sources. Closes: #962001.
+
+ -- Gabriele N. Tornetta <phoenix1987@gmail.com>  Fri, 05 Jun 2020 17:24:00 +0100
+
+
 austin (1.0.1-1) unstable; urgency=medium
 
   * Fixed support for Python 3.8
