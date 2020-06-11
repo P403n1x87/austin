@@ -3,7 +3,7 @@
 # See file LICENCE or go to http://www.gnu.org/licenses/ for full license
 # details.
 #
-# Sibilla is a Python ORM for the Oracle Database.
+# Austin is a Python frame stack sampler for CPython.
 #
 # Copyright (c) 2019 Gabriele N. Tornetta <phoenix1987@gmail.com>.
 # All rights reserved.
@@ -25,11 +25,11 @@ import time
 
 def cpu_bound():
     a = []
-    for i in range(100000):
+    for i in range(1000000):
         a.append(i)
 
 
 if __name__ == "__main__":
     for n in range(2):
         cpu_bound()
-        time.sleep(1)
+        time.sleep(.7)

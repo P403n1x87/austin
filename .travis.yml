@@ -30,7 +30,6 @@ jobs:
       os: windows
 
 before_script:
-  # Linux Dependencies
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]];
     then
       sudo add-apt-repository ppa:deadsnakes/ppa -y;
@@ -64,12 +63,16 @@ script:
       ./configure &&
       make &&
       sudo make check;
+
+      test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log;
     fi
 
   - if [[ "$TRAVIS_OS_NAME" == "osx"     ]];
     then
       gcc -s -Wall -O3 -o src/austin src/*.c &&
       sudo bats test/macos/test.bats;
+
+      test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log;
     fi
 
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]];
@@ -78,6 +81,7 @@ script:
     fi
 
 after_success:
+  ./src/austin -V;
   ./src/austin --usage
 
 after_failure:

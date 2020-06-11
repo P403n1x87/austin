@@ -163,7 +163,7 @@ _py_proc__get_version(py_proc_t * self) {
     }
     #endif
 
-    log_i("Python version: %d.%d.? (from shared library)", major, minor);
+    log_m("🐍 Python version: %d.%d.? (from shared library)", major, minor);
 
     return (major << 16) | (minor << 8);
   }
@@ -188,7 +188,7 @@ _py_proc__get_version(py_proc_t * self) {
 
   _pclose(fp);
 
-  log_i("Python version: %d.%d.%d", major, minor, patch);
+  log_m("🐍 Python version: %d.%d.%d", major, minor, patch);
 
   // Scan the rodata section for something that looks like the Python version.
   // There are good chances this is at the very beginning of the section so

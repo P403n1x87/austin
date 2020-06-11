@@ -27,8 +27,8 @@
     <img src="https://badges.debian.net/badges/debian/unstable/austin/version.svg"
          alt="Debian package status">
   </a>
-  <img src="https://img.shields.io/badge/version-1.0.1-blue.svg"
-       alt="Version 1.0.1">
+  <img src="https://img.shields.io/badge/version-2.0.0-blue.svg"
+       alt="Version 2.0.0">
   <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md">
     <img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg"
          alt="LICENSE">
