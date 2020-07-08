@@ -81,6 +81,9 @@ to pinpoint a gross misuse of SQLAlchemy at work that’s run in some code at th
 end of each day, and now I can go home earlier.</i><br/><br/>-- gthm on <a
 href="https://lobste.rs/s/qairy5/austin_python_frame_stack_sampler_for">lobste.rs</a></p>
 
+<p align="center"><i>If people are looking for a profiler, Austin looks pretty cool. Check it out!</i><br/><br/>-- Michael Kennedy on <a
+href="https://www.youtube.com/watch?v=eFgybynhMrs">Python Bytes 180</a></p>
+
 <p align="center">
 <a href="https://twitter.com/AustinSampler">Follow <img src="art/austin_logo.svg" height="20px" /> on <img src="https://upload.wikimedia.org/wikipedia/en/thumb/9/9f/Twitter_bird_logo_2012.svg/1024px-Twitter_bird_logo_2012.svg.png" height="18px" alt="Twitter" /></a>
 </p>
@@ -398,15 +401,18 @@ Austin will sample them too.
 
 ## Austin TUI
 
-The Python TUI that is currently included in this repository provides an
-example of how to use Austin to profile Python applications. You can use
-`PageUp` and `PageDown` to navigate the frame stack of each frame as the Python
-application runs.
+The [Austin TUI](https://github.com/P403n1x87/austin-tui) is a text-based user
+interface for Austin that gives you a top-like view of what is currently running
+inside a Python application. It is most useful for scripts that have
+long-running procedures as you can see where execution is at without tracing
+instructions in your code. You can also save the collected data from within the
+TUI and feed it to Flame Graph for visualisation, or convert it to the
+[pprof](https://github.com/google/pprof) format.
 
 If you want to give it a go you can install it using `pip` with
 
 ~~~ bash
-pip install git+https://github.com/P403n1x87/austin.git --upgrade
+pip install austin-tui --upgrade
 ~~~
 
 and run it with
@@ -415,7 +421,9 @@ and run it with
 austin-tui [OPTION...] command [ARG...]
 ~~~
 
-with the same command line as Austin.
+with the same command line as Austin. Please note that the `austin` binary
+should be available from within the `PATH` environment variable in order for the
+TUI to work.
 
 > The TUI is based on `python-curses`. The version included with the standard
 > Windows installations of Python is broken so it won't work out of the box. A
@@ -429,19 +437,19 @@ with the same command line as Austin.
 <p align="center"><img src="art/austin-tui_threads_nav.gif" style="box-shadow: #111 0px 0px 16px;"/></p>
 
 
-## Web Austin
+## Austin Web
 
-Web Austin is yet another example of how to use Austin to make a profiling
-tool. It makes use of
-[d3-flame-graph](https://github.com/spiermar/d3-flame-graph) to display a
-_live_ flame graph in the web browser that refreshes every 3 seconds with newly
-collected samples. Web Austin can also be used for _remote_ profiling by
-setting the `WEBAUSTIN_HOST` and `WEBAUSTIN_PORT` environment variables.
+[Austin Web](https://github.com/P403n1x87/austin-web) is a web application that
+wraps around Austin. At its core, Austin Web is based on
+[d3-flame-graph](https://github.com/spiermar/d3-flame-graph) to display a _live_
+flame graph in the browser, that refreshes every 3 seconds with newly collected
+samples. Austin Web can also be used for _remote_ profiling by setting the
+`WEBAUSTIN_HOST` and `WEBAUSTIN_PORT` environment variables.
 
 If you want to give it a go you can install it using `pip` with
 
 ~~~ bash
-pip install git+https://github.com/P403n1x87/austin.git --upgrade
+pip install austin-web --upgrade
 ~~~
 
 and run it with
@@ -453,21 +461,22 @@ austin-web [OPTION...] command [ARG...]
 with the same command line as Austin. This starts a simple HTTP server that
 serves on `WEBAUSTIN_HOST` if set or on `localhost` otherwise. The port can be
 controlled with the `WEBAUSTIN_PORT` environment variable. If it is not set,
-Web Austin will use an ephemeral port.
+Austin Web will use an ephemeral port.
 
-<p align="center"><img src="art/web-austin.gif" style="box-shadow: #111 0px 0px 16px;"/></p>
+Please note that the `austin` binary should be available from within the `PATH`
+environment variable in order for Austin Web to work.
+
+<p align="center"><img src="art/austin-web.gif" style="box-shadow: #111 0px 0px 16px;"/></p>
 
 
 ## Speedscope
 
-Austin output format can be converted easily into the
-[Speedscope](speedscope.app) JSON format. You can find a sample utility along
-with the TUI and Austin Web.
+Austin output is now supported by [Speedscope](speedscope.app). However, the [`austin-python`](https://github.com/P403n1x87) library comes with format conversion tools that allow to convert the output from Austin to the Speedscope JSON format.
 
 If you want to give it a go you can install it using `pip` with
 
 ~~~ bash
-pip install git+https://github.com/P403n1x87/austin.git --upgrade
+pip install austin-python --upgrade
 ~~~
 
 and run it with
