@@ -51,7 +51,7 @@ static int interrupt = 0;
 static void
 signal_callback_handler(int signum)
 {
-  if (signum == SIGINT)
+  if (signum == SIGINT || signum == SIGTERM)
     interrupt++;
 } /* signal_callback_handler */
 
@@ -151,6 +151,9 @@ int main(int argc, char ** argv) {
     goto finally;
   }
 
+  // Initialise sampling metrics.
+  stats_reset();
+
   if (pargs.attach_pid == 0) {
     if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg])) {
       retval = EPROCFORK;
@@ -158,14 +161,11 @@ int main(int argc, char ** argv) {
       goto finally;
     }
   } else {
-    if (py_proc__attach(py_proc, pargs.attach_pid) && !pargs.children) {
+    if (py_proc__attach(py_proc, pargs.attach_pid, FALSE) && !pargs.children) {
       retval = EPROCATTACH;
       goto finally;
     }
   }
-
-  // Register signal handler for Ctrl+C
-  signal(SIGINT, signal_callback_handler);
 
   // Redirect output to STDOUT if not output file was given.
   if (pargs.output_file == NULL)
@@ -182,17 +182,24 @@ int main(int argc, char ** argv) {
     pargs.memory = 1;
   }
 
-  stats_reset();
-  {
-    if (pargs.children)
-      do_child_processes(py_proc);
-    else
-      do_single_process(py_proc);
-  }
+  // Register signal handler for Ctrl+C and terminate signals.
+  signal(SIGINT, signal_callback_handler);
+  signal(SIGTERM, signal_callback_handler);
+
+  // Start sampling
+  if (pargs.children)
+    do_child_processes(py_proc);
+  else
+    do_single_process(py_proc);
+
+  // Log sampling metrics
   stats_log_metrics();
 
 finally:
   py_thread_free_stack();
+
+  if (interrupt)
+    retval = SIGTERM;
 
   if (retval && error != EOK) {
     log_i("Last error code: %d", error);

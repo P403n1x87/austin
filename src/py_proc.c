@@ -44,6 +44,7 @@
 #include "hints.h"
 #include "logging.h"
 #include "mem.h"
+#include "stats.h"
 #include "version.h"
 
 #include "py_proc.h"
@@ -54,14 +55,14 @@
 
 // ---- Retry Timer ----
 #define INIT_RETRY_SLEEP             100   /* μs */
-#define INIT_RETRY_CNT                  (pargs.timeout * 1000 / INIT_RETRY_SLEEP)  /* Retry for 0.1s (default) before giving up. */
+#define INIT_RETRY_CNT                  (pargs.timeout)  /* Retry for 0.1s (default) before giving up. */
 
-#define TIMER_RESET                     (try_cnt=INIT_RETRY_CNT);
-#define TIMER_START                     while (--try_cnt>=0) { usleep(INIT_RETRY_SLEEP);
-#define TIMER_STOP                      (try_cnt = 0);
+#define TIMER_RESET                     (try_cnt=gettime()+INIT_RETRY_CNT);
+#define TIMER_START                     while(gettime()<=try_cnt){usleep(INIT_RETRY_SLEEP);
+#define TIMER_STOP                      {try_cnt=gettime();}
 #define TIMER_END                       }
 
-static int try_cnt;
+static ctime_t try_cnt;
 
 
 // ----------------------------------------------------------------------------
@@ -450,11 +451,18 @@ _py_proc__find_interpreter_state(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__wait_for_interp_state(py_proc_t * self) {
+  #ifdef DEBUG
   register int attempts = 0;
+  #endif
+
   TIMER_RESET
   TIMER_START
+    #ifdef DEBUG
+    attempts++;
+    #endif
+
     #ifdef DEREF_SYM
-    if (_py_proc__find_interpreter_state(self)) {
+    if (!success(_py_proc__find_interpreter_state(self))) {
     #endif
       if (self->bss == NULL) {
         self->bss = malloc(self->map.bss.size);
@@ -474,7 +482,6 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
       TIMER_STOP
     }
     #endif
-    attempts++;
   TIMER_END
 
   if (self->bss != NULL) {
@@ -520,8 +527,13 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__run(py_proc_t * self) {
-  log_d("Start up timeout: %dms", pargs.timeout);
+_py_proc__run(py_proc_t * self, int try_once) {
+  #ifdef DEBUG
+  if (try_once == FALSE)
+    log_d("Start up timeout: %d μs", pargs.timeout);
+  else
+    log_d("Single attempt to attach to process %d", self->pid);
+  #endif
 
   TIMER_RESET
   TIMER_START
@@ -545,13 +557,19 @@ _py_proc__run(py_proc_t * self) {
       "Process not ready :: bin_path: %p, lib_path: %p, symbols: %d",
       self->bin_path, self->lib_path, self->sym_loaded
     );
+
+    if (try_once == TRUE)
+      TIMER_STOP
   TIMER_END
 
   if (self->bin_path == NULL && self->lib_path == NULL) {
-    log_f(
-      "\n👽 No Python binaries found from process %d. Perhaps you are trying to\n"
-      "start or attach to a non-Python process.", self->pid
-    );
+    if (try_once == FALSE)
+      log_f(
+        "\n👽 No Python binaries found from process %d. Perhaps you are trying to\n"
+        "start or attach to a non-Python process.", self->pid
+      );
+    else
+      log_i("Cannot attach to process %d with just a single attempt.", self->pid);
     FAIL;
   }
 
@@ -631,7 +649,7 @@ py_proc_new() {
 
 // ----------------------------------------------------------------------------
 int
-py_proc__attach(py_proc_t * self, pid_t pid) {
+py_proc__attach(py_proc_t * self, pid_t pid, int child_process) {
   log_d("Attaching to process with PID %d", pid);
 
   #ifdef PL_WIN                                                        /* WIN */
@@ -646,7 +664,7 @@ py_proc__attach(py_proc_t * self, pid_t pid) {
 
   self->pid = pid;
 
-  return _py_proc__run(self);
+  return _py_proc__run(self, child_process);
 }
 
 
@@ -737,7 +755,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
 
   log_d("New process created with PID %d", self->pid);
 
-  return _py_proc__run(self);
+  return _py_proc__run(self, FALSE);
 }
 
 

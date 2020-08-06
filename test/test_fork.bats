@@ -33,7 +33,7 @@ function invoke_austin {
   # -------------------------------------------------------------------------
   step "Standard profiling"
   # -------------------------------------------------------------------------
-    run $AUSTIN -i 1000 -t 10000 $PYTHON test/target34.py
+    run $AUSTIN -i 1000 -t 1000 $PYTHON test/target34.py
 
     assert_success
     assert_output "keep_cpu_busy (test/target34.py);L"
@@ -42,7 +42,7 @@ function invoke_austin {
   # -------------------------------------------------------------------------
   step "Memory profiling"
   # -------------------------------------------------------------------------
-    run $AUSTIN -i 1000 -t 10000 -m $PYTHON test/target34.py
+    run $AUSTIN -i 1000 -t 1000 -m $PYTHON test/target34.py
 
     assert_success
     assert_output "keep_cpu_busy (test/target34.py);L"
@@ -50,7 +50,7 @@ function invoke_austin {
   # -------------------------------------------------------------------------
   step "Output file"
   # -------------------------------------------------------------------------
-    run $AUSTIN -i 10000 -t 10000 -o /tmp/austin_out.txt $PYTHON test/target34.py
+    run $AUSTIN -i 10000 -t 1000 -o /tmp/austin_out.txt $PYTHON test/target34.py
 
     assert_success
     assert_output "Unwanted"

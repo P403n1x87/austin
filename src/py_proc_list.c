@@ -36,6 +36,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "hints.h"
 #include "logging.h"
 #include "timer.h"
 
@@ -159,7 +160,7 @@ py_proc_list__add_proc_children(py_proc_list_t * self, pid_t ppid) {
       if (child_proc == NULL)
         continue;
 
-      if (py_proc__attach(child_proc, pid)) {
+      if (py_proc__attach(child_proc, pid, TRUE)) {
         py_proc__destroy(child_proc);
         continue;
       }

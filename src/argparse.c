@@ -39,7 +39,7 @@ const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s (%s:%d)";
 // Globals for command line arguments
 parsed_args_t pargs = {
   /* t_sampling_interval */ DEFAULT_SAMPLING_INTERVAL,
-  /* timeout             */ DEFAULT_INIT_RETRY_CNT,
+  /* timeout             */ DEFAULT_INIT_RETRY_CNT * 1000,
   /* attach_pid          */ 0,
   /* exclude_empty       */ 0,
   /* sleepless           */ 0,
@@ -183,9 +183,10 @@ parse_opt (int key, char *arg, struct argp_state *state)
   case 't':
     if (
       strtonum(arg, (long *) &(pargs.timeout)) == 1 ||
-      pargs.timeout > LONG_MAX
+      pargs.timeout > LONG_MAX / 1000
     )
       argp_error(state, "timeout must be a positive integer");
+    pargs.timeout *= 1000;
     break;
 
   case 'a':
@@ -445,11 +446,12 @@ cb(const char opt, const char * arg) {
   case 't':
     if (
       strtonum((char *) arg, (long *) &(pargs.timeout)) == 1 ||
-      pargs.timeout > LONG_MAX
+      pargs.timeout > LONG_MAX / 1000
     ) {
       puts(usage_msg);
       return ARG_INVALID_VALUE;
     }
+    pargs.timeout *= 1000;
     break;
 
   case 'a':
