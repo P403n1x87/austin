@@ -49,6 +49,7 @@ parsed_args_t pargs = {
   /* output_file         */ NULL,
   /* output_filename     */ NULL,
   /* children            */ 0,
+  /* exposure            */ 0,
 };
 
 static int exec_arg = 0;
@@ -135,6 +136,10 @@ static struct argp_option options[] = {
     "children",     'C', NULL,          0,
     "Attach to child processes."
   },
+  {
+    "exposure",     'x', "n_sec",       0,
+    "Sample for n_sec seconds only."
+  },
   #ifndef PL_LINUX
   {
     "help",         '?', NULL
@@ -211,14 +216,14 @@ parse_opt (int key, char *arg, struct argp_state *state)
 
   case 'p':
     if (strtonum(arg, &l_pid) == 1 || l_pid <= 0)
-      argp_error(state, "invalid PID.");
+      argp_error(state, "invalid PID");
     pargs.attach_pid = (pid_t) l_pid;
     break;
 
   case 'o':
     pargs.output_file = fopen(arg, "w");
     if (pargs.output_file == NULL) {
-      argp_error(state, "Unable to create the given output file.");
+      argp_error(state, "Unable to create the given output file");
     }
     pargs.output_filename = arg;
     break;
@@ -227,10 +232,18 @@ parse_opt (int key, char *arg, struct argp_state *state)
     pargs.children = 1;
     break;
 
+  case 'x':
+    if (
+      strtonum(arg, (long *) &(pargs.exposure)) == 1 ||
+      pargs.exposure > LONG_MAX
+    )
+      argp_error(state, "the exposure must be a positive integer");
+    break;
+
   case ARGP_KEY_ARG:
   case ARGP_KEY_END:
     if (pargs.attach_pid != 0 && exec_arg != 0)
-      argp_error(state, "the -p option is incompatible with the command argument.");
+      argp_error(state, "the -p option is incompatible with the command argument");
     break;
 
   default:
@@ -377,6 +390,7 @@ static const char * help_msg = \
 "  -s, --sleepless            Suppress idle samples.\n"
 "  -t, --timeout=n_ms         Approximate start up wait time. Increase on slow\n"
 "                             machines (default is 100ms).\n"
+"  -x, --exposure=n_sec       Sample for n_sec seconds only.\n"
 "  -?, --help                 Give this help list\n"
 "      --usage                Give a short usage message\n"
 "  -V, --version              Print program version\n"
@@ -387,10 +401,11 @@ static const char * help_msg = \
 "Report bugs to <https://github.com/P403n1x87/austin/issues>.\n";
 
 static const char * usage_msg = \
-"Usage: austin [-aCefms?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [--alt-format]\n"
-"            [--children] [--exclude-empty] [--full] [--interval=n_us]\n"
-"            [--memory] [--output=FILE] [--pid=PID] [--sleepless]\n"
-"            [--timeout=n_ms] [--help] [--usage] [--version] command [ARG...]\n";
+"Usage: austin [-aCefms?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-x n_sec]\n"
+"            [--alt-format] [--children] [--exclude-empty] [--full]\n"
+"            [--interval=n_us] [--memory] [--output=FILE] [--pid=PID]\n"
+"            [--sleepless] [--timeout=n_ms] [--exposure=n_sec] [--help]\n"
+"            [--usage] [--version] command [ARG...]\n";
 
 
 // ----------------------------------------------------------------------------
@@ -495,6 +510,16 @@ cb(const char opt, const char * arg) {
 
   case 'C':
     pargs.children = 1;
+    break;
+
+  case 'x':
+    if (
+      strtonum((char *) arg, (long *) &(pargs.exposure)) == 1 ||
+      pargs.exposure > LONG_MAX
+    ) {
+      puts(usage_msg);
+      return ARG_INVALID_VALUE;
+    }
     break;
 
   case '?':

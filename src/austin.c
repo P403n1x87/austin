@@ -52,7 +52,7 @@ static void
 signal_callback_handler(int signum)
 {
   if (signum == SIGINT || signum == SIGTERM)
-    interrupt++;
+    interrupt = SIGTERM;
 } /* signal_callback_handler */
 
 // ----------------------------------------------------------------------------
@@ -60,13 +60,25 @@ signal_callback_handler(int signum)
 // ----------------------------------------------------------------------------
 void
 do_single_process(py_proc_t * py_proc) {
-  while(!interrupt) {
-    timer_start();
-    if (py_proc__sample(py_proc)) break;
-    timer_pause(timer_stop());
+  if (pargs.exposure == 0) {
+    while(interrupt == FALSE) {
+      timer_start();
+      if (py_proc__sample(py_proc)) break;
+      timer_pause(timer_stop());
+    }
+  }
+  else {
+    ctime_t end_time = gettime() + pargs.exposure * 1000000;
+    while(interrupt == FALSE) {
+      timer_start();
+      if (py_proc__sample(py_proc)) break;
+      timer_pause(timer_stop());
+
+      if (end_time < gettime()) interrupt++;
+    }
   }
 
-  if (!interrupt)
+  if (interrupt == FALSE)
     py_proc__wait(py_proc);
 
   py_proc__destroy(py_proc);
@@ -84,6 +96,9 @@ do_child_processes(py_proc_t * py_proc) {
   // process. However, its children might be, so we attempt to attach
   // Austin to them.
   if (!py_proc__is_running(py_proc)) {
+    if (error == EPROCPERM)
+      return;
+
     log_d("Parent process is not running. Trying with its children.");
 
     // Since the parent process is not running we probably have waited long
@@ -97,14 +112,27 @@ do_child_processes(py_proc_t * py_proc) {
     py_proc_list__add_proc_children(list, ppid);
   }
 
-  while (!py_proc_list__is_empty(list) && !interrupt) {
-    ctime_t start_time = gettime();
-    py_proc_list__update(list);
-    py_proc_list__sample(list);
-    timer_pause(gettime() - start_time);
+  if (pargs.exposure == 0) {
+    while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
+      ctime_t start_time = gettime();
+      py_proc_list__update(list);
+      py_proc_list__sample(list);
+      timer_pause(gettime() - start_time);
+    }
+  }
+  else {
+    ctime_t end_time = gettime() + pargs.exposure * 1000000;
+    while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
+      ctime_t start_time = gettime();
+      py_proc_list__update(list);
+      py_proc_list__sample(list);
+      timer_pause(gettime() - start_time);
+
+      if (end_time < gettime()) interrupt++;
+    }
   }
 
-  if (!interrupt) {
+  if (interrupt == FALSE) {
     py_proc_list__update(list);
     py_proc_list__wait(list);
   }
@@ -192,13 +220,18 @@ int main(int argc, char ** argv) {
   else
     do_single_process(py_proc);
 
+  if (error == EPROCPERM) {
+    retval = error;
+    goto finally;
+  }
+
   // Log sampling metrics
   stats_log_metrics();
 
 finally:
   py_thread_free_stack();
 
-  if (interrupt)
+  if (interrupt == SIGTERM)
     retval = SIGTERM;
 
   if (retval && error != EOK) {
@@ -208,10 +241,11 @@ finally:
       #if defined PL_MACOS
       log_f(
         "\n"
-        "🔒 Insufficient permissions. Austin requires the use of sudo on Mac OS in\n"
-        "order to read the memory of even its child processes. Furthermore, the System\n"
-        "Integrity Protection prevents Austin from working with Python binaries installed\n"
-        "in certain areas of the file system. See\n"
+        "🔒 Insufficient permissions. Austin requires the use of sudo on Mac OS or\n"
+        "that your user is in the procmod group in order to read the memory of even\n"
+        "its child processes. Furthermore, the System Integrity Protection prevents\n"
+        "Austin from working with Python binaries installed in certain areas of the\n"
+        "file system. See\n"
         "\n"
         "    🌐 https://github.com/P403n1x87/austin#compatibility\n"
         "\n"
@@ -221,7 +255,12 @@ finally:
       log_f(
         "\n"
         "🔒 Insufficient permissions. Austin requires the use of sudo on Linux in\n"
-        "order to attach to a running Python process."
+        "order to attach to a running Python process. Alternatively, you need to\n"
+        "grant the Austin binary the CAP_SYS_PTRACE capability. See\n"
+        "\n"
+        "    🌐 https://github.com/P403n1x87/austin#compatibility\n"
+        "\n"
+        "for more details."
       );
       #endif
     }
