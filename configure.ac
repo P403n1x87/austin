@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.69])
-AC_INIT([austin], [1.0.1], [https://github.com/p403n1x87/austin/issues])
+AC_INIT([austin], [2.0.0], [https://github.com/p403n1x87/austin/issues])
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE

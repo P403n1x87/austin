@@ -25,7 +25,7 @@
 
 
 #define PROGRAM_NAME                    "austin"
-#define VERSION                         "1.0.1"
+#define VERSION                         "2.0.0"
 
 
 #endif

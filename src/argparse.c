@@ -39,7 +39,7 @@ const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s (%s:%d)";
 // Globals for command line arguments
 parsed_args_t pargs = {
   /* t_sampling_interval */ DEFAULT_SAMPLING_INTERVAL,
-  /* timeout             */ DEFAULT_INIT_RETRY_CNT,
+  /* timeout             */ DEFAULT_INIT_RETRY_CNT * 1000,
   /* attach_pid          */ 0,
   /* exclude_empty       */ 0,
   /* sleepless           */ 0,
@@ -49,6 +49,7 @@ parsed_args_t pargs = {
   /* output_file         */ NULL,
   /* output_filename     */ NULL,
   /* children            */ 0,
+  /* exposure            */ 0,
 };
 
 static int exec_arg = 0;
@@ -135,6 +136,10 @@ static struct argp_option options[] = {
     "children",     'C', NULL,          0,
     "Attach to child processes."
   },
+  {
+    "exposure",     'x', "n_sec",       0,
+    "Sample for n_sec seconds only."
+  },
   #ifndef PL_LINUX
   {
     "help",         '?', NULL
@@ -183,9 +188,10 @@ parse_opt (int key, char *arg, struct argp_state *state)
   case 't':
     if (
       strtonum(arg, (long *) &(pargs.timeout)) == 1 ||
-      pargs.timeout > LONG_MAX
+      pargs.timeout > LONG_MAX / 1000
     )
       argp_error(state, "timeout must be a positive integer");
+    pargs.timeout *= 1000;
     break;
 
   case 'a':
@@ -210,14 +216,14 @@ parse_opt (int key, char *arg, struct argp_state *state)
 
   case 'p':
     if (strtonum(arg, &l_pid) == 1 || l_pid <= 0)
-      argp_error(state, "invalid PID.");
+      argp_error(state, "invalid PID");
     pargs.attach_pid = (pid_t) l_pid;
     break;
 
   case 'o':
     pargs.output_file = fopen(arg, "w");
     if (pargs.output_file == NULL) {
-      argp_error(state, "Unable to create the given output file.");
+      argp_error(state, "Unable to create the given output file");
     }
     pargs.output_filename = arg;
     break;
@@ -226,10 +232,18 @@ parse_opt (int key, char *arg, struct argp_state *state)
     pargs.children = 1;
     break;
 
+  case 'x':
+    if (
+      strtonum(arg, (long *) &(pargs.exposure)) == 1 ||
+      pargs.exposure > LONG_MAX
+    )
+      argp_error(state, "the exposure must be a positive integer");
+    break;
+
   case ARGP_KEY_ARG:
   case ARGP_KEY_END:
     if (pargs.attach_pid != 0 && exec_arg != 0)
-      argp_error(state, "the -p option is incompatible with the command argument.");
+      argp_error(state, "the -p option is incompatible with the command argument");
     break;
 
   default:
@@ -359,6 +373,41 @@ _handle_opts(arg_option * opts, arg_callback cb, int * argi, int argc, char ** a
 }
 
 
+static const char * help_msg = \
+"Usage: austin [OPTION...] command [ARG...]\n"
+"Austin -- A frame stack sampler for Python.\n"
+"\n"
+"  -a, --alt-format           Alternative collapsed stack sample format.\n"
+"  -C, --children             Attach to child processes.\n"
+"  -e, --exclude-empty        Do not output samples of threads with no frame\n"
+"                             stacks.\n"
+"  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
+"  -i, --interval=n_us        Sampling interval (default is 500us).\n"
+"  -m, --memory               Profile memory usage.\n"
+"  -o, --output=FILE          Specify an output file for the collected samples.\n"
+"  -p, --pid=PID              The the ID of the process to which Austin should\n"
+"                             attach.\n"
+"  -s, --sleepless            Suppress idle samples.\n"
+"  -t, --timeout=n_ms         Approximate start up wait time. Increase on slow\n"
+"                             machines (default is 100ms).\n"
+"  -x, --exposure=n_sec       Sample for n_sec seconds only.\n"
+"  -?, --help                 Give this help list\n"
+"      --usage                Give a short usage message\n"
+"  -V, --version              Print program version\n"
+"\n"
+"Mandatory or optional arguments to long options are also mandatory or optional\n"
+"for any corresponding short options.\n"
+"\n"
+"Report bugs to <https://github.com/P403n1x87/austin/issues>.\n";
+
+static const char * usage_msg = \
+"Usage: austin [-aCefms?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-x n_sec]\n"
+"            [--alt-format] [--children] [--exclude-empty] [--full]\n"
+"            [--interval=n_us] [--memory] [--output=FILE] [--pid=PID]\n"
+"            [--sleepless] [--timeout=n_ms] [--exposure=n_sec] [--help]\n"
+"            [--usage] [--version] command [ARG...]\n";
+
+
 // ----------------------------------------------------------------------------
 // Return 0 if all the arguments have been parsed. If interrupted, returns the
 // number of arguments consumed so far. Otherwise return an error code.
@@ -366,6 +415,10 @@ static int
 arg_parse(arg_option * opts, arg_callback cb, int argc, char ** argv) {
   int a      = 1;
   int cb_res = 0;
+
+  if (argc <= 1) {
+    puts(usage_msg);
+  }
 
   while (a < argc) {
     if (argv[a][0] == '-') {
@@ -391,39 +444,6 @@ arg_parse(arg_option * opts, arg_callback cb, int argc, char ** argv) {
 }
 
 
-static const char * help_msg = \
-"Usage: austin [OPTION...] command [ARG...]\n"
-"Austin -- A frame stack sampler for Python.\n"
-"\n"
-"  -a, --alt-format           Alternative collapsed stack sample format.\n"
-"  -C, --children             Attach to child processes.\n"
-"  -e, --exclude-empty        Do not output samples of threads with no frame\n"
-"                             stacks.\n"
-"  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
-"  -i, --interval=n_us        Sampling interval (default is 500us).\n"
-"  -m, --memory               Profile memory usage.\n"
-"  -o, --output=FILE          Specify an output file for the collected samples.\n"
-"  -p, --pid=PID              The the ID of the process to which Austin should\n"
-"                             attach.\n"
-"  -s, --sleepless            Suppress idle samples.\n"
-"  -t, --timeout=n_ms         Approximate start up wait time. Increase on slow\n"
-"                             machines (default is 100ms).\n"
-"  -?, --help                 Give this help list\n"
-"      --usage                Give a short usage message\n"
-"  -V, --version              Print program version\n"
-"\n"
-"Mandatory or optional arguments to long options are also mandatory or optional\n"
-"for any corresponding short options.\n"
-"\n"
-"Report bugs to <https://github.com/P403n1x87/austin/issues>.\n";
-
-static const char * usage_msg = \
-"Usage: austin [-aCefms?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [--alt-format]\n"
-"            [--children] [--exclude-empty] [--full] [--interval=n_us]\n"
-"            [--memory] [--output=FILE] [--pid=PID] [--sleepless]\n"
-"            [--timeout=n_ms] [--help] [--usage] [--version] command [ARG...]\n";
-
-
 // ----------------------------------------------------------------------------
 static int
 cb(const char opt, const char * arg) {
@@ -441,11 +461,12 @@ cb(const char opt, const char * arg) {
   case 't':
     if (
       strtonum((char *) arg, (long *) &(pargs.timeout)) == 1 ||
-      pargs.timeout > LONG_MAX
+      pargs.timeout > LONG_MAX / 1000
     ) {
       puts(usage_msg);
       return ARG_INVALID_VALUE;
     }
+    pargs.timeout *= 1000;
     break;
 
   case 'a':
@@ -489,6 +510,16 @@ cb(const char opt, const char * arg) {
 
   case 'C':
     pargs.children = 1;
+    break;
+
+  case 'x':
+    if (
+      strtonum((char *) arg, (long *) &(pargs.exposure)) == 1 ||
+      pargs.exposure > LONG_MAX
+    ) {
+      puts(usage_msg);
+      return ARG_INVALID_VALUE;
+    }
     break;
 
   case '?':

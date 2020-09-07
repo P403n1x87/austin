@@ -28,6 +28,18 @@ typedef unsigned long ctime_t;  /* Forward */
 typedef unsigned long ustat_t;  /* non-negative statistics metric */
 
 
+#ifndef STATS_C
+extern unsigned long _sample_cnt;
+
+extern ctime_t _min_sampling_time;
+extern ctime_t _max_sampling_time;
+extern ctime_t _avg_sampling_time;
+
+extern ustat_t _error_cnt;
+extern ustat_t _long_cnt;
+#endif
+
+
 /**
  * Get the current boot time in microseconds. This is intended to give
  * something that is as close as possible to wall-clock time.
@@ -68,15 +80,13 @@ stats_get_avg_sampling_time(void);
 /**
  * Increase the sample counter.
  */
-void
-stats_count_sample(void);
+#define stats_count_sample()            { _sample_cnt++; }
 
 
 /**
  * Increase the counter of samples with errors.
  */
-void
-stats_count_error(void);
+#define stats_count_error()             { _error_cnt++; }
 
 
 /**
@@ -85,8 +95,15 @@ stats_count_error(void);
  * @param ctime_t the time it took to obtain the sample.
  * @param ctime_t the sampling interval.
  */
-void
-stats_check_duration(ctime_t, ctime_t);
+#define stats_check_duration(delta, sampling_interval) { \
+  if (delta > sampling_interval)                         \
+    _long_cnt++;                                         \
+  if (_min_sampling_time > delta)                        \
+    _min_sampling_time = delta;                          \
+  else if (_max_sampling_time < delta)                   \
+    _max_sampling_time = delta;                          \
+  _avg_sampling_time += delta;                           \
+}
 
 
 /**

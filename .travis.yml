@@ -30,7 +30,6 @@ jobs:
       os: windows
 
 before_script:
-  # Linux Dependencies
   - if [[ "$TRAVIS_OS_NAME" == "linux" ]];
     then
       sudo add-apt-repository ppa:deadsnakes/ppa -y;
@@ -50,6 +49,12 @@ before_script:
       brew cask install anaconda         || true;
     fi
 
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]];
+    then
+      powershell Install-WindowsFeature Net-Framework-Core;
+      cinst -y wixtoolset;
+    fi
+
 script:
   - echo $TRAVIS_OS_NAME -- $TARGET
 
@@ -58,26 +63,31 @@ script:
       ./configure &&
       make &&
       sudo make check;
+
+      test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log;
     fi
-  
+
   - if [[ "$TRAVIS_OS_NAME" == "osx"     ]];
     then
-      gcc -s -Wall -O3 -o src/austin src/*.c &&
+      gcc -Wall -O3 -Os -o src/austin src/*.c &&
       sudo bats test/macos/test.bats;
+
+      test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log;
     fi
 
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]];
     then
-      gcc -s -Wall -O3 -o src/austin src/*.c -lpsapi;
+      gcc -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi;
     fi
 
 after_success:
+  ./src/austin -V;
   ./src/austin --usage
 
 after_failure:
   - if [[ "$TRAVIS_OS_NAME" == "linux"   ]];
     then
-      test -f /var/log/syslog.log && cat /var/log/syslog.log | grep austin; 
+      test -f /var/log/syslog.log && cat /var/log/syslog.log | grep austin;
       test -f test-suite.log      && cat test-suite.log;
     fi
 
@@ -113,6 +123,12 @@ before_deploy:
       export ZIP_CMD="7z a -tzip";
       export ZIP_SUFFIX="win-${TARGET%%-*}.zip";
       export AUSTIN_EXE=austin.exe;
+
+      export WIN_MSI="austin-$VERSION-win64.msi";
+
+      sed -i "s/%VERSION%/$VERSION/g" wix/Austin.wxs;
+      candle wix/Austin.wxs -out wix/Austin.wixobj;
+      light -ext WixUIExtension wix/Austin.wixobj -out $WIN_MSI;
     fi
 
   - export ARTEFACT="austin-${VERSION}-${ZIP_SUFFIX}"
@@ -128,8 +144,30 @@ before_deploy:
   - git tag -a -f -m "Release $VERSION" $TRAVIS_TAG
 
 deploy:
-  provider: releases
-  edge: true
-  token: $GITHUB_TOKEN
-  file: $ARTEFACT
-  overwrite: true
+  - provider: releases
+    edge: true
+    token: $GITHUB_TOKEN
+    file: $ARTEFACT
+    overwrite: true
+
+  - provider: releases
+    edge: true
+    token: $GITHUB_TOKEN
+    file: $WIN_MSI
+    overwrite: true
+    on:
+      condition: "$TRAVIS_OS_NAME = windows"
+
+after_deploy:
+  - if [[ "$TRAVIS_OS_NAME" == "windows" ]];
+    then
+      export WIN_MSI_HASH=$( sha256sum $WIN_MSI | head -c 64 );
+
+      cd choco;
+
+      sed -i "s/%WIN_MSI_HASH%/$WIN_MSI_HASH/g" tools/chocolateyinstall.ps1;
+      /bin/find . -type f -exec sed -i "s/%VERSION%/$VERSION/g" {} \; ;
+      choco apikey --key $CHOCO_APIKEY --source https://push.chocolatey.org/;
+      choco pack;
+      choco push;
+    fi

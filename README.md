@@ -1,17 +1,16 @@
-<p align="center">
-  <br>
-  <img src="art/austin_die_cut_sticker.png" alt="Austin">
-  <br>
-</p>
+<p align="center"><img src="art/austin_die_cut_sticker.png" alt="Austin"></p>
 
 <h3 align="center">A Frame Stack Sampler for CPython</h3>
 
 <p align="center">
-  <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" />
+  <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg"
+       height="24px" />
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />
+  <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg"
+       height="24px" />
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px" />
+  <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg"
+       height="24px" />
 </p>
 
 <p align="center">
@@ -27,9 +26,9 @@
     <img src="https://badges.debian.net/badges/debian/unstable/austin/version.svg"
          alt="Debian package status">
   </a>
-  <img src="https://img.shields.io/badge/version-1.0.1-blue.svg"
-       alt="Version 1.0.1">
   <img alt="homebrew" src="https://img.shields.io/homebrew/v/austin">
+  <img src="https://img.shields.io/badge/version-2.0.0-blue.svg"
+       alt="Version 2.0.0">
   <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md">
     <img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg"
          alt="LICENSE">
@@ -38,7 +37,8 @@
 
 <p align="center">
   <a href="https://snapcraft.io/austin" title="Get it from the Snap Store">
-    <img src="https://snapcraft.io/static/images/badges/en/snap-store-black.svg" alt="" />
+    <img src="https://snapcraft.io/static/images/badges/en/snap-store-black.svg"
+         alt="Get it from the Snap Store" />
   </a>
 </p>
 
@@ -53,25 +53,11 @@
 </p>
 
 <p align="center">
-  <a href="https://www.patreon.com/bePatron?u=19221563">
-    <img src="https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2FP403n1x87&style=for-the-badge" />
-  </a><br/>
-
   <a href="https://www.buymeacoffee.com/Q9C1Hnm28" target="_blank">
-    <img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" />
+    <img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png"
+         alt="Buy Me A Coffee" />
   </a>
 </p>
-
-
-<!--
-
-![austin](art/austin.png)
-
-<h3 align="center">A frame stack sampler for CPython</h3>
-
-[![Build Status](https://travis-ci.org/P403n1x87/austin.svg?branch=master)](https://travis-ci.org/P403n1x87/austin) ![Version](https://img.shields.io/badge/version-1.0.1-blue.svg) [![License](https://img.shields.io/badge/license-GPLv3-ff69b4.svg)](https://github.com/P403n1x87/austin/blob/master/LICENSE.md)
-
--->
 
 ----
 
@@ -82,8 +68,14 @@ to pinpoint a gross misuse of SQLAlchemy at work that’s run in some code at th
 end of each day, and now I can go home earlier.</i><br/><br/>-- gthm on <a
 href="https://lobste.rs/s/qairy5/austin_python_frame_stack_sampler_for">lobste.rs</a></p>
 
-<p align="center">
-<a href="https://twitter.com/AustinSampler">Follow <img src="art/austin_logo.svg" height="20px" /> on <img src="https://upload.wikimedia.org/wikipedia/en/thumb/9/9f/Twitter_bird_logo_2012.svg/1024px-Twitter_bird_logo_2012.svg.png" height="18px" alt="Twitter" /></a>
+<p align="center"><i>If people are looking for a profiler, Austin looks pretty
+cool. Check it out!</i><br/><br/>-- Michael Kennedy on <a
+href="https://www.youtube.com/watch?v=eFgybynhMrs">Python Bytes 180</a></p>
+
+<p align="center"> <a href="https://twitter.com/AustinSampler">Follow <img
+src="art/austin_logo.svg" height="20px" /> on <img
+src="https://upload.wikimedia.org/wikipedia/en/thumb/9/9f/Twitter_bird_logo_2012.svg/1024px-Twitter_bird_logo_2012.svg.png"
+height="18px" alt="Twitter" /></a>
 </p>
 
 ----
@@ -113,7 +105,8 @@ further processing. Look, for instance, at the following Python TUI
 
 
 <p align="center">
-  <img src="art/austin-tui.png" />
+  <img src="art/austin-tui.png"
+       style="box-shadow: #111 0px 0px 16px;" />
 </p>
 
 Keep reading for more tools ideas and examples!
@@ -127,7 +120,7 @@ platforms.
 On Linux, it can be installed using `autotools` or as a snap from the Snap
 Store. The latter will automatically perform the steps of the `autotools` method
 with a single command. On distributions derived from Debian, Austin can be
-installed from the official repositores with Aptitude.
+installed from the official repositories with Aptitude.
 
 On Windows, Austin can be easily installed from the command line from the
 Chocolatey repositories.
@@ -245,6 +238,7 @@ Austin -- A frame stack sampler for Python.
   -s, --sleepless            Suppress idle samples.
   -t, --timeout=n_ms         Approximate start up wait time. Increase on slow
                              machines (default is 100ms).
+  -x, --exposure=n_sec       Sample for n_sec seconds only.
   -?, --help                 Give this help list
       --usage                Give a short usage message
   -V, --version              Print program version
@@ -264,11 +258,11 @@ for some further processing.
 By default, each line has the following structure:
 
 ~~~
-[Process <pid>;]?Thread <tid>[;[frame]]* [metric]*
+P<pid>;T<tid>[;[frame]]* [metric]*
 ~~~
 
-where the presence of the process ID, the structure of `[frame]` and the number
-and type of metrics on each line depend on the mode.
+where the structure of `[frame]` and the number and type of metrics on each line
+depend on the mode.
 
 
 ## Normal Mode
@@ -299,7 +293,7 @@ microseconds.
 
 When profiling in memory mode with the `-m` or `--memory` switch, the metric
 value at the end of each line is the memory delta between samples, measured in
-KB. In full mode (`-f` or `--full` switches), each samples ends with three
+bytes. In full mode (`-f` or `--full` switches), each samples ends with three
 values: the time delta, any positive memory delta (memory allocations) or zero
 and any negative memory delta (memory releases) or zero.
 
@@ -308,8 +302,7 @@ and any negative memory delta (memory releases) or zero.
 
 Austin can be told to profile multi-process applications with the `-C` or
 `--children` switch. This way Austin will look for new children of the parent
-process. In this case, each sample will contain the process identifier to help
-determine from which process the sample came from.
+process.
 
 
 ## Logging
@@ -327,19 +320,29 @@ Austin supports Python 2.3-2.7 and 3.3-3.8 and has been tested on the following
 platforms and architectures
 
 
-|| <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" /> | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/> | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" /> |
+|| <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" />* | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/> | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />** |
 |---         |---|---|---|
 | **x86_64** | ✓ | ✓ | ✓ |
 | **i686**   | ✓ |   | ✓ |
 | **arm**    | ✓ |   |   |
 | **armv7**  | ✓ |   |   |
 
-Due to the **System Integrity Protection** introduced in **MacOS** with El
+\* In order to attach to an external process, Austin requires the CAP_SYS_PTRACE
+capability. This means that you will have to either use ``sudo`` when attaching
+to a running Python process or grant the CAP_SYS_PTRACE capability to the Austin
+binary with, e.g.
+
+~~~ bash
+sudo setcap cap_sys_ptrace+ep `which austin`
+~~~
+
+\** Due to the **System Integrity Protection** introduced in **MacOS** with El
 Capitan, Austin cannot profile Python processes that use an executable located
 in the `/bin` folder, even with `sudo`. Hence, either run the interpreter from a
 virtual environment or use a Python interpreter that is installed in, e.g.,
 `/Applications` or via `brew` with the default prefix (`/usr/local`). Even in
-these cases, though, the use of `sudo` is required.
+these cases, though, the use of `sudo` is required. Alternatively, make sure
+that the user that is invoking Austin belongs to the ``procmod`` group.
 
 > **NOTE** Austin *might* work with other versions of Python on all the
 > platforms and architectures above. So it is worth giving it a try even if
@@ -381,7 +384,7 @@ is written in C, implementing the new changes is rather straight-forward.
 The following flame graph has been obtained with the command
 
 ~~~ bash
-austin -i 50 ./test.py | ./flamegraph.pl --countname=us > test.svg
+austin -i 50 ./test.py | ./flamegraph.pl --countname=μs > test.svg
 ~~~
 
 where the sample `test.py` script has the following content
@@ -410,15 +413,18 @@ Austin will sample them too.
 
 ## Austin TUI
 
-The Python TUI that is currently included in this repository provides an
-example of how to use Austin to profile Python applications. You can use
-`PageUp` and `PageDown` to navigate the frame stack of each frame as the Python
-application runs.
+The [Austin TUI](https://github.com/P403n1x87/austin-tui) is a text-based user
+interface for Austin that gives you a top-like view of what is currently running
+inside a Python application. It is most useful for scripts that have
+long-running procedures as you can see where execution is at without tracing
+instructions in your code. You can also save the collected data from within the
+TUI and feed it to Flame Graph for visualisation, or convert it to the
+[pprof](https://github.com/google/pprof) format.
 
 If you want to give it a go you can install it using `pip` with
 
 ~~~ bash
-pip install git+https://github.com/P403n1x87/austin.git --upgrade
+pip install austin-tui --upgrade
 ~~~
 
 and run it with
@@ -427,7 +433,9 @@ and run it with
 austin-tui [OPTION...] command [ARG...]
 ~~~
 
-with the same command line as Austin.
+with the same command line as Austin. Please note that the `austin` binary
+should be available from within the `PATH` environment variable in order for the
+TUI to work.
 
 > The TUI is based on `python-curses`. The version included with the standard
 > Windows installations of Python is broken so it won't work out of the box. A
@@ -438,22 +446,25 @@ with the same command line as Austin.
 > page.
 
 <!-- ![austin-tui thread navigation](art/austin-tui_threads_nav.gif) -->
-<p align="center"><img src="art/austin-tui_threads_nav.gif" style="box-shadow: #111 0px 0px 16px;"/></p>
+<p align="center">
+  <img src="art/austin-tui.gif"
+       style="box-shadow: #111 0px 0px 16px;" />
+</p>
 
 
-## Web Austin
+## Austin Web
 
-Web Austin is yet another example of how to use Austin to make a profiling
-tool. It makes use of
-[d3-flame-graph](https://github.com/spiermar/d3-flame-graph) to display a
-_live_ flame graph in the web browser that refreshes every 3 seconds with newly
-collected samples. Web Austin can also be used for _remote_ profiling by
-setting the `WEBAUSTIN_HOST` and `WEBAUSTIN_PORT` environment variables.
+[Austin Web](https://github.com/P403n1x87/austin-web) is a web application that
+wraps around Austin. At its core, Austin Web is based on
+[d3-flame-graph](https://github.com/spiermar/d3-flame-graph) to display a _live_
+flame graph in the browser, that refreshes every 3 seconds with newly collected
+samples. Austin Web can also be used for _remote_ profiling by setting the
+`WEBAUSTIN_HOST` and `WEBAUSTIN_PORT` environment variables.
 
 If you want to give it a go you can install it using `pip` with
 
 ~~~ bash
-pip install git+https://github.com/P403n1x87/austin.git --upgrade
+pip install austin-web --upgrade
 ~~~
 
 and run it with
@@ -465,21 +476,28 @@ austin-web [OPTION...] command [ARG...]
 with the same command line as Austin. This starts a simple HTTP server that
 serves on `WEBAUSTIN_HOST` if set or on `localhost` otherwise. The port can be
 controlled with the `WEBAUSTIN_PORT` environment variable. If it is not set,
-Web Austin will use an ephemeral port.
+Austin Web will use an ephemeral port.
 
-<p align="center"><img src="art/web-austin.gif" style="box-shadow: #111 0px 0px 16px;"/></p>
+Please note that the `austin` binary should be available from within the `PATH`
+environment variable in order for Austin Web to work.
+
+<p align="center">
+  <img src="art/austin-web.gif"
+       style="box-shadow: #111 0px 0px 16px;" />
+</p>
 
 
 ## Speedscope
 
-Austin output format can be converted easily into the
-[Speedscope](speedscope.app) JSON format. You can find a sample utility along
-with the TUI and Austin Web.
+Austin output is now supported by [Speedscope](speedscope.app). However, the
+[`austin-python`](https://github.com/P403n1x87) library comes with format
+conversion tools that allow to convert the output from Austin to the Speedscope
+JSON format.
 
 If you want to give it a go you can install it using `pip` with
 
 ~~~ bash
-pip install git+https://github.com/P403n1x87/austin.git --upgrade
+pip install austin-python --upgrade
 ~~~
 
 and run it with
@@ -502,21 +520,17 @@ If you want to help with the development, then have a look at the open issues
 and have a look at the [contributing guidelines](CONTRIBUTING.md) before you
 open a pull request.
 
-You can also contribute to the development of Austin by either [becoming a
-Patron](https://www.patreon.com/bePatron?u=19221563) on Patreon
+You can also contribute to the development of the Austin by becoming a sponsor
+and/or by [buying me a coffee](https://www.buymeacoffee.com/Q9C1Hnm28) on BMC or
+by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 
-<a href="https://www.patreon.com/bePatron?u=19221563">
-  <img src="https://img.shields.io/endpoint.svg?url=https%3A%2F%2Fshieldsio-patreon.herokuapp.com%2FP403n1x87&style=for-the-badge" />
-</a><br/>
-
-by [buying me a coffee](https://www.buymeacoffee.com/Q9C1Hnm28) on BMC
-
-<a href="https://www.buymeacoffee.com/Q9C1Hnm28" target="_blank">
-  <img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png" alt="Buy Me A Coffee" />
-</a>
-
-or by chipping in a few pennies on
-[PayPal.Me](https://www.paypal.me/gtornetta/1).
+<p align="center">
+  <a href="https://www.buymeacoffee.com/Q9C1Hnm28"
+     target="_blank">
+  <img src="https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png"
+       alt="Buy Me A Coffee" />
+  </a>
+</p>
 
 
 ----

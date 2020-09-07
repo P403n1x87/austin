@@ -14,10 +14,10 @@ language for anything that needs to interface to its ABI.
 
 The Python C API is written in an Object Oriented style. Austin adopts this
 style too. Some translation unit are used to export a main "object". For
-example, the `py_code.c` source exports the type `py_code_t`, which is Austin's
-representation of the analogous `PyCodeObject` from the Python C API.
+example, the `py_thread.c` source exports the type `py_thread_t`, which is
+Austin's representation of the analogous `PyThreadState` from the Python C API.
 
-Utility units, like `mem.c` or `logging.c` need not export objects, but may
+Utility units, like `mem.h` or `logging.c` need not export objects, but may
 implement a singleton pattern.
 
 ### Conventions
