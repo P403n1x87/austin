@@ -26,6 +26,7 @@
     <img src="https://badges.debian.net/badges/debian/unstable/austin/version.svg"
          alt="Debian package status">
   </a>
+  <img alt="homebrew" src="https://img.shields.io/homebrew/v/austin">
   <img src="https://img.shields.io/badge/version-2.0.0-blue.svg"
        alt="Version 2.0.0">
   <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md">
@@ -124,6 +125,8 @@ installed from the official repositories with Aptitude.
 On Windows, Austin can be easily installed from the command line from the
 Chocolatey repositories.
 
+On macOS, Austin can be easily installed from the command line using homebrew.
+
 For any other platform, compiling Austin from sources is as easy as cloning the
 repository and running the C compiler.
 
@@ -154,6 +157,14 @@ with the following command
 sudo snap install austin --classic
 ~~~
 
+
+## On macOS using homebrew
+
+Austin can be installed on macOS using [homebrew](https://docs.brew.sh):
+
+~~~bash
+brew install austin
+~~~
 
 ## On Debian and Derivatives
 
