@@ -29,6 +29,7 @@
   </a>
   <img src="https://img.shields.io/badge/version-1.0.1-blue.svg"
        alt="Version 1.0.1">
+  <img alt="homebrew" src="https://img.shields.io/homebrew/v/austin">
   <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md">
     <img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg"
          alt="LICENSE">
@@ -131,6 +132,8 @@ installed from the official repositores with Aptitude.
 On Windows, Austin can be easily installed from the command line from the
 Chocolatey repositories.
 
+On macOS, Austin can be easily installed from the command line using homebrew.
+
 For any other platform, compiling Austin from sources is as easy as cloning the
 repository and running the C compiler.
 
@@ -161,6 +164,14 @@ with the following command
 sudo snap install austin --classic
 ~~~
 
+
+## On macOS using homebrew
+
+Austin can be installed on macOS using [homebrew](https://docs.brew.sh):
+
+~~~bash
+brew install austin
+~~~
 
 ## On Debian and Derivatives
 
