@@ -430,7 +430,7 @@ _py_proc__find_interpreter_state(py_proc_t * self) {
       log_d("Interpreter head de-referenced from current thread state symbol.");
     }
   } else {
-    log_d("Interpreter head reference from symbol dereferenced successfully.");
+    log_d("✨ Interpreter head de-referenced from symbols ✨ ");
   }
 
   SUCCESS;

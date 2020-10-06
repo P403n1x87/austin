@@ -38,7 +38,7 @@ function attach_austin {
     run $AUSTIN -i 100 -t 100 -p $!
 
     assert_success
-    assert_output "(test/sleepy.py);L[[:digit:]]* "
+    assert_output "(.*test/sleepy.py);L[[:digit:]]* "
 
 }
 
@@ -91,4 +91,8 @@ function attach_austin {
 
 @test "Test Austin with Python 3.8" {
   repeat 3 attach_austin "3.8"
+}
+
+@test "Test Austin with Python 3.9" {
+  repeat 3 attach_austin "3.9"
 }

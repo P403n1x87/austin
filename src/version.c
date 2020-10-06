@@ -192,7 +192,8 @@ set_version(int version) {
     case 7: py_v = &python_v3_7; break;
 
     // 3.8
-    case 8: py_v = &python_v3_8; break;
+    case 8:
+    case 9: py_v = &python_v3_8; break;
 
     default: py_v = LATEST_VERSION;
       UNSUPPORTED_VERSION;
