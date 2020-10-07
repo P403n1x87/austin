@@ -16,22 +16,26 @@
 <p align="center">
   <a href="https://travis-ci.org/P403n1x87/austin">
     <img src="https://travis-ci.org/P403n1x87/austin.svg?branch=master"
-         alt="Travis CI Build Status">
+         alt="Travis CI Build Status" />
   </a>
-  <a href="https://build.snapcraft.io/user/P403n1x87/austin">
-    <img src="https://build.snapcraft.io/badge/P403n1x87/austin.svg"
-         alt="Snap Status">
+	<a href="https://snapcraft.io/austin">
+		<img src="https://snapcraft.io/austin/badge.svg"
+		     alt="austin Snap Store Build Status" />
+	</a>
   </a>
   <a href="https://packages.debian.org/unstable/austin">
     <img src="https://badges.debian.net/badges/debian/unstable/austin/version.svg"
-         alt="Debian package status">
+         alt="Debian package status" />
   </a>
-  <img alt="homebrew" src="https://img.shields.io/homebrew/v/austin">
-  <img src="https://img.shields.io/badge/version-2.0.0-blue.svg"
-       alt="Version 2.0.0">
-  <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md">
+	<a href="https://formulae.brew.sh/formula/austin">
+  	<img src="https://img.shields.io/homebrew/v/austin"
+		     alt="homebrew" />
+	</a>
+  <img src="http://img.shields.io/github/v/release/p403n1x87/austin"
+       alt="latest release" />
+  <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md" />
     <img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg"
-         alt="LICENSE">
+         alt="LICENSE" />
   </a>
 </p>
 
@@ -117,15 +121,17 @@ Keep reading for more tools ideas and examples!
 Austin is available from the major software repositories of the most popular
 platforms.
 
-On Linux, it can be installed using `autotools` or as a snap from the Snap
-Store. The latter will automatically perform the steps of the `autotools` method
-with a single command. On distributions derived from Debian, Austin can be
-installed from the official repositories with Aptitude.
+On Linux, it can be installed using `autotools` or as a snap from the [Snap
+Store](https://snapcraft.io/store). The latter will automatically perform the
+steps of the `autotools` method with a single command. On distributions derived
+from Debian, Austin can be installed from the official repositories with
+Aptitude.
 
-On Windows, Austin can be easily installed from the command line from the
-Chocolatey repositories.
+On Windows, Austin can be easily installed from the command line using either
+[Chocolatey](https://chocolatey.org/) or [Scoop](https://scoop.sh/)
 
-On macOS, Austin can be easily installed from the command line using homebrew.
+On macOS, Austin can be easily installed from the command line using
+[homebrew](https://formulae.brew.sh/formula/austin).
 
 For any other platform, compiling Austin from sources is as easy as cloning the
 repository and running the C compiler.
@@ -158,18 +164,19 @@ sudo snap install austin --classic
 ~~~
 
 
-## On macOS using homebrew
+## On Debian and Derivatives
+
+On March 30 2019 Austin was accepted into the official Debian
+repositories and can therefore be installed with the `apt` utility.
+
+
+## On macOS
 
 Austin can be installed on macOS using [homebrew](https://docs.brew.sh):
 
 ~~~bash
 brew install austin
 ~~~
-
-## On Debian and Derivatives
-
-On March 30 2019 Austin was accepted into the official Debian
-repositories and can therefore be installed with the `apt` utility.
 
 
 ## From Chocolatey
@@ -188,7 +195,23 @@ choco upgrade austin
 ~~~
 
 
-## From Sources
+## From Scoop
+
+To install Austin using Scoop, run the following command from the command line
+or from PowerShell
+
+~~~ shell
+scoop install austin
+~~~
+
+To upgrade run the following command from the command line or from PowerShell:
+
+~~~ shell
+scoop update
+~~~
+
+
+## From Sources without `autotools`
 
 To install Austin from sources using the GNU C compiler, without `autotools`,
 clone the repository with
@@ -200,19 +223,19 @@ git clone --depth=1 https://github.com/P403n1x87/austin.git
 On Linux one can then use the command
 
 ~~~ bash
-gcc -O3 -Wall -pthread src/*.c -o src/austin
+gcc -O3 -Os -Wall -pthread src/*.c -o src/austin
 ~~~
 
-whereas on Mac OS it is enough to run
+whereas on macOS it is enough to run
 
 ~~~ bash
-gcc -O3 -Wall src/*.c -o src/austin
+gcc -O3 -Os -Wall src/*.c -o src/austin
 ~~~
 
 On Windows, the `-lpsapi` switch is needed
 
 ~~~ bash
-gcc -O3 -Wall -lpsapi src/*.c -o src/austin
+gcc -O3 -Os -Wall -lpsapi src/*.c -o src/austin
 ~~~
 
 Add `-DDEBUG` if you need a more verbose log. This is useful if you encounter a
@@ -307,7 +330,7 @@ process.
 
 ## Logging
 
-Austin uses `syslog` on Linux and Mac OS, and `%TEMP%\austin.log` on Windows
+Austin uses `syslog` on Linux and macOS, and `%TEMP%\austin.log` on Windows
 for log messages, so make sure to watch these to get execution details and
 statistics. _Bad_ frames are output together with the other frames. In general,
 entries for bad frames will not be visible in a flame graph as all tests show
@@ -321,11 +344,11 @@ platforms and architectures
 
 
 || <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" />* | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/> | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />** |
-|---         |---|---|---|
-| **x86_64** | ✓ | ✓ | ✓ |
-| **i686**   | ✓ |   | ✓ |
-| **arm**    | ✓ |   |   |
-| **armv7**  | ✓ |   |   |
+|---          |---|---|---|
+| **x86_64**  | ✓ | ✓ | ✓ |
+| **i686**    | ✓ |   | ✓ |
+| **arm64**   | ✓ |   |   |
+| **ppc64le** | ✓ |   |   |
 
 \* In order to attach to an external process, Austin requires the CAP_SYS_PTRACE
 capability. This means that you will have to either use ``sudo`` when attaching

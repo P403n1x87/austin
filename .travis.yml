@@ -14,14 +14,14 @@ dist: bionic
 jobs:
   include:
     # Linux
-    - env: TARGET=arm-unknown-linux-gnueabi
-    - env: TARGET=armv7-unknown-linux-gnueabihf
-    - env: TARGET=i686-unknown-linux-gnu
     - env: TARGET=x86_64-unknown-linux-gnu
+      arch: amd64
+    - env: TARGET=powerpc64le-unknown-linux-gnu
+      arch: ppc64le
+    # - env: TARGET=arm64-unknown-linux-gnueabi
+    #   arch: arm64
 
     # OSX
-    - env: TARGET=i686-apple-darwin
-      os: osx
     - env: TARGET=x86_64-apple-darwin
       os: osx
 
@@ -35,7 +35,7 @@ before_script:
       sudo add-apt-repository ppa:deadsnakes/ppa -y;
       sudo add-apt-repository ppa:duggan/bats -y;
 
-      sudo apt install bats valgrind python2.{3..7} python3.{3..8} -y;
+      sudo apt-get install bats valgrind python2.{3..7} python3.{3..8} -y;
 
       autoreconf --install;
     fi
@@ -45,9 +45,9 @@ before_script:
       brew install python || brew upgrade python;
       brew install python@3.8            || true;
       brew install bats-core;
-      brew install --HEAD valgrind       || true;
       brew cask install anaconda         || true;
     fi
+    # brew install --HEAD valgrind       || true;
 
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]];
     then
@@ -58,13 +58,26 @@ before_script:
 script:
   - echo $TRAVIS_OS_NAME -- $TARGET
 
-  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]];
+  - if [[ "$TARGET" == "x86_64-unknown-linux-gnu" ]];
     then
       ./configure &&
       make &&
       sudo make check;
 
       test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log;
+    fi
+
+  # - if [[ "$TARGET" == "arm64-unknown-linux-gnueabi" ]];
+  #   then
+  #     gcc -O3 -Os -Wall -pthread src/*.c -o src/austin;
+  #     which bats && sudo bats test/test.bats || src/austin -V;
+  #   fi
+
+  - if [[ "$TARGET" == "powerpc64le-unknown-linux-gnu" ]];
+    then
+      ./configure &&
+      make;
+      which bats && sudo bats test/test.bats || src/austin -V;
     fi
 
   - if [[ "$TRAVIS_OS_NAME" == "osx"     ]];
@@ -126,6 +139,8 @@ before_deploy:
 
       export WIN_MSI="austin-$VERSION-win64.msi";
 
+      git checkout "packaging/msi" -- wix/;
+
       sed -i "s/%VERSION%/$VERSION/g" wix/Austin.wxs;
       candle wix/Austin.wxs -out wix/Austin.wixobj;
       light -ext WixUIExtension wix/Austin.wixobj -out $WIN_MSI;
@@ -162,6 +177,8 @@ after_deploy:
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]];
     then
       export WIN_MSI_HASH=$( sha256sum $WIN_MSI | head -c 64 );
+
+      git checkout "packaging/msi" -- choco/;
 
       cd choco;
 

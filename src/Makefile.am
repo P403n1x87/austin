@@ -22,6 +22,7 @@
 
 AM_CFLAGS =-I$(top_srcdir)/src -Wall -O3 -Os -s -pthread
 
+man_MANS = austin.1
 bin_PROGRAMS = austin
 austin_SOURCES = \
   argparse.c     \
