@@ -1,3 +1,0 @@
-Test-Command: bats test/test.bats
-Depends: bats, valgrind
-Restrictions: needs-root

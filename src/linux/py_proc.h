@@ -48,6 +48,8 @@
 
 #define SYMBOLS                        2
 
+#define SELF_PID                        (self->pid)
+
 
 #define _py_proc__get_elf_type(self, offset, dt) /* as */ (py_proc__memcpy(self, self->map.elf.base + offset, sizeof(dt), &dt))
 
@@ -259,12 +261,13 @@ static int
 _py_proc__analyze_elf(py_proc_t * self) {
   Elf64_Ehdr ehdr = ehdr_v.v64;
 
-  if (
-    _py_proc__get_elf_type(self, 0, ehdr_v) ||
-    ehdr.e_shoff == 0 ||
-    ehdr.e_shnum < 2 ||
-    memcmp(ehdr.e_ident, ELFMAG, SELFMAG)
-  ) return 1;
+  if (_py_proc__get_elf_type(self, 0, ehdr_v)) {
+    error = EPROCPERM;
+    return 1;
+  }
+  
+  if (ehdr.e_shoff == 0 || ehdr.e_shnum < 2 || memcmp(ehdr.e_ident, ELFMAG, SELFMAG))
+    return 1;
 
   // Dispatch
   switch (ehdr.e_ident[EI_CLASS]) {
@@ -295,6 +298,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     switch (errno) {
     case EACCES:  // Needs elevated privileges
       error = EPROCPERM;
+      log_e("Insufficient privileges.");
       break;
     case ENOENT:  // Invalid pid
       error = EPROCNPID;

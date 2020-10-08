@@ -22,6 +22,7 @@
 
 #ifdef PY_PROC_C
 
+#include <stddef.h>
 #include <stdio.h>
 #include <libproc.h>
 #include <mach/mach.h>
@@ -41,7 +42,9 @@
 #define DEREF_SYM
 
 
-#define SYMBOLS              2
+#define SYMBOLS                        2
+
+#define SELF_PID                        (self->pid)
 
 
 #define next_lc(cmd)    (cmd = (struct segment_command *)    ((void *) cmd + cmd->cmdsize));
@@ -63,6 +66,33 @@
 struct _proc_extra_info {
   mach_port_t task_id;
 };
+
+
+// ----------------------------------------------------------------------------
+// NOTE: This is inspired by glibc/posix/execvpe.c
+extern char **environ;
+
+static void
+_maybe_script_execute(const char * file, char * const argv[]) {
+  ptrdiff_t argc = 0;
+  for (ptrdiff_t argc = 0; argv[argc] != NULL; argc++);
+
+  char *new_argv[argc > 1 ? 2 + argc : 3];
+  new_argv[0] = (char *) "/bin/sh";
+  new_argv[1] = (char *) file;
+  if (argc > 1)
+    memcpy (new_argv + 2, argv + 1, argc * sizeof (char *));
+  else
+    new_argv[2] = NULL;
+  /* Execute the shell.  */
+  execve(new_argv[0], new_argv, environ);
+}
+
+
+#define execvpe(file, argv, environ) { \
+  execvp(file, argv);                  \
+  _maybe_script_execute(file, argv);   \
+}
 
 
 // ----------------------------------------------------------------------------
@@ -282,7 +312,7 @@ static mach_port_t
 pid_to_task(pid_t pid) {
   mach_port_t task;
   if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
-    log_e("Insufficient permissions to call task_for_pid.");
+    log_d("Call to task_for_pid failed.");
     error = EPROCPERM;
     return 0;
   }
@@ -298,11 +328,11 @@ _py_proc__get_maps(py_proc_t * self) {
   vm_region_basic_info_data_64_t region_info;
   mach_msg_type_number_t         count = sizeof(vm_region_basic_info_data_64_t);
   mach_port_t                    object_name;
-  
+
   char * path = (char *) calloc(MAXPATHLEN + 1, sizeof(char));
-  if (path == NULL) 
+  if (path == NULL)
     return 1;
-  
+
   // NOTE: Mac OS X kernel bug. This also gives time to the VM maps to
   // stabilise.
   usleep(100000);

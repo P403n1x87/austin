@@ -67,6 +67,8 @@ extern __thread int error;
 #endif // ERROR_C
 
 
+#define check_not_null(p) {if (p != NULL) error = EOK; else log_error();}
+
 /**
  * Log the last error
  */
@@ -102,9 +104,5 @@ error_get_msg(error_t);
  */
 const int
 is_fatal(error_t);
-
-
-void
-check_not_null(void *);
 
 #endif // ERROR_H

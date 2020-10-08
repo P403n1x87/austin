@@ -23,42 +23,34 @@
 #ifndef PY_THREAD_H
 #define PY_THREAD_H
 
+#include <stdint.h>
 #include <sys/types.h>
 
 #include "mem.h"
 #include "stats.h"
-
-#include "py_frame.h"
 
 
 typedef struct thread {
   raddr_t         raddr;
   raddr_t         next_raddr;
 
-  long            tid;
+  uintptr_t       tid;
   struct thread * next;
 
-  py_frame_t    * first_frame;
-  py_frame_t    * last_frame;
+  size_t          stack_height;
 
   int             invalid;
 } py_thread_t;
 
 
-py_thread_t *
-py_thread_new_from_raddr(raddr_t *);
-
-
 /**
- * Retrieve the frame for the thread that sits at the bottom of the stack.
+ * Fill the thread structure from the given remote address.
  *
- * @param  py_thread_t  self.
- *
- * @return a pointer to an instance of py_frame_t that represents the
- *         bottom-most entry in the frame stack for the thread.
+ * @param py_thread_t  the structure to fill.
+ * @param raddr_t      the remote address to read from.
  */
-py_frame_t *
-py_thread__first_frame(py_thread_t *);
+int
+py_thread__fill_from_raddr(py_thread_t *, raddr_t *);
 
 
 /**
@@ -68,7 +60,7 @@ py_thread__first_frame(py_thread_t *);
  *
  * @return a pointer to the next py_thread_t instance.
  */
-py_thread_t *
+int
 py_thread__next(py_thread_t *);
 
 
@@ -78,15 +70,25 @@ py_thread__next(py_thread_t *);
  * @param  py_thread_t  self.
  * @param  ctime_t      the time delta.
  * @param  ssize_t      the memory delta.
- *
- * @return 0 if the frame stack was printed, 1 otherwise.
  */
-int
+void
 py_thread__print_collapsed_stack(py_thread_t *, ctime_t, ssize_t);
 
 
+/**
+ * Allocate memory for dumping the frame stack.
+ *
+ * @return either SUCCESS or FAIL.
+ */
+int
+py_thread_allocate_stack(void);
+
+
+/**
+ * Deallocate memory for dumping the frame stack.
+ */
 void
-py_thread__destroy(py_thread_t *);
+py_thread_free_stack(void);
 
 
 #endif // PY_THREAD_H

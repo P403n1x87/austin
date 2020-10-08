@@ -58,6 +58,7 @@ _log_writer(int prio, const char * fmt, va_list ap) {
   #else
   if (logfile == NULL) {
     vfprintf(stderr, fmt, ap); fputc('\n', stderr);
+    fflush(stderr);
   }
   else {
     vfprintf(logfile, fmt, ap); fputc('\n', logfile);
@@ -137,6 +138,7 @@ log_m(const char * fmt, ...) {
 
   va_start(args, fmt);
     vfprintf(stderr, fmt, args); fputc('\n', stderr);
+    fflush(stderr);
   va_end(args);
 }
 
@@ -166,7 +168,7 @@ log_t(const char * fmt, ...) {
 
 
 void log_version(void) {
-  log_i("%s version: %s", PROGRAM_NAME, VERSION);
+  log_m("🤓 %s version: %s", PROGRAM_NAME, VERSION);
 }
 
 

@@ -20,43 +20,47 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef PY_FRAME_H
-#define PY_FRAME_H
-
-#include "mem.h"
-#include "py_code.h"
+#ifndef TIMER_H
+#define TIMER_H
 
 
-typedef struct frame {
-  raddr_t        raddr;
-  raddr_t        prev_raddr;
+#include <unistd.h>
 
-  int            frame_no;
-  struct frame * prev;
-  struct frame * next;     // Make it a double-linked list for easier reverse navigation
-  py_code_t    * code;
-
-  int            invalid;  // Set when prev_radd != null but prev == null.
-} py_frame_t;
+#include "argparse.h"
+#include "error.h"
+#include "stats.h"
 
 
-py_frame_t *
-py_frame_new_from_raddr(raddr_t *);
-
-/**
- * Navigate to the previous frame in the stack.
- *
- * @param   py_frame_t  self
- *
- * @return  the pointer to the previous py_frame_t object or NULL if self is
- *          at the bottom of the stack.
- */
-py_frame_t *
-py_frame__prev(py_frame_t *);
+static ctime_t _sample_timestamp;
+static ctime_t _sample_delta;
 
 
-void
-py_frame__destroy(py_frame_t *);
+static inline void
+timer_start(void) {
+  _sample_timestamp = gettime();
+  error = EOK;
+} /* timer_start */
 
 
-#endif // PY_FRAME_H
+static inline ctime_t
+timer_stop(void) {
+  _sample_delta = gettime() - _sample_timestamp;
+
+  // Record stats
+  stats_check_duration(_sample_delta, pargs.t_sampling_interval);
+  stats_count_sample();
+  if (error != EOK)
+    stats_count_error();
+
+  return _sample_delta;
+} /* timer_stop */
+
+
+static inline void
+timer_pause(ctime_t delta) {
+  // Pause if sampling took less than the sampling interval.
+  if (delta < pargs.t_sampling_interval)
+    usleep(pargs.t_sampling_interval - delta);
+}
+
+#endif
