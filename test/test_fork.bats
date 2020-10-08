@@ -33,29 +33,30 @@ function invoke_austin {
   # -------------------------------------------------------------------------
   step "Standard profiling"
   # -------------------------------------------------------------------------
-    run $AUSTIN -i 1000 -t 10000 $PYTHON test/target34.py
+    run $AUSTIN -i 1000 -t 1000 $PYTHON test/target34.py
 
     assert_success
-    assert_output "keep_cpu_busy (test/target34.py);L"
+    assert_output "keep_cpu_busy (.*test/target34.py);L"
+
     assert_not_output "Unwanted"
 
   # -------------------------------------------------------------------------
   step "Memory profiling"
   # -------------------------------------------------------------------------
-    run $AUSTIN -i 1000 -t 10000 -m $PYTHON test/target34.py
+    run $AUSTIN -i 1000 -t 1000 -m $PYTHON test/target34.py
 
     assert_success
-    assert_output "keep_cpu_busy (test/target34.py);L"
+    assert_output "keep_cpu_busy (.*test/target34.py);L"
 
   # -------------------------------------------------------------------------
   step "Output file"
   # -------------------------------------------------------------------------
-    run $AUSTIN -i 10000 -t 10000 -o /tmp/austin_out.txt $PYTHON test/target34.py
+    run $AUSTIN -i 10000 -t 1000 -o /tmp/austin_out.txt $PYTHON test/target34.py
 
     assert_success
     assert_output "Unwanted"
-    assert_not_output "keep_cpu_busy (test/target34.py);L"
-    assert_file "/tmp/austin_out.txt" "keep_cpu_busy (test/target34.py);L"
+    assert_not_output "keep_cpu_busy (.*test/target34.py);L"
+    assert_file "/tmp/austin_out.txt" "keep_cpu_busy (.*test/target34.py);L"
 
 }
 
@@ -114,4 +115,8 @@ function teardown {
 
 @test "Test Austin with Python 3.8" {
   repeat 3 invoke_austin "3.8"
+}
+
+@test "Test Austin with Python 3.9" {
+  repeat 3 invoke_austin "3.9"
 }

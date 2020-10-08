@@ -103,3 +103,7 @@ function invoke_austin {
 @test "Test Austin with Python 3.8" {
   repeat 3 invoke_austin "3.8"
 }
+
+@test "Test Austin with Python 3.9" {
+  repeat 3 invoke_austin "3.9"
+}

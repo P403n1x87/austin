@@ -8,11 +8,11 @@ Build-Depends: debhelper (>= 11~),
  python3 (>= 3.3)
 Standards-Version: 4.4.0
 Homepage: https://github.com/P403n1x87/austin
-Vcs-Git: https://github.com/P403n1x87/austin
+Vcs-Git: https://github.com/P403n1x87/austin -b packaging/debian
 Vcs-Browser: https://github.com/P403n1x87/austin
 
 Package: austin
-Architecture: any
+Architecture: amd64 arm64 i386 mips64el ppc64 ppc64el s390x
 Depends: ${shlibs:Depends}, ${misc:Depends}
 Description: Frame stack sampler for CPython
  Austin is a Python frame stack sampler for CPython written in pure C. It

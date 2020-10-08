@@ -24,7 +24,7 @@ load "common"
 
 
 test_case() {
-  run bats test/test_$1.bats
+  bats test/test_$1.bats
 }
 
 @test "Test Austin: fork" {

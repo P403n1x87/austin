@@ -1,3 +1,16 @@
+austin (2.0.0-1) unstable; urgency=medium
+
+  Substantial performance improvements. Austin 2 can sample deep call stacks
+  5 to 8 times faster than previous versions.
+
+  Support for Python 3.9.
+
+  Added the exposure option to instruct Austin to sample for a given number of
+  seconds only.
+
+ -- Gabriele N. Tornetta <phoenix1987@gmail.com>  Thu, 08 Oct 2020 15:11:00 +0100
+
+
 austin (1.0.1-2) unstable; urgency=medium
 
   Enhanced test sources. Closes: #962001.
