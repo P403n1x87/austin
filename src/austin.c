@@ -30,39 +30,17 @@
 #include "argparse.h"
 #include "austin.h"
 #include "error.h"
+#include "hints.h"
 #include "logging.h"
 #include "mem.h"
+#include "platform.h"
 #include "python.h"
 #include "stats.h"
+#include "timer.h"
 
-#include "py_frame.h"
 #include "py_proc.h"
 #include "py_proc_list.h"
 #include "py_thread.h"
-
-
-// ---- TIMING ----------------------------------------------------------------
-
-static ctime_t _sample_timestamp;
-
-
-static void
-timer_start(void) {
-  _sample_timestamp = gettime();
-} /* timer_start */
-
-
-static void
-timer_stop(void) {
-  ctime_t delta = gettime() - _sample_timestamp;
-
-  // Record stats
-  stats_check_duration(delta, pargs.t_sampling_interval);
-
-  // Pause if sampling took less than the sampling interval.
-  if (delta < pargs.t_sampling_interval)
-    usleep(pargs.t_sampling_interval - delta);
-} /* timer_stop */
 
 
 // ---- SIGNAL HANDLING -------------------------------------------------------
@@ -73,8 +51,8 @@ static int interrupt = 0;
 static void
 signal_callback_handler(int signum)
 {
-  if (signum == SIGINT)
-    interrupt++;
+  if (signum == SIGINT || signum == SIGTERM)
+    interrupt = SIGTERM;
 } /* signal_callback_handler */
 
 // ----------------------------------------------------------------------------
@@ -82,15 +60,25 @@ signal_callback_handler(int signum)
 // ----------------------------------------------------------------------------
 void
 do_single_process(py_proc_t * py_proc) {
-  while(py_proc__is_running(py_proc) && !interrupt) {
-    timer_start();
-    {
-      py_proc__sample(py_proc);
+  if (pargs.exposure == 0) {
+    while(interrupt == FALSE) {
+      timer_start();
+      if (py_proc__sample(py_proc)) break;
+      timer_pause(timer_stop());
     }
-    timer_stop();
+  }
+  else {
+    ctime_t end_time = gettime() + pargs.exposure * 1000000;
+    while(interrupt == FALSE) {
+      timer_start();
+      if (py_proc__sample(py_proc)) break;
+      timer_pause(timer_stop());
+
+      if (end_time < gettime()) interrupt++;
+    }
   }
 
-  if (!interrupt)
+  if (interrupt == FALSE)
     py_proc__wait(py_proc);
 
   py_proc__destroy(py_proc);
@@ -108,6 +96,9 @@ do_child_processes(py_proc_t * py_proc) {
   // process. However, its children might be, so we attempt to attach
   // Austin to them.
   if (!py_proc__is_running(py_proc)) {
+    if (error == EPROCPERM)
+      return;
+
     log_d("Parent process is not running. Trying with its children.");
 
     // Since the parent process is not running we probably have waited long
@@ -121,16 +112,27 @@ do_child_processes(py_proc_t * py_proc) {
     py_proc_list__add_proc_children(list, ppid);
   }
 
-  while (!py_proc_list__is_empty(list) && !interrupt) {
-    timer_start();
-    {
+  if (pargs.exposure == 0) {
+    while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
+      ctime_t start_time = gettime();
       py_proc_list__update(list);
       py_proc_list__sample(list);
+      timer_pause(gettime() - start_time);
     }
-    timer_stop();
+  }
+  else {
+    ctime_t end_time = gettime() + pargs.exposure * 1000000;
+    while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
+      ctime_t start_time = gettime();
+      py_proc_list__update(list);
+      py_proc_list__sample(list);
+      timer_pause(gettime() - start_time);
+
+      if (end_time < gettime()) interrupt++;
+    }
   }
 
-  if (!interrupt) {
+  if (interrupt == FALSE) {
     py_proc_list__update(list);
     py_proc_list__wait(list);
   }
@@ -168,20 +170,30 @@ int main(int argc, char ** argv) {
     goto finally;
   }
 
+  if (!success(py_thread_allocate_stack())) {
+    log_f(
+      "\n"
+      "😵 Failed to allocate the memory for dumping frame stacks. This is pretty bad\n"
+      "as Austin doesn't require much memory to run. Try to free up some memory."
+    );
+    goto finally;
+  }
+
+  // Initialise sampling metrics.
+  stats_reset();
+
   if (pargs.attach_pid == 0) {
     if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg])) {
       retval = EPROCFORK;
+      py_proc__terminate(py_proc);
       goto finally;
     }
   } else {
-    if (py_proc__attach(py_proc, pargs.attach_pid) && !pargs.children) {
+    if (py_proc__attach(py_proc, pargs.attach_pid, FALSE) && !pargs.children) {
       retval = EPROCATTACH;
       goto finally;
     }
   }
-
-  // Register signal handler for Ctrl+C
-  signal(SIGINT, signal_callback_handler);
 
   // Redirect output to STDOUT if not output file was given.
   if (pargs.output_file == NULL)
@@ -198,18 +210,71 @@ int main(int argc, char ** argv) {
     pargs.memory = 1;
   }
 
-  stats_reset();
-  {
-    if (pargs.children)
-      do_child_processes(py_proc);
-    else
-      do_single_process(py_proc);
+  // Register signal handler for Ctrl+C and terminate signals.
+  signal(SIGINT, signal_callback_handler);
+  signal(SIGTERM, signal_callback_handler);
+
+  // Start sampling
+  if (pargs.children)
+    do_child_processes(py_proc);
+  else
+    do_single_process(py_proc);
+
+  if (error == EPROCPERM) {
+    retval = error;
+    goto finally;
   }
+
+  // Log sampling metrics
   stats_log_metrics();
 
 finally:
-  if (retval && error != EOK)
+  py_thread_free_stack();
+
+  if (interrupt == SIGTERM)
+    retval = SIGTERM;
+
+  if (retval && error != EOK) {
     log_i("Last error code: %d", error);
+    #if defined PL_UNIX
+    if (error == EPROCPERM) {
+      #if defined PL_MACOS
+      log_f(
+        "\n"
+        "🔒 Insufficient permissions. Austin requires the use of sudo on Mac OS or\n"
+        "that your user is in the procmod group in order to read the memory of even\n"
+        "its child processes. Furthermore, the System Integrity Protection prevents\n"
+        "Austin from working with Python binaries installed in certain areas of the\n"
+        "file system. See\n"
+        "\n"
+        "    🌐 https://github.com/P403n1x87/austin#compatibility\n"
+        "\n"
+        "for more details."
+      );
+      #elif defined PL_LINUX
+      log_f(
+        "\n"
+        "🔒 Insufficient permissions. Austin requires the use of sudo on Linux in\n"
+        "order to attach to a running Python process. Alternatively, you need to\n"
+        "grant the Austin binary the CAP_SYS_PTRACE capability. See\n"
+        "\n"
+        "    🌐 https://github.com/P403n1x87/austin#compatibility\n"
+        "\n"
+        "for more details."
+      );
+      #endif
+    }
+    #elif defined PL_WIN
+    if (error == EPROCISTIMEOUT) {
+      log_f(
+        "On Windows, this error could indicate that you are starting Python from\n"
+        "a wrapper. This is often the case if you have installed Python via, e.g.,\n"
+        "Scoop or some other package manager. Try starting Python from within a\n"
+        "virtual environment or use the actual Python executable if you can."
+      );
+    }
+    #endif
+  }
   log_footer();
   logger_close();
 

@@ -20,30 +20,20 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef PY_CODE_H
-#define PY_CODE_H
+#ifndef HINTS_H
+#define HINTS_H
 
-#include "mem.h"
+#define SUCCESS                         return 0
+#define FAIL                            return 1
 
+#define TRUE                           1
+#define FALSE                          0
 
-typedef struct {
-  char          * filename;
-  char          * scope;
-  int             lineno;
-} py_code_t;
+#define NOVERSION                      0
 
+#define success(x)                      (!(x))
+#define sfree(x)                        {if ((x) != NULL) free(x);}
 
-/**
- * Create a new py_code_t object from the given remote address
- * @param  raddr_t the remote address
- * @param  int     the last instruction index from the linking frame object.
- * @return         a pointer to a new instance of py_code_t
- */
-py_code_t *
-py_code_new_from_raddr(raddr_t *, int);
+#define isvalid(x)                      ((x) != NULL)
 
-
-void
-py_code__destroy(py_code_t *);
-
-#endif // PY_CODE_H
+#endif

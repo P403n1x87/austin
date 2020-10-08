@@ -5,7 +5,7 @@
 # See file LICENCE or go to http://www.gnu.org/licenses/ for full license
 # details.
 #
-# Sibilla is a Python ORM for the Oracle Database.
+# Austin is a Python frame stack sampler for CPython.
 #
 # Copyright (c) 2019 Gabriele N. Tornetta <phoenix1987@gmail.com>.
 # All rights reserved.

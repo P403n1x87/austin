@@ -109,11 +109,12 @@ py_proc__start(py_proc_t *, const char *, char **);
  *
  * @param py_proc_t *  the process object.
  * @param pid_t        the PID of the process to attach.
+ * @param int          TRUE if this is a child process, FALSE otherwise.
  *
  * @return 0 on success.
  */
 int
-py_proc__attach(py_proc_t *, pid_t);
+py_proc__attach(py_proc_t *, pid_t, int);
 
 
 /**
@@ -178,7 +179,7 @@ py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr);
 
 
 /**
- * Check if the process is still running
+ * Check if the process is still running.
  *
  * @param py_proc_t * the process object.
  *
@@ -193,7 +194,7 @@ py_proc__is_running(py_proc_t *);
  *
  * @param py_proc_t * the process object.
  *
- * @return the computed memory usage delta in KB.
+ * @return the computed memory usage delta in bytes.
  */
 ssize_t
 py_proc__get_memory_delta(py_proc_t *);
@@ -203,8 +204,10 @@ py_proc__get_memory_delta(py_proc_t *);
  * Sample the frame stack of each thread of the given Python process.
  *
  * @param  py_proc_t *  self.
+
+ * @return 0 if the sampling succeded; 1 otherwise.
  */
-void
+int
 py_proc__sample(py_proc_t *);
 
 
@@ -218,6 +221,15 @@ py_proc__sample(py_proc_t *);
  * @return 0 on success.
  */
 #define py_proc__get_type(self, raddr, dt) (py_proc__memcpy(self, raddr, sizeof(dt), &dt))
+
+
+/**
+ * Terminate the process.
+ *
+ * @param py_proc_t * the process object.
+ */
+void
+py_proc__terminate(py_proc_t *);
 
 
 void
