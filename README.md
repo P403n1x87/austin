@@ -512,7 +512,7 @@ environment variable in order for Austin Web to work.
 
 ## Speedscope
 
-Austin output is now supported by [Speedscope](speedscope.app). However, the
+Austin output is now supported by [Speedscope](https://speedscope.app). However, the
 [`austin-python`](https://github.com/P403n1x87) library comes with format
 conversion tools that allow to convert the output from Austin to the Speedscope
 JSON format.
@@ -531,7 +531,7 @@ austin2speedscope [-h] [--indent INDENT] [-V] input output
 
 where `input` is a file containing the output from Austin and `output` is the
 name of the JSON file to use to save the result of the conversion, ready to be
-used on [Speedscope](speedscope.app).
+used on [Speedscope](https://speedscope.app).
 
 <p align="center"><img src="art/speedscope.png" /></p>
 
