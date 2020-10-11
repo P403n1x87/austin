@@ -113,7 +113,7 @@ before_deploy:
     fi;
     export VERSION=$(cat src/austin.h | sed $SED_FLAGS "s/.*VERSION[ ]+\"(.+)\"/\1/p");
 
-  - export TRAVIS_TAG=v$VERSION
+  # - export TRAVIS_TAG=v$VERSION
 
   - echo "==== Preparing to create GitHub Release for version $VERSION ===="
 
@@ -173,6 +173,8 @@ deploy:
       - $ARTEFACT
       - $WIN_MSI
     overwrite: true
+    on:
+      tags: true
 
   # - provider: releases
   #   edge: true
