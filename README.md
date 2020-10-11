@@ -482,7 +482,7 @@ wraps around Austin. At its core, Austin Web is based on
 [d3-flame-graph](https://github.com/spiermar/d3-flame-graph) to display a _live_
 flame graph in the browser, that refreshes every 3 seconds with newly collected
 samples. Austin Web can also be used for _remote_ profiling by setting the
-`WEBAUSTIN_HOST` and `WEBAUSTIN_PORT` environment variables.
+`--host` and `--port` options.
 
 If you want to give it a go you can install it using `pip` with
 
@@ -497,9 +497,8 @@ austin-web [OPTION...] command [ARG...]
 ~~~
 
 with the same command line as Austin. This starts a simple HTTP server that
-serves on `WEBAUSTIN_HOST` if set or on `localhost` otherwise. The port can be
-controlled with the `WEBAUSTIN_PORT` environment variable. If it is not set,
-Austin Web will use an ephemeral port.
+serves on `localhost` by default. When no explicit port is given, Austin Web
+will use an ephemeral one.
 
 Please note that the `austin` binary should be available from within the `PATH`
 environment variable in order for Austin Web to work.
@@ -512,8 +511,8 @@ environment variable in order for Austin Web to work.
 
 ## Speedscope
 
-Austin output is now supported by [Speedscope](https://speedscope.app). However, the
-[`austin-python`](https://github.com/P403n1x87) library comes with format
+Austin output is now supported by [Speedscope](https://speedscope.app). However,
+the [`austin-python`](https://github.com/P403n1x87) library comes with format
 conversion tools that allow to convert the output from Austin to the Speedscope
 JSON format.
 
@@ -534,6 +533,28 @@ name of the JSON file to use to save the result of the conversion, ready to be
 used on [Speedscope](https://speedscope.app).
 
 <p align="center"><img src="art/speedscope.png" /></p>
+
+## Google pprof
+
+Austin's format can also be converted to the Google pprof format using the
+`austin2pprof` utility that comes with
+[`austin-python`](https://github.com/P403n1x87). If you want to give it a go you
+can install it using `pip` with
+
+~~~ bash
+pip install austin-python --upgrade
+~~~
+
+and run it with
+
+~~~ bash
+austin2pprof [-h] [-V] input output
+~~~
+
+where `input` is a file containing the output from Austin and `output` is the
+name of the protobuf file to use to save the result of the conversion, ready to
+be used with [Google's pprof tools](https://github.com/google/pprof).
+
 
 # Contribute
 
@@ -559,5 +580,7 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 ----
 
 <p align="center">
-<a href="https://twitter.com/AustinSampler">Follow <img src="art/austin_logo.svg" height="20px" /> on <img src="https://upload.wikimedia.org/wikipedia/en/thumb/9/9f/Twitter_bird_logo_2012.svg/1024px-Twitter_bird_logo_2012.svg.png" height="18px" alt="Twitter" /></a>
+  <a href="https://twitter.com/AustinSampler">
+    Follow <img src="art/austin_logo.svg" height="20px" /> on <img src="https://upload.wikimedia.org/wikipedia/en/thumb/9/9f/Twitter_bird_logo_2012.svg/1024px-Twitter_bird_logo_2012.svg.png" height="18px" alt="Twitter" />
+  </a>
 </p>
