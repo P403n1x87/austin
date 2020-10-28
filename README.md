@@ -18,22 +18,23 @@
     <img src="https://travis-ci.org/P403n1x87/austin.svg?branch=master"
          alt="Travis CI Build Status" />
   </a>
-	<a href="https://snapcraft.io/austin">
-		<img src="https://snapcraft.io/austin/badge.svg"
-		     alt="austin Snap Store Build Status" />
-	</a>
+  <a href="https://snapcraft.io/austin">
+    <img src="https://snapcraft.io/austin/badge.svg"
+         alt="austin Snap Store Build Status" />
   </a>
   <a href="https://packages.debian.org/unstable/austin">
     <img src="https://badges.debian.net/badges/debian/unstable/austin/version.svg"
          alt="Debian package status" />
   </a>
-	<a href="https://formulae.brew.sh/formula/austin">
-  	<img src="https://img.shields.io/homebrew/v/austin"
-		     alt="homebrew" />
-	</a>
-  <img src="http://img.shields.io/github/v/release/p403n1x87/austin"
-       alt="latest release" />
-  <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md" />
+  <a href="https://formulae.brew.sh/formula/austin">
+    <img src="https://img.shields.io/homebrew/v/austin"
+         alt="homebrew" />
+  </a>
+  <a href="https://github.com/P403n1x87/austin/releases/latest">
+    <img src="http://img.shields.io/github/v/release/p403n1x87/austin"
+         alt="latest release" />
+  </a>
+  <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md">
     <img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg"
          alt="LICENSE" />
   </a>
@@ -103,9 +104,9 @@ The key features of Austin are:
 - Built-in support for multi-process applications (e.g. `mod_wsgi`).
 
 The simplest way to turn Austin into a full-fledged profiler is to combine it
-with [FlameGraph](https://github.com/brendangregg/FlameGraph). However, Austin's
-simple output format can be piped into any other external or custom tool for
-further processing. Look, for instance, at the following Python TUI
+with [FlameGraph]. However, Austin's simple output format can be piped into any
+other external or custom tool for further processing. Look, for instance, at the
+following Python TUI
 
 
 <p align="center">
@@ -119,7 +120,8 @@ Keep reading for more tools ideas and examples!
 # Installation
 
 Austin is available from the major software repositories of the most popular
-platforms.
+platforms. Check out the [latest release] page for pre-compiled binaries and
+installation packages.
 
 On Linux, it can be installed using `autotools` or as a snap from the [Snap
 Store](https://snapcraft.io/store). The latter will automatically perform the
@@ -128,10 +130,10 @@ from Debian, Austin can be installed from the official repositories with
 Aptitude.
 
 On Windows, Austin can be easily installed from the command line using either
-[Chocolatey](https://chocolatey.org/) or [Scoop](https://scoop.sh/)
+[Chocolatey] or [Scoop]. Alternatively, you can download the installer from the
+[latest release] page.
 
-On macOS, Austin can be easily installed from the command line using
-[homebrew](https://formulae.brew.sh/formula/austin).
+On macOS, Austin can be easily installed from the command line using [Homebrew].
 
 For any other platform, compiling Austin from sources is as easy as cloning the
 repository and running the C compiler.
@@ -166,13 +168,13 @@ sudo snap install austin --classic
 
 ## On Debian and Derivatives
 
-On March 30 2019 Austin was accepted into the official Debian
-repositories and can therefore be installed with the `apt` utility.
+On March 30 2019 Austin was accepted into the official Debian repositories and
+can therefore be installed with the `apt` utility.
 
 
 ## On macOS
 
-Austin can be installed on macOS using [homebrew](https://docs.brew.sh):
+Austin can be installed on macOS using [Homebrew](https://docs.brew.sh):
 
 ~~~bash
 brew install austin
@@ -273,8 +275,7 @@ Report bugs to <https://github.com/P403n1x87/austin/issues>.
 ~~~
 
 The output is a sequence of frame stack samples, one on each line. The format is
-the collapsed one that is recognised by
-[FlameGraph](https://github.com/brendangregg/FlameGraph) so that it can be piped
+the collapsed one that is recognised by [FlameGraph] so that it can be piped
 straight to `flamegraph.pl` for a quick visualisation, or redirected to a file
 for some further processing.
 
@@ -436,13 +437,12 @@ Austin will sample them too.
 
 ## Austin TUI
 
-The [Austin TUI](https://github.com/P403n1x87/austin-tui) is a text-based user
-interface for Austin that gives you a top-like view of what is currently running
-inside a Python application. It is most useful for scripts that have
-long-running procedures as you can see where execution is at without tracing
-instructions in your code. You can also save the collected data from within the
-TUI and feed it to Flame Graph for visualisation, or convert it to the
-[pprof](https://github.com/google/pprof) format.
+The [Austin TUI] is a text-based user interface for Austin that gives you a
+top-like view of what is currently running inside a Python application. It is
+most useful for scripts that have long-running procedures as you can see where
+execution is at without tracing instructions in your code. You can also save the
+collected data from within the TUI and feed it to Flame Graph for visualisation,
+or convert it to the [pprof] format.
 
 If you want to give it a go you can install it using `pip` with
 
@@ -477,12 +477,10 @@ TUI to work.
 
 ## Austin Web
 
-[Austin Web](https://github.com/P403n1x87/austin-web) is a web application that
-wraps around Austin. At its core, Austin Web is based on
-[d3-flame-graph](https://github.com/spiermar/d3-flame-graph) to display a _live_
-flame graph in the browser, that refreshes every 3 seconds with newly collected
-samples. Austin Web can also be used for _remote_ profiling by setting the
-`--host` and `--port` options.
+[Austin Web] is a web application that wraps around Austin. At its core, Austin
+Web is based on [d3-flame-graph] to display a _live_ flame graph in the browser,
+that refreshes every 3 seconds with newly collected samples. Austin Web can also
+be used for _remote_ profiling by setting the `--host` and `--port` options.
 
 If you want to give it a go you can install it using `pip` with
 
@@ -511,10 +509,9 @@ environment variable in order for Austin Web to work.
 
 ## Speedscope
 
-Austin output is now supported by [Speedscope](https://speedscope.app). However,
-the [`austin-python`](https://github.com/P403n1x87) library comes with format
-conversion tools that allow to convert the output from Austin to the Speedscope
-JSON format.
+Austin output is now supported by [Speedscope]. However, the [`austin-python`]
+library comes with format conversion tools that allow to convert the output from
+Austin to the Speedscope JSON format.
 
 If you want to give it a go you can install it using `pip` with
 
@@ -530,16 +527,15 @@ austin2speedscope [-h] [--indent INDENT] [-V] input output
 
 where `input` is a file containing the output from Austin and `output` is the
 name of the JSON file to use to save the result of the conversion, ready to be
-used on [Speedscope](https://speedscope.app).
+used on [Speedscope].
 
 <p align="center"><img src="art/speedscope.png" /></p>
 
 ## Google pprof
 
 Austin's format can also be converted to the Google pprof format using the
-`austin2pprof` utility that comes with
-[`austin-python`](https://github.com/P403n1x87). If you want to give it a go you
-can install it using `pip` with
+`austin2pprof` utility that comes with [`austin-python`]. If you want to give it
+a go you can install it using `pip` with
 
 ~~~ bash
 pip install austin-python --upgrade
@@ -553,7 +549,7 @@ austin2pprof [-h] [-V] input output
 
 where `input` is a file containing the output from Austin and `output` is the
 name of the protobuf file to use to save the result of the conversion, ready to
-be used with [Google's pprof tools](https://github.com/google/pprof).
+be used with [Google's pprof tools][pprof].
 
 
 # Contribute
@@ -584,3 +580,16 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
     Follow <img src="art/austin_logo.svg" height="20px" /> on <img src="https://upload.wikimedia.org/wikipedia/en/thumb/9/9f/Twitter_bird_logo_2012.svg/1024px-Twitter_bird_logo_2012.svg.png" height="18px" alt="Twitter" />
   </a>
 </p>
+
+
+[`austin-python`]: https://github.com/P403n1x87
+[Austin TUI]: https://github.com/P403n1x87/austin-tui
+[Austin Web]: https://github.com/P403n1x87/austin-web
+[Chocolatey]: https://chocolatey.org/
+[d3-flame-graph]: https://github.com/spiermar/d3-flame-graph
+[FlameGraph]: https://github.com/brendangregg/FlameGraph
+[Homebrew]: https://formulae.brew.sh/formula/austin
+[latest release]: https://github.com/P403n1x87/austin/releases/latest
+[pprof]: https://github.com/google/pprof
+[Scoop]: https://scoop.sh/
+[Speedscope]: https://speedscope.app
