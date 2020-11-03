@@ -4,7 +4,7 @@ compiler:
   - gcc
 
 git:
-  depth: 1
+  depth: false
 
 osx_image: xcode11.4
 
@@ -113,18 +113,18 @@ before_deploy:
     fi;
     export VERSION=$(cat src/austin.h | sed $SED_FLAGS "s/.*VERSION[ ]+\"(.+)\"/\1/p");
 
-  - export TRAVIS_TAG=v$VERSION
+  # - export TRAVIS_TAG=v$VERSION
 
   - echo "==== Preparing to create GitHub Release for version $VERSION ===="
 
-  - if [[ "$TRAVIS_OS_NAME" == "linux"   ]];
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]];
     then
       export ZIP_CMD="tar -Jcf";
       export ZIP_SUFFIX="linux-${TARGET%%-*}.tar.xz";
       export AUSTIN_EXE=austin;
     fi
 
-  - if [[ "$TRAVIS_OS_NAME" == "osx"     ]];
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]];
     then
       export ZIP_CMD="zip -r";
       export ZIP_SUFFIX="mac-${TARGET%%-*}.zip";
@@ -139,20 +139,27 @@ before_deploy:
 
       export WIN_MSI="austin-$VERSION-win64.msi";
 
-      git checkout "packaging/msi" -- wix/;
+      git checkout "packaging/msi";
+      git checkout master;
+      git checkout "packaging/msi" -- wix;
 
       sed -i "s/%VERSION%/$VERSION/g" wix/Austin.wxs;
-      candle wix/Austin.wxs -out wix/Austin.wixobj;
-      light -ext WixUIExtension wix/Austin.wixobj -out $WIN_MSI;
+      export PATH="/c/Program Files (x86)/`ls /c/Program\ Files\ \(x86\) | grep \"[wW]i[xX] [tT]oolset\"`/bin:$PATH";
+      cd wix;
+      candle Austin.wxs -out Austin.wixobj;
+      light -ext WixUIExtension Austin.wixobj -out $WIN_MSI;
+      cd .. ;
+      mv wix/$WIN_MSI src/$WIN_MSI;
+      test -f src/$WIN_MSI && echo ">> Windows MSI installer at src/$WIN_MSI" || echo ">> ERROR No Windows MSI installer generated.";
     fi
 
   - export ARTEFACT="austin-${VERSION}-${ZIP_SUFFIX}"
 
-  - echo " - Using command $ZIP_CMD to create artefact $ARTEFACT"
+  - echo ">> Using command $ZIP_CMD to create artefact $ARTEFACT"
 
   - cd src
   - $ZIP_CMD $ARTEFACT $AUSTIN_EXE
-  - echo " - Generated artefact" $(ls $ARTEFACT)
+  - echo ">> Generated artefact" $(ls $ARTEFACT)
 
   - git config --local user.name "Gabriele N. Tornetta"
   - git config --local user.email ${GITHUB_EMAIL}
@@ -162,23 +169,28 @@ deploy:
   - provider: releases
     edge: true
     token: $GITHUB_TOKEN
-    file: $ARTEFACT
-    overwrite: true
-
-  - provider: releases
-    edge: true
-    token: $GITHUB_TOKEN
-    file: $WIN_MSI
+    file:
+      - $ARTEFACT
+      - $WIN_MSI
     overwrite: true
     on:
-      condition: "$TRAVIS_OS_NAME = windows"
+      tags: true
+
+  # - provider: releases
+  #   edge: true
+  #   token: $GITHUB_TOKEN
+  #   file: $WIN_MSI
+  #   overwrite: true
+  #   on:
+  #     condition: "$TRAVIS_OS_NAME = windows"
 
 after_deploy:
+  - cd ..
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]];
     then
-      export WIN_MSI_HASH=$( sha256sum $WIN_MSI | head -c 64 );
+      export WIN_MSI_HASH=$( sha256sum src/$WIN_MSI | head -c 64 );
 
-      git checkout "packaging/msi" -- choco/;
+      git checkout "packaging/msi" -- choco;
 
       cd choco;
 
@@ -187,4 +199,5 @@ after_deploy:
       choco apikey --key $CHOCO_APIKEY --source https://push.chocolatey.org/;
       choco pack;
       choco push;
+      cd .. ;
     fi
