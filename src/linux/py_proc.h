@@ -33,6 +33,7 @@
 #include <unistd.h>
 
 #include "../dict.h"
+#include "../hints.h"
 #include "../py_proc.h"
 
 
@@ -51,7 +52,7 @@
 #define SELF_PID                        (self->pid)
 
 
-#define _py_proc__get_elf_type(self, offset, dt) /* as */ (py_proc__memcpy(self, self->map.elf.base + offset, sizeof(dt), &dt))
+#define _py_proc__get_elf_type(self, vaddr, dt) /* as */ (py_proc__memcpy(self, vaddr, sizeof(dt), &dt))
 
 // Get the offset of the ith section header
 #define ELF_SH_OFF(ehdr, i) /* as */ (ehdr.e_shoff + i * ehdr.e_shentsize)
@@ -127,7 +128,7 @@ _py_proc__analyze_elf64(py_proc_t * self) {
         strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
       ) {
         p_dynsym = p_shdr;
-        map_flag |= DYNSYM_MAP;
+        // map_flag |= DYNSYM_MAP;
       }
       // NOTE: This might be required if the Python version is must be retrieved
       //       from the RO data section
@@ -139,6 +140,11 @@ _py_proc__analyze_elf64(py_proc_t * self) {
       //   self->map.rodata.size = p_shdr->sh_size;
       //   map_flag |= RODATA_MAP;
       // }
+      else if (strcmp(sh_name_base + p_shdr->sh_name, ".bss") == 0) {
+        self->map.bss.base = self->map.elf.base + (p_shdr->sh_addr - base);
+        self->map.bss.size = p_shdr->sh_size;
+        log_d("BSS @ %p, (size %x)", self->map.bss.base, self->map.bss.size);
+      }
     }
 
     if (p_dynsym != NULL) {
@@ -260,12 +266,12 @@ _py_proc__analyze_elf32(py_proc_t * self) {
 static int
 _py_proc__analyze_elf(py_proc_t * self) {
   Elf64_Ehdr ehdr = ehdr_v.v64;
-
-  if (_py_proc__get_elf_type(self, 0, ehdr_v)) {
+log_d("ELF base VM address: %p", self->map.elf.base);
+  if (_py_proc__get_elf_type(self, self->map.elf.base, ehdr_v)) {
     error = EPROCPERM;
     return 1;
   }
-  
+
   if (ehdr.e_shoff == 0 || ehdr.e_shnum < 2 || memcmp(ehdr.e_ident, ELFMAG, SELFMAG))
     return 1;
 
@@ -281,6 +287,21 @@ _py_proc__analyze_elf(py_proc_t * self) {
     return 1;
   }
 } /* _py_proc__analyze_elf */
+
+
+// ----------------------------------------------------------------------------
+static int
+_elf_is_executable(char * object_file) {
+  int          fd   = open(object_file, O_RDONLY);
+  Elf64_Ehdr * ehdr = (Elf64_Ehdr *) mmap(NULL, sizeof(Elf64_Ehdr), PROT_READ, MAP_SHARED, fd, 0);
+
+  int is_exec = ehdr->e_type == ET_EXEC;
+
+  munmap(ehdr, sizeof(Elf64_Ehdr));
+  close(fd);
+
+  return is_exec;
+} /* _elf_is_executable */
 
 
 // ----------------------------------------------------------------------------
@@ -309,14 +330,13 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   }
 
   else {
-    register int line_count = 0;  // Used to determine if we need to look for the python or libpython binary.
-
     self->min_raddr = (void *) -1;
     self->max_raddr = NULL;
 
-    while (getline(&line, &len, fp) != -1) {
-      ++line_count;
+    sfree(self->bin_path);
+    sfree(self->lib_path);
 
+    while (getline(&line, &len, fp) != -1) {
       ssize_t lower, upper;
       char    pathname[1024];
       char    m[sizeof(void *)]; // We don't care about these values.
@@ -326,7 +346,6 @@ _py_proc__parse_maps_file(py_proc_t * self) {
         (char *) m, (ssize_t *) m, (int *) m, (int *) m, (int *) m, // Ignored
         pathname                                                    // Binary path
       ) - 7; // We expect between 7 and 8 matches.
-
       if (field_count >= 0) {
         if (field_count == 0 || strstr(pathname, "[v") == NULL) {
           // Skip meaningless addresses like [vsyscall] which would give
@@ -345,38 +364,48 @@ _py_proc__parse_maps_file(py_proc_t * self) {
           continue;
         }
 
-        if (line_count == 1) {
-          if (strstr(line, "python") == NULL)
-          // NOTE: The python binary might have a name that doesn't contain python
-          //       but would still be valid. In case of future issues, this
-          //       should be changed so that the binary on the first line is
-          //       checked for, e.g., knownw symbols to determine whether it is a
-          //       valid binary that Austin can handle.
+        if (strstr(line, "python") == NULL)
+        // NOTE: The python binary might have a name that doesn't contain python
+        //       but would still be valid. In case of future issues, this
+        //       should be changed so that the binary on the first line is
+        //       checked for, e.g., knownw symbols to determine whether it is a
+        //       valid binary that Austin can handle.
+          continue;
+
+        // Check if it is an executable
+        if (_elf_is_executable(pathname)) {
+          if (self->bin_path != NULL)
             continue;
-          else {
-            if (self->bin_path != NULL)
-              free(self->bin_path);
-            self->bin_path = strndup(pathname, strlen(pathname));
+
+          self->bin_path = strndup(pathname, strlen(pathname));
+          if (upper - lower > 1 << 20) {
             self->map.elf.base = (void *) lower;
             self->map.elf.size = upper - lower;
           }
-        }
+          log_d("Candidate binary: %s", pathname);
 
-        else if ((self->lib_path == NULL) && (strstr(line, "libpython") != NULL)) {
-          maps_flag &= ~BSS_MAP;
+          // self->map.bss.base = (void *) lower;
+          // self->map.bss.size = upper - lower;
+          // log_d("BSS bounds %lx-%lx", lower, upper);
 
+          maps_flag |= BSS_MAP;
+          continue;
+        } else {
           if (self->lib_path != NULL)
-            free(self->lib_path);
+            continue;
+
           self->lib_path = strndup(pathname, strlen(pathname));
 
-          // Override any previous values as this is the binary we need to look into
-          self->map.elf.base = (void *) lower;
-          self->map.elf.size = upper - lower;
+          if (upper - lower > 1 << 20) {
+            self->map.elf.base = (void *) lower;
+            self->map.elf.size = upper - lower;
+          }
+          log_d("Candidate library: %s", pathname);
         }
 
-        if ((maps_flag & BSS_MAP) == 0 && field_count == 0) {
-          self->map.bss.base = (void *) lower;
-          self->map.bss.size = upper - lower;
+        if ((maps_flag & BSS_MAP) == 0) {
+          // self->map.bss.base = (void *) lower;
+          // self->map.bss.size = upper - lower;
 
           maps_flag |= BSS_MAP;
 

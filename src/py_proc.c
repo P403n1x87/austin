@@ -143,7 +143,7 @@ _py_proc__get_version(py_proc_t * self) {
 
     #if defined PL_LINUX                                             /* LINUX */
     if (sscanf(
-        strstr(self->lib_path, "libpython"), "libpython%d.%d", &major, &minor
+        strstr(self->lib_path, "python"), "python%d.%d", &major, &minor
     ) != 2) {
       log_f("Failed to determine Python version from shared object name.");
       return NOVERSION;

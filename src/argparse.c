@@ -162,6 +162,7 @@ static int
 parse_opt (int key, char *arg, struct argp_state *state)
 {
   if (state->argc == 1) {
+    state->name = PROGRAM_NAME;  // TODO: Check if there are better ways.
     argp_state_help(state, stdout, ARGP_HELP_USAGE);
     exit(0);
   }
@@ -418,6 +419,7 @@ arg_parse(arg_option * opts, arg_callback cb, int argc, char ** argv) {
 
   if (argc <= 1) {
     puts(usage_msg);
+    return ARG_USAGE;
   }
 
   while (a < argc) {

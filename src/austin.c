@@ -149,7 +149,7 @@ int main(int argc, char ** argv) {
 
   int exec_arg = parse_args(argc, argv);
 
-  if (exec_arg == 0 && pargs.attach_pid == 0) {
+  if (exec_arg < 0 || (exec_arg == 0 && pargs.attach_pid == 0)) {
     retval = -1;
     goto release;
   }
