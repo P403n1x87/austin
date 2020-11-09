@@ -24,7 +24,7 @@ load "../common"
 
 
 test_case() {
-  run bats test/macos/test_$1.bats
+  bats test/macos/test_$1.bats
 }
 
 
