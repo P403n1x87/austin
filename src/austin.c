@@ -45,7 +45,7 @@
 
 // ---- SIGNAL HANDLING -------------------------------------------------------
 
-static int interrupt = 0;
+static int interrupt = FALSE;
 
 
 static void
@@ -68,6 +68,7 @@ do_single_process(py_proc_t * py_proc) {
     }
   }
   else {
+    log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
     ctime_t end_time = gettime() + pargs.exposure * 1000000;
     while(interrupt == FALSE) {
       timer_start();
@@ -78,10 +79,9 @@ do_single_process(py_proc_t * py_proc) {
     }
   }
 
-  if (interrupt == FALSE)
+  if (interrupt == FALSE) {
     py_proc__wait(py_proc);
-
-  py_proc__destroy(py_proc);
+  }
 } /* do_single_process */
 
 
@@ -92,14 +92,13 @@ do_child_processes(py_proc_t * py_proc) {
   if (list == NULL)
     return;
 
-  // If the parent process is not running maybe it wasn't a Python
-  // process. However, its children might be, so we attempt to attach
-  // Austin to them.
-  if (!py_proc__is_running(py_proc)) {
+  // If the parent process is not a Python process, its children might be, so we
+  // attempt to attach Austin to them.
+  if (!py_proc__is_python(py_proc)) {
     if (error == EPROCPERM)
-      return;
+      goto release;
 
-    log_d("Parent process is not running. Trying with its children.");
+    log_d("Parent process is not a Python process. Trying with its children.");
 
     // Since the parent process is not running we probably have waited long
     // enough so we can try to attach to child processes straight away.
@@ -110,6 +109,10 @@ do_child_processes(py_proc_t * py_proc) {
 
     py_proc_list__update(list);
     py_proc_list__add_proc_children(list, ppid);
+    if (py_proc_list__is_empty(list)) {
+      error = pargs.attach_pid == 0 ? EPROCFORK : EPROCATTACH;
+      goto release;
+    }
   }
 
   if (pargs.exposure == 0) {
@@ -121,6 +124,7 @@ do_child_processes(py_proc_t * py_proc) {
     }
   }
   else {
+    log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
     ctime_t end_time = gettime() + pargs.exposure * 1000000;
     while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
       ctime_t start_time = gettime();
@@ -137,6 +141,7 @@ do_child_processes(py_proc_t * py_proc) {
     py_proc_list__wait(list);
   }
 
+release:
   py_proc_list__destroy(list);
 } /* do_child_processes */
 
@@ -145,11 +150,11 @@ do_child_processes(py_proc_t * py_proc) {
 
 // ----------------------------------------------------------------------------
 int main(int argc, char ** argv) {
-  int retval = 0;
+  int         retval   = 0;
+  py_proc_t * py_proc  = NULL;
+  int         exec_arg = parse_args(argc, argv);
 
-  int exec_arg = parse_args(argc, argv);
-
-  if (exec_arg < 0 || (exec_arg == 0 && pargs.attach_pid == 0)) {
+  if (exec_arg <= 0 && pargs.attach_pid == 0) {
     retval = -1;
     goto release;
   }
@@ -164,7 +169,7 @@ int main(int argc, char ** argv) {
     goto finally;
   }
 
-  py_proc_t * py_proc = py_proc_new();
+  py_proc = py_proc_new();
   if (py_proc == NULL) {
     retval = EPROC;
     goto finally;
@@ -183,7 +188,7 @@ int main(int argc, char ** argv) {
   stats_reset();
 
   if (pargs.attach_pid == 0) {
-    if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg])) {
+    if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg]) && !pargs.children) {
       retval = EPROCFORK;
       py_proc__terminate(py_proc);
       goto finally;
@@ -220,7 +225,7 @@ int main(int argc, char ** argv) {
   else
     do_single_process(py_proc);
 
-  if (error == EPROCPERM) {
+  if (is_fatal(error)) {
     retval = error;
     goto finally;
   }
@@ -230,6 +235,19 @@ int main(int argc, char ** argv) {
 
 finally:
   py_thread_free_stack();
+
+  if (isvalid(py_proc)) {
+    if (retval) {
+      if (!py_proc__is_python(py_proc)) {
+        log_f(
+          "\n"
+          "👽 The process you are trying to %s doesn't seem to be a Python process.\n",
+          retval == EPROCFORK ? "run" : "attach to"
+        );
+      }
+    }
+    py_proc__destroy(py_proc);
+  }
 
   if (interrupt == SIGTERM)
     retval = SIGTERM;

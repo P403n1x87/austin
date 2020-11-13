@@ -190,6 +190,17 @@ py_proc__is_running(py_proc_t *);
 
 
 /**
+ * Check if the process is a Python process.
+ *
+ * @param py_proc_t * the process object.
+ *
+ * @return 1 if the process is a Python process, 0 otherwise.
+ */
+int
+py_proc__is_python(py_proc_t *);
+
+
+/**
  * Get the memory size delta since last call.
  *
  * @param py_proc_t * the process object.

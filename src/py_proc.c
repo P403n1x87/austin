@@ -55,14 +55,15 @@
 
 // ---- Retry Timer ----
 #define INIT_RETRY_SLEEP             100   /* μs */
-#define INIT_RETRY_CNT                  (pargs.timeout)  /* Retry for 0.1s (default) before giving up. */
+#define INIT_TIMER_INTERVAL             (pargs.timeout)  /* Retry for 0.1s (default) before giving up. */
 
-#define TIMER_RESET                     (try_cnt=gettime()+INIT_RETRY_CNT);
-#define TIMER_START                     while(gettime()<=try_cnt){usleep(INIT_RETRY_SLEEP);
-#define TIMER_STOP                      {try_cnt=gettime();}
+#define TIMER_SET(x)                    {_end_time=gettime()+(x);}
+#define TIMER_RESET                     {_end_time=gettime()+INIT_TIMER_INTERVAL;}
+#define TIMER_START                     while(gettime()<=_end_time){usleep(INIT_RETRY_SLEEP);
+#define TIMER_STOP                      {_end_time=0;}
 #define TIMER_END                       }
 
-static ctime_t try_cnt;
+static ctime_t _end_time;
 
 
 // ----------------------------------------------------------------------------
@@ -445,7 +446,7 @@ _py_proc__find_interpreter_state(py_proc_t * self) {
       return 1;
     } */
 }
-#endif
+#endif  // DEREF_SYM
 
 
 // ----------------------------------------------------------------------------
@@ -454,6 +455,8 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
   #ifdef DEBUG
   register int attempts = 0;
   #endif
+
+  self->is_raddr = NULL;
 
   TIMER_RESET
   TIMER_START
@@ -508,7 +511,7 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
   log_w("BSS scan unsuccessful so we scan the heap directly ...");
 
   // TODO: Consider copying heap over and check for pointers
-  try_cnt = 10;
+  TIMER_SET(10)
   TIMER_START
     switch (_py_proc__scan_heap(self)) {
     case 0:
@@ -558,18 +561,13 @@ _py_proc__run(py_proc_t * self, int try_once) {
       self->bin_path, self->lib_path, self->sym_loaded
     );
 
-    if (try_once == TRUE)
+    if (try_once)
       TIMER_STOP
   TIMER_END
 
   if (self->bin_path == NULL && self->lib_path == NULL) {
-    if (try_once == FALSE)
-      log_f(
-        "\n👽 No Python binaries found from process %d. Perhaps you are trying to\n"
-        "start or attach to a non-Python process.", self->pid
-      );
-    else
-      log_i("Cannot attach to process %d with just a single attempt.", self->pid);
+    if (try_once)
+      log_d("Cannot attach to process %d with a single attempt.", self->pid);
     FAIL;
   }
 
@@ -769,7 +767,7 @@ py_proc__memcpy(py_proc_t * self, void * raddr, ssize_t size, void * dest) {
 // ----------------------------------------------------------------------------
 void
 py_proc__wait(py_proc_t * self) {
-  log_d("Waiting for process to terminate");
+  log_d("Waiting for process %d to terminate", self->pid);
 
   #if defined PL_LINUX
   if (self->extra->wait_thread_id) {
@@ -863,9 +861,6 @@ py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
 // ----------------------------------------------------------------------------
 int
 py_proc__is_running(py_proc_t * self) {
-  if (self->is_raddr == NULL)
-    return FALSE;
-
   #ifdef PL_WIN                                                        /* WIN */
   DWORD ec = 0;
   return GetExitCodeProcess(self->extra->h_proc, &ec) ? ec == STILL_ACTIVE : 0;
@@ -876,6 +871,13 @@ py_proc__is_running(py_proc_t * self) {
   #else                                                              /* LINUX */
   return !(kill(self->pid, 0) == -1 && errno == ESRCH);
   #endif
+}
+
+
+// ----------------------------------------------------------------------------
+int
+py_proc__is_python(py_proc_t * self) {
+  return self->is_raddr != NULL;
 }
 
 

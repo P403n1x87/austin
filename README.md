@@ -369,6 +369,9 @@ binary with, e.g.
 sudo setcap cap_sys_ptrace+ep `which austin`
 ~~~
 
+In order for Austin to work with Docker, the `--cap-add SYS_PTRACE` option needs
+to be passed when starting a container.
+
 \** Due to the **System Integrity Protection** introduced in **MacOS** with El
 Capitan, Austin cannot profile Python processes that use an executable located
 in the `/bin` folder, even with `sudo`. Hence, either run the interpreter from a

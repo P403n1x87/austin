@@ -98,7 +98,7 @@ typedef struct argp_option {
 static struct argp_option options[] = {
   {
     "interval",     'i', "n_us",        0,
-    "Sampling interval (default is 500us)."
+    "Sampling interval (default is 100us)."
   },
   {
     "timeout",      't', "n_ms",        0,

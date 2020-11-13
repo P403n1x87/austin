@@ -372,44 +372,28 @@ _py_proc__parse_maps_file(py_proc_t * self) {
         //       valid binary that Austin can handle.
           continue;
 
-        // Check if it is an executable
+        // Check if it is an executable. Only bother if the size is above the
+        // MB threshold. Anything smaller is probably not a useful binary.
         if (_elf_is_executable(pathname)) {
-          if (self->bin_path != NULL)
+          if (self->bin_path != NULL || (upper - lower < (1 << 20)))
             continue;
 
+          log_d("Candidate binary: %s (size %d KB)", pathname, (upper - lower) >> 10);
           self->bin_path = strndup(pathname, strlen(pathname));
-          if (upper - lower > 1 << 20) {
-            self->map.elf.base = (void *) lower;
-            self->map.elf.size = upper - lower;
-          }
-          log_d("Candidate binary: %s", pathname);
 
-          // self->map.bss.base = (void *) lower;
-          // self->map.bss.size = upper - lower;
-          // log_d("BSS bounds %lx-%lx", lower, upper);
+          self->map.elf.base = (void *) lower;
+          self->map.elf.size = upper - lower;
 
-          maps_flag |= BSS_MAP;
           continue;
         } else {
-          if (self->lib_path != NULL)
+          if (self->bin_path != NULL || self->lib_path != NULL || (upper - lower < (1 << 20)))
             continue;
 
+          log_d("Candidate library: %s (size %d KB)", pathname, (upper - lower) >> 10);
           self->lib_path = strndup(pathname, strlen(pathname));
 
-          if (upper - lower > 1 << 20) {
-            self->map.elf.base = (void *) lower;
-            self->map.elf.size = upper - lower;
-          }
-          log_d("Candidate library: %s", pathname);
-        }
-
-        if ((maps_flag & BSS_MAP) == 0) {
-          // self->map.bss.base = (void *) lower;
-          // self->map.bss.size = upper - lower;
-
-          maps_flag |= BSS_MAP;
-
-          log_d("BSS bounds %lx-%lx", lower, upper);
+          self->map.elf.base = (void *) lower;
+          self->map.elf.size = upper - lower;
         }
       }
     }
@@ -424,7 +408,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
   return (
     (self->bin_path == NULL && self->lib_path == NULL) ||
-    maps_flag != (HEAP_MAP | BSS_MAP)
+    maps_flag != HEAP_MAP
   );
 } /* _py_proc__parse_maps_file */
 
