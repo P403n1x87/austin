@@ -28,11 +28,12 @@ jobs:
         if: "startsWith(matrix.os, 'ubuntu')"
 
       - name: Run tests on Linux
-        run: |
-          sudo make check
-          echo "==== AUSTIN TESTS LOG ===="
-          test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log
+        run: sudo make check
         if: "startsWith(matrix.os, 'ubuntu')"
+
+      - name: Show test logs
+        run: test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log
+        if: always() && startsWith(matrix.os, 'ubuntu')
 
       # ---- MACOS ----
 
@@ -50,33 +51,38 @@ jobs:
         if: startsWith(matrix.os, 'macos')
 
       - name: Run tests on macOS
-        run: |
-          sudo bats test/macos/test.bats
-          echo "==== AUSTIN TESTS LOG ===="
-          test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log
+        run: sudo bats test/macos/test.bats
         if: startsWith(matrix.os, 'macos')
+
+      - name: Show test logs
+        run: test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log
+        if: always() && startsWith(matrix.os, 'macos')
 
       # ---- WINDOWS ----
 
       - name: Compile Austin on Windows
-        run: gcc.exe -O3 -o src/austin.exe src/*.c -lpsapi -Wall -Os -s -DDEBUG
+        run: |
+          gcc.exe -O3 -o src/austin.exe src/*.c -lpsapi -Wall -Os -s -DDEBUG
+          src\austin.exe --usage
         if: startsWith(matrix.os, 'windows')
 
-      - name: Install test dependencies on Windows
-        run: |
-          choco install -y python --version=3.6
-          choco install -y python --version=3.7
-          choco install -y python --version=3.8
-          choco install -y python --version=3.9
-        if: "startsWith(matrix.os, 'windows')"
+      # - name: Install test dependencies on Windows
+      #   run: |
+      #     choco install -y python --version=3.6
+      #     choco install -y python --version=3.7
+      #     choco install -y python --version=3.8
+      #     choco install -y python --version=3.9
+      #   if: "startsWith(matrix.os, 'windows')"
 
-      - name: Run tests on Windows
-        run: |
-          refreshenv
-          src\austin.exe -i 100000 python3.6 test\target.py
-          src\austin.exe -i 100000 python3.7 test\target.py
-          src\austin.exe -i 100000 python3.8 test\target.py
-          src\austin.exe -i 100000 python3.9 test\target.py
-          echo "==== AUSTIN LOG ===="
-          Get-Content -Path $env:TEMP\austin.log
-        if: "startsWith(matrix.os, 'windows')"
+      # - name: Run tests on Windows
+      #   run: |
+      #     refreshenv
+      #     src\austin.exe -Ci 100000 py -3.6 test\target34.py
+      #     src\austin.exe -Ci 100000 py -3.7 test\target34.py
+      #     src\austin.exe -Ci 100000 py -3.8 test\target34.py
+      #     src\austin.exe -ci 100000 py -3.9 test\target34.py
+      #   if: startsWith(matrix.os, 'windows')
+      #
+      # - name: Show austin logs
+      #   run: Get-Content -Path $env:TEMP\austin.log
+      #   if: always() && startsWith(matrix.os, 'windows')

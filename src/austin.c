@@ -82,6 +82,8 @@ do_single_process(py_proc_t * py_proc) {
   if (interrupt == FALSE) {
     py_proc__wait(py_proc);
   }
+
+  py_proc__destroy(py_proc);
 } /* do_single_process */
 
 
@@ -150,9 +152,10 @@ release:
 
 // ----------------------------------------------------------------------------
 int main(int argc, char ** argv) {
-  int         retval   = 0;
-  py_proc_t * py_proc  = NULL;
-  int         exec_arg = parse_args(argc, argv);
+  int         retval         = 0;
+  py_proc_t * py_proc        = NULL;
+  int         exec_arg       = parse_args(argc, argv);
+  int         is_python_proc = FALSE;
 
   if (exec_arg <= 0 && pargs.attach_pid == 0) {
     retval = -1;
@@ -219,11 +222,14 @@ int main(int argc, char ** argv) {
   signal(SIGINT, signal_callback_handler);
   signal(SIGTERM, signal_callback_handler);
 
+  is_python_proc = py_proc__is_python(py_proc);
+
   // Start sampling
   if (pargs.children)
     do_child_processes(py_proc);
   else
     do_single_process(py_proc);
+  py_proc = NULL;
 
   if (is_fatal(error)) {
     retval = error;
@@ -235,18 +241,16 @@ int main(int argc, char ** argv) {
 
 finally:
   py_thread_free_stack();
+  sfree(py_proc);
 
-  if (isvalid(py_proc)) {
-    if (retval) {
-      if (!py_proc__is_python(py_proc)) {
-        log_f(
-          "\n"
-          "👽 The process you are trying to %s doesn't seem to be a Python process.\n",
-          retval == EPROCFORK ? "run" : "attach to"
-        );
-      }
+  if (retval) {
+    if (!is_python_proc) {
+      log_f(
+        "\n"
+        "👽 The process you are trying to %s doesn't seem to be a Python process.\n",
+        retval == EPROCFORK ? "run" : "attach to"
+      );
     }
-    py_proc__destroy(py_proc);
   }
 
   if (interrupt == SIGTERM)

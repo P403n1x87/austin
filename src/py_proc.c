@@ -133,12 +133,47 @@ _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
 #endif
 
 static int
+_get_version_from_executable(char * binary, int * major, int * minor, int * patch) {
+  FILE * fp;
+  char   version[64];
+  char   cmd[256];
+
+  sprintf(cmd, "%s -V 2>&1", binary);
+
+  fp = _popen(cmd, "r");
+  if (!isvalid(fp))
+    return NOVERSION;
+
+  while (fgets(version, sizeof(version) - 1, fp) != NULL) {
+    if (sscanf(version, "Python %d.%d.%d", major, minor, patch) == 3)
+      break;
+  }
+
+  _pclose(fp);
+
+  return (*major << 16) | (*minor << 8);
+}
+
+
+static int
 _py_proc__get_version(py_proc_t * self) {
   if (self == NULL || (self->bin_path == NULL && self->lib_path == NULL))
     return NOVERSION;
 
   int major = 0, minor = 0, patch = 0;
 
+  // On Linux, the actual executable is sometimes picked as a library. Hence we
+  // try to execute the library first and see if we get a version from it. If
+  // not, we fall back to the actual binary, if any.
+  if (
+    isvalid(self->lib_path)
+  &&_get_version_from_executable(self->lib_path, &major, &minor, &patch) != NOVERSION
+  ) goto from_exe;
+
+  if (
+    isvalid(self->bin_path)
+  &&_get_version_from_executable(self->bin_path, &major, &minor, &patch) != NOVERSION
+  ) goto from_exe;
 
   if (self->bin_path == NULL && self->lib_path != NULL) {
 
@@ -166,31 +201,12 @@ _py_proc__get_version(py_proc_t * self) {
     #endif
 
     log_m("🐍 Python version: %d.%d.? (from shared library)", major, minor);
-
-    return (major << 16) | (minor << 8);
+    return VERSION;
   }
 
-
-  FILE *fp;
-  char version[64];
-  char cmd[128];
-
-  sprintf(cmd, "%s -V 2>&1", self->bin_path);
-
-  fp = _popen(cmd, "r");
-  if (fp == NULL) {
-    log_f("Cannot determine the version of Python.");
-    return NOVERSION;
-  }
-
-  while (fgets(version, sizeof(version) - 1, fp) != NULL) {
-    if (sscanf(version, "Python %d.%d.%d", &major, &minor, &patch) == 3)
-      break;
-  }
-
-  _pclose(fp);
-
+from_exe:
   log_m("🐍 Python version: %d.%d.%d", major, minor, patch);
+  return VERSION;
 
   // Scan the rodata section for something that looks like the Python version.
   // There are good chances this is at the very beginning of the section so
@@ -215,8 +231,6 @@ _py_proc__get_version(py_proc_t * self) {
   //     }
   //   }
   // }
-
-  return (major << 16) | (minor << 8) | patch;
 }
 
 

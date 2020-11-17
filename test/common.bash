@@ -83,10 +83,11 @@ function check_ignored {
   log "       Collected Output"
   log "       ================"
   log
-  for line in "${lines[@]}"
-  do
-    log "       $line"
-  done
+  # for line in "${lines[@]}"
+  # do
+  #   log "       $line"
+  # done
+  log "$output"
   log
 
   if [ $IGNORE == 0 ] && [ $REPEAT == 0 ]; then false; fi

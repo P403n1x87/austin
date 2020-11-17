@@ -33,7 +33,7 @@ function invoke_austin {
   # -------------------------------------------------------------------------
   step "Profiling of multi-process program"
   # -------------------------------------------------------------------------
-    run $AUSTIN -i 1000 -C $PYTHON test/target_mp.py
+    run $AUSTIN -i 100000 -C $PYTHON test/target_mp.py
 
     assert_success
 

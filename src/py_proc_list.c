@@ -318,11 +318,7 @@ py_proc_list__destroy(py_proc_list_t * self) {
   while (self->first)
     _py_proc_list__remove(self, self->first);
 
-  if (self->index != NULL)
-    free(self->index);
-
-  if (self->pid_table != NULL)
-    free(self->pid_table);
-
+  sfree(self->index);
+  sfree(self->pid_table);
   free(self);
 } /* py_proc_list__destroy */

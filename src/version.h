@@ -37,6 +37,9 @@
 #include "python.h"
 
 
+#define VERSION                         ((major << 16) | (minor << 8))
+
+
 /**
  * Get the value of a field of a versioned structure.
  *
