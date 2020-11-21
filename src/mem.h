@@ -113,18 +113,9 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
   return ret;
 
   #elif defined(PL_MACOS)                                              /* MAC */
-  mach_port_t task;
-  if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
-    log_d(
-      "Failed to obtain task from PID. Are you running Austin with the right "
-      "privileges?"
-    );
-    return -1;
-  }
-
   mach_vm_size_t nread;
   kern_return_t kr = mach_vm_read_overwrite(
-    task, (mach_vm_address_t) addr, len, (mach_vm_address_t) buf, &nread
+    (mach_port_t) pid, (mach_vm_address_t) addr, len, (mach_vm_address_t) buf, &nread
   );
   if (kr != KERN_SUCCESS) {
     log_t("copy_memory: mach_vm_read_overwrite returned %d", kr);

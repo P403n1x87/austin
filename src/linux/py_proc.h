@@ -49,7 +49,7 @@
 
 #define SYMBOLS                        2
 
-#define SELF_PID                        (self->pid)
+#define PROC_REF                        (self->pid)
 
 
 #define _py_proc__get_elf_type(self, vaddr, dt) /* as */ (py_proc__memcpy(self, vaddr, sizeof(dt), &dt))

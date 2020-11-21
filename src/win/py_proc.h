@@ -35,7 +35,7 @@
 #define MODULE_CNT                     2
 #define SYMBOLS                        2
 
-#define SELF_PID                        ((long long int) self->extra->h_proc)
+#define PROC_REF                        ((long long int) self->extra->h_proc)
 
 
 struct _proc_extra_info {

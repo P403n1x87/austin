@@ -20,21 +20,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef HINTS_H
-#define HINTS_H
+typedef unsigned int bin_attr_t;
 
-#define SUCCESS                         return 0
-#define FAIL                            return 1
+#define BINARY_MIN_SIZE        (1 << 20)         // A meaningful Python binary takes MBs.
 
-#define TRUE                           1
-#define FALSE                          0
+#define BINARY_TYPE(x)                  (x & 3)  // Get binary type
+#define BT_OTHER                       0         // Other type of binary
+#define BT_EXEC                        1         // Binary is executable
+#define BT_LIB                         2         // Binary is shared library
 
-#define NOVERSION                      0
+#define B_SYMBOLS               (1 << 2)         // If the binary has symbols
 
-#define success(x)                      (!(x))
-#define fail(x)                         (x)
-#define sfree(x)                        {if ((x) != NULL) {free(x); x = NULL;}}
-
-#define isvalid(x)                      ((x) != NULL)
-
-#endif
+#define B_BSS                   (1 << 3)         // If the BSS section was located

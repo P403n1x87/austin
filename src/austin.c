@@ -247,7 +247,8 @@ finally:
     if (!is_python_proc) {
       log_f(
         "\n"
-        "👽 The process you are trying to %s doesn't seem to be a Python process.\n",
+        "👽 The process you are trying to %s doesn't seem to be a Python process, or\n"
+        "terminated before I could sample it.\n",
         retval == EPROCFORK ? "run" : "attach to"
       );
     }

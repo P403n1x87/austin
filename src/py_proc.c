@@ -39,6 +39,7 @@
 #include <unistd.h>
 
 #include "argparse.h"
+#include "bin.h"
 #include "dict.h"
 #include "error.h"
 #include "hints.h"
@@ -268,7 +269,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   // As an extra sanity check, verify that the thread state is valid
   error = EOK;
-  raddr_t thread_raddr = { .pid = SELF_PID, .addr = is.tstate_head };
+  raddr_t thread_raddr = { .pid = PROC_REF, .addr = is.tstate_head };
   py_thread_t thread;
   if (!success(py_thread__fill_from_raddr(&thread, &thread_raddr))) {
     log_d("Failed to fill thread structure");
@@ -474,6 +475,9 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 
   TIMER_RESET
   TIMER_START
+    if (!py_proc__is_running(self))
+      FAIL;
+
     #ifdef DEBUG
     attempts++;
     #endif
@@ -554,17 +558,14 @@ _py_proc__run(py_proc_t * self, int try_once) {
 
   TIMER_RESET
   TIMER_START
-    if (self->bin_path != NULL) {
-      free(self->bin_path);
-      self->bin_path = NULL;
-    }
+    if (!py_proc__is_running(self))
+      FAIL;
 
-    if (self->lib_path != NULL) {
-      free(self->lib_path);
-      self->lib_path = NULL;
-    }
+    sfree(self->bin_path);
+    sfree(self->lib_path);
+    self->sym_loaded = 0;
 
-    if (_py_proc__init(self) == 0)
+    if (success(_py_proc__init(self)))
       break;
 
     if (error == EPROCPERM || error == EPROCNPID)
@@ -774,7 +775,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
 // ----------------------------------------------------------------------------
 int
 py_proc__memcpy(py_proc_t * self, void * raddr, ssize_t size, void * dest) {
-  return !(copy_memory(SELF_PID, raddr, size, dest) == size);
+  return !(copy_memory(PROC_REF, raddr, size, dest) == size);
 }
 
 
@@ -880,7 +881,7 @@ py_proc__is_running(py_proc_t * self) {
   return GetExitCodeProcess(self->extra->h_proc, &ec) ? ec == STILL_ACTIVE : 0;
 
   #elif defined PL_MACOS                                             /* MACOS */
-  return pid_to_task(self->pid) != 0;
+  return success(check_pid(self->pid));
 
   #else                                                              /* LINUX */
   return !(kill(self->pid, 0) == -1 && errno == ESRCH);
@@ -918,7 +919,7 @@ py_proc__sample(py_proc_t * self) {
     FAIL;
 
   if (is.tstate_head != NULL) {
-    raddr_t raddr = { .pid = SELF_PID, .addr = is.tstate_head };
+    raddr_t raddr = { .pid = PROC_REF, .addr = is.tstate_head };
     py_thread_t py_thread;
     if (!success(py_thread__fill_from_raddr(&py_thread, &raddr)))
       FAIL;
