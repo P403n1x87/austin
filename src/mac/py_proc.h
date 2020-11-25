@@ -98,7 +98,7 @@ _maybe_script_execute(const char * file, char * const argv[]) {
 static bin_attr_t
 _py_proc__analyze_macho64(py_proc_t * self, void * base, void * map) {
   bin_attr_t bin_attrs = 0;
-  
+
   struct mach_header_64 * hdr = (struct mach_header_64 *) map;
 
   switch(hdr->filetype) {
@@ -175,7 +175,7 @@ _py_proc__analyze_macho64(py_proc_t * self, void * base, void * map) {
 static bin_attr_t
 _py_proc__analyze_macho32(py_proc_t * self, void * base, void * map) {
   bin_attr_t bin_attrs = 0;
-  
+
   struct mach_header * hdr = (struct mach_header *) map;
 
   switch(hdr->filetype) {
@@ -257,7 +257,7 @@ _py_proc__analyze_fat(py_proc_t * self, void * base, void * map) {
   if (!isvalid(vm_map))
     FAIL;
 
-  if (copy_memory(self->pid, base, sizeof(struct mach_header_64), vm_map) == sizeof(struct mach_header_64)) {
+  if (success(copy_memory(self->pid, base, sizeof(struct mach_header_64), vm_map))) {
     // Determine CPU type from process in memory
     struct mach_header_64 * hdr = (struct mach_header_64 *) vm_map;
     int ms = hdr->magic == MH_CIGAM || hdr->magic == MH_CIGAM_64;  // This is probably useless
@@ -340,6 +340,7 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * base, mach_vm_size
 } // _py_proc__analyze_macho
 
 
+// ----------------------------------------------------------------------------
 static int
 check_pid(pid_t pid) {
   // The best way of checking would probably be with a call to proc_find, but
@@ -347,31 +348,38 @@ check_pid(pid_t pid) {
   struct proc_bsdinfo proc;
   proc.pbi_status = SIDL;
 
-  if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &proc, PROC_PIDTBSDINFO_SIZE) == -1)
+  if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &proc, PROC_PIDTBSDINFO_SIZE) == -1) {
+    set_error(EPROCNPID);
     FAIL;
+  }
 
   log_t("check_pid :: %d", proc.pbi_status);
-  return proc.pbi_status == SIDL || proc.pbi_status == 32767;
+
+  if (proc.pbi_status == SIDL || proc.pbi_status == 32767) {
+    set_error(EPROCNPID);
+    FAIL;
+  }
+
+  SUCCESS;
 }
 
 
 // ----------------------------------------------------------------------------
 static mach_port_t
 pid_to_task(pid_t pid) {
-  mach_port_t task;
+  mach_port_t   task;
   kern_return_t result;
-  
+
   if (fail(check_pid(pid))) {
     log_d("No such process: %d", pid);
-    error = EPROCNPID;
-    return 0;
+    FAIL;
   }
 
   result = task_for_pid(mach_task_self(), pid, &task);
   if (result != KERN_SUCCESS) {
     log_d("Call to task_for_pid failed: %s", mach_error_string(result));
-    error = EPROCPERM;
-    return 0;
+    set_error(EPROCPERM);
+    FAIL;
   }
   return task;
 }

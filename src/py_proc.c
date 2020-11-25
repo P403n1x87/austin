@@ -67,6 +67,9 @@
 static ctime_t _end_time;
 
 
+#define py_proc__memcpy(self, raddr, size, dest)  copy_memory(PROC_REF, raddr, size, dest)
+
+
 // ----------------------------------------------------------------------------
 // -- Platform-dependent implementations of _py_proc__init
 // ----------------------------------------------------------------------------
@@ -142,8 +145,9 @@ _get_version_from_executable(char * binary, int * major, int * minor, int * patc
   sprintf(cmd, "%s -V 2>&1", binary);
 
   fp = _popen(cmd, "r");
-  if (!isvalid(fp))
+  if (!isvalid(fp)) {
     return NOVERSION;
+  }
 
   while (fgets(version, sizeof(version) - 1, fp) != NULL) {
     if (sscanf(version, "Python %d.%d.%d", major, minor, patch) == 3)
@@ -166,10 +170,12 @@ _py_proc__get_version(py_proc_t * self) {
   // On Linux, the actual executable is sometimes picked as a library. Hence we
   // try to execute the library first and see if we get a version from it. If
   // not, we fall back to the actual binary, if any.
+  #if defined PL_UNIX
   if (
     isvalid(self->lib_path)
   &&_get_version_from_executable(self->lib_path, &major, &minor, &patch) != NOVERSION
   ) goto from_exe;
+  #endif
 
   if (
     isvalid(self->bin_path)
@@ -182,7 +188,7 @@ _py_proc__get_version(py_proc_t * self) {
     if (sscanf(
         strstr(self->lib_path, "python"), "python%d.%d", &major, &minor
     ) != 2) {
-      log_f("Failed to determine Python version from shared object name.");
+      set_error(ENOVERSION);
       return NOVERSION;
     }
 
@@ -196,7 +202,7 @@ _py_proc__get_version(py_proc_t * self) {
     char * ver_needle = strstr(self->lib_path, "/3.");
     if (ver_needle == NULL) ver_needle = strstr(self->lib_path, "/2.");
     if (ver_needle == NULL || sscanf(ver_needle, "/%d.%d", &major, &minor) != 2) {
-      log_f("Failed to determine Python version from shared object path.");
+      set_error(ENOVERSION);
       return NOVERSION;
     }
     #endif
@@ -268,10 +274,9 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   );
 
   // As an extra sanity check, verify that the thread state is valid
-  error = EOK;
   raddr_t thread_raddr = { .pid = PROC_REF, .addr = is.tstate_head };
   py_thread_t thread;
-  if (!success(py_thread__fill_from_raddr(&thread, &thread_raddr))) {
+  if (fail(py_thread__fill_from_raddr(&thread, &thread_raddr))) {
     log_d("Failed to fill thread structure");
     FAIL;
   }
@@ -281,12 +286,9 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     FAIL;
   }
 
-  log_d(
-    "Stack trace constructed from possible interpreter state (error code: %d)",
-    error
-  );
+  log_d("Stack trace constructed from possible interpreter state");
 
-  return error != EOK;
+  SUCCESS;
 }
 
 
@@ -294,7 +296,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
-  if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
+  if (!isvalid(self) || !isvalid(raddr) || !isvalid(self->map.heap.base))
     return FALSE;
 
   return (
@@ -307,7 +309,7 @@ _py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__is_raddr_within_max_range(py_proc_t * self, void * raddr) {
-  if (self == NULL || raddr == NULL || self->map.heap.base == NULL)
+  if (!isvalid(self) || !isvalid(raddr) || !isvalid(self->map.heap.base))
     return FALSE;
 
   return (raddr >= self->min_raddr && raddr < self->max_raddr);
@@ -342,7 +344,7 @@ _py_proc__scan_heap(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__scan_bss(py_proc_t * self) {
-  if (!success(py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss)))
+  if (fail(py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss)))
     FAIL;
 
   log_d("Scanning the BSS section for PyInterpreterState");
@@ -435,10 +437,10 @@ _py_proc__find_interpreter_state(py_proc_t * self) {
       // Idle or unable to dereference
       FAIL;
     else {
-      if (!success(py_proc__get_type(self, tstate_current_raddr, tstate_current)))
+      if (fail(py_proc__get_type(self, tstate_current_raddr, tstate_current)))
         FAIL;
 
-      if (!success(_py_proc__check_interp_state(
+      if (fail(_py_proc__check_interp_state(
         self, V_FIELD(void*, tstate_current, py_thread, o_interp)
       ))) FAIL;
 
@@ -475,15 +477,17 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 
   TIMER_RESET
   TIMER_START
-    if (!py_proc__is_running(self))
+    if (!py_proc__is_running(self)) {
+      set_error(EPROCNPID);
       FAIL;
+    }
 
     #ifdef DEBUG
     attempts++;
     #endif
 
     #ifdef DEREF_SYM
-    if (!success(_py_proc__find_interpreter_state(self))) {
+    if (fail(_py_proc__find_interpreter_state(self))) {
     #endif
       if (self->bss == NULL) {
         self->bss = malloc(self->map.bss.size);
@@ -541,9 +545,9 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
   TIMER_END
   #endif
 
-  error = EPROCISTIMEOUT;
+  set_error(EPROCISTIMEOUT);
   FAIL;
-}
+} // _py_proc__wait_for_interp_state
 
 
 // ----------------------------------------------------------------------------
@@ -551,15 +555,17 @@ static int
 _py_proc__run(py_proc_t * self, int try_once) {
   #ifdef DEBUG
   if (try_once == FALSE)
-    log_d("Start up timeout: %d μs", pargs.timeout);
+    log_d("Start up timeout: %d ms", pargs.timeout / 1000);
   else
     log_d("Single attempt to attach to process %d", self->pid);
   #endif
 
   TIMER_RESET
   TIMER_START
-    if (!py_proc__is_running(self))
+    if (!py_proc__is_running(self)) {
+      set_error(EPROCNPID);
       FAIL;
+    }
 
     sfree(self->bin_path);
     sfree(self->lib_path);
@@ -568,13 +574,10 @@ _py_proc__run(py_proc_t * self, int try_once) {
     if (success(_py_proc__init(self)))
       break;
 
-    if (error == EPROCPERM || error == EPROCNPID)
-      FAIL;  // Fatal errors
+    if (is_fatal(error))
+      FAIL;
 
-    log_d(
-      "Process not ready :: bin_path: %p, lib_path: %p, symbols: %d",
-      self->bin_path, self->lib_path, self->sym_loaded
-    );
+    log_d("Process is not ready");
 
     if (try_once)
       TIMER_STOP
@@ -583,6 +586,7 @@ _py_proc__run(py_proc_t * self, int try_once) {
   if (self->bin_path == NULL && self->lib_path == NULL) {
     if (try_once)
       log_d("Cannot attach to process %d with a single attempt.", self->pid);
+    set_error(EPROC);
     FAIL;
   }
 
@@ -614,19 +618,14 @@ _py_proc__run(py_proc_t * self, int try_once) {
 
   // Determine and set version
   if (!self->version) {
-    self->version = _py_proc__get_version(self);
-    if (!self->version) {
-      log_f("Python version is unknown.");
+    if (!(self->version = _py_proc__get_version(self)))
       FAIL;
-    }
 
     set_version(self->version);
   }
 
-  if (_py_proc__wait_for_interp_state(self)) {
-    log_error();
+  if (_py_proc__wait_for_interp_state(self))
     FAIL;
-  }
 
   self->timestamp = gettime();
 
@@ -640,11 +639,10 @@ _py_proc__run(py_proc_t * self, int try_once) {
 py_proc_t *
 py_proc_new() {
   py_proc_t * py_proc = (py_proc_t *) calloc(1, sizeof(py_proc_t));
-  if (py_proc == NULL)
-    error = EPROC;
+  if (!isvalid(py_proc))
+    return NULL;
 
-  else
-    py_proc->min_raddr = (void *) -1;
+  py_proc->min_raddr = (void *) -1;
 
   // Pre-hash symbol names
   if (_dynsym_hash_array[0] == 0) {
@@ -654,9 +652,14 @@ py_proc_new() {
   }
 
   py_proc->extra = (proc_extra_info *) calloc(1, sizeof(proc_extra_info));
+  if (!isvalid(py_proc->extra))
+    goto error;
 
-  check_not_null(py_proc);
   return py_proc;
+
+error:
+  free(py_proc);
+  return NULL;
 }
 
 
@@ -665,19 +668,29 @@ int
 py_proc__attach(py_proc_t * self, pid_t pid, int child_process) {
   log_d("Attaching to process with PID %d", pid);
 
-  #ifdef PL_WIN                                                        /* WIN */
+  #if defined PL_WIN                                                   /* WIN */
   self->extra->h_proc = OpenProcess(
     PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid
   );
   if (self->extra->h_proc == INVALID_HANDLE_VALUE) {
-    log_e("Unable to attach to process with PID %d", pid);
+    set_error(EPROCATTACH);
     FAIL;
   }
   #endif                                                               /* ANY */
 
   self->pid = pid;
 
-  return _py_proc__run(self, child_process);
+  if (fail(_py_proc__run(self, child_process))) {
+    if (error == EPROCNPID) {
+      set_error(EPROCATTACH);
+    }
+    else {
+      log_ie("Cannot attach to running process.");
+    }
+    FAIL;
+  }
+
+  SUCCESS;
 }
 
 
@@ -699,8 +712,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
     );
 
     if (nullStdOut == INVALID_HANDLE_VALUE) {
-      log_e("Unable to redirect STDOUT to " NULL_DEVICE);
-      return 1;
+      log_e(error_get_msg(ENULLDEV));
     }
 
     log_d("Redirecting child's STDOUT to " NULL_DEVICE);
@@ -735,7 +747,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
     free(cmd_line);
 
   if (!process_created) {
-    log_e("Failed to create child process using the command: %s.", exec);
+    set_error(EPROCFORK);
     FAIL;
   }
   self->extra->h_proc = piProcInfo.hProcess;
@@ -749,12 +761,11 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
     if (pargs.output_file == NULL) {
       log_d("Redirecting child's STDOUT to " NULL_DEVICE);
       if (freopen(NULL_DEVICE, "w", stdout) == NULL)
-        log_e("Unable to redirect child's STDOUT to " NULL_DEVICE);
+        log_e(error_get_msg(ENULLDEV));
     }
 
     execvpe(exec, argv, environ);
 
-    log_e("Failed to fork process");
     exit(127);
   }
   #endif                                                               /* ANY */
@@ -768,14 +779,14 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
 
   log_d("New process created with PID %d", self->pid);
 
-  return _py_proc__run(self, FALSE);
-}
+  if (fail(_py_proc__run(self, FALSE))) {
+    if (error == EPROCNPID)
+      set_error(EPROCFORK);
+    log_ie("Cannot start new process");
+    FAIL;
+  }
 
-
-// ----------------------------------------------------------------------------
-int
-py_proc__memcpy(py_proc_t * self, void * raddr, ssize_t size, void * dest) {
-  return !(copy_memory(PROC_REF, raddr, size, dest) == size);
+  SUCCESS;
 }
 
 
@@ -876,7 +887,7 @@ py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
 // ----------------------------------------------------------------------------
 int
 py_proc__is_running(py_proc_t * self) {
-  #ifdef PL_WIN                                                        /* WIN */
+  #if defined PL_WIN                                                   /* WIN */
   DWORD ec = 0;
   return GetExitCodeProcess(self->extra->h_proc, &ec) ? ec == STILL_ACTIVE : 0;
 
@@ -915,13 +926,13 @@ py_proc__sample(py_proc_t * self) {
   ctime_t   delta = gettime() - self->timestamp;  // Time delta since last sample.
 
   PyInterpreterState is;
-  if (!success(py_proc__get_type(self, self->is_raddr, is)))
+  if (fail(py_proc__get_type(self, self->is_raddr, is)))
     FAIL;
 
   if (is.tstate_head != NULL) {
     raddr_t raddr = { .pid = PROC_REF, .addr = is.tstate_head };
     py_thread_t py_thread;
-    if (!success(py_thread__fill_from_raddr(&py_thread, &raddr)))
+    if (fail(py_thread__fill_from_raddr(&py_thread, &raddr)))
       FAIL;
 
     if (pargs.memory) {

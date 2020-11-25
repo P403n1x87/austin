@@ -28,7 +28,7 @@ function attach_austin {
 
   if ! $python_bin -V; then skip "$python_bin not found."; fi
 
-  log "Attach [Python $version]"
+  log "Attach [Python $python_bin]"
 
   # -------------------------------------------------------------------------
   step "Time profiling"

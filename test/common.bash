@@ -99,13 +99,23 @@ function assert {
   local message="${1}"
   local condition="${2}"
 
-  if [ ! $condition ]
+  if ! eval "[[ $condition ]]"
   then
     log "      Assertion failed:  \"${message}\""
     check_ignored
   fi
 
   true
+}
+
+# -----------------------------------------------------------------------------
+
+function assert_status {
+  local expected_status="${1}"
+  : "${output?}"
+  : "${status?}"
+
+  assert "Got expected status" "$status == $expected_status"
 }
 
 # -----------------------------------------------------------------------------

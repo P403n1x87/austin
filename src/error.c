@@ -25,6 +25,7 @@
 #include <stdlib.h>
 
 #include "error.h"
+#include "platform.h"
 
 
 #define MAXERROR              (5 << 3)
@@ -32,11 +33,11 @@
 const char * _error_msg_tab[MAXERROR] = {
   // generic error messages
   "No error",
-  "Unable to open memory maps file.",
-  NULL,
-  NULL,
-  NULL,
-  NULL,
+  "Cannot open memory maps file",
+  "Cannot read remote memory",
+  "Cannot determine Python version",
+  "Cannot redirect STDOUT to " NULL_DEVICE,
+  "No command nor valid PID",
   NULL,
   NULL,
 
@@ -71,7 +72,7 @@ const char * _error_msg_tab[MAXERROR] = {
   NULL,
 
   // py_proc_t
-  "Failed to retrieve interpreter state",
+  "Failed to initialise process",
   "Failed to fork process",
   "Failed to load memory maps",
   "Interpreter state search timed out",
@@ -86,10 +87,10 @@ const int _fatal_error_tab[MAXERROR] = {
   // generic error messages
   0,
   1,
+  1,
+  1,
   0,
-  0,
-  0,
-  0,
+  1,
   0,
   0,
 

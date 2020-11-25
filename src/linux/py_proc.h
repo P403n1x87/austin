@@ -404,8 +404,6 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     }
   }
 
-  if (error & EPROC) log_error();
-
   return (
     (self->bin_path == NULL && self->lib_path == NULL) ||
     maps_flag != HEAP_MAP

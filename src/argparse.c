@@ -419,7 +419,7 @@ arg_parse(arg_option * opts, arg_callback cb, int argc, char ** argv) {
 
   if (argc <= 1) {
     puts(usage_msg);
-    return ARG_USAGE;
+    exit(0);
   }
 
   while (a < argc) {
