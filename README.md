@@ -181,15 +181,6 @@ brew install austin
 ~~~
 
 
-## On macOS
-
-Austin can be installed on macOS using [homebrew](https://docs.brew.sh):
-
-~~~bash
-brew install austin
-~~~
-
-
 ## From Chocolatey
 
 To install [Austin from Chocolatey](https://chocolatey.org/packages/austin), run
@@ -264,14 +255,15 @@ Austin -- A frame stack sampler for Python.
   -e, --exclude-empty        Do not output samples of threads with no frame
                              stacks.
   -f, --full                 Produce the full set of metrics (time +mem -mem).
-  -i, --interval=n_us        Sampling interval (default is 500us).
+  -i, --interval=n_us        Sampling interval in microseconds (default is
+                             100). Accepted units: s, ms, us.
   -m, --memory               Profile memory usage.
   -o, --output=FILE          Specify an output file for the collected samples.
   -p, --pid=PID              The the ID of the process to which Austin should
                              attach.
   -s, --sleepless            Suppress idle samples.
-  -t, --timeout=n_ms         Approximate start up wait time. Increase on slow
-                             machines (default is 100ms).
+  -t, --timeout=n_ms         Start up wait time in milliseconds (default is
+                             100). Accepted units: s, ms.
   -x, --exposure=n_sec       Sample for n_sec seconds only.
   -?, --help                 Give this help list
       --usage                Give a short usage message
@@ -329,6 +321,10 @@ value at the end of each line is the memory delta between samples, measured in
 bytes. In full mode (`-f` or `--full` switches), each samples ends with three
 values: the time delta, any positive memory delta (memory allocations) or zero
 and any negative memory delta (memory releases) or zero.
+
+> **NOTE** The reported memory allocations and deallocations are obtained by
+> computing resident memory deltas between samples. Hence these values give an
+> idea of how much _physical_ memory is being requested/released.
 
 
 ## Multi-process Applications
@@ -420,7 +416,7 @@ is written in C, implementing the new changes is rather straight-forward.
 The following flame graph has been obtained with the command
 
 ~~~ bash
-austin -i 50 ./test.py | ./flamegraph.pl --countname=μs > test.svg
+austin -i 1ms ./test.py | ./flamegraph.pl --countname=μs > test.svg
 ~~~
 
 where the sample `test.py` script has the following content
@@ -429,7 +425,7 @@ where the sample `test.py` script has the following content
 import psutil
 
 for i in range(1000):
-  list(psutil.process_iter())
+    list(psutil.process_iter())
 ~~~
 
 <object data="art/process_iter_fg.svg" type="image/svg+xml" width="100%" >
