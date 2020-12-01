@@ -25,6 +25,7 @@
 #include <stdlib.h>
 
 #include "error.h"
+#include "hints.h"
 #include "platform.h"
 
 
@@ -148,7 +149,7 @@ error_get_msg(error_t n) {
 const int
 is_fatal(error_t n) {
   if (n >= MAXERROR)
-    return 0;
+    return FALSE;
 
   return _fatal_error_tab[n];
 }

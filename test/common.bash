@@ -111,11 +111,11 @@ function assert {
 # -----------------------------------------------------------------------------
 
 function assert_status {
-  local expected_status="${1}"
+  local estatus="${1}"
   : "${output?}"
   : "${status?}"
 
-  assert "Got expected status" "$status == $expected_status"
+  assert "Got expected status (E: $estatus, G: $status)" "$status == $estatus"
 }
 
 # -----------------------------------------------------------------------------

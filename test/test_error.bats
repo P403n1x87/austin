@@ -68,9 +68,10 @@ load "common"
 }
 
 @test "Test no permission" {
+  ignore
   python3 test/sleepy.py &
   sleep 1
-  run src/austin -p $!
+  run src/austin -i 100ms -p $!
 
   assert_status 37
   assert_output "Insufficient permissions"

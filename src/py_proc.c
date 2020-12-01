@@ -108,9 +108,7 @@ static const char * _dynsym_array[DYNSYM_COUNT] = {
   "interp_head"
 };
 
-static long _dynsym_hash_array[DYNSYM_COUNT] = {
-  0
-};
+static long _dynsym_hash_array[DYNSYM_COUNT] = {0};
 
 
 #ifdef DEREF_SYM
@@ -118,8 +116,8 @@ static int
 _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
   for (register int i = 0; i < DYNSYM_COUNT; i++) {
     if (
-      string_hash(name) == _dynsym_hash_array[i] &&
-      strcmp(name, _dynsym_array[i]) == 0
+      string_hash(name) == _dynsym_hash_array[i]
+    &&strcmp(name, _dynsym_array[i]) == 0
     ) {
       *(&(self->tstate_curr_raddr) + i) = value;
       log_d("Symbol %s found @ %p", name, value);
@@ -129,6 +127,7 @@ _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
   return 0;
 }
 #endif
+
 
 // ----------------------------------------------------------------------------
 #ifdef PL_UNIX

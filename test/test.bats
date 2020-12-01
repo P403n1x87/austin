@@ -46,3 +46,7 @@ test_case() {
   ignore
   test_case valgrind
 }
+
+@test "Test Austin: errors" {
+  test_case error
+}

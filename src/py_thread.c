@@ -233,7 +233,7 @@ _py_code__fill_from_raddr(py_code_t * self, raddr_t * raddr, int lasti) {
 
   self->lineno = lineno;
 
-  return 0;
+  SUCCESS;
 }
 
 

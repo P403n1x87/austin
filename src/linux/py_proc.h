@@ -30,6 +30,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 #include "../dict.h"
@@ -266,14 +267,16 @@ _py_proc__analyze_elf32(py_proc_t * self) {
 static int
 _py_proc__analyze_elf(py_proc_t * self) {
   Elf64_Ehdr ehdr = ehdr_v.v64;
-log_d("ELF base VM address: %p", self->map.elf.base);
+  log_t("Analysing ELF");
   if (_py_proc__get_elf_type(self, self->map.elf.base, ehdr_v)) {
-    error = EPROCPERM;
-    return 1;
+    log_ie("Cannot read ELF header");
+    FAIL;
   }
 
-  if (ehdr.e_shoff == 0 || ehdr.e_shnum < 2 || memcmp(ehdr.e_ident, ELFMAG, SELFMAG))
-    return 1;
+  if (ehdr.e_shoff == 0 || ehdr.e_shnum < 2 || memcmp(ehdr.e_ident, ELFMAG, SELFMAG)) {
+    log_e("Invalid ELF format");
+    FAIL;
+  }
 
   // Dispatch
   switch (ehdr.e_ident[EI_CLASS]) {
@@ -284,7 +287,7 @@ log_d("ELF base VM address: %p", self->map.elf.base);
     return _py_proc__analyze_elf64(self);
 
   default:
-    return 1;
+    FAIL;
   }
 } /* _py_proc__analyze_elf */
 
@@ -305,6 +308,17 @@ _elf_is_executable(char * object_file) {
 
 
 // ----------------------------------------------------------------------------
+static ssize_t
+_file_size(char * file) {
+  struct stat statbuf;
+
+  stat(file, &statbuf);
+
+  return statbuf.st_size;
+}
+
+
+// ----------------------------------------------------------------------------
 static int
 _py_proc__parse_maps_file(py_proc_t * self) {
   char      file_name[32];
@@ -318,14 +332,13 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   if (fp == NULL) {
     switch (errno) {
     case EACCES:  // Needs elevated privileges
-      error = EPROCPERM;
-      log_e("Insufficient privileges.");
+      set_error(EPROCPERM);
       break;
     case ENOENT:  // Invalid pid
-      error = EPROCNPID;
+      set_error(EPROCNPID);
       break;
     default:
-      error = EPROCVM;
+      set_error(EPROCVM);
     }
   }
 
@@ -374,11 +387,12 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
         // Check if it is an executable. Only bother if the size is above the
         // MB threshold. Anything smaller is probably not a useful binary.
+        ssize_t file_size = _file_size(pathname);
         if (_elf_is_executable(pathname)) {
-          if (self->bin_path != NULL || (upper - lower < (1 << 20)))
+          if (self->bin_path != NULL || (file_size < (1 << 20)))
             continue;
 
-          log_d("Candidate binary: %s (size %d KB)", pathname, (upper - lower) >> 10);
+          log_d("Candidate binary: %s (size %d KB)", pathname, file_size >> 10);
           self->bin_path = strndup(pathname, strlen(pathname));
 
           self->map.elf.base = (void *) lower;
@@ -386,10 +400,10 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
           continue;
         } else {
-          if (self->bin_path != NULL || self->lib_path != NULL || (upper - lower < (1 << 20)))
+          if (self->bin_path != NULL || self->lib_path != NULL || (file_size < (1 << 20)))
             continue;
 
-          log_d("Candidate library: %s (size %d KB)", pathname, (upper - lower) >> 10);
+          log_d("Candidate library: %s (size %d KB)", pathname, file_size >> 10);
           self->lib_path = strndup(pathname, strlen(pathname));
 
           self->map.elf.base = (void *) lower;
@@ -416,7 +430,7 @@ static ssize_t
 _py_proc__get_resident_memory(py_proc_t * self) {
   FILE * statm = fopen(self->extra->statm_file, "rb");
   if (statm == NULL) {
-    error = EPROCVM;
+    set_error(EPROCVM);
     return -1;
   }
 
@@ -434,10 +448,10 @@ _py_proc__get_resident_memory(py_proc_t * self) {
 static int
 _py_proc__init(py_proc_t * self) {
   if (
-    self == NULL ||
-    _py_proc__parse_maps_file(self) ||
-    _py_proc__analyze_elf(self)
-  ) return 1;
+   !isvalid(self)
+  ||fail   (_py_proc__parse_maps_file(self))
+  ||fail   (_py_proc__analyze_elf(self))
+  ) FAIL;
 
   self->extra->page_size = getpagesize();
   log_d("Page size: %ld", self->extra->page_size);
@@ -446,7 +460,7 @@ _py_proc__init(py_proc_t * self) {
 
   self->last_resident_memory = _py_proc__get_resident_memory(self);
 
-  return 0;
+  SUCCESS;
 } /* _py_proc__init */
 
 

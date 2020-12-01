@@ -35,7 +35,7 @@ function attach_austin {
   # -------------------------------------------------------------------------
     $PYTHON test/sleepy.py &
     sleep 1
-    run $AUSTIN -i 10000 -t 100 -p $!
+    run $AUSTIN -i 10ms -t 100 -p $!
 
     assert_success
     assert_output "(.*test/sleepy.py);L[[:digit:]]* "
