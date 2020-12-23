@@ -221,14 +221,15 @@ _py_code__fill_from_raddr(py_code_t * self, raddr_t * raddr, int lasti) {
   }
 
   int lineno = V_FIELD(unsigned int, code, py_code, o_firstlineno);
-  for (
-    register int i = 0, bc = 0;
-    i < len;
-    lineno += lnotab[i++]
-  ) {
+  for (register int i = 0, bc = 0; i < len; i++) {
     bc += lnotab[i++];
     if (bc > lasti)
       break;
+
+    if (lnotab[i] >= 0x80)
+      lineno -= 0x100;
+
+    lineno += lnotab[i];
   }
 
   self->lineno = lineno;
