@@ -106,7 +106,6 @@ _py_proc__analyze_elf64(py_proc_t * self) {
   Elf64_Off     elf_map_size  = ehdr.e_shoff + sht_size;
   int           fd            = open(object_file, O_RDONLY);
   void        * elf_map       = mmap(NULL, elf_map_size, PROT_READ, MAP_SHARED, fd, 0);
-  int           map_flag      = 0;
   Elf64_Shdr  * p_shdr;
 
   Elf64_Shdr  * p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr.e_shstrndx);
@@ -118,18 +117,16 @@ _py_proc__analyze_elf64(py_proc_t * self) {
     log_d("Base @ %p", base);
 
     for (Elf64_Off sh_off = ehdr.e_shoff; \
-      map_flag != DYNSYM_MAP && sh_off < elf_map_size; \
+      sh_off < elf_map_size; \
       sh_off += ehdr.e_shentsize \
     ) {
       p_shdr = (Elf64_Shdr *) (elf_map + sh_off);
 
       if (
-        !(map_flag & DYNSYM_MAP) &&
         p_shdr->sh_type == SHT_DYNSYM && \
         strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
       ) {
         p_dynsym = p_shdr;
-        // map_flag |= DYNSYM_MAP;
       }
       // NOTE: This might be required if the Python version is must be retrieved
       //       from the RO data section
@@ -200,7 +197,6 @@ _py_proc__analyze_elf32(py_proc_t * self) {
   Elf32_Off     elf_map_size  = ehdr.e_shoff + sht_size;
   int           fd            = open(object_file, O_RDONLY);
   void        * elf_map       = mmap(NULL, elf_map_size, PROT_READ, MAP_SHARED, fd, 0);
-  int           map_flag      = 0;
   Elf32_Shdr  * p_shdr;
 
   Elf32_Shdr  * p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr.e_shstrndx);
@@ -212,18 +208,16 @@ _py_proc__analyze_elf32(py_proc_t * self) {
     log_d("Base @ %p", base);
 
     for (Elf32_Off sh_off = ehdr.e_shoff; \
-      map_flag != DYNSYM_MAP && sh_off < elf_map_size; \
+      sh_off < elf_map_size; \
       sh_off += ehdr.e_shentsize \
     ) {
       p_shdr = (Elf32_Shdr *) (elf_map + sh_off);
 
       if (
-        !(map_flag & DYNSYM_MAP) &&
         p_shdr->sh_type == SHT_DYNSYM && \
         strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
       ) {
         p_dynsym = p_shdr;
-        map_flag |= DYNSYM_MAP;
       }
       // NOTE: This might be required if the Python version is must be retrieved
       //       from the RO data section

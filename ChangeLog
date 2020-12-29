@@ -1,3 +1,14 @@
+2020-12-29 v2.1.0
+
+  Improved general Python support on all the supported platforms.
+
+  Allowed specifying argument for time-like parameters using units (e.g. 10ms).
+
+  Error reporting has been made more accurate and informative.
+  
+  Bugfix: Fixed line number reporting.
+
+
 2020-10-06 v2.0.0
 
   Substantial performance improvements. Austin 2 can sample deep call stacks

@@ -42,10 +42,9 @@ before_script:
 
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]];
     then
-      brew install python || brew upgrade python;
-      brew install python@3.8            || true;
+      brew install python@3.8 || true;
+      brew install python@3.9 || true;
       brew install bats-core;
-      brew cask install anaconda         || true;
     fi
     # brew install --HEAD valgrind       || true;
 

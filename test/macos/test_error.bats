@@ -20,7 +20,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-load "common"
+load "../common"
 
 
 # -----------------------------------------------------------------------------
@@ -52,11 +52,6 @@ load "common"
 
   assert_status 32             || assert_status 33
   assert_output "not a Python" || assert_output "Cannot launch"
-
-  run src/austin -p 1
-
-  assert_status 32
-  assert_output "not a Python"
 }
 
 @test "Test invalid command" {

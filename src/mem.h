@@ -75,7 +75,7 @@
  * @param  pid  the process ID
  * @param  addr the remote address
  * @param  dt   the data structure as a local variable.
- * @return       zero on success, otherwise non-zero.
+ * @return      zero on success, otherwise non-zero.
  */
 #define copy_datatype(pid, addr, dt) copy_memory(pid, addr, sizeof(dt), &dt)
 

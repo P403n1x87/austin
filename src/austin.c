@@ -271,6 +271,7 @@ finally:
       break;
     case EMEMCOPY:
       // Ignore. At this point we expect remote memory reads to fail.
+      retval = EOK;
       break;
     default:
       _msg(MERROR);

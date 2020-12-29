@@ -45,3 +45,7 @@ test_case() {
   if ! which valgrind; then skip "Valgrind not found"; fi
   test_case valgrind
 }
+
+@test "Test Austin: error messages" {
+  test_case error
+}
