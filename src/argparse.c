@@ -60,7 +60,7 @@ static int exec_arg = 0;
 
 // ----------------------------------------------------------------------------
 static int
-strtonum(char * str, long * num) {
+str_to_num(char * str, long * num) {
   char * p_err;
 
   *num = strtol(str, &p_err, 10);
@@ -288,7 +288,7 @@ parse_opt (int key, char *arg, struct argp_state *state)
     break;
 
   case 'p':
-    if (strtonum(arg, &l_pid) == 1 || l_pid <= 0)
+    if (str_to_num(arg, &l_pid) == 1 || l_pid <= 0)
       argp_error(state, "invalid PID");
     pargs.attach_pid = (pid_t) l_pid;
     break;
@@ -307,7 +307,7 @@ parse_opt (int key, char *arg, struct argp_state *state)
 
   case 'x':
     if (
-      strtonum(arg, (long *) &(pargs.exposure)) == 1 ||
+      str_to_num(arg, (long *) &(pargs.exposure)) == 1 ||
       pargs.exposure > LONG_MAX
     )
       argp_error(state, "the exposure must be a positive integer");
@@ -574,7 +574,7 @@ cb(const char opt, const char * arg) {
 
   case 'p':
     if (
-      strtonum((char *) arg, (long *) &pargs.attach_pid) == 1 ||
+      str_to_num((char *) arg, (long *) &pargs.attach_pid) == 1 ||
       pargs.attach_pid <= 0
     ) {
       arg_error("invalid PID");
@@ -596,7 +596,7 @@ cb(const char opt, const char * arg) {
 
   case 'x':
     if (
-      strtonum((char *) arg, (long *) &(pargs.exposure)) == 1 ||
+      str_to_num((char *) arg, (long *) &(pargs.exposure)) == 1 ||
       pargs.exposure > LONG_MAX
     ) {
       arg_error("the exposure must be a positive integer");

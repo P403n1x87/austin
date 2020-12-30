@@ -1,3 +1,8 @@
+2020-12-30 v2.1.1
+
+  Bugfix: Fix symbol name clash on BSD systems with strtonum.
+
+
 2020-12-29 v2.1.0
 
   Improved general Python support on all the supported platforms.
