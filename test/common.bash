@@ -83,10 +83,11 @@ function check_ignored {
   log "       Collected Output"
   log "       ================"
   log
-  for line in "${lines[@]}"
-  do
-    log "       $line"
-  done
+  # for line in "${lines[@]}"
+  # do
+  #   log "       $line"
+  # done
+  log "$output"
   log
 
   if [ $IGNORE == 0 ] && [ $REPEAT == 0 ]; then false; fi
@@ -98,13 +99,23 @@ function assert {
   local message="${1}"
   local condition="${2}"
 
-  if [ ! $condition ]
+  if ! eval "[[ $condition ]]"
   then
     log "      Assertion failed:  \"${message}\""
     check_ignored
   fi
 
   true
+}
+
+# -----------------------------------------------------------------------------
+
+function assert_status {
+  local estatus="${1}"
+  : "${output?}"
+  : "${status?}"
+
+  assert "Got expected status (E: $estatus, G: $status)" "$status == $estatus"
 }
 
 # -----------------------------------------------------------------------------

@@ -1,0 +1,88 @@
+name: Tests
+on: push
+jobs:
+  tests:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    name: Tests on ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v2
+
+      # ---- LINUX ----
+
+      - name: Compile Austin on Linux
+        run: |
+          autoreconf --install
+          ./configure
+          make
+        if: startsWith(matrix.os, 'ubuntu')
+
+      - name: Install test dependencies on Linux
+        run: |
+          sudo add-apt-repository -y ppa:deadsnakes/ppa
+          sudo add-apt-repository -y ppa:duggan/bats
+          sudo apt-get -y install bats valgrind python2.{3..7} python3.{3..9}
+        if: "startsWith(matrix.os, 'ubuntu')"
+
+      - name: Run tests on Linux
+        run: sudo make check
+        if: "startsWith(matrix.os, 'ubuntu')"
+
+      - name: Show test logs
+        run: test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log
+        if: always() && startsWith(matrix.os, 'ubuntu')
+
+      # ---- MACOS ----
+
+      - name: Compile Austin on macOS
+        run: gcc -Wall -O3 -Os src/*.c -o src/austin -DDEBUG
+        if: startsWith(matrix.os, 'macos')
+
+      - name: Install test dependencies on macOS
+        run: |
+          brew install python || brew upgrade python
+          brew install python@3.8 || true
+          brew install python@3.9 || true
+          brew install bats-core || true
+          brew cask install anaconda || true
+        if: startsWith(matrix.os, 'macos')
+
+      - name: Run tests on macOS
+        run: sudo bats test/macos/test.bats
+        if: startsWith(matrix.os, 'macos')
+
+      - name: Show test logs
+        run: test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log
+        if: always() && startsWith(matrix.os, 'macos')
+
+      # ---- WINDOWS ----
+
+      - name: Compile Austin on Windows
+        run: |
+          gcc.exe -O3 -o src/austin.exe src/*.c -lpsapi -Wall -Os -s -DDEBUG
+          src\austin.exe --usage
+        if: startsWith(matrix.os, 'windows')
+
+      # - name: Install test dependencies on Windows
+      #   run: |
+      #     choco install -y python --version=3.6
+      #     choco install -y python --version=3.7
+      #     choco install -y python --version=3.8
+      #     choco install -y python --version=3.9
+      #   if: "startsWith(matrix.os, 'windows')"
+
+      # - name: Run tests on Windows
+      #   run: |
+      #     refreshenv
+      #     src\austin.exe -Ci 100000 py -3.6 test\target34.py
+      #     src\austin.exe -Ci 100000 py -3.7 test\target34.py
+      #     src\austin.exe -Ci 100000 py -3.8 test\target34.py
+      #     src\austin.exe -ci 100000 py -3.9 test\target34.py
+      #   if: startsWith(matrix.os, 'windows')
+      #
+      # - name: Show austin logs
+      #   run: Get-Content -Path $env:TEMP\austin.log
+      #   if: always() && startsWith(matrix.os, 'windows')

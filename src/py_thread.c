@@ -63,9 +63,9 @@ py_frame_t * _stack = NULL;
 #define _code__get_filename(self, pid, dest)    _get_string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_filename)), dest)
 #define _code__get_name(self, pid, dest)        _get_string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_name)), dest)
 
-#define _code__get_lnotab(self, pid, buf) _get_bytes_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_lnotab)), buf)
+#define _code__get_lnotab(self, pid, buf)       _get_bytes_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_lnotab)), buf)
 
-#define p_ascii_data(raddr) (raddr + sizeof(PyASCIIObject))
+#define p_ascii_data(raddr)                     (raddr + sizeof(PyASCIIObject))
 
 
 // ----------------------------------------------------------------------------
@@ -79,32 +79,32 @@ _get_string_from_raddr(pid_t pid, void * raddr, char * buffer) {
   // introduced in Python 3.
   switch (py_v->py_unicode.version) {
   case 2:
-    if (copy_datatype(pid, raddr, string) != sizeof(string)) {
-      error = ECODEUNICODE;
+    if (fail(copy_datatype(pid, raddr, string))) {
+      log_ie("Cannot read remote PyStringObject");
       FAIL;
     }
 
     ssize_t len = string.ob_base.ob_size;
     if (len >= MAXLEN)
       len = MAXLEN-1;
-    if (copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, buffer) != len) {
-      error = ECODEUNICODE;
+    if (fail(copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, buffer))) {
+      log_ie("Cannot read remote value of PyStringObject");
       FAIL;
     }
     buffer[len] = 0;
     break;
 
   case 3:
-    if (copy_datatype(pid, raddr, unicode) != sizeof(unicode)) {
-      error = ECODEUNICODE;
+    if (fail(copy_datatype(pid, raddr, unicode))) {
+      log_ie("Cannot read remote PyUnicodeObject3");
       FAIL;
     }
     if (unicode._base._base.state.kind != 1) {
-      error = ECODEFMT;
+      set_error(ECODEFMT);
       FAIL;
     }
     if (unicode._base._base.state.compact != 1) {
-      error = ECODECMPT;
+      set_error(ECODECMPT);
       FAIL;
     }
 
@@ -112,8 +112,8 @@ _get_string_from_raddr(pid_t pid, void * raddr, char * buffer) {
     if (len >= MAXLEN)
       len = MAXLEN-1;
 
-    if (copy_memory(pid, p_ascii_data(raddr), len, buffer) != len) {
-      error = ECODEUNICODE;
+    if (fail(copy_memory(pid, p_ascii_data(raddr), len, buffer))) {
+      log_ie("Cannot read remote value of PyUnicodeObject3");
       FAIL;
     }
     buffer[len] = 0;
@@ -135,8 +135,8 @@ _get_bytes_from_raddr(pid_t pid, void * raddr, unsigned char * array) {
 
   switch (py_v->py_bytes.version) {
   case 2:  // Python 2
-    if (copy_datatype(pid, raddr, string) != sizeof(string)) {
-      error = ECODEBYTES;
+    if (fail(copy_datatype(pid, raddr, string))) {
+      log_ie("Cannot read remote PyStringObject");
       goto error;
     }
 
@@ -153,21 +153,21 @@ _get_bytes_from_raddr(pid_t pid, void * raddr, unsigned char * array) {
       }
     }
 
-    if (copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, array) != len) {
-      error = ECODEBYTES;
+    if (fail(copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, array))) {
+      log_ie("Cannot read remote value of PyStringObject");
       len = 0;
       goto error;
     }
     break;
 
   case 3:  // Python 3
-    if (copy_datatype(pid, raddr, bytes) != sizeof(bytes)) {
-      error = ECODEBYTES;
+    if (fail(copy_datatype(pid, raddr, bytes))) {
+      log_ie("Cannot read remote PyBytesObject");
       goto error;
     }
 
     if ((len = bytes.ob_base.ob_size + 1) < 1) { // Include null-terminator
-      error = ECODEBYTES;
+      set_error(ECODEBYTES);
       goto error;
     }
 
@@ -176,8 +176,8 @@ _get_bytes_from_raddr(pid_t pid, void * raddr, unsigned char * array) {
       len = MAXLEN-1;
     }
 
-    if (copy_memory(pid, raddr + offsetof(PyBytesObject, ob_sval), len, array) != len) {
-      error = ECODEBYTES;
+    if (fail(copy_memory(pid, raddr + offsetof(PyBytesObject, ob_sval), len, array))) {
+      log_ie("Cannot read remote value of PyBytesObject");
       len = 0;
       goto error;
     }
@@ -200,40 +200,41 @@ _py_code__fill_from_raddr(py_code_t * self, raddr_t * raddr, int lasti) {
   if (self == NULL)
     FAIL;
 
-  if (copy_from_raddr_v(raddr, code, py_v->py_code.size)) {
-    error = ECODE;
+  if (fail(copy_from_raddr_v(raddr, code, py_v->py_code.size))) {
+    log_ie("Cannot read remote PyCodeObject");
     FAIL;
   }
 
-  if (!success(_code__get_filename(&code, raddr->pid, self->filename))) {
-    error = ECODENOFNAME;
+  if (fail(_code__get_filename(&code, raddr->pid, self->filename))) {
+    log_ie("Cannot get file name from PyCodeObject");
     FAIL;
   }
 
-  if (!success(_code__get_name(&code, raddr->pid, self->scope))) {
-    error = ECODENONAME;
+  if (fail(_code__get_name(&code, raddr->pid, self->scope))) {
+    log_ie("Cannot get scope name from PyCodeObject");
     FAIL;
   }
 
   else if ((len = _code__get_lnotab(&code, raddr->pid, lnotab)) < 0 || len % 2) {
-    error = ECODENOLINENO;
+    log_ie("Cannot get line number from PyCodeObject");
     FAIL;
   }
 
   int lineno = V_FIELD(unsigned int, code, py_code, o_firstlineno);
-  for (
-    register int i = 0, bc = 0;
-    i < len;
-    lineno += lnotab[i++]
-  ) {
+  for (register int i = 0, bc = 0; i < len; i++) {
     bc += lnotab[i++];
     if (bc > lasti)
       break;
+
+    if (lnotab[i] >= 0x80)
+      lineno -= 0x100;
+
+    lineno += lnotab[i];
   }
 
   self->lineno = lineno;
 
-  return 0;
+  SUCCESS;
 }
 
 
@@ -246,8 +247,8 @@ _py_frame__fill_from_raddr(py_frame_t * self, raddr_t * raddr) {
 
   self->invalid = 1;
 
-  if (copy_from_raddr_v(raddr, frame, py_v->py_frame.size)) {
-    error = EFRAME;
+  if (fail(copy_from_raddr_v(raddr, frame, py_v->py_frame.size))) {
+    log_ie("Cannot read remote PyFrameObject");
     FAIL;
   }
 
@@ -258,7 +259,7 @@ _py_frame__fill_from_raddr(py_frame_t * self, raddr_t * raddr) {
   if (_py_code__fill_from_raddr(
     &(self->code), &py_code_raddr, V_FIELD(int, frame, py_frame, o_lasti)
   )) {
-    error = EFRAMENOCODE;
+    log_ie("Cannot get PyCodeObject for frame");
     SUCCESS;
   }
 
@@ -277,8 +278,8 @@ _py_frame__fill_from_raddr(py_frame_t * self, raddr_t * raddr) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_frame__prev(py_frame_t * self) {
-  if (self == NULL || self->prev_raddr.addr == NULL)
-    return 1;
+  if (!isvalid(self) || !isvalid(self->prev_raddr.addr))
+    FAIL;
 
   raddr_t prev_raddr = {
     .pid  = self->prev_raddr.pid,
@@ -294,24 +295,19 @@ _py_frame__prev(py_frame_t * self) {
 // ----------------------------------------------------------------------------
 int
 py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr) {
-  PyThreadState   ts;
+  PyThreadState ts;
 
-  if (!isvalid(_stack)) {
-    log_d("The stack memory area is not available");
-    FAIL;
-  }
-
-  self->invalid = 1;
+  self->invalid      = 1;
   self->stack_height = 0;
 
-  if (copy_from_raddr(raddr, ts) != sizeof(ts)) {
-    error = ETHREAD;
+  if (fail(copy_from_raddr(raddr, ts))) {
+    log_ie("Cannot read remote PyThreadState");
     FAIL;
   }
 
   if (V_FIELD(void*, ts, py_thread, o_frame) != NULL) {
     raddr_t frame_raddr = { .pid = raddr->pid, .addr = V_FIELD(void*, ts, py_thread, o_frame) };
-    if (!success(_py_frame__fill_from_raddr(_stack, &frame_raddr))) {
+    if (fail(_py_frame__fill_from_raddr(_stack, &frame_raddr))) {
       log_d("Failed to fill last frame");
       SUCCESS;
     }
@@ -349,7 +345,8 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr) {
 // ----------------------------------------------------------------------------
 int
 py_thread__next(py_thread_t * self) {
-  if (!isvalid(self->next_raddr.addr)) FAIL;
+  if (!isvalid(self->next_raddr.addr))
+    FAIL;
 
   raddr_t next_raddr = { .pid = self->next_raddr.pid, .addr = self->next_raddr.addr };
 
@@ -412,7 +409,8 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t delta, ssize_t mem_
 // ----------------------------------------------------------------------------
 int
 py_thread_allocate_stack(void) {
-  if (isvalid(_stack)) return 0;
+  if (isvalid(_stack))
+    SUCCESS;
 
   _stack = (py_frame_t *) calloc(MAX_STACK_SIZE, sizeof(py_frame_t));
   return _stack == NULL;

@@ -39,7 +39,7 @@ function invoke_austin {
       --show-leak-kinds=all \
       --errors-for-leak-kinds=all \
       --track-fds=yes \
-      $AUSTIN -i 100000 -t 10000 -o /dev/null $PYTHON test/target34.py
+      $AUSTIN -i 100ms -t 1s -o /dev/null $PYTHON test/target34.py
 
     if [ ! $status == 0 ]
     then
