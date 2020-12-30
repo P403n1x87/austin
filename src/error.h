@@ -76,8 +76,6 @@ extern __thread error_t error;
 #endif // ERROR_C
 
 
-#define check_not_null(p) {if (p != NULL) error = EOK; else log_error();}
-
 /**
  * Get the message of the give message number.
  *

@@ -236,3 +236,11 @@ function repeat {
 
   false
 }
+
+# -----------------------------------------------------------------------------
+
+function requires_root {
+  if [[ $EUID -ne 0 ]]; then
+    skip "requires root"
+  fi
+}

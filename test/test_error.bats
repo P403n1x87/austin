@@ -47,6 +47,7 @@ load "common"
 
 @test "Test not Python" {
   log "Test Austin with a non-Python command"
+  requires_root
 
   run src/austin cat
 

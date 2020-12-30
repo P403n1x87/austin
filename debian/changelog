@@ -1,4 +1,4 @@
-austin (2.1.0-1) unstable; urgency=medium
+austin (2.1.1-1) unstable; urgency=medium
 
   Improved general Python support on all the supported platforms.
 
@@ -8,7 +8,9 @@ austin (2.1.0-1) unstable; urgency=medium
   
   Bugfix: Fixed line number reporting.
 
- -- Gabriele N. Tornetta <phoenix1987@gmail.com>  Wed, 30 Dec 2020 16:31:00 +0100
+  Bugfix: Fix symbol name clash on BSD systems with strtonum.
+
+ -- Gabriele N. Tornetta <phoenix1987@gmail.com>  Wed, 30 Dec 2020 23:53:00 +0100
 
 
 austin (2.0.0-1) unstable; urgency=medium

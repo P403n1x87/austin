@@ -198,15 +198,6 @@ brew install austin
 ~~~
 
 
-## On macOS
-
-Austin can be installed on macOS using [homebrew](https://docs.brew.sh):
-
-~~~bash
-brew install austin
-~~~
-
-
 ## From Chocolatey
 
 To install [Austin from Chocolatey](https://chocolatey.org/packages/austin), run
@@ -407,8 +398,7 @@ Capitan, Austin cannot profile Python processes that use an executable located
 in the `/bin` folder, even with `sudo`. Hence, either run the interpreter from a
 virtual environment or use a Python interpreter that is installed in, e.g.,
 `/Applications` or via `brew` with the default prefix (`/usr/local`). Even in
-these cases, though, the use of `sudo` is required. Alternatively, make sure
-that the user that is invoking Austin belongs to the ``procmod`` group.
+these cases, though, the use of `sudo` is required.
 
 > **NOTE** Austin *might* work with other versions of Python on all the
 > platforms and architectures above. So it is worth giving it a try even if
