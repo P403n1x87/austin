@@ -1,3 +1,16 @@
+austin (2.1.0-1) unstable; urgency=medium
+
+  Improved general Python support on all the supported platforms.
+
+  Allowed specifying argument for time-like parameters using units (e.g. 10ms).
+
+  Error reporting has been made more accurate and informative.
+  
+  Bugfix: Fixed line number reporting.
+
+ -- Gabriele N. Tornetta <phoenix1987@gmail.com>  Wed, 30 Dec 2020 16:31:00 +0100
+
+
 austin (2.0.0-1) unstable; urgency=medium
 
   Substantial performance improvements. Austin 2 can sample deep call stacks
