@@ -18,17 +18,9 @@
     <img src="https://travis-ci.org/P403n1x87/austin.svg?branch=master"
          alt="Travis CI Build Status" />
   </a>
-  <a href="https://snapcraft.io/austin">
-    <img src="https://snapcraft.io/austin/badge.svg"
-         alt="austin Snap Store Build Status" />
-  </a>
-  <a href="https://packages.debian.org/unstable/austin">
-    <img src="https://badges.debian.net/badges/debian/unstable/austin/version.svg"
-         alt="Debian package status" />
-  </a>
-  <a href="https://formulae.brew.sh/formula/austin">
-    <img src="https://img.shields.io/homebrew/v/austin"
-         alt="homebrew" />
+  <a href="https://github.com/P403n1x87/austin/actions?query=workflow%3ATests">
+    <img src="https://github.com/P403n1x87/austin/workflows/Tests/badge.svg"
+         alt="GitHub Action Status: Tests" />
   </a>
   <a href="https://github.com/P403n1x87/austin/releases/latest">
     <img src="http://img.shields.io/github/v/release/p403n1x87/austin"
@@ -38,6 +30,30 @@
     <img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg"
          alt="LICENSE" />
   </a>
+
+  <br/>
+
+  <a href="https://chocolatey.org/packages/austin/">
+    <img src="https://img.shields.io/chocolatey/v/austin"
+         alt="Chocolatey Version" />
+  </a>
+  <a href="https://anaconda.org/conda-forge/austin">
+    <img src="https://img.shields.io/conda/vn/conda-forge/austin.svg"
+         alt="Conda Version" />
+  </a>
+  <a href="https://packages.debian.org/unstable/austin">
+    <img src="https://badges.debian.net/badges/debian/unstable/austin/version.svg"
+         alt="Debian package status" />
+  </a>
+  <a href="https://formulae.brew.sh/formula/austin">
+    <img src="https://img.shields.io/homebrew/v/austin"
+         alt="homebrew" />
+  </a>
+  <a href="https://snapcraft.io/austin">
+    <img src="https://snapcraft.io/austin/badge.svg"
+         alt="austin Snap Store Build Status" />
+  </a>
+
 </p>
 
 <p align="center">
@@ -104,9 +120,9 @@ The key features of Austin are:
 - Built-in support for multi-process applications (e.g. `mod_wsgi`).
 
 The simplest way to turn Austin into a full-fledged profiler is to combine it
-with [FlameGraph]. However, Austin's simple output format can be piped into any
-other external or custom tool for further processing. Look, for instance, at the
-following Python TUI
+with [FlameGraph] or [Speedscope]. However, Austin's simple output format can be
+piped into any other external or custom tool for further processing. Look, for
+instance, at the following Python TUI
 
 
 <p align="center">
@@ -127,13 +143,14 @@ On Linux, it can be installed using `autotools` or as a snap from the [Snap
 Store](https://snapcraft.io/store). The latter will automatically perform the
 steps of the `autotools` method with a single command. On distributions derived
 from Debian, Austin can be installed from the official repositories with
-Aptitude.
+Aptitude. Anaconda users can install Austin from [Conda Forge].
 
 On Windows, Austin can be easily installed from the command line using either
 [Chocolatey] or [Scoop]. Alternatively, you can download the installer from the
 [latest release] page.
 
 On macOS, Austin can be easily installed from the command line using [Homebrew].
+Anaconda users can install Austin from [Conda Forge].
 
 For any other platform, compiling Austin from sources is as easy as cloning the
 repository and running the C compiler.
@@ -213,6 +230,15 @@ scoop update
 ~~~
 
 
+## From Conda Forge
+
+Anaconda users on Linux and macOS can install Austin from [Conda Forge] with the
+command
+
+~~~ bash
+conda install -c conda-forge austin
+~~~
+
 ## From Sources without `autotools`
 
 To install Austin from sources using the GNU C compiler, without `autotools`,
@@ -255,14 +281,15 @@ Austin -- A frame stack sampler for Python.
   -e, --exclude-empty        Do not output samples of threads with no frame
                              stacks.
   -f, --full                 Produce the full set of metrics (time +mem -mem).
-  -i, --interval=n_us        Sampling interval (default is 500us).
+  -i, --interval=n_us        Sampling interval in microseconds (default is
+                             100). Accepted units: s, ms, us.
   -m, --memory               Profile memory usage.
   -o, --output=FILE          Specify an output file for the collected samples.
   -p, --pid=PID              The the ID of the process to which Austin should
                              attach.
   -s, --sleepless            Suppress idle samples.
-  -t, --timeout=n_ms         Approximate start up wait time. Increase on slow
-                             machines (default is 100ms).
+  -t, --timeout=n_ms         Start up wait time in milliseconds (default is
+                             100). Accepted units: s, ms.
   -x, --exposure=n_sec       Sample for n_sec seconds only.
   -?, --help                 Give this help list
       --usage                Give a short usage message
@@ -321,6 +348,10 @@ bytes. In full mode (`-f` or `--full` switches), each samples ends with three
 values: the time delta, any positive memory delta (memory allocations) or zero
 and any negative memory delta (memory releases) or zero.
 
+> **NOTE** The reported memory allocations and deallocations are obtained by
+> computing resident memory deltas between samples. Hence these values give an
+> idea of how much _physical_ memory is being requested/released.
+
 
 ## Multi-process Applications
 
@@ -343,7 +374,6 @@ error rates below 1% on average.
 Austin supports Python 2.3-2.7 and 3.3-3.8 and has been tested on the following
 platforms and architectures
 
-
 || <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" />* | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/> | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />** |
 |---          |---|---|---|
 | **x86_64**  | ✓ | ✓ | ✓ |
@@ -360,13 +390,15 @@ binary with, e.g.
 sudo setcap cap_sys_ptrace+ep `which austin`
 ~~~
 
+In order for Austin to work with Docker, the `--cap-add SYS_PTRACE` option needs
+to be passed when starting a container.
+
 \** Due to the **System Integrity Protection** introduced in **MacOS** with El
 Capitan, Austin cannot profile Python processes that use an executable located
 in the `/bin` folder, even with `sudo`. Hence, either run the interpreter from a
 virtual environment or use a Python interpreter that is installed in, e.g.,
 `/Applications` or via `brew` with the default prefix (`/usr/local`). Even in
-these cases, though, the use of `sudo` is required. Alternatively, make sure
-that the user that is invoking Austin belongs to the ``procmod`` group.
+these cases, though, the use of `sudo` is required.
 
 > **NOTE** Austin *might* work with other versions of Python on all the
 > platforms and architectures above. So it is worth giving it a try even if
@@ -408,7 +440,7 @@ is written in C, implementing the new changes is rather straight-forward.
 The following flame graph has been obtained with the command
 
 ~~~ bash
-austin -i 50 ./test.py | ./flamegraph.pl --countname=μs > test.svg
+austin -i 1ms ./test.py | ./flamegraph.pl --countname=μs > test.svg
 ~~~
 
 where the sample `test.py` script has the following content
@@ -417,7 +449,7 @@ where the sample `test.py` script has the following content
 import psutil
 
 for i in range(1000):
-  list(psutil.process_iter())
+    list(psutil.process_iter())
 ~~~
 
 <object data="art/process_iter_fg.svg" type="image/svg+xml" width="100%" >
@@ -529,7 +561,10 @@ where `input` is a file containing the output from Austin and `output` is the
 name of the JSON file to use to save the result of the conversion, ready to be
 used on [Speedscope].
 
-<p align="center"><img src="art/speedscope.png" /></p>
+<p align="center">
+  <img src="art/speedscope.png"
+       style="box-shadow: #111 0px 0px 16px;" />
+</p>
 
 ## Google pprof
 
@@ -550,6 +585,17 @@ austin2pprof [-h] [-V] input output
 where `input` is a file containing the output from Austin and `output` is the
 name of the protobuf file to use to save the result of the conversion, ready to
 be used with [Google's pprof tools][pprof].
+
+## IDE Extensions
+
+It is easy to write your own extension for your favourite text editor. This, for
+example, is a demo of a [Visual Studio Code] extension that highlights the most
+hit lines of code straight into the editor
+
+<p align="center">
+  <img src="art/vscode-demo.gif"
+       style="box-shadow: #111 0px 0px 16px;" />
+</p>
 
 
 # Contribute
@@ -586,6 +632,7 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 [Austin TUI]: https://github.com/P403n1x87/austin-tui
 [Austin Web]: https://github.com/P403n1x87/austin-web
 [Chocolatey]: https://chocolatey.org/
+[Conda Forge]: https://anaconda.org/conda-forge/austin
 [d3-flame-graph]: https://github.com/spiermar/d3-flame-graph
 [FlameGraph]: https://github.com/brendangregg/FlameGraph
 [Homebrew]: https://formulae.brew.sh/formula/austin
@@ -593,3 +640,4 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 [pprof]: https://github.com/google/pprof
 [Scoop]: https://scoop.sh/
 [Speedscope]: https://speedscope.app
+[Visual Studio Code]: https://github.com/P403n1x87/austin-vscode

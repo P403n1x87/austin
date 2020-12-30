@@ -35,17 +35,16 @@ before_script:
       sudo add-apt-repository ppa:deadsnakes/ppa -y;
       sudo add-apt-repository ppa:duggan/bats -y;
 
-      sudo apt-get install bats valgrind python2.{3..7} python3.{3..8} -y;
+      sudo apt-get install -y bats valgrind python2.{3..7} python3.{3..9};
 
       autoreconf --install;
     fi
 
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]];
     then
-      brew install python || brew upgrade python;
-      brew install python@3.8            || true;
+      brew install python@3.8 || true;
+      brew install python@3.9 || true;
       brew install bats-core;
-      brew cask install anaconda         || true;
     fi
     # brew install --HEAD valgrind       || true;
 

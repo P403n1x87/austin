@@ -45,6 +45,7 @@
 
 #endif
 
+#include "error.h"
 #include "logging.h"
 
 #define OUT_OF_BOUND                  -1
@@ -54,7 +55,7 @@
  * Copy a data structure from the given remote address structure.
  * @param  raddr the remote address
  * @param  dt    the data structure as a local variable
- * @return       the number of bytes read.
+ * @return       zero on success, otherwise non-zero.
  */
 #define copy_from_raddr(raddr, dt) copy_memory(raddr->pid, raddr->addr, sizeof(dt), &dt)
 
@@ -63,9 +64,9 @@
  * Copy a data structure from the given remote address structure.
  * @param  raddr the remote address
  * @param  dt    the data structure as a local variable
- * @return       the number of bytes read.
+ * @return       zero on success, otherwise non-zero.
  */
-#define copy_from_raddr_v(raddr, dt, n) copy_memory(raddr->pid, raddr->addr, n, &dt) != n
+#define copy_from_raddr_v(raddr, dt, n) copy_memory(raddr->pid, raddr->addr, n, &dt)
 
 
 /**
@@ -74,7 +75,7 @@
  * @param  pid  the process ID
  * @param  addr the remote address
  * @param  dt   the data structure as a local variable.
- * @return      the number of bytes read.
+ * @return      zero on success, otherwise non-zero.
  */
 #define copy_datatype(pid, addr, dt) copy_memory(pid, addr, sizeof(dt), &dt)
 
@@ -88,14 +89,17 @@ typedef struct {
 /**
  * Copy a chunk of memory from a portion of the virtual memory of another
  * process.
- * @param pid_t   the process ID
+ * @param pid_t   the process reference (platform-dependent)
  * @param void *  the remote address
  * @param ssize_t the number of bytes to read
  * @param void *  the destination buffer, expected to be at least as large as
  *                the number of bytes to read.
+ * @return        zero on success, otherwise non-zero.
  */
-static inline ssize_t
+static inline int
 copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
+  ssize_t result;
+
   #if defined(PL_LINUX)                                              /* LINUX */
   struct iovec local[1];
   struct iovec remote[1];
@@ -105,35 +109,56 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
   remote[0].iov_base = addr;
   remote[0].iov_len = len;
 
-  return process_vm_readv(pid, local, 1, remote, 1, 0);
+  result = process_vm_readv(pid, local, 1, remote, 1, 0);
+  if (result == -1) {
+    switch (errno) {
+    case ESRCH:
+      set_error(EPROCNPID);
+      break;
+    case EPERM:
+      set_error(EPROCPERM);
+      break;
+    default:
+      set_error(EMEMCOPY);
+    }
+  }
 
   #elif defined(PL_WIN)                                                /* WIN */
   size_t n;
-  int ret = ReadProcessMemory((HANDLE) pid, addr, buf, len, &n) ? n : -1;
-  return ret;
+  result = ReadProcessMemory((HANDLE) pid, addr, buf, len, &n) ? n : -1;
+  if (result == -1) {
+    switch(GetLastError()) {
+    case ERROR_ACCESS_DENIED:
+      set_error(EPROCPERM);
+      break;
+    case ERROR_INVALID_HANDLE:
+      set_error(EPROCNPID);
+      break;
+    default:
+      set_error(EMEMCOPY);
+    }
+  }
 
   #elif defined(PL_MACOS)                                              /* MAC */
-  mach_port_t task;
-  if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
-    log_d(
-      "Failed to obtain task from PID. Are you running Austin with the right "
-      "privileges?"
-    );
-    return -1;
-  }
-
-  mach_vm_size_t nread;
   kern_return_t kr = mach_vm_read_overwrite(
-    task, (mach_vm_address_t) addr, len, (mach_vm_address_t) buf, &nread
+    (mach_port_t) pid,
+    (mach_vm_address_t) addr,
+    len,
+    (mach_vm_address_t) buf,
+    (mach_vm_size_t *) &result
   );
   if (kr != KERN_SUCCESS) {
-    log_t("copy_memory: mach_vm_read_overwrite returned %d", kr);
-    return -1;
+    // If we got to the point of calling this function on macOS then we must
+    // have permissions to call task_for_pid successfully. This also mean that
+    // the PID that was used must have been valid. Therefore this call can only
+    // fail if the process no longer exists.
+    set_error(EPROCNPID);
+    FAIL;
   }
 
-  return nread;
-
   #endif
+
+  return result != len;
 }
 
 #endif // MEM_H

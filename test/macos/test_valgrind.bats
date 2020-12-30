@@ -28,7 +28,7 @@ function invoke_austin {
 
   if ! $python_bin -V; then skip "$python_bin not found."; fi
 
-  log "Valgrind [Python $version]"
+  log "Valgrind [Python $python_bin]"
 
   # -------------------------------------------------------------------------
   step "Valgrind test"

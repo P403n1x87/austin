@@ -28,7 +28,7 @@ function invoke_austin {
 
   if ! $python_bin -V; then skip "$python_bin not found."; fi
 
-  log "Fork Multi-processing [Python $version]"
+  log "Fork Multi-processing [Python $python_bin]"
 
   # -------------------------------------------------------------------------
   step "Profiling of multi-process program"
@@ -39,7 +39,7 @@ function invoke_austin {
 
     expected=3
     n_procs=$( echo "$output" | sed -E 's/P([0-9]+);.+/\1/' | sort | uniq | wc -l )
-    assert "At least 3 parallel processes" "$n_procs >= $expected"
+    assert "At least 3 parallel processes" "$n_procs -ge $expected"
 
     assert_output "fact"
 

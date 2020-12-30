@@ -23,12 +23,18 @@
 #ifndef ERROR_H
 #define ERROR_H
 
+#include <errno.h>
+
 #include "logging.h"
 
 
 // generic messages
 #define EOK                   0
 #define EMMAP                 1
+#define EMEMCOPY              2
+#define ENOVERSION            3
+#define ENULLDEV              4
+#define ECMDLINE              5
 
 // py_code_t
 #define ECODE                 ((1 << 3) + 0)
@@ -60,29 +66,15 @@
 #define EPROCNPID             ((4 << 3) + 6)
 
 
+typedef int error_t;
+
+
 #ifdef ERROR_C
-__thread int error;
+__thread error_t error;
 #else
-extern __thread int error;
+extern __thread error_t error;
 #endif // ERROR_C
 
-
-#define check_not_null(p) {if (p != NULL) error = EOK; else log_error();}
-
-/**
- * Log the last error
- */
-#define log_error() ( is_fatal(error) ? log_f(error_get_msg(error)) : log_e(error_get_msg(error)) )
-
-/**
- * Get the message of the last error.
- *
- * @return a pointer to the message as const char *.
- */
-#define get_error() error_get_msg(error)
-
-
-typedef int error_t;
 
 /**
  * Get the message of the give message number.
@@ -96,6 +88,14 @@ error_get_msg(error_t);
 
 
 /**
+ * Get the message of the last error.
+ *
+ * @return a pointer to the message as const char *.
+ */
+#define get_last_error()                     error_get_msg(error)
+
+
+/**
  * Determine if the given error is fatal or not.
  *
  * @param  error_t  the error number
@@ -104,5 +104,24 @@ error_get_msg(error_t);
  */
 const int
 is_fatal(error_t);
+
+
+/**
+ * Log the last error
+ */
+#define log_error() { \
+  ( is_fatal(error) ? log_f(get_last_error()) : log_e(get_last_error()) ); \
+}
+
+
+/**
+ * Set and log the given error.
+ *
+ * @param  error_t  the error to set and log.
+ */
+#define set_error(x) { \
+  error = (x); \
+  log_error(); \
+}
 
 #endif // ERROR_H

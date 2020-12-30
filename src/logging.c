@@ -34,14 +34,14 @@
 #include <windows.h>
 #include <stdio.h>
 
-#define	LOG_EMERG	0	/* system is unusable */
-#define	LOG_ALERT	1	/* action must be taken immediately */
-#define	LOG_CRIT	2	/* critical conditions */
-#define	LOG_ERR		3	/* error conditions */
-#define	LOG_WARNING	4	/* warning conditions */
-#define	LOG_NOTICE	5	/* normal but significant condition */
-#define	LOG_INFO	6	/* informational */
-#define	LOG_DEBUG	7	/* debug-level messages */
+#define LOG_EMERG   0  /* system is unusable */
+#define LOG_ALERT   1  /* action must be taken immediately */
+#define LOG_CRIT    2  /* critical conditions */
+#define LOG_ERR     3  /* error conditions */
+#define LOG_WARNING 4  /* warning conditions */
+#define LOG_NOTICE  5  /* normal but significant condition */
+#define LOG_INFO    6  /* informational */
+#define LOG_DEBUG   7  /* debug-level messages */
 
 FILE * logfile = NULL;
 #endif
@@ -92,10 +92,6 @@ log_f(const char * fmt, ...) {
   va_start(args, fmt);
     _log_writer(LOG_CRIT, fmt, args);
   va_end(args);
-
-  va_start(args, fmt);
-    vfprintf(stderr, fmt, args); fputc('\n', stderr);
-  va_end(args);
 }
 
 void
@@ -131,10 +127,6 @@ log_i(const char * fmt, ...) {
 void
 log_m(const char * fmt, ...) {
   va_list args;
-
-  va_start(args, fmt);
-    _log_writer(LOG_INFO, fmt, args);
-  va_end(args);
 
   va_start(args, fmt);
     vfprintf(stderr, fmt, args); fputc('\n', stderr);

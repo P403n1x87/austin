@@ -28,7 +28,7 @@ function invoke_austin {
 
   if ! $python_bin -V; then skip "$python_bin not found."; fi
 
-    log "Fork [Python $version]"
+    log "Fork [Python $python_bin]"
 
   # -------------------------------------------------------------------------
   step "Standard profiling"

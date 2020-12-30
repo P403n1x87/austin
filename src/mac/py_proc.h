@@ -33,9 +33,8 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/param.h>
+#include <sys/proc.h>
 #include <unistd.h>
-
-#include "../error.h"
 
 
 #define CHECK_HEAP
@@ -44,7 +43,7 @@
 
 #define SYMBOLS                        2
 
-#define SELF_PID                        (self->pid)
+#define PROC_REF                        (self->extra->task_id)
 
 
 #define next_lc(cmd)    (cmd = (struct segment_command *)    ((void *) cmd + cmd->cmdsize));
@@ -96,21 +95,36 @@ _maybe_script_execute(const char * file, char * const argv[]) {
 
 
 // ----------------------------------------------------------------------------
-static int
-_py_proc__analyze_macho64(py_proc_t * self, void * map) {
+static bin_attr_t
+_py_proc__analyze_macho64(py_proc_t * self, void * base, void * map) {
+  bin_attr_t bin_attrs = 0;
+
   struct mach_header_64 * hdr = (struct mach_header_64 *) map;
+
+  switch(hdr->filetype) {
+  case MH_EXECUTE:
+    bin_attrs |= BT_EXEC;
+    break;
+  case MH_DYLIB:
+    bin_attrs |= BT_LIB;
+    break;
+  default:
+    return 0;
+  }
 
   int ncmds = hdr->ncmds;
   int s     = (hdr->magic == MH_CIGAM_64);
 
-  int cmd_cnt = 0;
-  struct segment_command_64 * cmd = map + sizeof(struct mach_header_64);
-  void * img_base = self->map.bss.base;
+  int                         cmd_cnt  = 0;
+  struct segment_command_64 * cmd      = map + sizeof(struct mach_header_64);
+
   for (register int i = 0; cmd_cnt < 2 && i < ncmds; i++) {
     switch (cmd->cmd) {
     case LC_SEGMENT_64:
       if (strcmp(cmd->segname, "__TEXT") == 0) {
-        img_base -= cmd->vmaddr;
+        // NOTE: This is based on the assumption that we find this segment
+        // early enough to allow later computations to use the correct value.
+        base -= cmd->vmaddr;
       }
       else if (strcmp(cmd->segname, "__DATA") == 0) {
         int nsects = cmd->nsects;
@@ -118,9 +132,9 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
         self->map.bss.size = 0;
         for (register int j = 0; j < nsects; j++) {
           if (strcmp(sec[j].sectname, "__bss") == 0) {
-            self->map.bss.base += sec[j].addr;
+            self->map.bss.base = base + sec[j].addr;
             self->map.bss.size = sec[j].size;
-            log_d("BSS bounds [%p - %p]", self->map.bss.base, self->map.bss.base + self->map.bss.size);
+            bin_attrs |= B_BSS;
             break;
           }
         }
@@ -142,7 +156,7 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
           continue;
 
         char * sym_name = (char *) (str_tab + sym_tab[i].n_un.n_strx);
-        self->sym_loaded += _py_proc__check_sym(self, sym_name, (void *) (img_base + sym_tab[i].n_value));
+        self->sym_loaded += _py_proc__check_sym(self, sym_name, (void *) (base + sym_tab[i].n_value));
       }
       cmd_cnt++;
     } // switch
@@ -150,29 +164,44 @@ _py_proc__analyze_macho64(py_proc_t * self, void * map) {
     next_lc_64(cmd);
   }
 
-  if (self->map.bss.size == 0)
-    return 1;
+  if (self->sym_loaded > 0)
+    bin_attrs |= B_SYMBOLS;
 
-  return !self->sym_loaded;
-}
+  return bin_attrs;
+} // _py_proc__analyze_macho64
 
 
 // ----------------------------------------------------------------------------
-static int
-_py_proc__analyze_macho32(py_proc_t * self, void * map) {
+static bin_attr_t
+_py_proc__analyze_macho32(py_proc_t * self, void * base, void * map) {
+  bin_attr_t bin_attrs = 0;
+
   struct mach_header * hdr = (struct mach_header *) map;
+
+  switch(hdr->filetype) {
+  case MH_EXECUTE:
+    bin_attrs |= BT_EXEC;
+    break;
+  case MH_DYLIB:
+    bin_attrs |= BT_LIB;
+    break;
+  default:
+    return 0;
+  }
 
   int ncmds = hdr->ncmds;
   int s     = (hdr->magic == MH_CIGAM);
 
-  int cmd_cnt = 0;
-  struct segment_command * cmd = map + sizeof(struct mach_header);
-  void * img_base = self->map.bss.base;
+  int                      cmd_cnt  = 0;
+  struct segment_command * cmd      = map + sizeof(struct mach_header);
+
   for (register int i = 0; cmd_cnt < 2 && i < ncmds; i++) {
     switch (cmd->cmd) {
     case LC_SEGMENT:
       if (strcmp(cmd->segname, "__TEXT") == 0) {
-        img_base -= cmd->vmaddr;
+        // NOTE: This is based on the assumption that we find this segment
+        // early enough to allow later computations to use the correct value.
+        base -= cmd->vmaddr;
       }
       else if (strcmp(cmd->segname, "__DATA") == 0) {
         int nsects = cmd->nsects;
@@ -180,9 +209,9 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
         self->map.bss.size = 0;
         for (register int j = 0; j < nsects; j++) {
           if (strcmp(sec[j].sectname, "__bss") == 0) {
-            self->map.bss.base += sec[j].addr;
+            self->map.bss.base = base + sec[j].addr;
             self->map.bss.size = sec[j].size;
-            log_d("BSS bounds [%p - %p]", self->map.bss.base, self->map.bss.base + self->map.bss.size);
+            bin_attrs |= B_BSS;
             break;
           }
         }
@@ -204,7 +233,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
           continue;
 
         char * sym_name = (char *) (str_tab + sym_tab[i].n_un.n_strx);
-        self->sym_loaded += _py_proc__check_sym(self, sym_name, (void *) (img_base + sym_tab[i].n_value));
+        self->sym_loaded += _py_proc__check_sym(self, sym_name, (void *) (base + sym_tab[i].n_value));
       }
       cmd_cnt++;
     } // switch
@@ -212,21 +241,23 @@ _py_proc__analyze_macho32(py_proc_t * self, void * map) {
     next_lc(cmd);
   }
 
-  if (self->map.bss.size == 0)
-    return 1;
+  if (self->sym_loaded > 0)
+    bin_attrs |= B_SYMBOLS;
 
-  return !self->sym_loaded;
-}
+  return bin_attrs;
+} // _py_proc__analyze_macho32
 
 
 // ----------------------------------------------------------------------------
-static int
-_py_proc__analyze_fat(py_proc_t * self, void * addr, void * map) {
-  void * vm_map = malloc(sizeof(struct mach_header_64));
-  if (vm_map == NULL)
-    return 1;
+static bin_attr_t
+_py_proc__analyze_fat(py_proc_t * self, void * base, void * map) {
+  bin_attr_t bin_attrs = 0;
 
-  if (copy_memory(self->pid, addr, sizeof(struct mach_header_64), vm_map) == sizeof(struct mach_header_64)) {
+  void * vm_map = malloc(sizeof(struct mach_header_64));
+  if (!isvalid(vm_map))
+    FAIL;
+
+  if (success(copy_memory(self->pid, base, sizeof(struct mach_header_64), vm_map))) {
     // Determine CPU type from process in memory
     struct mach_header_64 * hdr = (struct mach_header_64 *) vm_map;
     int ms = hdr->magic == MH_CIGAM || hdr->magic == MH_CIGAM_64;  // This is probably useless
@@ -245,12 +276,12 @@ _py_proc__analyze_fat(py_proc_t * self, void * addr, void * map) {
         switch (hdr->magic) {
         case MH_MAGIC:
         case MH_CIGAM:
+          bin_attrs = _py_proc__analyze_macho32(self, base, (void *) hdr);
           break;
-          _py_proc__analyze_macho32(self, (void *) hdr);
 
         case MH_MAGIC_64:
         case MH_CIGAM_64:
-          _py_proc__analyze_macho64(self, (void *) hdr);
+          bin_attrs = _py_proc__analyze_macho64(self, base, (void *) hdr);
           break;
         }
         break;
@@ -261,13 +292,15 @@ _py_proc__analyze_fat(py_proc_t * self, void * addr, void * map) {
 
   free(vm_map);
 
-  return !self->sym_loaded;
+  return bin_attrs;
 }
 
 
 // ----------------------------------------------------------------------------
-static int
-_py_proc__analyze_macho(py_proc_t * self, char * path, void * addr, mach_vm_size_t size) {
+static bin_attr_t
+_py_proc__analyze_macho(py_proc_t * self, char * path, void * base, mach_vm_size_t size) {
+  bin_attr_t bin_attrs = 0;
+
   int fd = open(path, O_RDONLY);
 
   // This would cause problem if allocated in the stack frame
@@ -283,17 +316,17 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * addr, mach_vm_size
   switch (hdr->magic) {
   case MH_MAGIC:
   case MH_CIGAM:
+    bin_attrs = _py_proc__analyze_macho32(self, base, map);
     break;
-    _py_proc__analyze_macho32(self, map);
 
   case MH_MAGIC_64:
   case MH_CIGAM_64:
-    _py_proc__analyze_macho64(self, map);
+    bin_attrs = _py_proc__analyze_macho64(self, base, map);
     break;
 
   case FAT_MAGIC:
   case FAT_CIGAM:
-    _py_proc__analyze_fat(self, addr, map);
+    bin_attrs = _py_proc__analyze_fat(self, base, map);
     break;
 
   default:
@@ -303,18 +336,50 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * addr, mach_vm_size
   munmap(map, size);
   close(fd);
 
-  return !self->sym_loaded;
+  return bin_attrs;
+} // _py_proc__analyze_macho
+
+
+// ----------------------------------------------------------------------------
+static int
+check_pid(pid_t pid) {
+  // The best way of checking would probably be with a call to proc_find, but
+  // this seems to require the Kernel framework.
+  struct proc_bsdinfo proc;
+  proc.pbi_status = SIDL;
+
+  if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &proc, PROC_PIDTBSDINFO_SIZE) == -1) {
+    set_error(EPROCNPID);
+    FAIL;
+  }
+
+  log_t("check_pid :: %d", proc.pbi_status);
+
+  if (proc.pbi_status == SIDL || proc.pbi_status == 32767) {
+    set_error(EPROCNPID);
+    FAIL;
+  }
+
+  SUCCESS;
 }
 
 
 // ----------------------------------------------------------------------------
 static mach_port_t
 pid_to_task(pid_t pid) {
-  mach_port_t task;
-  if (task_for_pid(mach_task_self(), pid, &task) != KERN_SUCCESS) {
-    log_d("Call to task_for_pid failed.");
-    error = EPROCPERM;
-    return 0;
+  mach_port_t   task;
+  kern_return_t result;
+
+  if (fail(check_pid(pid))) {
+    log_d("No such process: %d", pid);
+    FAIL;
+  }
+
+  result = task_for_pid(mach_task_self(), pid, &task);
+  if (result != KERN_SUCCESS) {
+    log_d("Call to task_for_pid failed: %s", mach_error_string(result));
+    set_error(EPROCPERM);
+    FAIL;
   }
   return task;
 }
@@ -330,16 +395,16 @@ _py_proc__get_maps(py_proc_t * self) {
   mach_port_t                    object_name;
 
   char * path = (char *) calloc(MAXPATHLEN + 1, sizeof(char));
-  if (path == NULL)
-    return 1;
+  if (!isvalid(path))
+    FAIL;
 
   // NOTE: Mac OS X kernel bug. This also gives time to the VM maps to
   // stabilise.
-  usleep(100000);
+  usleep(50000);
 
   self->extra->task_id = pid_to_task(self->pid);
   if (self->extra->task_id == 0)
-    return 1;
+    FAIL;
 
   self->min_raddr = (void *) -1;
   self->max_raddr = NULL;
@@ -359,61 +424,55 @@ _py_proc__get_maps(py_proc_t * self) {
     if ((void *) address + size > self->max_raddr)
       self->max_raddr = (void *) address + size;
 
-    int len = proc_regionfilename(self->pid, address, path, MAXPATHLEN);
+    int len      = proc_regionfilename(self->pid, address, path, MAXPATHLEN);
     int path_len = strlen(path);
 
-    if (size > 0 && len) {
+    if (size > 0 && len && !self->sym_loaded) {
       path[len] = 0;
-      if (self->bin_path == NULL && strstr(path, "ython")) {
-        if (strstr(path + path_len - 3, ".so") == NULL) {
-          // not a .so file
-          self->bin_path = strndup(path, path_len);
-          self->map.bss.base = (void *) address;  // WARNING: Image base. Not yet the BSS base!!
-          if (_py_proc__analyze_macho(self, path, (void *) address, size)) {
-            // We haven't found the symbols in the binary so we look for a library.
-            self->map.bss.base = NULL;
+      if (strstr(path, "ython")) {
+        bin_attr_t bin_attrs = _py_proc__analyze_macho(self, path, (void *) address, size);
+        if (bin_attrs & B_SYMBOLS && size < BINARY_MIN_SIZE) {
+          // We found the symbols in the binary but we are probably going to use the wrong base
+          // since the map is too small. So pretend we didin't find them.
+          self->sym_loaded = 0;
+        } else if (bin_attrs != 0) {
+          switch (BINARY_TYPE(bin_attrs)) {
+          case BT_EXEC:
+            if (self->bin_path == NULL) {
+              self->bin_path = strndup(path, path_len);
+              log_d("Candidate binary: %s", self->bin_path);
+            }
+            break;
+          case BT_LIB:
+            if (self->lib_path == NULL && size > BINARY_MIN_SIZE) {
+              self->lib_path = strndup(path, path_len);
+              log_d("Candidate library: %s", self->lib_path);
+            }
           }
-          goto next_map;
         }
-      }
-
-      if (self->map.bss.base == NULL && self->lib_path == NULL && strstr(path, "ython") && size > (1 << 20)) {
-        if (strstr(path + path_len - 3, ".so") == NULL) {
-          self->lib_path = strndup(path, path_len);
-
-          self->map.bss.base = (void *) address;  // WARNING: Image base. Not yet the BSS base!!
-          if (_py_proc__analyze_macho(self, path, (void *) address, size))
-            goto error;
-          goto next_map;
-        }
-      }
-
-      // Make a best guess for the heap boundary. This would only work for
-      // 64-bit architectures.
-      if (address & 0x0000700000000000) {
-        if (self->map.heap.base == NULL)
-          self->map.heap.base = (void *) address;
-        self->map.heap.size += size;
       }
     }
-  next_map:
+
+    // Make a best guess for the heap boundary.
+    if (self->map.heap.base == NULL)
+      self->map.heap.base = (void *) address;
+    self->map.heap.size += size;
+
     address += size;
   }
 
+  log_d("BSS bounds  [%p - %p]", self->map.bss.base, self->map.bss.base + self->map.bss.size);
   log_d("HEAP bounds [%p - %p]", self->map.heap.base, self->map.heap.base + self->map.heap.size);
 
-  if (self->bin_path && self->lib_path && !strcmp(self->bin_path, self->lib_path))
-    self->bin_path = NULL;
-
-error:
   free(path);
 
   return !self->sym_loaded;
-}
+} // _py_proc__get_maps
 
 
 // ----------------------------------------------------------------------------
-static ssize_t _py_proc__get_resident_memory(py_proc_t * self) {
+static ssize_t
+_py_proc__get_resident_memory(py_proc_t * self) {
   struct mach_task_basic_info info;
 	mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
 
@@ -422,16 +481,16 @@ static ssize_t _py_proc__get_resident_memory(py_proc_t * self) {
   ) == KERN_SUCCESS
     ? info.resident_size
     : -1;
-}
+} // _py_proc__get_resident_memory
 
 
 // ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t * self) {
-  if (self == NULL)
-    return 1;
+  if (!isvalid(self))
+    FAIL;
 
   return _py_proc__get_maps(self);
-}
+} // _py_proc__init
 
 #endif

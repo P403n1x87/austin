@@ -142,21 +142,6 @@ py_proc__get_current_thread_state_raddr(py_proc_t *);
 
 
 /**
- * Copy a chunk of memory from the process.
- *
- * @param py_proc_t * the process object.
- * @param void *      the remote address.
- * @param ssize_t     the number of bytes to read.
- * @param void *      the local buffer, of size at least matching the number
- *                    of bytes to read.
- *
- * @return 0 on success.
- */
-int
-py_proc__memcpy(py_proc_t *, void *, ssize_t, void *);
-
-
-/**
  * Wait for the process to terminate.
  *
  * @param py_proc_t * the process object.
@@ -187,6 +172,17 @@ py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr);
  */
 int
 py_proc__is_running(py_proc_t *);
+
+
+/**
+ * Check if the process is a Python process.
+ *
+ * @param py_proc_t * the process object.
+ *
+ * @return 1 if the process is a Python process, 0 otherwise.
+ */
+int
+py_proc__is_python(py_proc_t *);
 
 
 /**

@@ -24,7 +24,7 @@ load "../common"
 
 
 test_case() {
-  run bats test/macos/test_$1.bats
+  bats test/macos/test_$1.bats
 }
 
 
@@ -44,4 +44,8 @@ test_case() {
   ignore
   if ! which valgrind; then skip "Valgrind not found"; fi
   test_case valgrind
+}
+
+@test "Test Austin: error messages" {
+  test_case error
 }

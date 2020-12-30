@@ -33,14 +33,21 @@
   log_m(" __ _ _  _ __| |_(_)_ _  ");    \
   log_m("/ _` | || (_-<  _| | ' \\ ");   \
   log_m("\\__,_|\\_,_/__/\\__|_|_||_|"); \
+  log_i("====[ AUSTIN ]===="); \
 }
 #define log_footer() {}
 
-
+/**
+ * Initialise logger.
+ *
+ * This must be called before making any logging requests.
+ */
 void
 logger_init(void);
 
-
+/**
+ * Log an entry at the various supported levels.
+ */
 void
 log_f(const char *, ...);
 
@@ -56,6 +63,17 @@ log_i(const char *, ...);
 void
 log_m(const char *, ...);  // metrics
 
+
+/**
+ * Log indirect error.
+ *
+ * Messages logged this way are prepended with a symbol that indicates that
+ * they are a consequence of the error right above. A root cause is then an
+ * unprefixed error/fatal log entry.
+ */
+#define log_ie(msg) log_e("> " msg)
+
+
 #ifdef DEBUG
 void
 log_d(const char *, ...);
@@ -70,9 +88,16 @@ log_t(const char *, ...);
 #define log_t(f, args...) {}
 #endif
 
+
 void
 log_version(void);
 
+
+/**
+ * Close the logger.
+ *
+ * This should be called as soon as the logger is no longer required.
+ */
 void
 logger_close(void);
 
