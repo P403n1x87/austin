@@ -20,47 +20,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef TIMER_H
-#define TIMER_H
+typedef unsigned int bin_attr_t;
 
+#define BINARY_MIN_SIZE        (1 << 20)         // A meaningful Python binary takes MBs.
 
-#include <unistd.h>
+#define BINARY_TYPE(x)                  (x & 3)  // Get binary type
+#define BT_OTHER                       0         // Other type of binary
+#define BT_EXEC                        1         // Binary is executable
+#define BT_LIB                         2         // Binary is shared library
 
-#include "argparse.h"
-#include "error.h"
-#include "stats.h"
+#define B_SYMBOLS               (1 << 2)         // If the binary has symbols
 
-
-static ctime_t _sample_timestamp;
-static ctime_t _sample_delta;
-
-
-static inline void
-timer_start(void) {
-  _sample_timestamp = gettime();
-  error = EOK;
-} /* timer_start */
-
-
-static inline ctime_t
-timer_stop(void) {
-  _sample_delta = gettime() - _sample_timestamp;
-
-  // Record stats
-  stats_check_duration(_sample_delta, pargs.t_sampling_interval);
-  stats_count_sample();
-  if (error != EOK)
-    stats_count_error();
-
-  return _sample_delta;
-} /* timer_stop */
-
-
-static inline void
-timer_pause(ctime_t delta) {
-  // Pause if sampling took less than the sampling interval.
-  if (delta < pargs.t_sampling_interval)
-    usleep(pargs.t_sampling_interval - delta);
-}
-
-#endif
+#define B_BSS                   (1 << 3)         // If the BSS section was located

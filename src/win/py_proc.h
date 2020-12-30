@@ -35,7 +35,7 @@
 #define MODULE_CNT                     2
 #define SYMBOLS                        2
 
-#define SELF_PID                        ((long long int) self->extra->h_proc)
+#define PROC_REF                        ((long long int) self->extra->h_proc)
 
 
 struct _proc_extra_info {
@@ -121,7 +121,7 @@ _py_proc__get_modules(py_proc_t * self) {
   HANDLE mod_hdl;
   mod_hdl = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, self->pid);
   if (mod_hdl == INVALID_HANDLE_VALUE)
-    return 1;
+    FAIL;
 
   MODULEENTRY32 module;
   module.dwSize = sizeof(module);
@@ -178,8 +178,8 @@ static ssize_t _py_proc__get_resident_memory(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t * self) {
-  if (self == NULL)
-    return 1;
+  if (!isvalid(self))
+    FAIL;
 
   return _py_proc__get_modules(self);
 }

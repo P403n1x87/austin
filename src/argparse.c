@@ -26,6 +26,7 @@
 
 #include "argparse.h"
 #include "austin.h"
+#include "hints.h"
 #include "platform.h"
 
 
@@ -64,7 +65,78 @@ strtonum(char * str, long * num) {
 
   *num = strtol(str, &p_err, 10);
 
-  return  (p_err == str || *p_err != 0) ? 1 : 0;
+  return  (p_err == str || *p_err != '\0') ? 1 : 0;
+}
+
+
+/**
+ * Parse the interval argument.
+ *
+ * This acceps s, ms and us as units. The result is in microseconds.
+ */
+static int
+parse_interval(char * str, long * num) {
+  char * p_err;
+
+  *num = strtol(str, &p_err, 10);
+
+  if (p_err == str)
+    FAIL;
+
+  switch (*p_err) {
+  case '\0':
+    SUCCESS;
+  case 's':
+    if (*(p_err+1) != '\0')
+      FAIL;
+    *num = *num * 1000000;
+    break;
+  case 'm':
+    if (*(p_err+1) != 's' || *(p_err+2) != '\0')
+      FAIL;
+    *num = *num * 1000;
+  case 'u':
+    if (*(p_err+1) != 's' || *(p_err+2) != '\0')
+      FAIL;
+    break;
+  default:
+    FAIL;
+  }
+
+  SUCCESS;
+}
+
+
+/**
+ * Parse the timeout argument.
+ *
+ * This acceps s and ms as units. The result is in milliseconds.
+ */
+static int
+parse_timeout(char * str, long * num) {
+  char * p_err;
+
+  *num = strtol(str, &p_err, 10);
+
+  if (p_err == str)
+    FAIL;
+
+  switch (*p_err) {
+  case '\0':
+    SUCCESS;
+  case 's':
+    if (*(p_err+1) != '\0')
+      FAIL;
+    *num = *num * 1000;
+    break;
+  case 'm':
+    if (*(p_err+1) != 's' || *(p_err+2) != '\0')
+      FAIL;
+  default:
+    FAIL;
+  }
+
+  SUCCESS;
 }
 
 
@@ -98,11 +170,11 @@ typedef struct argp_option {
 static struct argp_option options[] = {
   {
     "interval",     'i', "n_us",        0,
-    "Sampling interval (default is 500us)."
+    "Sampling interval in microseconds (default is 100). Accepted units: s, ms, us."
   },
   {
     "timeout",      't', "n_ms",        0,
-    "Approximate start up wait time. Increase on slow machines (default is 100ms)."
+    "Start up wait time in milliseconds (default is 100). Accepted units: s, ms."
   },
   {
     "alt-format",   'a', NULL,          0,
@@ -162,6 +234,7 @@ static int
 parse_opt (int key, char *arg, struct argp_state *state)
 {
   if (state->argc == 1) {
+    state->name = PROGRAM_NAME;  // TODO: Check if there are better ways.
     argp_state_help(state, stdout, ARGP_HELP_USAGE);
     exit(0);
   }
@@ -179,7 +252,7 @@ parse_opt (int key, char *arg, struct argp_state *state)
   switch(key) {
   case 'i':
     if (
-      strtonum(arg, (long *) &(pargs.t_sampling_interval)) == 1 ||
+      fail(parse_interval(arg, (long *) &(pargs.t_sampling_interval))) ||
       pargs.t_sampling_interval > LONG_MAX
     )
       argp_error(state, "the sampling interval must be a positive integer");
@@ -187,7 +260,7 @@ parse_opt (int key, char *arg, struct argp_state *state)
 
   case 't':
     if (
-      strtonum(arg, (long *) &(pargs.timeout)) == 1 ||
+      fail(parse_timeout(arg, (long *) &(pargs.timeout))) ||
       pargs.timeout > LONG_MAX / 1000
     )
       argp_error(state, "timeout must be a positive integer");
@@ -382,14 +455,15 @@ static const char * help_msg = \
 "  -e, --exclude-empty        Do not output samples of threads with no frame\n"
 "                             stacks.\n"
 "  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
-"  -i, --interval=n_us        Sampling interval (default is 500us).\n"
+"  -i, --interval=n_us        Sampling interval in microseconds (default is\n"
+"                             100). Accepted units: s, ms, us.\n"
 "  -m, --memory               Profile memory usage.\n"
 "  -o, --output=FILE          Specify an output file for the collected samples.\n"
 "  -p, --pid=PID              The the ID of the process to which Austin should\n"
 "                             attach.\n"
 "  -s, --sleepless            Suppress idle samples.\n"
-"  -t, --timeout=n_ms         Approximate start up wait time. Increase on slow\n"
-"                             machines (default is 100ms).\n"
+"  -t, --timeout=n_ms         Start up wait time in milliseconds (default is\n"
+"                             100). Accepted units: s, ms.\n"
 "  -x, --exposure=n_sec       Sample for n_sec seconds only.\n"
 "  -?, --help                 Give this help list\n"
 "      --usage                Give a short usage message\n"
@@ -408,6 +482,16 @@ static const char * usage_msg = \
 "            [--usage] [--version] command [ARG...]\n";
 
 
+static void
+arg_error(const char * message) {
+  fputs(PROGRAM_NAME ": ", stderr);
+  fputs(message, stderr);
+  fputc('\n', stderr);
+  fputs("Try `austin --help' or `austin --usage' for more information.\n", stderr);
+  exit(ARG_INVALID_VALUE);
+}
+
+
 // ----------------------------------------------------------------------------
 // Return 0 if all the arguments have been parsed. If interrupted, returns the
 // number of arguments consumed so far. Otherwise return an error code.
@@ -418,6 +502,7 @@ arg_parse(arg_option * opts, arg_callback cb, int argc, char ** argv) {
 
   if (argc <= 1) {
     puts(usage_msg);
+    exit(0);
   }
 
   while (a < argc) {
@@ -450,21 +535,19 @@ cb(const char opt, const char * arg) {
   switch (opt) {
   case 'i':
     if (
-      strtonum((char *) arg, (long *) &(pargs.t_sampling_interval)) == 1 ||
+      fail(parse_interval((char *) arg, (long *) &(pargs.t_sampling_interval))) ||
       pargs.t_sampling_interval > LONG_MAX
     ) {
-      puts(usage_msg);
-      return ARG_INVALID_VALUE;
+      arg_error("the sampling interval must be a positive integer");
     }
     break;
 
   case 't':
     if (
-      strtonum((char *) arg, (long *) &(pargs.timeout)) == 1 ||
+      fail(parse_timeout((char *) arg, (long *) &(pargs.timeout))) ||
       pargs.timeout > LONG_MAX / 1000
     ) {
-      puts(usage_msg);
-      return ARG_INVALID_VALUE;
+      arg_error("the timeout must be a positive integer");
     }
     pargs.timeout *= 1000;
     break;
@@ -494,8 +577,7 @@ cb(const char opt, const char * arg) {
       strtonum((char *) arg, (long *) &pargs.attach_pid) == 1 ||
       pargs.attach_pid <= 0
     ) {
-      puts(usage_msg);
-      return ARG_INVALID_VALUE;
+      arg_error("invalid PID");
     }
     break;
 
@@ -517,8 +599,7 @@ cb(const char opt, const char * arg) {
       strtonum((char *) arg, (long *) &(pargs.exposure)) == 1 ||
       pargs.exposure > LONG_MAX
     ) {
-      puts(usage_msg);
-      return ARG_INVALID_VALUE;
+      arg_error("the exposure must be a positive integer");
     }
     break;
 

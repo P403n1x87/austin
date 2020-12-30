@@ -187,7 +187,7 @@ py_proc_list__sample(py_proc_list_t * self) {
   for (py_proc_item_t * item = self->first; item != NULL; item = item->next) {
     log_t("Sampling process with PID %d", item->py_proc->pid);
     timer_start();
-    py_proc__sample(item->py_proc);
+    py_proc__sample(item->py_proc);  // Fail silently
     timer_stop();
   }
 } /* py_proc_list__sample */
@@ -287,6 +287,7 @@ py_proc_list__update(py_proc_list_t * self) {
       item = item->next;
     }
     else {
+      log_d("Process %d no longer running", item->py_proc->pid);
       py_proc__wait(item->py_proc);
 
       py_proc_item_t * next = item->next;
@@ -317,11 +318,7 @@ py_proc_list__destroy(py_proc_list_t * self) {
   while (self->first)
     _py_proc_list__remove(self, self->first);
 
-  if (self->index != NULL)
-    free(self->index);
-
-  if (self->pid_table != NULL)
-    free(self->pid_table);
-
+  sfree(self->index);
+  sfree(self->pid_table);
   free(self);
 } /* py_proc_list__destroy */

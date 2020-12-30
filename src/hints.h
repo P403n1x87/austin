@@ -32,7 +32,8 @@
 #define NOVERSION                      0
 
 #define success(x)                      (!(x))
-#define sfree(x)                        {if ((x) != NULL) free(x);}
+#define fail(x)                         (x)
+#define sfree(x)                        {if ((x) != NULL) {free(x); x = NULL;}}
 
 #define isvalid(x)                      ((x) != NULL)
 

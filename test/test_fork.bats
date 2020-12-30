@@ -33,11 +33,10 @@ function invoke_austin {
   # -------------------------------------------------------------------------
   step "Standard profiling"
   # -------------------------------------------------------------------------
-    run $AUSTIN -i 1000 -t 1000 $PYTHON test/target34.py
+    run $AUSTIN -i 1ms -t 1s $PYTHON test/target34.py
 
     assert_success
     assert_output "keep_cpu_busy (.*test/target34.py);L"
-
     assert_not_output "Unwanted"
 
   # -------------------------------------------------------------------------

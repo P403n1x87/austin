@@ -33,13 +33,13 @@ function invoke_austin {
   # -------------------------------------------------------------------------
   step "Profiling of multi-process program"
   # -------------------------------------------------------------------------
-    run $AUSTIN -i 1000 -C $PYTHON test/target_mp.py
+    run $AUSTIN -i 100ms -C $PYTHON test/target_mp.py
 
     assert_success
 
     expected=3
     n_procs=$( echo "$output" | sed -r 's/P([0-9]+);.+/\1/' | sort | uniq | wc -l )
-    assert "At least 3 parallel processes" "$n_procs >= $expected"
+    assert "At least 3 parallel processes" "$n_procs -ge $expected"
 
     assert_output "do (.*test/target_mp.py);L[[:digit:]]*;fact (.*test/target_mp.py);L"
 
