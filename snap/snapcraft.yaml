@@ -1,5 +1,5 @@
 name: austin
-version: '2.1.0+git'
+version: '2.1.1+git'
 summary: A Python frame stack sampler for CPython
 description: |
   Austin is a Python frame stack sampler for CPython written in pure C. It
