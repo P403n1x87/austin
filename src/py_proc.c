@@ -721,9 +721,9 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   }
 
   // Concatenate the command line arguments
-  register int cmd_line_size = strlen(exec) + 1;
+  register int cmd_line_size = strlen(exec) + 3;  // 1 for ' ' + 2 for potential '"'s
   register int i = 1;
-  while (argv[i]) cmd_line_size += strlen(argv[i++]) + 1;
+  while (argv[i]) cmd_line_size += strlen(argv[i++]) + 3;
 
   char * cmd_line = malloc(sizeof(char) * cmd_line_size);
   strcpy(cmd_line, exec);
@@ -731,10 +731,16 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   register int pos = strlen(exec);
   i = 1;
   while (argv[i]) {
+    int has_space = isvalid(strchr(argv[i], ' '));
     cmd_line[pos++] = ' ';
+    if (has_space)
+      cmd_line[pos++] = '"';
     strcpy(cmd_line+pos, argv[i]);
     pos += strlen(argv[i++]);
+    if (has_space)
+      cmd_line[pos++] = '"';
   }
+  cmd_line[pos] = '\0';
 
   log_t("Computed command line: %s", cmd_line);
 
@@ -742,10 +748,10 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
     NULL, cmd_line, NULL, NULL, TRUE, 0, NULL, NULL, &siStartInfo, &piProcInfo
   );
 
-  if (cmd_line != NULL)
-    free(cmd_line);
-
+  sfree(cmd_line);
+  
   if (!process_created) {
+    log_e("CreateProcess produced error code %d", GetLastError());
     set_error(EPROCFORK);
     FAIL;
   }

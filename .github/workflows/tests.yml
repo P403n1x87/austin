@@ -77,10 +77,10 @@ jobs:
       # - name: Run tests on Windows
       #   run: |
       #     refreshenv
-      #     src\austin.exe -Ci 100000 py -3.6 test\target34.py
-      #     src\austin.exe -Ci 100000 py -3.7 test\target34.py
-      #     src\austin.exe -Ci 100000 py -3.8 test\target34.py
-      #     src\austin.exe -ci 100000 py -3.9 test\target34.py
+      #     src\austin.exe -Ci 100ms py -3.6 test\target34.py
+      #     src\austin.exe -Ci 100ms py -3.7 test\target34.py
+      #     src\austin.exe -Ci 100ms py -3.8 test\target34.py
+      #     src\austin.exe -ci 100ms py -3.9 test\target34.py
       #   if: startsWith(matrix.os, 'windows')
       #
       # - name: Show austin logs

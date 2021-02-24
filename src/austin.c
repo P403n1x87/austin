@@ -191,13 +191,20 @@ int main(int argc, char ** argv) {
   stats_reset();
 
   if (pargs.attach_pid == 0) {
-    if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg]) && !pargs.children) {
+    if (
+      (fail(py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg]))
+      && !pargs.children)
+      || py_proc->pid == 0
+    ) {
       log_ie("Cannot start the process");
       py_proc__terminate(py_proc);
       goto finally;
     }
   } else {
-    if (py_proc__attach(py_proc, pargs.attach_pid, FALSE) && !pargs.children) {
+    if (
+      fail(py_proc__attach(py_proc, pargs.attach_pid, FALSE))
+      && !pargs.children
+    ) {
       log_ie("Cannot attach the process");
       goto finally;
     }

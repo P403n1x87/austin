@@ -374,7 +374,7 @@ error rates below 1% on average.
 Austin supports Python 2.3-2.7 and 3.3-3.8 and has been tested on the following
 platforms and architectures
 
-|| <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" />* | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/> | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />** |
+|| <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" />* | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/>** | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />*** |
 |---          |---|---|---|
 | **x86_64**  | ✓ | ✓ | ✓ |
 | **i686**    | ✓ |   | ✓ |
@@ -393,7 +393,14 @@ sudo setcap cap_sys_ptrace+ep `which austin`
 In order for Austin to work with Docker, the `--cap-add SYS_PTRACE` option needs
 to be passed when starting a container.
 
-\** Due to the **System Integrity Protection** introduced in **MacOS** with El
+\** Depending on how Python is installed on Windows, the invocation of the
+`python` binary might actually happen via a proxy script or launcher (e.g.
+`py`). Since these are not actual Python processes, Austin will fail to profile
+them. To work around this, either use a path to the actual Python executable or
+add the `-C` option to allow Austin to automatically discore the actual child
+Python process.
+
+\*** Due to the **System Integrity Protection** introduced in **MacOS** with El
 Capitan, Austin cannot profile Python processes that use an executable located
 in the `/bin` folder, even with `sudo`. Hence, either run the interpreter from a
 virtual environment or use a Python interpreter that is installed in, e.g.,
