@@ -57,7 +57,7 @@
  * @param  dt    the data structure as a local variable
  * @return       zero on success, otherwise non-zero.
  */
-#define copy_from_raddr(raddr, dt) copy_memory(raddr->pid, raddr->addr, sizeof(dt), &dt)
+#define copy_from_raddr(raddr, dt) copy_memory((raddr)->pid, (raddr)->addr, sizeof(dt), &dt)
 
 
 /**
