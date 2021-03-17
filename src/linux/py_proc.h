@@ -128,7 +128,7 @@ _py_proc__analyze_elf64(py_proc_t * self) {
       ) {
         p_dynsym = p_shdr;
       }
-      // NOTE: This might be required if the Python version is must be retrieved
+      // NOTE: This might be required if the Python version must be retrieved
       //       from the RO data section
       // else if (
       //   p_shdr->sh_type == SHT_PROGBITS &&
@@ -219,7 +219,7 @@ _py_proc__analyze_elf32(py_proc_t * self) {
       ) {
         p_dynsym = p_shdr;
       }
-      // NOTE: This might be required if the Python version is must be retrieved
+      // NOTE: This might be required if the Python version must be retrieved
       //       from the RO data section
       // else if (
       //   p_shdr->sh_type == SHT_PROGBITS &&
@@ -334,82 +334,79 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     default:
       set_error(EPROCVM);
     }
+    FAIL;
   }
 
-  else {
-    self->min_raddr = (void *) -1;
-    self->max_raddr = NULL;
+  self->min_raddr = (void *) -1;
+  self->max_raddr = NULL;
 
-    sfree(self->bin_path);
-    sfree(self->lib_path);
+  sfree(self->bin_path);
+  sfree(self->lib_path);
 
-    while (getline(&line, &len, fp) != -1) {
-      ssize_t lower, upper;
-      char    pathname[1024];
-      char    m[sizeof(void *)]; // We don't care about these values.
+  while (getline(&line, &len, fp) != -1) {
+    ssize_t lower, upper;
+    char    pathname[1024];
+    char    m[sizeof(void *)]; // We don't care about these values.
 
-      int field_count = sscanf(line, "%lx-%lx %4c %lx %x:%x %x %s\n",
-        &lower, &upper,                                             // Map bounds
-        (char *) m, (ssize_t *) m, (int *) m, (int *) m, (int *) m, // Ignored
-        pathname                                                    // Binary path
-      ) - 7; // We expect between 7 and 8 matches.
-      if (field_count >= 0) {
-        if (field_count == 0 || strstr(pathname, "[v") == NULL) {
-          // Skip meaningless addresses like [vsyscall] which would give
-          // ridiculous values.
-          if ((void *) lower < self->min_raddr) self->min_raddr = (void *) lower;
-          if ((void *) upper > self->max_raddr) self->max_raddr = (void *) upper;
-        }
+    int field_count = sscanf(line, "%lx-%lx %4c %lx %x:%x %x %s\n",
+      &lower, &upper,                                             // Map bounds
+      (char *) m, (ssize_t *) m, (int *) m, (int *) m, (int *) m, // Ignored
+      pathname                                                    // Binary path
+    ) - 7; // We expect between 7 and 8 matches.
+    if (field_count >= 0) {
+      if (field_count == 0 || strstr(pathname, "[v") == NULL) {
+        // Skip meaningless addresses like [vsyscall] which would give
+        // ridiculous values.
+        if ((void *) lower < self->min_raddr) self->min_raddr = (void *) lower;
+        if ((void *) upper > self->max_raddr) self->max_raddr = (void *) upper;
+      }
 
-        if ((maps_flag & HEAP_MAP) == 0 && strstr(line, "[heap]\n") != NULL) {
-          self->map.heap.base = (void *) lower;
-          self->map.heap.size = upper - lower;
+      if ((maps_flag & HEAP_MAP) == 0 && strstr(line, "[heap]\n") != NULL) {
+        self->map.heap.base = (void *) lower;
+        self->map.heap.size = upper - lower;
 
-          maps_flag |= HEAP_MAP;
+        maps_flag |= HEAP_MAP;
 
-          log_d("HEAP bounds %lx-%lx", lower, upper);
+        log_d("HEAP bounds %lx-%lx", lower, upper);
+        continue;
+      }
+
+      if (strstr(line, "python") == NULL)
+      // NOTE: The python binary might have a name that doesn't contain python
+      //       but would still be valid. In case of future issues, this
+      //       should be changed so that the binary on the first line is
+      //       checked for, e.g., knownw symbols to determine whether it is a
+      //       valid binary that Austin can handle.
+        continue;
+
+      // Check if it is an executable. Only bother if the size is above the
+      // MB threshold. Anything smaller is probably not a useful binary.
+      ssize_t file_size = _file_size(pathname);
+      if (_elf_is_executable(pathname)) {
+        if (self->bin_path != NULL || (file_size < (1 << 20)))
           continue;
-        }
 
-        if (strstr(line, "python") == NULL)
-        // NOTE: The python binary might have a name that doesn't contain python
-        //       but would still be valid. In case of future issues, this
-        //       should be changed so that the binary on the first line is
-        //       checked for, e.g., knownw symbols to determine whether it is a
-        //       valid binary that Austin can handle.
+        log_d("Candidate binary: %s (size %d KB)", pathname, file_size >> 10);
+        self->bin_path = strndup(pathname, strlen(pathname));
+
+        self->map.elf.base = (void *) lower;
+        self->map.elf.size = upper - lower;
+
+        continue;
+      } else {
+        if (self->bin_path != NULL || self->lib_path != NULL || (file_size < (1 << 20)))
           continue;
 
-        // Check if it is an executable. Only bother if the size is above the
-        // MB threshold. Anything smaller is probably not a useful binary.
-        ssize_t file_size = _file_size(pathname);
-        if (_elf_is_executable(pathname)) {
-          if (self->bin_path != NULL || (file_size < (1 << 20)))
-            continue;
+        log_d("Candidate library: %s (size %d KB)", pathname, file_size >> 10);
+        self->lib_path = strndup(pathname, strlen(pathname));
 
-          log_d("Candidate binary: %s (size %d KB)", pathname, file_size >> 10);
-          self->bin_path = strndup(pathname, strlen(pathname));
-
-          self->map.elf.base = (void *) lower;
-          self->map.elf.size = upper - lower;
-
-          continue;
-        } else {
-          if (self->bin_path != NULL || self->lib_path != NULL || (file_size < (1 << 20)))
-            continue;
-
-          log_d("Candidate library: %s (size %d KB)", pathname, file_size >> 10);
-          self->lib_path = strndup(pathname, strlen(pathname));
-
-          self->map.elf.base = (void *) lower;
-          self->map.elf.size = upper - lower;
-        }
+        self->map.elf.base = (void *) lower;
+        self->map.elf.size = upper - lower;
       }
     }
 
+    sfree(line);
     fclose(fp);
-    if (line != NULL) {
-      free(line);
-    }
   }
 
   return (
