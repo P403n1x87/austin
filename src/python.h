@@ -282,9 +282,79 @@ typedef struct _ts3_4 {
 } PyThreadState3_4;
 
 
+
+typedef struct _err_stackitem {
+    PyObject *exc_type, *exc_value, *exc_traceback;
+    struct _err_stackitem *previous_item;
+} _PyErr_StackItem;
+
+typedef struct _ts_3_7 {
+    struct _ts *prev;
+    struct _ts *next;
+    PyInterpreterState *interp;
+    struct _frame *frame;
+    int recursion_depth;
+    char overflowed;
+    char recursion_critical;
+    int stackcheck_counter;
+    int tracing;
+    int use_tracing;
+    Py_tracefunc c_profilefunc;
+    Py_tracefunc c_tracefunc;
+    PyObject *c_profileobj;
+    PyObject *c_traceobj;
+    PyObject *curexc_type;
+    PyObject *curexc_value;
+    PyObject *curexc_traceback;
+    _PyErr_StackItem exc_state;
+    _PyErr_StackItem *exc_info;
+    PyObject *dict;  /* Stores per-thread state */
+    int gilstate_counter;
+    PyObject *async_exc; /* Asynchronous exception to raise */
+    unsigned long thread_id; /* Thread id where this tstate was created */
+} PyThreadState3_7;
+
+
+typedef struct _ts3_8 {
+    struct _ts *prev;
+    struct _ts *next;
+    PyInterpreterState *interp;
+    PyFrameObject *frame;
+    int recursion_depth;
+    int recursion_headroom; /* Allow 50 more calls to handle any errors. */
+    int stackcheck_counter;
+    int tracing;
+    int use_tracing;
+    Py_tracefunc c_profilefunc;
+    Py_tracefunc c_tracefunc;
+    PyObject *c_profileobj;
+    PyObject *c_traceobj;
+    PyObject *curexc_type;
+    PyObject *curexc_value;
+    PyObject *curexc_traceback;
+    _PyErr_StackItem exc_state;
+    _PyErr_StackItem *exc_info;
+    PyObject *dict;  /* Stores per-thread state */
+    int gilstate_counter;
+    PyObject *async_exc; /* Asynchronous exception to raise */
+    unsigned long thread_id; /* Thread id where this tstate was created */
+    int trash_delete_nesting;
+    PyObject *trash_delete_later;
+    void (*on_delete)(void *);
+    void *on_delete_data;
+    int coroutine_origin_tracking_depth;
+    PyObject *async_gen_firstiter;
+    PyObject *async_gen_finalizer;
+    PyObject *context;
+    uint64_t context_ver;
+    uint64_t id;
+} PyThreadState3_8;
+
+
 typedef union {
   PyThreadState2   v2;
   PyThreadState3_4 v3_4;
+  PyThreadState3_8 v3_8;
 } PyThreadState;
 
 // ---- internal/pystate.h ----------------------------------------------------

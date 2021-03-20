@@ -123,7 +123,7 @@ python_v python_v3_6 = {
 python_v python_v3_7 = {
   PY_CODE     (PyCodeObject3_6),
   PY_FRAME    (PyFrameObject3_7),
-  PY_THREAD   (PyThreadState3_4),
+  PY_THREAD   (PyThreadState3_7),
   PY_UNICODE  (3),
   PY_BYTES    (3),
   PY_RUNTIME  (_PyRuntimeState3_7)
@@ -134,7 +134,7 @@ python_v python_v3_7 = {
 python_v python_v3_8 = {
   PY_CODE     (PyCodeObject3_8),
   PY_FRAME    (PyFrameObject3_7),
-  PY_THREAD   (PyThreadState3_4),
+  PY_THREAD   (PyThreadState3_8),
   PY_UNICODE  (3),
   PY_BYTES    (3),
   PY_RUNTIME  (_PyRuntimeState3_8)
