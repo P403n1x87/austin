@@ -49,3 +49,7 @@ test_case() {
 @test "Test Austin: error messages" {
   test_case error
 }
+
+@test "Test Austin: sleepless" {
+  test_case sleepless
+}

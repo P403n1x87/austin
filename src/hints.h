@@ -37,4 +37,8 @@
 
 #define isvalid(x)                      ((x) != NULL)
 
+#ifndef unlikely
+#define unlikely(x)                     __builtin_expect(!!(x), 1)
+#endif
+
 #endif

@@ -275,7 +275,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   // As an extra sanity check, verify that the thread state is valid
   raddr_t thread_raddr = { .pid = PROC_REF, .addr = is.tstate_head };
   py_thread_t thread;
-  if (fail(py_thread__fill_from_raddr(&thread, &thread_raddr))) {
+  if (fail(py_thread__fill_from_raddr(&thread, &thread_raddr, self))) {
     log_d("Failed to fill thread structure");
     FAIL;
   }
@@ -926,9 +926,9 @@ py_proc__get_memory_delta(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 int
 py_proc__sample(py_proc_t * self) {
-  ssize_t   mem_delta = 0;
+  ctime_t   time_delta     = gettime() - self->timestamp;  // Time delta since last sample.
+  ssize_t   mem_delta      = 0;
   void    * current_thread = NULL;
-  ctime_t   delta = gettime() - self->timestamp;  // Time delta since last sample.
 
   PyInterpreterState is;
   if (fail(py_proc__get_type(self, self->is_raddr, is)))
@@ -937,7 +937,7 @@ py_proc__sample(py_proc_t * self) {
   if (is.tstate_head != NULL) {
     raddr_t raddr = { .pid = PROC_REF, .addr = is.tstate_head };
     py_thread_t py_thread;
-    if (fail(py_thread__fill_from_raddr(&py_thread, &raddr)))
+    if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self)))
       FAIL;
 
     if (pargs.memory) {
@@ -960,11 +960,15 @@ py_proc__sample(py_proc_t * self) {
         }
       }
 
-      py_thread__print_collapsed_stack(&py_thread, delta, mem_delta);
+      py_thread__print_collapsed_stack(
+        &py_thread,
+        time_delta,
+        mem_delta
+      );
     } while (success(py_thread__next(&py_thread)));
   }
 
-  self->timestamp += delta;
+  self->timestamp += time_delta;
 
   SUCCESS;
 } /* py_proc__sample */

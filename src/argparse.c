@@ -186,7 +186,7 @@ static struct argp_option options[] = {
   },
   {
     "sleepless",    's', NULL,          0,
-    "Suppress idle samples."
+    "Suppress idle samples to estimate CPU time."
   },
   {
     "memory",       'm', NULL,          0,
@@ -461,7 +461,7 @@ static const char * help_msg = \
 "  -o, --output=FILE          Specify an output file for the collected samples.\n"
 "  -p, --pid=PID              The the ID of the process to which Austin should\n"
 "                             attach.\n"
-"  -s, --sleepless            Suppress idle samples.\n"
+"  -s, --sleepless            Suppress idle samples to estimate CPU time.\n"
 "  -t, --timeout=n_ms         Start up wait time in milliseconds (default is\n"
 "                             100). Accepted units: s, ms.\n"
 "  -x, --exposure=n_sec       Sample for n_sec seconds only.\n"

@@ -27,12 +27,15 @@
 #include <sys/types.h>
 
 #include "mem.h"
+#include "py_proc.h"
 #include "stats.h"
 
 
 typedef struct thread {
   raddr_t         raddr;
   raddr_t         next_raddr;
+
+  py_proc_t     * proc;
 
   uintptr_t       tid;
   struct thread * next;
@@ -48,9 +51,10 @@ typedef struct thread {
  *
  * @param py_thread_t  the structure to fill.
  * @param raddr_t      the remote address to read from.
+ * @param py_proc_t    the Python process the thread belongs to.
  */
 int
-py_thread__fill_from_raddr(py_thread_t *, raddr_t *);
+py_thread__fill_from_raddr(py_thread_t *, raddr_t *, py_proc_t *);
 
 
 /**

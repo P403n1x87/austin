@@ -65,7 +65,7 @@ do_single_process(py_proc_t * py_proc) {
     while(interrupt == FALSE) {
       timer_start();
 
-      if (py_proc__sample(py_proc))
+      if (fail(py_proc__sample(py_proc)))
         break;
 
       timer_pause(timer_stop());
