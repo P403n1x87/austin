@@ -89,7 +89,7 @@ script:
 
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]];
     then
-      gcc -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi;
+      gcc -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll;
     fi
 
 after_success:

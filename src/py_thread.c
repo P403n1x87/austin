@@ -402,15 +402,15 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     // Skip if thread has no frames and we want to exclude empty threads
     return;
 
-  if (time_delta == 0 && mem_delta == 0)
-    // Skip immaterial samples
-    return;
+  if (mem_delta == 0) {
+    if (time_delta == 0)
+      // Skip immaterial samples
+      return;
 
-  int idle = _py_thread__is_idle(self);
-
-  if (pargs.sleepless && idle && mem_delta == 0)
-    // Only skip idle samples if no memory delta
-    return;
+    if (pargs.sleepless && _py_thread__is_idle(self))
+      // Only skip idle samples if no memory delta
+      return;
+  }
 
   // Group entries by thread.
   fprintf(pargs.output_file, SAMPLE_HEAD, self->raddr.pid, self->tid);
@@ -446,12 +446,29 @@ py_thread_allocate_stack(void) {
     SUCCESS;
 
   _stack = (py_frame_t *) calloc(MAX_STACK_SIZE, sizeof(py_frame_t));
-  return _stack == NULL;
+  if (!isvalid(_stack))
+    FAIL;
+
+  #if defined PL_WIN
+  // On Windows we need to fetch process and thread information to detect idle
+  // threads. We allocate a buffer for periodically fetching that data and, if
+  // needed we grow it at runtime.
+  _pi_buffer_size = (1 << 16) * sizeof(void *);
+  _pi_buffer      = calloc(1, _pi_buffer_size);
+  if (!isvalid(_pi_buffer))
+    FAIL;
+  #endif
+
+  SUCCESS;
 }
 
 
 // ----------------------------------------------------------------------------
 void
 py_thread_free_stack(void) {
+  #if defined PL_WIN
+  sfree(_pi_buffer);
+  #endif
+
   sfree(_stack);
 }

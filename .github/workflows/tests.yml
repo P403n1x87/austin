@@ -62,7 +62,7 @@ jobs:
 
       - name: Compile Austin on Windows
         run: |
-          gcc.exe -O3 -o src/austin.exe src/*.c -lpsapi -Wall -Os -s -DDEBUG
+          gcc.exe -O3 -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Os -s -DDEBUG
           src\austin.exe --usage
         if: startsWith(matrix.os, 'windows')
 
