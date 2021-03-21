@@ -20,6 +20,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#define PY_THREAD_C
+
 #include <string.h>
 
 #include "argparse.h"
@@ -30,6 +32,24 @@
 #include "version.h"
 
 #include "py_thread.h"
+
+// ----------------------------------------------------------------------------
+// -- Platform-dependent implementations of _py_thread__is_idle
+// ----------------------------------------------------------------------------
+
+#if defined(PL_LINUX)
+
+  #include "linux/py_thread.h"
+
+#elif defined(PL_WIN)
+
+  #include "win/py_thread.h"
+
+#elif defined(PL_MACOS)
+
+  #include "mac/py_thread.h"
+
+#endif
 
 
 // ---- PRIVATE ---------------------------------------------------------------
@@ -294,7 +314,7 @@ _py_frame__prev(py_frame_t * self) {
 
 // ----------------------------------------------------------------------------
 int
-py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr) {
+py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc) {
   PyThreadState ts;
 
   self->invalid      = 1;
@@ -328,14 +348,20 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr) {
   self->raddr.pid  = raddr->pid;
   self->raddr.addr = raddr->addr;
 
+  self->proc = proc;
+
   self->next_raddr.pid  = raddr->pid;
   self->next_raddr.addr = V_FIELD(void*, ts, py_thread, o_next) == raddr->addr \
     ? NULL \
     : V_FIELD(void*, ts, py_thread, o_next);
 
   self->tid  = V_FIELD(long, ts, py_thread, o_thread_id);
-  if (self->tid == 0)
+  if (self->tid == 0) {
+    // If we fail to get a valid Thread ID, we resort to the PyThreadState
+    // remote address
+    log_t("Thread ID fallback to remote address");
     self->tid = (uintptr_t) raddr->addr;
+  }
 
   self->invalid = 0;
   SUCCESS;
@@ -350,7 +376,7 @@ py_thread__next(py_thread_t * self) {
 
   raddr_t next_raddr = { .pid = self->next_raddr.pid, .addr = self->next_raddr.addr };
 
-  return py_thread__fill_from_raddr(self, &next_raddr);
+  return py_thread__fill_from_raddr(self, &next_raddr, self->proc);
 }
 
 
@@ -362,9 +388,10 @@ py_thread__next(py_thread_t * self) {
   #define SAMPLE_HEAD "P%d;T%lx"
   #define MEM_METRIC " %ld"
 #endif
+#define TIME_METRIC " %lu"
 
 void
-py_thread__print_collapsed_stack(py_thread_t * self, ctime_t delta, ssize_t mem_delta) {
+py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t mem_delta) {
   if (!pargs.full && pargs.memory && mem_delta <= 0)
     return;
 
@@ -375,6 +402,16 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t delta, ssize_t mem_
     // Skip if thread has no frames and we want to exclude empty threads
     return;
 
+  if (time_delta == 0 && mem_delta == 0)
+    // Skip immaterial samples
+    return;
+
+  int idle = _py_thread__is_idle(self);
+
+  if (pargs.sleepless && idle && mem_delta == 0)
+    // Only skip idle samples if no memory delta
+    return;
+
   // Group entries by thread.
   fprintf(pargs.output_file, SAMPLE_HEAD, self->raddr.pid, self->tid);
 
@@ -383,25 +420,21 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t delta, ssize_t mem_
     register int i = self->stack_height;
     while(i > 0) {
       py_code_t code = _stack[--i].code;
-      if (pargs.sleepless && strstr(code.scope, "wait") != NULL) {
-        delta = 0;
-        fprintf(pargs.output_file, ";<idle>");
-        break;
-      }
       fprintf(pargs.output_file, pargs.format, code.scope, code.filename, code.lineno);
     }
   }
+
   // Finish off sample with the metric(s)
   if (pargs.full) {
-    fprintf(pargs.output_file, " %lu" MEM_METRIC MEM_METRIC "\n",
-      delta, mem_delta >= 0 ? mem_delta : 0, mem_delta < 0 ? mem_delta : 0
+    fprintf(pargs.output_file, TIME_METRIC MEM_METRIC MEM_METRIC "\n",
+      time_delta, mem_delta >= 0 ? mem_delta : 0, mem_delta < 0 ? mem_delta : 0
     );
   }
   else {
     if (pargs.memory)
       fprintf(pargs.output_file, MEM_METRIC "\n", mem_delta);
     else
-      fprintf(pargs.output_file, " %lu\n", delta);
+      fprintf(pargs.output_file, TIME_METRIC "\n", time_delta);
   }
 }
 
