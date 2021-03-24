@@ -404,10 +404,10 @@ _py_proc__parse_maps_file(py_proc_t * self) {
         self->map.elf.size = upper - lower;
       }
     }
-
-    sfree(line);
-    fclose(fp);
   }
+  
+  sfree(line);
+  fclose(fp);
 
   return (
     (self->bin_path == NULL && self->lib_path == NULL) ||
