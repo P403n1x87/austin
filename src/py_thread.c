@@ -314,6 +314,22 @@ _py_frame__prev(py_frame_t * self) {
 }
 
 
+// ----------------------------------------------------------------------------
+static void
+_py_thread__unwind_frame_stack(py_thread_t * self) {
+  register size_t i = 0;
+  while (success(_py_frame__prev(_stack + i)) && i < MAX_STACK_SIZE) {
+    if (_stack[++i].invalid) {
+      log_d("Frame number %d is invalid", i);
+      return;
+    }
+  }
+  if (i >= MAX_STACK_SIZE)
+    log_w("Frames limit reached. Discarding the rest");
+  self->stack_height += i;
+}
+
+
 // ---- PUBLIC ----------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
@@ -336,17 +352,6 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
       SUCCESS;
     }
     self->stack_height = 1;
-
-    register size_t i = 0;
-    while (success(_py_frame__prev(_stack + i)) && i < MAX_STACK_SIZE) {
-      if (_stack[++i].invalid) {
-        log_d("Frame number %d is invalid", i);
-        SUCCESS;
-      }
-    }
-    if (i >= MAX_STACK_SIZE)
-      log_w("Frames limit reached. Discarding the rest");
-    self->stack_height += i ;
   }
 
   self->raddr.pid  = raddr->pid;
@@ -435,6 +440,8 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   fprintf(pargs.output_file, SAMPLE_HEAD, self->raddr.pid, self->tid);
 
   if (self->stack_height) {
+    _py_thread__unwind_frame_stack(self);
+
     // Append frames
     register int i = self->stack_height;
     while(i > 0) {
