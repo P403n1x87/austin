@@ -749,7 +749,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   );
 
   sfree(cmd_line);
-  
+
   if (!process_created) {
     log_e("CreateProcess produced error code %d", GetLastError());
     set_error(EPROCFORK);

@@ -28,7 +28,9 @@
 #include "error.h"
 #include "hints.h"
 #include "logging.h"
+#include "mem.h"
 #include "platform.h"
+#include "pthread.h"
 #include "version.h"
 
 #include "py_thread.h"
@@ -88,7 +90,9 @@ py_frame_t * _stack = NULL;
 #define p_ascii_data(raddr)                     (raddr + sizeof(PyASCIIObject))
 
 
+
 // ----------------------------------------------------------------------------
+
 
 static inline int
 _get_string_from_raddr(pid_t pid, void * raddr, char * buffer) {
@@ -362,6 +366,21 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
     log_t("Thread ID fallback to remote address");
     self->tid = (uintptr_t) raddr->addr;
   }
+  #if defined PL_LINUX
+  else {
+    // Try to determine the TID by reading the remote struct pthread structure.
+    // We can then use this information to parse the appropriate procfs file and
+    // determine the native thread's running state.
+    if (_pthread_tid_offset != 0 && success(copy_memory(
+        self->raddr.pid,
+        (void *) self->tid,
+        PTHREAD_BUFFER_SIZE * sizeof(void *),
+        _pthread_buffer
+    ))) {
+      self->tid = (uintptr_t) _pthread_buffer[_pthread_tid_offset];
+    }
+  }
+  #endif
 
   self->invalid = 0;
   SUCCESS;
@@ -385,7 +404,7 @@ py_thread__next(py_thread_t * self) {
   #define SAMPLE_HEAD "P%I64d;T%I64x"
   #define MEM_METRIC " %I64d"
 #else
-  #define SAMPLE_HEAD "P%d;T%lx"
+  #define SAMPLE_HEAD "P%d;T%ld"
   #define MEM_METRIC " %ld"
 #endif
 #define TIME_METRIC " %lu"
