@@ -376,7 +376,13 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
     // Try to determine the TID by reading the remote struct pthread structure.
     // We can then use this information to parse the appropriate procfs file and
     // determine the native thread's running state.
-    if (_pthread_tid_offset != 0 && success(copy_memory(
+    if (unlikely(_pthread_tid_offset == 0)) {
+      _infer_tid_field_offset(self);
+      if (unlikely(_pthread_tid_offset == 0)) {
+        log_d("tid field offset not ready");
+      }
+    }
+    if (likely(_pthread_tid_offset != 0) && success(copy_memory(
         self->raddr.pid,
         (void *) self->tid,
         PTHREAD_BUFFER_SIZE * sizeof(void *),
@@ -416,6 +422,13 @@ py_thread__next(py_thread_t * self) {
 
 void
 py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t mem_delta) {
+  #if defined PL_LINUX
+  // If we still don't have this offset then the thread ID is bonkers so we
+  // do not emit the sample
+  if (unlikely(_pthread_tid_offset == 0))
+    return;
+  #endif
+
   if (!pargs.full && pargs.memory && mem_delta <= 0)
     return;
 
@@ -437,7 +450,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   }
 
   // Group entries by thread.
-  fprintf(pargs.output_file, SAMPLE_HEAD, self->raddr.pid, self->tid);
+  fprintf(pargs.output_file, SAMPLE_HEAD, self->proc->pid, self->tid);
 
   if (self->stack_height) {
     _py_thread__unwind_frame_stack(self);

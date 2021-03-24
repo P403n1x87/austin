@@ -70,14 +70,6 @@ _py_thread__is_idle(py_thread_t * self) {
   char      file_name[64];
   char      buffer[2048];
 
-  if (unlikely(_pthread_tid_offset == 0)) {
-    _infer_tid_field_offset(self);
-    if (unlikely(_pthread_tid_offset == 0)) {
-      log_d("tid field offset not ready");
-      return -1;
-    }
-  }
-
   sprintf(file_name, "/proc/%d/task/%ld/stat", self->raddr.pid, self->tid);
   int fd = open(file_name, O_RDONLY);
   if (fd == -1) {
