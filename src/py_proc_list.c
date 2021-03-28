@@ -227,11 +227,24 @@ py_proc_list__update(py_proc_list_t * self) {
     if (stat_file == NULL)
       continue;
 
-    if (fscanf(
-      stat_file, "%d %s %c %d",
-      (int *) buffer, buffer, (char *) buffer, &(self->pid_table[pid])
-    ) != 4)
+    char * line = NULL;
+    size_t n;
+    if (getline(&line, &n, stat_file) == 0) {
+      log_w("Failed to read stat file for process %d", pid);
+      sfree(line);
+      continue;
+    }
+    char * stat = strchr(line, ')') + 2;
+    if (stat[0] == ' ') stat++;
+    if (sscanf(
+      stat, "%c %d",
+      (char *) buffer, &(self->pid_table[pid])
+    ) != 2) {
       log_w("Failed to parse stat file for process %d", pid);
+      sfree(line);
+      continue;
+    }
+    sfree(line);
 
     if (pid > self->max_pid)
       self->max_pid = pid;

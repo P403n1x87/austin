@@ -87,5 +87,6 @@ _py_thread__is_idle(py_thread_t * self) {
     log_d("Invalid format for procfs file %s", file_name);
     return -1;
   }
+  if (p[0] == ' ') ++p;
   return p[0] != 'R';
 }
