@@ -1000,7 +1000,7 @@ py_proc__terminate(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 void
 py_proc__destroy(py_proc_t * self) {
-  if (self == NULL)
+  if (!isvalid(self))
     return;
 
   if (self->bin_path != NULL)

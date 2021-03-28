@@ -50,13 +50,22 @@ load "common"
 
   run src/austin cat
 
-  assert_status 32             || assert_status 33
+  assert_status 32
   assert_output "not a Python" || assert_output "Cannot launch"
 
   run src/austin -p 1
 
   assert_status 32
   assert_output "not a Python"
+}
+
+@test "Test not Python nor Python children" {
+  log "Test Austin with a non-Python command that spawns no Python children"
+
+  run src/austin -C cat
+
+  assert_status 39
+  assert_output "not a Python" || assert_output "Cannot launch"
 }
 
 @test "Test invalid command" {
