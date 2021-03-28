@@ -38,6 +38,7 @@
 #include "python.h"
 #include "stats.h"
 #include "timer.h"
+#include "version.h"
 
 #include "py_proc.h"
 #include "py_proc_list.h"
@@ -61,6 +62,9 @@ signal_callback_handler(int signum)
 // ----------------------------------------------------------------------------
 void
 do_single_process(py_proc_t * py_proc) {
+  log_m("");
+  py_proc__log_version(py_proc);
+
   if (pargs.exposure == 0) {
     while(interrupt == FALSE) {
       timer_start();
@@ -104,11 +108,17 @@ do_child_processes(py_proc_t * py_proc) {
 
   // If the parent process is not a Python process, its children might be, so we
   // attempt to attach Austin to them.
+
+  log_m("");
+  log_m("\033[1mParent process\033[0m");
+
   if (!py_proc__is_python(py_proc)) {
-    log_d("Parent process is not a Python process. Trying with its children.");
+    log_m("👽 Not a Python process.");
 
     // Since the parent process is not running we probably have waited long
     // enough so we can try to attach to child processes straight away.
+    // TODO: In the future, we might want to consider adding the option to wait
+    // for child processes, as they might be spawned only much later.
     pargs.timeout = 1;
 
     // Store the PID before it gets deleted by the update.
@@ -117,9 +127,17 @@ do_child_processes(py_proc_t * py_proc) {
     py_proc_list__update(list);
     py_proc_list__add_proc_children(list, ppid);
     if (py_proc_list__is_empty(list)) {
-      set_error(pargs.attach_pid == 0 ? EPROCFORK : EPROCATTACH);
+      set_error(EPROCNOCHILDREN);
       goto release;
     }
+  }
+  else {
+    py_proc__log_version(py_proc);
+  }
+
+  if (!py_proc_list__is_empty(list) && interrupt == FALSE) {
+    log_m("");
+    log_m("\033[1mChild processes\033[0m");
   }
 
   if (pargs.exposure == 0) {
@@ -163,7 +181,6 @@ int main(int argc, char ** argv) {
 
   logger_init();
   log_header();
-  log_version();
 
   if (exec_arg <= 0 && pargs.attach_pid == 0) {
     _msg(MCMDLINE);
@@ -233,18 +250,24 @@ int main(int argc, char ** argv) {
   signal(SIGTERM, signal_callback_handler);
 
   // Start sampling
-  if (pargs.children)
+  if (pargs.children) {
     do_child_processes(py_proc);
-  else
+  }
+  else {
     do_single_process(py_proc);
+  }
   // The above procedures take ownership of py_proc and are responsible for
   // destroying it. Hence once they return we need to invalidate it.
   py_proc = NULL;
+
+  if (error == EPROCNOCHILDREN)
+    goto finally;
 
   if (error == EPROCNPID)
     error = EOK;
 
   // Log sampling metrics
+  log_m("");
   stats_log_metrics();
 
 finally:
@@ -275,6 +298,9 @@ finally:
       break;
     case EPROC:
       _msg(MNOPYTHON);
+      break;
+    case EPROCNOCHILDREN:
+      _msg(MNOCHILDREN);
       break;
     case EMEMCOPY:
       // Ignore. At this point we expect remote memory reads to fail.

@@ -37,7 +37,10 @@
 #include "python.h"
 
 
-#define VERSION                         ((major << 16) | (minor << 8))
+#define PYVERSION(major, minor, patch)  ((major << 16) | (minor << 8) | patch)
+#define MAJOR(x)                        (x >> 16)
+#define MINOR(x)                        ((x >> 8) & 0xFF)
+#define PATCH(x)                        (x & 0xFF)
 
 
 /**

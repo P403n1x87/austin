@@ -27,12 +27,13 @@
 #define DEBUG
 #endif
 
+#include "austin.h"
 
 #define log_header() {                   \
-  log_m("              _   _      ");    \
-  log_m(" __ _ _  _ __| |_(_)_ _  ");    \
-  log_m("/ _` | || (_-<  _| | ' \\ ");   \
-  log_m("\\__,_|\\_,_/__/\\__|_|_||_|"); \
+  log_m("\033[1m              _   _      \033[0m");    \
+  log_m("\033[1m __ _ _  _ __| |_(_)_ _  \033[0m");    \
+  log_m("\033[1m/ _` | || (_-<  _| | ' \\ \033[0m");   \
+  log_m("\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m \033[36;1m%s\033[0m", VERSION); \
   log_i("====[ AUSTIN ]===="); \
 }
 #define log_footer() {}
@@ -87,10 +88,6 @@ log_t(const char *, ...);
 #else
 #define log_t(f, args...) {}
 #endif
-
-
-void
-log_version(void);
 
 
 /**

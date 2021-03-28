@@ -206,13 +206,11 @@ _py_proc__get_version(py_proc_t * self) {
     }
     #endif
 
-    log_m("🐍 Python version: %d.%d.? (from shared library)", major, minor);
-    return VERSION;
+    return PYVERSION(major, minor, patch) | 0xFF;
   }
 
 from_exe:
-  log_m("🐍 Python version: %d.%d.%d", major, minor, patch);
-  return VERSION;
+  return PYVERSION(major, minor, patch);
 
   // Scan the rodata section for something that looks like the Python version.
   // There are good chances this is at the very beginning of the section so
@@ -973,6 +971,18 @@ py_proc__sample(py_proc_t * self) {
   SUCCESS;
 } /* py_proc__sample */
 
+
+// ----------------------------------------------------------------------------
+void
+py_proc__log_version(py_proc_t * self) {
+  int major = MAJOR(self->version);
+  int minor = MINOR(self->version);
+  int patch = PATCH(self->version);
+  if (patch == 0xFF)
+    log_m("🐍 \033[1mPython\033[0m version: \033[33;1m%d.%d.?\033[0m (from shared library)", major, minor);
+  else
+    log_m("🐍 \033[1mPython\033[0m version: \033[33;1m%d.%d.%d\033[0m", major, minor, patch);
+}
 
 // ----------------------------------------------------------------------------
 void

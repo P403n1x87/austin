@@ -166,6 +166,7 @@ py_proc_list__add_proc_children(py_proc_list_t * self, pid_t ppid) {
       }
 
       _py_proc_list__add(self, child_proc);
+      py_proc__log_version(child_proc);
       py_proc_list__add_proc_children(self, pid);
     }
   }

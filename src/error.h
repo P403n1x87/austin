@@ -64,6 +64,7 @@
 #define EPROCATTACH           ((4 << 3) + 4)
 #define EPROCPERM             ((4 << 3) + 5)
 #define EPROCNPID             ((4 << 3) + 6)
+#define EPROCNOCHILDREN       ((4 << 3) + 7)
 
 
 typedef int error_t;

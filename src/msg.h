@@ -88,6 +88,10 @@ const char * MNOPYTHON = \
 "process is actually a child of the target process then use the -C option to\n"
 "discover it automatically";
 
+const char * MNOCHILDREN = \
+"🚼 It looks like you are trying to profile a process that is not a Python\n"
+"process, and that has not spawned any child Python processes. Make sure that\n"
+"you are targeting the right application";
 
 // ----------------------------------------------------------------------------
 static inline void

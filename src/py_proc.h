@@ -218,6 +218,13 @@ py_proc__sample(py_proc_t *);
  */
 #define py_proc__get_type(self, raddr, dt) (py_proc__memcpy(self, raddr, sizeof(dt), &dt))
 
+/**
+ * Log the Python interpreter version
+ * @param self  the process object
+ */
+void
+py_proc__log_version(py_proc_t *);
+
 
 /**
  * Terminate the process.

@@ -141,6 +141,8 @@ stats_log_metrics(void) {
     return;
   }
 
+  log_m("\033[1mStatistics\033[0m");
+
   log_m("🕑 Sampling time (min/avg/max) : %lu/%lu/%lu μs",
     stats_get_min_sampling_time(),
     stats_get_avg_sampling_time(),

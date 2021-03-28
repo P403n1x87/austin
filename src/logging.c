@@ -159,11 +159,6 @@ log_t(const char * fmt, ...) {
 #endif
 
 
-void log_version(void) {
-  log_m("🤓 %s version: %s", PROGRAM_NAME, VERSION);
-}
-
-
 void
 logger_close(void) {
   #ifdef PL_UNIX
