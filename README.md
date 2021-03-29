@@ -628,7 +628,7 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 </p>
 
 
-[`austin-python`]: https://github.com/P403n1x87
+[`austin-python`]: https://github.com/P403n1x87/austin-python
 [Austin TUI]: https://github.com/P403n1x87/austin-tui
 [Austin Web]: https://github.com/P403n1x87/austin-web
 [Chocolatey]: https://chocolatey.org/
