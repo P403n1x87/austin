@@ -36,7 +36,7 @@ function invoke_austin {
     run $AUSTIN -i 1ms -t 1s $PYTHON test/target34.py
 
     assert_success
-    assert_output "keep_cpu_busy (.*test/target34.py);L"
+    assert_output "keep_cpu_busy (.*test/target34.py:32)"
     assert_not_output "Unwanted"
 
   # -------------------------------------------------------------------------
@@ -45,7 +45,7 @@ function invoke_austin {
     run $AUSTIN -i 1000 -t 1000 -m $PYTHON test/target34.py
 
     assert_success
-    assert_output "keep_cpu_busy (.*test/target34.py);L"
+    assert_output "keep_cpu_busy (.*test/target34.py:32)"
 
   # -------------------------------------------------------------------------
   step "Output file"
@@ -54,8 +54,8 @@ function invoke_austin {
 
     assert_success
     assert_output "Unwanted"
-    assert_not_output "keep_cpu_busy (.*test/target34.py);L"
-    assert_file "/tmp/austin_out.txt" "keep_cpu_busy (.*test/target34.py);L"
+    assert_not_output "keep_cpu_busy (.*test/target34.py:32)"
+    assert_file "/tmp/austin_out.txt" "keep_cpu_busy (.*test/target34.py:32)"
 
 }
 

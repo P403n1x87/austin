@@ -318,27 +318,26 @@ depend on the mode.
 
 ## Normal Mode
 
-When no special switch are passed to Austin from the command line, the process
-identifier is omitted and `[frame]` has the structure
-
-~~~
-[frame] := <function> (<module>);L<line number>
-~~~
-
-The reason for not including the line number in the `([module])` part, as one
-might have expected, is that this way the flame graph will show the total time
-spent in each function, plus the finer detail of the time spent on each line. A
-drawback of this format is that frame stacks double in height. If you prefer
-something more conventional, you can use the `-a` option to switch to the
-alternative format in which `[frame]` has the structure
+In normal mode, the `[frame]` part of each emitted sample has the structure
 
 ~~~
 [frame] := <function> (<module>:<line number>)
 ~~~
 
+If you want the flame graph to show the total time spent in each function, plus
+the finer detail of the time spent on each line, you can use the alternative
+format by passing the `-a` option. In this mode, `[frame]` has the structure
+
+~~~
+[frame] := <function> (<module>:);L<line number>
+~~~
+
 Each line then ends with a single `[metric]`, i.e. the sampling time measured in
 microseconds.
 
+
+> **NOTE** This was changed in Austin 3. In previous version, the alternative
+> format used to be the default one.
 
 ## Memory and Full Metrics
 
