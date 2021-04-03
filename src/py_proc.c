@@ -28,7 +28,6 @@
 #include <windows.h>
 #else
 #include <signal.h>
-#include <sys/wait.h>
 #endif
 
 #include <errno.h>
