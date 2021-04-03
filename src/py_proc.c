@@ -571,14 +571,17 @@ _py_proc__run(py_proc_t * self, int try_once) {
     if (success(_py_proc__init(self)))
       break;
 
-    if (is_fatal(error))
+    if (is_fatal(austin_errno)) {
+      log_d("Terminatig _py_proc__run loop because of fatal error code %d", austin_errno);
       FAIL;
+    }
 
     log_d("Process is not ready");
 
     if (try_once)
       TIMER_STOP
   TIMER_END
+  log_d("_py_proc__init timer loop terminated");
 
   if (self->bin_path == NULL && self->lib_path == NULL) {
     if (try_once)
@@ -678,7 +681,7 @@ py_proc__attach(py_proc_t * self, pid_t pid, int child_process) {
   self->pid = pid;
 
   if (fail(_py_proc__run(self, child_process))) {
-    if (error == EPROCNPID) {
+    if (austin_errno == EPROCNPID) {
       set_error(EPROCATTACH);
     }
     else {
@@ -783,7 +786,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   log_d("New process created with PID %d", self->pid);
 
   if (fail(_py_proc__run(self, FALSE))) {
-    if (error == EPROCNPID)
+    if (austin_errno == EPROCNPID)
       set_error(EPROCFORK);
     log_ie("Cannot start new process");
     FAIL;

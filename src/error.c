@@ -88,7 +88,7 @@ const int _fatal_error_tab[MAXERROR] = {
   // generic error messages
   0,
   1,
-  1,
+  0,
   1,
   0,
   1,

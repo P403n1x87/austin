@@ -38,7 +38,7 @@ static ctime_t _sample_delta;
 static inline void
 timer_start(void) {
   _sample_timestamp = gettime();
-  error = EOK;
+  austin_errno = EOK;
 } /* timer_start */
 
 
@@ -49,7 +49,7 @@ timer_stop(void) {
   // Record stats
   stats_check_duration(_sample_delta, pargs.t_sampling_interval);
   stats_count_sample();
-  if (error != EOK)
+  if (austin_errno != EOK)
     stats_count_error();
 
   return _sample_delta;

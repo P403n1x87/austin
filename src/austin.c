@@ -230,7 +230,7 @@ int main(int argc, char ** argv) {
     }
   }
 
-  if (error == EPROCPERM)
+  if (austin_errno == EPROCPERM)
     goto finally;
 
   // Redirect output to STDOUT if not output file was given.
@@ -263,11 +263,11 @@ int main(int argc, char ** argv) {
   // destroying it. Hence once they return we need to invalidate it.
   py_proc = NULL;
 
-  if (error == EPROCNOCHILDREN)
+  if (austin_errno == EPROCNOCHILDREN)
     goto finally;
 
-  if (error == EPROCNPID)
-    error = EOK;
+  if (austin_errno == EPROCNPID)
+    austin_errno = EOK;
 
   // Log sampling metrics
   log_m("");
@@ -277,11 +277,11 @@ finally:
   py_thread_free_stack();
   py_proc__destroy(py_proc);
 
-  log_d("Last error: %d :: %s", error, get_last_error());
-  if (is_fatal(error)) {
-    retval = error;
+  log_d("Last error: %d :: %s", austin_errno, get_last_error());
+  if (is_fatal(austin_errno)) {
+    retval = austin_errno;
 
-    switch(error) {
+    switch(retval) {
     case EPROCISTIMEOUT:
       _msg(MTIMEOUT, pargs.attach_pid == 0 ? "run" : "attach to");
       break;

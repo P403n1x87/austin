@@ -71,9 +71,9 @@ typedef int error_t;
 
 
 #ifdef ERROR_C
-__thread error_t error;
+__thread error_t austin_errno;
 #else
-extern __thread error_t error;
+extern __thread error_t austin_errno;
 #endif // ERROR_C
 
 
@@ -93,7 +93,7 @@ error_get_msg(error_t);
  *
  * @return a pointer to the message as const char *.
  */
-#define get_last_error()                     error_get_msg(error)
+#define get_last_error()                     error_get_msg(austin_errno)
 
 
 /**
@@ -111,7 +111,7 @@ is_fatal(error_t);
  * Log the last error
  */
 #define log_error() { \
-  ( is_fatal(error) ? log_f(get_last_error()) : log_e(get_last_error()) ); \
+  ( is_fatal(austin_errno) ? log_f(get_last_error()) : log_e(get_last_error()) ); \
 }
 
 
@@ -121,7 +121,7 @@ is_fatal(error_t);
  * @param  error_t  the error to set and log.
  */
 #define set_error(x) { \
-  error = (x); \
+  austin_errno = (x); \
   log_error(); \
 }
 
