@@ -46,7 +46,7 @@ load "common"
 }
 
 @test "Test not Python" {
-  @skip "Unstable"
+  skip "Unstable"
   log "Test Austin with a non-Python command"
 
   run src/austin cat

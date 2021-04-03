@@ -429,25 +429,24 @@ _py_proc__get_maps(py_proc_t * self) {
 
     if (size > 0 && len && !self->sym_loaded) {
       path[len] = 0;
-      if (strstr(path, "ython")) {
-        bin_attr_t bin_attrs = _py_proc__analyze_macho(self, path, (void *) address, size);
-        if (bin_attrs & B_SYMBOLS && size < BINARY_MIN_SIZE) {
-          // We found the symbols in the binary but we are probably going to use the wrong base
-          // since the map is too small. So pretend we didin't find them.
-          self->sym_loaded = 0;
-        } else if (bin_attrs != 0) {
-          switch (BINARY_TYPE(bin_attrs)) {
-          case BT_EXEC:
-            if (self->bin_path == NULL) {
-              self->bin_path = strndup(path, path_len);
-              log_d("Candidate binary: %s", self->bin_path);
-            }
-            break;
-          case BT_LIB:
-            if (self->lib_path == NULL && size > BINARY_MIN_SIZE) {
-              self->lib_path = strndup(path, path_len);
-              log_d("Candidate library: %s", self->lib_path);
-            }
+
+      bin_attr_t bin_attrs = _py_proc__analyze_macho(self, path, (void *) address, size);
+      if (bin_attrs & B_SYMBOLS && size < BINARY_MIN_SIZE) {
+        // We found the symbols in the binary but we are probably going to use the wrong base
+        // since the map is too small. So pretend we didin't find them.
+        self->sym_loaded = 0;
+      } else if (bin_attrs != 0) {
+        switch (BINARY_TYPE(bin_attrs)) {
+        case BT_EXEC:
+          if (self->bin_path == NULL) {
+            self->bin_path = strndup(path, path_len);
+            log_d("Candidate binary: %s", self->bin_path);
+          }
+          break;
+        case BT_LIB:
+          if (self->lib_path == NULL && size > BINARY_MIN_SIZE) {
+            self->lib_path = strndup(path, path_len);
+            log_d("Candidate library: %s", self->lib_path);
           }
         }
       }
