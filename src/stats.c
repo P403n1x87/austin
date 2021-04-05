@@ -58,11 +58,13 @@ ctime_t _avg_sampling_time;
 ustat_t _error_cnt;
 ustat_t _long_cnt;
 
-#if defined PL_WIN
+#if defined PL_MACOS
+static clock_serv_t cclock;
+#elif defined PL_WIN
 // On Windows we have to use the QueryPerformance APIs in order to get the
 // right time resolution. We use this variable to cache the inverse frequency
 // (counts per second), that is the period of each count, in units of μs.
-static double _period;
+static ctime_t _period;
 #endif
 
 
@@ -71,20 +73,11 @@ static double _period;
 ctime_t
 gettime(void) {
   #if defined PL_UNIX                                                 /* UNIX */
-  struct timespec ts;
-
   #ifdef PL_MACOS
-  clock_serv_t cclock;
-  mach_timespec_t mts;
-
-  host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
-  clock_get_time(cclock, &mts);
-  mach_port_deallocate(mach_task_self(), cclock);
-
-  ts.tv_sec = mts.tv_sec;
-  ts.tv_nsec = mts.tv_nsec;
-
+  mach_timespec_t ts;  
+  clock_get_time(cclock, &ts);
   #else
+  struct timespec ts;
   clock_gettime(CLOCK_BOOTTIME, &ts);
   #endif
 
@@ -93,8 +86,7 @@ gettime(void) {
   #else                                                                /* WIN */
   LARGE_INTEGER count;
   QueryPerformanceCounter(&count);
-
-  return count.QuadPart * _period;
+  return count.QuadPart * 1000000 / _period;
   #endif
 }
 
@@ -108,10 +100,14 @@ stats_reset(void) {
   _max_sampling_time = 0;
   _avg_sampling_time = 0;
 
-  #if defined PL_WIN
+  #if defined PL_MACOS
+  host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+  #elif defined PL_WIN
   LARGE_INTEGER freq;
-  QueryPerformanceFrequency(&freq);
-  _period = ((double) 1e6) / ((double) freq.QuadPart);
+  if (QueryPerformanceFrequency(&freq) == 0) {
+    log_e("Failed to get frequency count");
+  }
+  _period = freq.QuadPart;
   #endif
 }
 
@@ -136,6 +132,10 @@ stats_get_avg_sampling_time(void) {
 
 void
 stats_log_metrics(void) {
+  #if defined PL_MACOS
+  mach_port_deallocate(mach_task_self(), cclock);
+  #endif
+  
   if (!_sample_cnt) {
     log_m("😣 No samples collected.");
     return;
