@@ -28,6 +28,7 @@
 #include <windows.h>
 #else
 #include <signal.h>
+#include <sys/mman.h>
 #endif
 
 #include <errno.h>
@@ -159,6 +160,65 @@ _get_version_from_executable(char * binary, int * major, int * minor, int * patc
   return (*major << 16) | (*minor << 8) | *patch;
 }
 
+#if defined PL_MACOS
+static int
+_find_version_in_binary(char * path) {
+  log_d("Finding version in binary %s", path);
+
+  int fd = open (path, O_RDONLY);
+  if (fd == -1) {
+    log_e("Cannot open binary file %s", path);
+    FAIL;
+  }
+
+  void        * binary_map  = MAP_FAILED;
+  size_t        binary_size = 0;
+  struct stat   s;
+
+  with_resources;
+
+  if (fstat(fd, &s) == -1) {
+    log_ie("Cannot determine size of binary file");
+    NOK;
+  }
+
+  binary_size = s.st_size;
+
+  binary_map = mmap(0, binary_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  if (binary_map == MAP_FAILED) {
+    log_ie("Cannot map binary file to memory");
+    NOK;
+  }
+
+  for (char m = '3'; m >= '2'; --m) {
+    char     needle[3]    = {0x00, m, '.'};
+    size_t   current_size = binary_size;
+    char   * current_pos  = binary_map;
+    int      major, minor, patch;
+    major = 0;
+    retval = NOVERSION;
+    while (TRUE) {
+      char * p = memmem(current_pos, current_size, needle, sizeof(needle)); 
+      if (!isvalid(p)) break;
+      if (sscanf(++p, "%d.%d.%d", &major, &minor, &patch) == 3) break;
+      current_size -= p - current_pos + sizeof(needle);
+      current_pos = p + sizeof(needle);
+    }
+
+    if (major > 0) {
+      retval = PYVERSION(major, minor, patch);
+      break;
+    }
+  }
+
+release:
+  if (binary_map != MAP_FAILED) munmap(binary_map, binary_size);
+  if (fd != -1) close(fd);
+
+  released;
+}
+#endif
+
 
 static int
 _py_proc__get_version(py_proc_t * self) {
@@ -182,14 +242,12 @@ _py_proc__get_version(py_proc_t * self) {
   &&(_get_version_from_executable(self->bin_path, &major, &minor, &patch) != NOVERSION)
   ) goto from_exe;
 
-  if (self->lib_path != NULL) {
-
+  if (isvalid(self->lib_path)) {
     #if defined PL_LINUX                                             /* LINUX */
     if (sscanf(
         strstr(self->lib_path, "python"), "python%d.%d", &major, &minor
-    ) != 2) {
-      set_error(ENOVERSION);
-      return NOVERSION;
+    ) == 2) {
+      return PYVERSION(major, minor, patch) | 0xFF;
     }
 
     #elif defined PL_WIN                                               /* WIN */
@@ -201,14 +259,31 @@ _py_proc__get_version(py_proc_t * self) {
     #elif defined PL_MACOS                                             /* MAC */
     char * ver_needle = strstr(self->lib_path, "/3.");
     if (ver_needle == NULL) ver_needle = strstr(self->lib_path, "/2.");
-    if (ver_needle == NULL || sscanf(ver_needle, "/%d.%d", &major, &minor) != 2) {
-      set_error(ENOVERSION);
-      return NOVERSION;
+    if (ver_needle == NULL || sscanf(ver_needle, "/%d.%d", &major, &minor) == 2) {
+      return PYVERSION(major, minor, patch) | 0xFF;
+    }
+
+    // Still no version detected so we look into the binary content
+    int version = NOVERSION;
+    if (isvalid(self->lib_path) && (version = _find_version_in_binary(self->lib_path))) {
+      return version;
     }
     #endif
-
-    return PYVERSION(major, minor, patch) | 0xFF;
   }
+
+  #if defined PL_MACOS
+  if (major == 0) {
+    // We still haven't found a Python version so we look at the binary
+    // content for clues
+    int version = NOVERSION;
+    if (isvalid(self->bin_path) && (version = _find_version_in_binary(self->bin_path))) {
+      return version;
+    }
+  }
+  #endif
+
+  set_error(ENOVERSION);
+  return NOVERSION;
 
 from_exe:
   return PYVERSION(major, minor, patch);

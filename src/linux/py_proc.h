@@ -286,7 +286,6 @@ _py_proc__analyze_elf(py_proc_t * self, char * path) {
 
   binary_size = s.st_size;
 
-   /* Memory-map the file. */
   binary_map = mmap(0, binary_size, PROT_READ, MAP_PRIVATE, fd, 0);
   if (binary_map == MAP_FAILED) {
     log_ie("Cannot map binary file to memory");
