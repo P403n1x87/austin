@@ -1,4 +1,12 @@
 language: c
+python:
+  - 2.7
+  - 3.3
+  - 3.4
+  - 3.5
+  - 3.6
+  - 3.8
+  - 3.9
 
 compiler:
   - gcc
@@ -42,9 +50,7 @@ before_script:
 
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]];
     then
-      brew install python@3.8 || true;
-      brew install python@3.9 || true;
-      brew install bats-core;
+      git clone --depth=1 https://github.com/bats-core/bats-core.git;
     fi
     # brew install --HEAD valgrind       || true;
 
@@ -82,7 +88,7 @@ script:
   - if [[ "$TRAVIS_OS_NAME" == "osx"     ]];
     then
       gcc -Wall -O3 -Os -o src/austin src/*.c &&
-      sudo bats test/macos/test.bats;
+      sudo bats-core/bin/bats test/macos/test.bats;
 
       test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log;
     fi
