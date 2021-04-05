@@ -113,6 +113,9 @@ static long _dynsym_hash_array[DYNSYM_COUNT] = {0};
 #ifdef DEREF_SYM
 static int
 _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
+  if (!(isvalid(self) && isvalid(name) && isvalid(value)))
+    return 0;
+
   for (register int i = 0; i < DYNSYM_COUNT; i++) {
     if (
       string_hash(name) == _dynsym_hash_array[i]
@@ -314,6 +317,7 @@ _py_proc__is_raddr_within_max_range(py_proc_t * self, void * raddr) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__scan_heap(py_proc_t * self) {
+  log_d("Scanning HEAP");
   // NOTE: This seems to be required by Python 2.7 on i386 Linux.
   void * upper_bound = self->map.heap.base + self->map.heap.size;
   for (

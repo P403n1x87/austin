@@ -146,12 +146,13 @@ _py_proc__get_modules(py_proc_t * self) {
       log_d("Candidate binary: %s (size %d KB)", module.szModule, module.modBaseSize >> 10);
       self->bin_path = strdup(module.szExePath);
     }
-    if (!self->sym_loaded && strstr(module.szModule, ".dll")) {
-      log_d("Candidate library: %s (size %d KB)", module.szModule, module.modBaseSize >> 10);
+    if (!self->sym_loaded && strstr(module.szModule, ".dll") && module.modBaseSize > (1 << 20)) {
       self->map.bss.base = module.modBaseAddr;  // WARNING: Not the BSS base yet!
-      sfree(self->lib_path);
-      self->lib_path = strdup(module.szExePath);
-      _py_proc__analyze_pe(self, module.szExePath);
+      if (success(_py_proc__analyze_pe(self, module.szExePath))) {
+        log_d("Candidate library: %s (size %d KB)", module.szModule, module.modBaseSize >> 10);
+        sfree(self->lib_path);
+        self->lib_path = strdup(module.szExePath);
+      }
     }
 
     if (self->bin_path != NULL && self->lib_path != NULL && self->sym_loaded)
