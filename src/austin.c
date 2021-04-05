@@ -305,6 +305,9 @@ finally:
     case EPROCNOCHILDREN:
       _msg(MNOCHILDREN);
       break;
+    case ENOVERSION:
+      _msg(MNOVERSION);
+      break;
     case EMEMCOPY:
       // Ignore. At this point we expect remote memory reads to fail.
       retval = EOK;

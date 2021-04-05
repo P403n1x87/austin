@@ -153,8 +153,7 @@ _get_version_from_executable(char * binary, int * major, int * minor, int * patc
   }
 
   _pclose(fp);
-
-  return (*major << 16) | (*minor << 8);
+  return (*major << 16) | (*minor << 8) | *patch;
 }
 
 
@@ -171,16 +170,16 @@ _py_proc__get_version(py_proc_t * self) {
   #if defined PL_UNIX
   if (
     isvalid(self->lib_path)
-  &&_get_version_from_executable(self->lib_path, &major, &minor, &patch) != NOVERSION
+  &&(_get_version_from_executable(self->lib_path, &major, &minor, &patch) != NOVERSION)
   ) goto from_exe;
   #endif
 
   if (
     isvalid(self->bin_path)
-  &&_get_version_from_executable(self->bin_path, &major, &minor, &patch) != NOVERSION
+  &&(_get_version_from_executable(self->bin_path, &major, &minor, &patch) != NOVERSION)
   ) goto from_exe;
 
-  if (self->bin_path == NULL && self->lib_path != NULL) {
+  if (self->lib_path != NULL) {
 
     #if defined PL_LINUX                                             /* LINUX */
     if (sscanf(
@@ -617,8 +616,10 @@ _py_proc__run(py_proc_t * self, int try_once) {
 
   // Determine and set version
   if (!self->version) {
-    if (!(self->version = _py_proc__get_version(self)))
+    if (!(self->version = _py_proc__get_version(self))) {
+      set_error(ENOVERSION);
       FAIL;
+    }
 
     set_version(self->version);
   }
