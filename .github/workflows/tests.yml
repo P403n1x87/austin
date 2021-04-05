@@ -34,8 +34,8 @@ jobs:
 
       - name: Show test logs
         run: |
-          test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log
-          test -f ./test-suite.log && cat ./test-suite.log
+          test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log || true
+          test -f ./test-suite.log && cat ./test-suite.log || true
         if: always() && startsWith(matrix.os, 'ubuntu')
 
       # ---- MACOS ----
@@ -69,23 +69,16 @@ jobs:
           src\austin.exe --usage
         if: startsWith(matrix.os, 'windows')
 
-      # - name: Install test dependencies on Windows
-      #   run: |
-      #     choco install -y python --version=3.6
-      #     choco install -y python --version=3.7
-      #     choco install -y python --version=3.8
-      #     choco install -y python --version=3.9
-      #   if: "startsWith(matrix.os, 'windows')"
+      - name: Install test dependencies on Windows
+        run: |
+          git clone --depth=1 https://github.com/bats-core/bats-core.git
+        if: "startsWith(matrix.os, 'windows')"
 
-      # - name: Run tests on Windows
-      #   run: |
-      #     refreshenv
-      #     src\austin.exe -Ci 100ms py -3.6 test\target34.py
-      #     src\austin.exe -Ci 100ms py -3.7 test\target34.py
-      #     src\austin.exe -Ci 100ms py -3.8 test\target34.py
-      #     src\austin.exe -ci 100ms py -3.9 test\target34.py
-      #   if: startsWith(matrix.os, 'windows')
-      #
-      # - name: Show austin logs
-      #   run: Get-Content -Path $env:TEMP\austin.log
-      #   if: always() && startsWith(matrix.os, 'windows')
+      - name: Run tests on Windows
+        run: |
+          bats-core/bin/bats test/win/test.bats
+        if: startsWith(matrix.os, 'windows')
+      
+      - name: Show austin logs
+        run: test -f /tmp/austin.log && cat /tmp/austin.log || true
+        if: always() && startsWith(matrix.os, 'windows')
