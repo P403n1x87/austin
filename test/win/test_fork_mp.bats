@@ -39,7 +39,7 @@ function invoke_austin {
     n_procs=$( echo "$output" | sed -r 's/P([0-9]+);.+/\1/' | sort | uniq | wc -l )
     assert "At least 3 parallel processes" "$n_procs -ge $expected"
 
-    assert_output "do (.*test[\\]target_mp.py:[[:digit:]]*);fact (.*test[\\]target_mp.py:"
+    assert_output ".*test[\\]target_mp.py:do:[[:digit:]]*;.*test[\\]target_mp.py:fact:"
 }
 
 

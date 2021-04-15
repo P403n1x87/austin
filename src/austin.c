@@ -243,9 +243,16 @@ int main(int argc, char ** argv) {
 
   if (pargs.full) {
     if (pargs.memory)
-      log_w("Requested full metrics. The memory switch is redundant");
+      log_w("The memory switch is redundant in full mode");
+    if (pargs.sleepless)
+      log_w("The sleepless switch is reduntant in full mode");
     log_i("Producing full set of metrics (time +mem -mem)");
-    pargs.memory = 1;
+    pargs.memory = TRUE;
+  }
+  else if (pargs.memory) {
+    if (pargs.sleepless)
+      log_w("The sleepless switch is incompatible with memory mode.");
+    pargs.sleepless = FALSE;
   }
 
   // Register signal handler for Ctrl+C and terminate signals.

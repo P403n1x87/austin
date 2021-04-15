@@ -413,12 +413,14 @@ py_thread__next(py_thread_t * self) {
 // ----------------------------------------------------------------------------
 #if defined PL_WIN
   #define SAMPLE_HEAD "P%I64d;T%I64x"
-  #define MEM_METRIC " %I64d"
+  #define MEM_METRIC "%I64d"
 #else
   #define SAMPLE_HEAD "P%d;T%ld"
-  #define MEM_METRIC " %ld"
+  #define MEM_METRIC "%ld"
 #endif
-#define TIME_METRIC " %lu"
+#define TIME_METRIC "%lu"
+#define IDLE_METRIC "%d"
+#define METRIC_SEP  ","
 
 void
 py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t mem_delta) {
@@ -429,7 +431,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     return;
   #endif
 
-  if (!pargs.full && pargs.memory && mem_delta <= 0)
+  if (!pargs.full && pargs.memory && mem_delta == 0)
     return;
 
   if (self->invalid)
@@ -439,13 +441,13 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     // Skip if thread has no frames and we want to exclude empty threads
     return;
 
-  if (mem_delta == 0) {
-    if (time_delta == 0)
-      // Skip immaterial samples
-      return;
+  if (mem_delta == 0 && time_delta == 0)
+    return;
 
-    if (pargs.sleepless && _py_thread__is_idle(self))
-      // Only skip idle samples if no memory delta
+  int is_idle = FALSE;
+  if (pargs.full || pargs.sleepless) {
+    is_idle = _py_thread__is_idle(self);
+    if (!pargs.full && is_idle && pargs.sleepless)
       return;
   }
 
@@ -457,23 +459,23 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
 
     // Append frames
     register int i = self->stack_height;
-    while(i > 0) {
+    while (i > 0) {
       py_code_t code = _stack[--i].code;
-      fprintf(pargs.output_file, pargs.format, code.scope, code.filename, code.lineno);
+      fprintf(pargs.output_file, pargs.format, code.filename, code.scope, code.lineno);
     }
   }
 
   // Finish off sample with the metric(s)
   if (pargs.full) {
-    fprintf(pargs.output_file, TIME_METRIC MEM_METRIC MEM_METRIC "\n",
-      time_delta, mem_delta >= 0 ? mem_delta : 0, mem_delta < 0 ? mem_delta : 0
+    fprintf(pargs.output_file, " " TIME_METRIC METRIC_SEP IDLE_METRIC METRIC_SEP MEM_METRIC "\n",
+      time_delta, !!is_idle, mem_delta
     );
   }
   else {
     if (pargs.memory)
-      fprintf(pargs.output_file, MEM_METRIC "\n", mem_delta);
+      fprintf(pargs.output_file, " " MEM_METRIC "\n", mem_delta);
     else
-      fprintf(pargs.output_file, TIME_METRIC "\n", time_delta);
+      fprintf(pargs.output_file, " " TIME_METRIC "\n", time_delta);
   }
 }
 

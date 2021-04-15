@@ -36,7 +36,7 @@ function invoke_austin {
     run sudo $AUSTIN -si 10ms -t 1s $python_bin test/sleepy.py
 
     assert_success
-    assert_output "cpu_bound (.*test/sleepy.py:"
+    assert_output ".*test/sleepy.py:cpu_bound:"
     assert_not_output ":35)"
 }
 

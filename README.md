@@ -321,7 +321,7 @@ depend on the mode.
 In normal mode, the `[frame]` part of each emitted sample has the structure
 
 ~~~
-[frame] := <function> (<module>:<line number>)
+[frame] := <module>:<function>:<line number>
 ~~~
 
 If you want the flame graph to show the total time spent in each function, plus
@@ -329,7 +329,7 @@ the finer detail of the time spent on each line, you can use the alternative
 format by passing the `-a` option. In this mode, `[frame]` has the structure
 
 ~~~
-[frame] := <function> (<module>:);L<line number>
+[frame] := <module>:<function>;L<line number>
 ~~~
 
 Each line then ends with a single `[metric]`, i.e. the sampling time measured in
@@ -343,9 +343,11 @@ microseconds.
 
 When profiling in memory mode with the `-m` or `--memory` switch, the metric
 value at the end of each line is the memory delta between samples, measured in
-bytes. In full mode (`-f` or `--full` switches), each samples ends with three
-values: the time delta, any positive memory delta (memory allocations) or zero
-and any negative memory delta (memory releases) or zero.
+bytes. In full mode (`-f` or `--full` switches), each sample ends with a
+comma-separated list of three values: the time delta, the idle state (1 for
+idle, 0 otherwise) and the RSS memory delta (positive for memory allocations,
+negative for deallocations). This way it is possible to estimate wall-clock
+time, CPU time and memory pressure, all from a single run.
 
 > **NOTE** The reported memory allocations and deallocations are obtained by
 > computing resident memory deltas between samples. Hence these values give an
