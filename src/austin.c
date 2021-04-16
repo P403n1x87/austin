@@ -65,6 +65,8 @@ do_single_process(py_proc_t * py_proc) {
   log_m("");
   py_proc__log_version(py_proc);
 
+  log_meta_header();
+
   if (pargs.exposure == 0) {
     while(interrupt == FALSE) {
       timer_start();
@@ -142,6 +144,8 @@ do_child_processes(py_proc_t * py_proc) {
     log_m("");
     log_m("\033[1mChild processes\033[0m");
   }
+
+  log_meta_header();
 
   if (pargs.exposure == 0) {
     while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
@@ -259,6 +263,8 @@ int main(int argc, char ** argv) {
   signal(SIGINT,  signal_callback_handler);
   signal(SIGTERM, signal_callback_handler);
 
+  stats_start();
+
   // Start sampling
   if (pargs.children) {
     do_child_processes(py_proc);
@@ -269,6 +275,8 @@ int main(int argc, char ** argv) {
   // The above procedures take ownership of py_proc and are responsible for
   // destroying it. Hence once they return we need to invalidate it.
   py_proc = NULL;
+
+  meta("duration: %lu", stats_duration());
 
   if (austin_errno == EPROCNOCHILDREN)
     goto finally;

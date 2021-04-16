@@ -112,4 +112,18 @@ stats_get_avg_sampling_time(void);
 void
 stats_log_metrics(void);
 
+
+/**
+ * Set the start time.
+ */
+void
+stats_start(void);
+
+
+/**
+ * Return the current sampling duration.
+ */
+ctime_t
+stats_duration(void);
+
 #endif

@@ -28,16 +28,17 @@ function invoke_austin {
 
   check_python $version
 
-  log "Fork [Python $version]"
+  log "Sleepless [Python $version]"
 
   # -------------------------------------------------------------------------
   step "Sleepless test"
   # -------------------------------------------------------------------------
-    run $AUSTIN -i 1ms -t 1s $PYTHON test/target34.py
+    run $AUSTIN -si 100ms -t 1s $PYTHON test/target34.py
 
     assert_success
+    assert_output "# mode: cpu"
     assert_output "test/target34.py:keep_cpu_busy:32"
-    assert_not_output ";L35"
+    assert_not_output ":35"
 
 }
 

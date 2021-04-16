@@ -36,6 +36,7 @@ function invoke_austin {
     run sudo $AUSTIN -i 1000 -t 10000 $python_bin test/target34.py
 
     assert_success
+    assert_output "# austin: [[:digit:]]*.[[:digit:]]*.[[:digit:]]*"
     assert_output ".*test/target34.py:keep_cpu_busy:32"
     assert_not_output "Unwanted"
 

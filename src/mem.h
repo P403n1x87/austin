@@ -26,10 +26,12 @@
 
 #include <sys/types.h>
 
+#include "hints.h"
 #include "platform.h"
 
 #if defined PL_LINUX
   #include <sys/uio.h>
+  #include <unistd.h>
   ssize_t process_vm_readv(
     pid_t, const struct iovec *, unsigned long liovcnt,
     const struct iovec *remote_iov, unsigned long riovcnt, unsigned long flags
@@ -37,11 +39,14 @@
 
 #elif defined(PL_WIN)
   #include <windows.h>
+  extern BOOL GetPhysicallyInstalledSystemMemory(PULONGLONG);
 
 #elif defined(PL_MACOS)
   #include <mach/mach.h>
   #include <mach/mach_vm.h>
   #include <mach/machine/kern_return.h>
+  #include <sys/types.h>
+  #include <sys/sysctl.h>
 
 #endif
 
@@ -161,6 +166,30 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
   #endif
 
   return result != len;
+}
+
+/**
+ * Return the total physical memory installed on the system, in KB.
+ * @return  the total physical memory installed on the system, in KB.
+ */
+static inline size_t
+get_total_memory(void) {
+  #if defined PL_LINUX                                               /* LINUX */
+  size_t pagesize = getpagesize() >> 10;
+  return sysconf (_SC_PHYS_PAGES) * pagesize;
+
+  #elif defined PL_MACOS                                               /* MAC */
+  int mib [] = { CTL_HW, HW_PHYSMEM };
+  int64_t size;
+  size_t length = sizeof(size);
+
+  return success(sysctl(mib, 2, &size, &length, NULL, 0)) ? size >> 10 : 0;
+
+  #elif defined PL_WIN                                                 /* WIN */
+  ULONGLONG size;
+  return GetPhysicallyInstalledSystemMemory(&size) == TRUE ? size : 0;
+
+  #endif
 }
 
 #endif // MEM_H

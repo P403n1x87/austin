@@ -28,7 +28,7 @@ function invoke_austin {
 
   if ! $python_bin -V; then skip "$python_bin not found."; fi
 
-    log "Fork [Python $python_bin]"
+    log "Sleepless [Python $python_bin]"
 
   # -------------------------------------------------------------------------
   step "Sleepless test"

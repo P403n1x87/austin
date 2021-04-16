@@ -55,6 +55,8 @@ ctime_t _min_sampling_time;
 ctime_t _max_sampling_time;
 ctime_t _avg_sampling_time;
 
+ctime_t _start_time;
+
 ustat_t _error_cnt;
 ustat_t _long_cnt;
 
@@ -74,7 +76,7 @@ ctime_t
 gettime(void) {
   #if defined PL_UNIX                                                 /* UNIX */
   #ifdef PL_MACOS
-  mach_timespec_t ts;  
+  mach_timespec_t ts;
   clock_get_time(cclock, &ts);
   #else
   struct timespec ts;
@@ -131,11 +133,23 @@ stats_get_avg_sampling_time(void) {
 
 
 void
+stats_start(void) {
+  _start_time = gettime();
+}
+
+
+ctime_t
+stats_duration(void) {
+  return gettime() - _start_time;
+}
+
+
+void
 stats_log_metrics(void) {
   #if defined PL_MACOS
   mach_port_deallocate(mach_task_self(), cclock);
   #endif
-  
+
   if (!_sample_cnt) {
     log_m("😣 No samples collected.");
     return;
@@ -143,19 +157,21 @@ stats_log_metrics(void) {
 
   log_m("\033[1mStatistics\033[0m");
 
-  log_m("🕑 Sampling time (min/avg/max) : %lu/%lu/%lu μs",
+  log_m("⌛ Sampling duration : \033[1m%.2f s\033[0m", stats_duration() / 1000000.);
+
+  log_m("⏱️  Frame sampling (min/avg/max) : \033[1m%lu/%lu/%lu μs\033[0m",
     stats_get_min_sampling_time(),
     stats_get_avg_sampling_time(),
     stats_get_max_sampling_time()
   );
 
-  log_m("🐢 Long sampling rate : %d/%d (%.2f %%) samples took longer than the sampling interval", \
+  log_m("🐢 Long sampling rate : \033[1m%d/%d\033[0m (\033[1m%.2f %%\033[0m) samples took longer than the sampling interval to collect", \
     _long_cnt,                                           \
     _sample_cnt,                                         \
     (float) _long_cnt / _sample_cnt * 100                \
   );
 
-  log_m("💀 Error rate : %d/%d (%.2f %%) invalid samples",   \
+  log_m("💀 Error rate : \033[1m%d/%d\033[0m (\033[1m%.2f %%\033[0m) invalid samples",   \
     _error_cnt,                                          \
     _sample_cnt,                                         \
     (float) _error_cnt / _sample_cnt * 100               \

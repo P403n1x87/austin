@@ -27,7 +27,16 @@
 #define DEBUG
 #endif
 
+#include "argparse.h"
 #include "austin.h"
+
+
+#define META "# "
+
+#define meta(...)                          \
+  fprintf(pargs.output_file, META);        \
+  fprintf(pargs.output_file, __VA_ARGS__); \
+  fputc('\n', pargs.output_file);
 
 #define log_header() {                   \
   log_m("\033[1m              _   _      \033[0m");    \
@@ -97,5 +106,9 @@ log_t(const char *, ...);
  */
 void
 logger_close(void);
+
+
+void
+log_meta_header(void);
 
 #endif // LOGGING_H

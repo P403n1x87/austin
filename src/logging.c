@@ -22,6 +22,7 @@
 
 #define _DEFAULT_SOURCE
 
+#include "mem.h"
 #include "platform.h"
 
 #include <stdarg.h>
@@ -168,4 +169,24 @@ logger_close(void) {
   if (logfile != NULL)
     fclose(logfile);
   #endif
+}
+
+#if defined PL_WIN
+#define MEM_VALUE "%I64d"
+#else
+#define MEM_VALUE "%lu"
+#endif
+
+void
+log_meta_header(void) {
+  meta("austin: " VERSION);
+  meta("interval: %lu", pargs.t_sampling_interval);
+  // meta("command line: %s", pargs.full)
+  if (pargs.full)           { meta("mode: full"); }
+  else if (pargs.memory)    { meta("mode: memory"); }
+  else if (pargs.sleepless) { meta("mode: cpu"); }
+  else                      { meta("mode: wall"); }
+
+  if (pargs.memory || pargs.full) { meta("memory: " MEM_VALUE, get_total_memory()); }
+  if (pargs.children) { meta("multiprocess: on"); }
 }
