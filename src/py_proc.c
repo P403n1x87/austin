@@ -198,7 +198,7 @@ _find_version_in_binary(char * path) {
     major = 0;
     retval = NOVERSION;
     while (TRUE) {
-      char * p = memmem(current_pos, current_size, needle, sizeof(needle)); 
+      char * p = memmem(current_pos, current_size, needle, sizeof(needle));
       if (!isvalid(p)) break;
       if (sscanf(++p, "%d.%d.%d", &major, &minor, &patch) == 3) break;
       current_size -= p - current_pos + sizeof(needle);
@@ -497,6 +497,30 @@ _py_proc__deref_interp_head(py_proc_t * self) {
 
 
 // ----------------------------------------------------------------------------
+static inline void *
+_py_proc__get_current_thread_state_raddr(py_proc_t * self) {
+  void * p_tstate_current;
+
+  if (self->py_runtime_raddr != NULL) {
+    if (self->tstate_current_offset == 0 || py_proc__get_type(
+      self,
+      self->py_runtime_raddr + self->tstate_current_offset,
+      p_tstate_current
+    )) return (void *) -1;
+  }
+
+  else if (self->tstate_curr_raddr != NULL) {
+    if (py_proc__get_type(self, self->tstate_curr_raddr, p_tstate_current))
+      return (void *) -1;
+  }
+
+  else return (void *) -1;
+
+  return p_tstate_current;
+}
+
+
+// ----------------------------------------------------------------------------
 static int
 _py_proc__find_interpreter_state(py_proc_t * self) {
   PyThreadState   tstate_current;
@@ -506,7 +530,7 @@ _py_proc__find_interpreter_state(py_proc_t * self) {
   if (_py_proc__deref_interp_head(self)) {
     log_d("Cannot dereference PyInterpreterState head from symbols");
     // If that fails try to get the current thread state (can be NULL during idle)
-    tstate_current_raddr = py_proc__get_current_thread_state_raddr(self);
+    tstate_current_raddr = _py_proc__get_current_thread_state_raddr(self);
     if (tstate_current_raddr == NULL || tstate_current_raddr == (void *) -1)
       // Idle or unable to dereference
       FAIL;
@@ -895,41 +919,10 @@ py_proc__wait(py_proc_t * self) {
 
 
 // ----------------------------------------------------------------------------
-void *
-py_proc__get_istate_raddr(py_proc_t * self) {
-  return self->is_raddr;
-}
-
-
-// ----------------------------------------------------------------------------
-void *
-py_proc__get_current_thread_state_raddr(py_proc_t * self) {
-  void * p_tstate_current;
-
-  if (self->py_runtime_raddr != NULL) {
-    if (self->tstate_current_offset == 0 || py_proc__get_type(
-      self,
-      self->py_runtime_raddr + self->tstate_current_offset,
-      p_tstate_current
-    )) return (void *) -1;
-  }
-
-  else if (self->tstate_curr_raddr != NULL) {
-    if (py_proc__get_type(self, self->tstate_curr_raddr, p_tstate_current))
-      return (void *) -1;
-  }
-
-  else return (void *) -1;
-
-  return p_tstate_current;
-}
-
-
-// ----------------------------------------------------------------------------
 #define PYRUNTIMESTATE_SIZE 2048  // We expect _PyRuntimeState to be < 2K.
 
-int
-py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
+static inline int
+_py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
   if (self->py_runtime_raddr == NULL)
     FAIL;
 
@@ -993,8 +986,8 @@ py_proc__is_python(py_proc_t * self) {
 
 
 // ----------------------------------------------------------------------------
-ssize_t
-py_proc__get_memory_delta(py_proc_t * self) {
+static inline ssize_t
+_py_proc__get_memory_delta(py_proc_t * self) {
   ssize_t current_memory = _py_proc__get_resident_memory(self);
   ssize_t delta = current_memory - self->last_resident_memory;
   self->last_resident_memory = current_memory;
@@ -1022,20 +1015,20 @@ py_proc__sample(py_proc_t * self) {
 
     if (pargs.memory) {
       // Use the current thread to determine which thread is manipulating memory
-      current_thread = py_proc__get_current_thread_state_raddr(self);
+      current_thread = _py_proc__get_current_thread_state_raddr(self);
     }
 
     do {
       if (pargs.memory) {
         mem_delta = 0;
         if (self->py_runtime_raddr != NULL && current_thread == (void *) -1) {
-          if (py_proc__find_current_thread_offset(self, py_thread.raddr.addr))
+          if (_py_proc__find_current_thread_offset(self, py_thread.raddr.addr))
             continue;
           else
-            current_thread = py_proc__get_current_thread_state_raddr(self);
+            current_thread = _py_proc__get_current_thread_state_raddr(self);
         }
         if (py_thread.raddr.addr == current_thread) {
-          mem_delta = py_proc__get_memory_delta(self);
+          mem_delta = _py_proc__get_memory_delta(self);
           log_t("Thread %lx holds the GIL", py_thread.tid);
         }
       }
