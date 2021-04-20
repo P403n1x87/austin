@@ -65,7 +65,10 @@ const char * MFORK =
 "❌ Cannot launch the given command. Either it is not valid or the process\n"
 "terminated too quickly";
 #else
-"❌ Cannot launch the given command. Please make sure it is correct";
+"❌ Cannot launch the given command. Please make sure it is correct. If you\n"
+"think it is, then try passing an output file via the -o/--output option.\n"
+"Sometimes, the Python wrapper launch fails to duplicate the standard out\n"
+"handle and fails to launch your Python application.";
 #endif
 
 const char * MATTACH = \

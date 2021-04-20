@@ -805,9 +805,25 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   #ifdef PL_WIN                                                        /* WIN */
   PROCESS_INFORMATION piProcInfo;
   STARTUPINFO         siStartInfo;
+  SECURITY_ATTRIBUTES saAttr;
+  HANDLE              hChildStdInRd = NULL;
+  HANDLE              hChildStdInWr = NULL;
 
   ZeroMemory(&piProcInfo,  sizeof(PROCESS_INFORMATION));
   ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
+
+  saAttr.nLength              = sizeof(SECURITY_ATTRIBUTES); 
+  saAttr.bInheritHandle       = TRUE; 
+  saAttr.lpSecurityDescriptor = NULL; 
+
+  CreatePipe(&hChildStdInRd, &hChildStdInWr, &saAttr, 0);
+  SetHandleInformation(hChildStdInWr, HANDLE_FLAG_INHERIT, 0);
+
+  siStartInfo.cb         = sizeof(STARTUPINFO);
+  siStartInfo.hStdInput  = hChildStdInRd;
+  siStartInfo.hStdOutput = GetStdHandle(STD_OUTPUT_HANDLE);
+  siStartInfo.hStdError  = GetStdHandle(STD_ERROR_HANDLE);
+  siStartInfo.dwFlags   |= STARTF_USESTDHANDLES;
 
   if (pargs.output_file == NULL) {
     HANDLE nullStdOut = CreateFile(
@@ -819,9 +835,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
     }
 
     log_d("Redirecting child's STDOUT to " NULL_DEVICE);
-    siStartInfo.cb         = sizeof(STARTUPINFO);
     siStartInfo.hStdOutput = nullStdOut;
-    siStartInfo.dwFlags   |= STARTF_USESTDHANDLES;
   }
 
   // Concatenate the command line arguments
@@ -862,6 +876,8 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   self->extra->h_proc = piProcInfo.hProcess;
   self->pid = (pid_t) piProcInfo.dwProcessId;
 
+  CloseHandle(hChildStdInRd);
+
   #else                                                               /* UNIX */
   self->pid = fork();
   if (self->pid == 0) {
@@ -889,6 +905,63 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   log_d("New process created with PID %d", self->pid);
 
   if (fail(_py_proc__run(self, FALSE))) {
+    #if defined PL_WIN
+    // On Windows, if we fail with the parent process we look if it has a single
+    // child and try to attach to that instead. We keep going until we either
+    // find a single Python process or more or less than a single child.
+    log_d("Process is not Python so we look for a single child Python process");
+    HANDLE orig_hproc = self->extra->h_proc;
+    pid_t  orig_pid   = self->pid;
+    while (TRUE) {
+      pid_t parent_pid = self->pid;
+
+      HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+      if (h == INVALID_HANDLE_VALUE)
+        break;
+
+      PROCESSENTRY32 pe = { 0 };
+      pe.dwSize = sizeof(PROCESSENTRY32);
+
+      if (Process32First(h, &pe)) {
+        pid_t child_pid = 0;
+        do {
+          if (pe.th32ParentProcessID == parent_pid) {
+            if (child_pid) {
+              log_d("Process has more than one child");
+              goto exit;
+            }
+            child_pid = pe.th32ProcessID;
+          }
+        } while (Process32Next(h, &pe));
+        
+        if (!child_pid) {
+          log_d("Process has no children");
+          goto exit;
+        }
+        
+        self->pid = child_pid;
+        self->extra->h_proc = OpenProcess(
+          PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, child_pid
+        );
+        if (self->extra->h_proc == INVALID_HANDLE_VALUE) {
+          goto exit;
+        }
+        if (success(_py_proc__run(self, FALSE))) {
+          log_d("Process has a single Python child with PID %d. We will attach to that", child_pid);
+          SUCCESS;
+        }
+        else {
+          log_d("Process had a single non-Python child with PID %d. Taking it as new parent", child_pid);
+          CloseHandle(self->extra->h_proc);
+        }
+      }
+
+      CloseHandle(h);
+    }
+  exit:
+    self->pid = orig_pid;
+    self->extra->h_proc = orig_hproc;
+    #endif
     if (austin_errno == EPROCNPID)
       set_error(EPROCFORK);
     log_ie("Cannot start new process");

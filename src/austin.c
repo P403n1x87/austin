@@ -126,13 +126,13 @@ do_child_processes(py_proc_t * py_proc) {
     // Store the PID before it gets deleted by the update.
     pid_t ppid = py_proc->pid;
 
-    if (pargs.attach_pid == 0)
-      py_proc__terminate(py_proc);
     py_proc_list__update(list);
     py_proc_list__add_proc_children(list, ppid);
-    // py_proc_list__update(list);
+
     if (py_proc_list__is_empty(list)) {
       set_error(EPROCNOCHILDREN);
+      if (pargs.attach_pid == 0)
+        py_proc__terminate(py_proc);
       goto release;
     }
   }
