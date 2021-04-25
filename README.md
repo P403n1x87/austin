@@ -287,7 +287,7 @@ Austin -- A frame stack sampler for Python.
   -o, --output=FILE          Specify an output file for the collected samples.
   -p, --pid=PID              The the ID of the process to which Austin should
                              attach.
-  -s, --sleepless            Suppress idle samples.
+  -s, --sleepless            Suppress idle samples to estimate CPU time.
   -t, --timeout=n_ms         Start up wait time in milliseconds (default is
                              100). Accepted units: s, ms.
   -x, --exposure=n_sec       Sample for n_sec seconds only.

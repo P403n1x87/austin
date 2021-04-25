@@ -58,7 +58,7 @@ load "common"
 @test "Test not Python nor Python children" {
   log "Test Austin with a non-Python command that spawns no Python children"
 
-  run src/austin -C cat
+  run src/austin -C bash -c "sleep 1"
 
   assert_status 39
   assert_output "not a Python" || assert_output "Cannot launch"
