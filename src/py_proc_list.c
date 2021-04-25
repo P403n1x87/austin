@@ -176,7 +176,7 @@ py_proc_list__add_proc_children(py_proc_list_t * self, pid_t ppid) {
 // ----------------------------------------------------------------------------
 int
 py_proc_list__is_empty(py_proc_list_t * self) {
-  return self->first == NULL;
+  return !isvalid(self->first);
 } /* py_proc_list__is_empty */
 
 
@@ -192,6 +192,13 @@ py_proc_list__sample(py_proc_list_t * self) {
     timer_stop();
   }
 } /* py_proc_list__sample */
+
+
+// ----------------------------------------------------------------------------
+int
+py_proc_list__size(py_proc_list_t * self) {
+  return self->count;
+}
 
 
 // ----------------------------------------------------------------------------

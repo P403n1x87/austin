@@ -129,7 +129,7 @@ do_child_processes(py_proc_t * py_proc) {
     py_proc_list__update(list);
     py_proc_list__add_proc_children(list, ppid);
 
-    if (py_proc_list__is_empty(list)) {
+    if (py_proc_list__size(list) == 1) {
       set_error(EPROCNOCHILDREN);
       if (pargs.attach_pid == 0)
         py_proc__terminate(py_proc);
@@ -276,8 +276,6 @@ int main(int argc, char ** argv) {
   // destroying it. Hence once they return we need to invalidate it.
   py_proc = NULL;
 
-  meta("duration: %lu", stats_duration());
-
   if (austin_errno == EPROCNOCHILDREN)
     goto finally;
 
@@ -285,6 +283,8 @@ int main(int argc, char ** argv) {
     austin_errno = EOK;
 
   // Log sampling metrics
+  meta("duration: %lu", stats_duration());
+
   log_m("");
   stats_log_metrics();
 

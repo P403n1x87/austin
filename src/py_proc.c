@@ -812,9 +812,9 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   ZeroMemory(&piProcInfo,  sizeof(PROCESS_INFORMATION));
   ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
 
-  saAttr.nLength              = sizeof(SECURITY_ATTRIBUTES); 
-  saAttr.bInheritHandle       = TRUE; 
-  saAttr.lpSecurityDescriptor = NULL; 
+  saAttr.nLength              = sizeof(SECURITY_ATTRIBUTES);
+  saAttr.bInheritHandle       = TRUE;
+  saAttr.lpSecurityDescriptor = NULL;
 
   CreatePipe(&hChildStdInRd, &hChildStdInWr, &saAttr, 0);
   SetHandleInformation(hChildStdInWr, HANDLE_FLAG_INHERIT, 0);
@@ -933,12 +933,12 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
             child_pid = pe.th32ProcessID;
           }
         } while (Process32Next(h, &pe));
-        
+
         if (!child_pid) {
           log_d("Process has no children");
           goto exit;
         }
-        
+
         self->pid = child_pid;
         self->extra->h_proc = OpenProcess(
           PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, child_pid
@@ -1136,6 +1136,7 @@ py_proc__log_version(py_proc_t * self) {
 void
 py_proc__terminate(py_proc_t * self) {
   if (self->pid) {
+    log_d("Terminating process %ld", self->pid);
     #if defined PL_UNIX
     kill(self->pid, SIGTERM);
     #else

@@ -79,6 +79,17 @@ py_proc_list__add_proc_children(py_proc_list_t *, pid_t);
 
 
 /**
+ * Get the number of items in the list.
+ *
+ * @param self  the list.
+ *
+ * @return the number of items in the list.
+ */
+int
+py_proc_list__size(py_proc_list_t *);
+
+
+/**
  * Sample from all the processes in the list.
  *
  * @param  py_proc_list_t  the list.
