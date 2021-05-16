@@ -67,26 +67,34 @@ _infer_tid_field_offset(py_thread_t * py_thread) {
 // ----------------------------------------------------------------------------
 static int
 _py_thread__is_idle(py_thread_t * self) {
+  with_resources;
+
   char      file_name[64];
   char      buffer[2048];
+
+  retval = -1;
 
   sprintf(file_name, "/proc/%d/task/%ld/stat", self->raddr.pid, self->tid);
   int fd = open(file_name, O_RDONLY);
   if (fd == -1) {
-    log_t("Cannot open %s", file_name);
+    log_d("Cannot open %s", file_name);
     return -1;
   }
 
   if (read(fd, buffer, 2047) == 0) {
     log_d("Cannot read %s", file_name);
-    return -1;
+    goto release;
   }
 
   char * p = strchr(buffer, ')') + 2;
   if (p == NULL) {
     log_d("Invalid format for procfs file %s", file_name);
-    return -1;
+    goto release;
   }
   if (p[0] == ' ') ++p;
-  return p[0] != 'R';
+  retval = p[0] != 'R';
+
+release:
+  close(fd);
+  released;
 }
