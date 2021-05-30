@@ -477,7 +477,8 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     else
       fprintf(pargs.output_file, " " TIME_METRIC "\n", time_delta);
   }
-}
+  stats_count_sample();
+} /* py_thread__print_collapsed_stack */
 
 
 // ----------------------------------------------------------------------------

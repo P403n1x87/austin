@@ -62,10 +62,8 @@ signal_callback_handler(int signum)
 // ----------------------------------------------------------------------------
 void
 do_single_process(py_proc_t * py_proc) {
-  log_m("");
-  py_proc__log_version(py_proc);
-
   log_meta_header();
+  py_proc__log_version(py_proc);
 
   if (pargs.exposure == 0) {
     while(interrupt == FALSE) {
@@ -111,9 +109,10 @@ do_child_processes(py_proc_t * py_proc) {
   // If the parent process is not a Python process, its children might be, so we
   // attempt to attach Austin to them.
 
-  log_m("");
-  log_m("\033[1mParent process\033[0m");
-
+  if (!pargs.pipe) {
+    log_m("");
+    log_m("\033[1mParent process\033[0m");
+  }
   if (!py_proc__is_python(py_proc)) {
     log_m("👽 Not a Python process.");
 
@@ -141,8 +140,10 @@ do_child_processes(py_proc_t * py_proc) {
   }
 
   if (!py_proc_list__is_empty(list) && interrupt == FALSE) {
-    log_m("");
-    log_m("\033[1mChild processes\033[0m");
+    if (!pargs.pipe) {
+      log_m("");
+      log_m("\033[1mChild processes\033[0m");
+    }
   }
 
   log_meta_header();
@@ -187,7 +188,8 @@ int main(int argc, char ** argv) {
   int         exec_arg       = parse_args(argc, argv);
 
   logger_init();
-  log_header();
+  if (!pargs.pipe)
+    log_header();
 
   if (exec_arg <= 0 && pargs.attach_pid == 0) {
     _msg(MCMDLINE);
@@ -285,7 +287,6 @@ int main(int argc, char ** argv) {
   // Log sampling metrics
   meta("duration: %lu", stats_duration());
 
-  log_m("");
   stats_log_metrics();
 
 finally:

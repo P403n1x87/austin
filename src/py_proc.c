@@ -1126,10 +1126,19 @@ py_proc__log_version(py_proc_t * self) {
   int major = MAJOR(self->version);
   int minor = MINOR(self->version);
   int patch = PATCH(self->version);
-  if (patch == 0xFF)
-    log_m("🐍 \033[1mPython\033[0m version: \033[33;1m%d.%d.?\033[0m (from shared library)", major, minor);
-  else
-    log_m("🐍 \033[1mPython\033[0m version: \033[33;1m%d.%d.%d\033[0m", major, minor, patch);
+  if (pargs.pipe) {
+    if (patch == 0xFF)
+      log_m("# python: %d.%d.?", major, minor);
+    else
+      log_m("# python: %d.%d.%d", major, minor, patch);
+  }
+  else {
+    log_m("");
+    if (patch == 0xFF)
+      log_m("🐍 \033[1mPython\033[0m version: \033[33;1m%d.%d.?\033[0m (from shared library)", major, minor);
+    else
+      log_m("🐍 \033[1mPython\033[0m version: \033[33;1m%d.%d.%d\033[0m", major, minor, patch);
+  }
 }
 
 // ----------------------------------------------------------------------------

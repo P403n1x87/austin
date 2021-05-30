@@ -48,7 +48,6 @@ timer_stop(void) {
 
   // Record stats
   stats_check_duration(_sample_delta, pargs.t_sampling_interval);
-  stats_count_sample();
   if (austin_errno != EOK)
     stats_count_error();
 

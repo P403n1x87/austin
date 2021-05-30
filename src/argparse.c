@@ -51,6 +51,7 @@ parsed_args_t pargs = {
   /* output_filename     */ NULL,
   /* children            */ 0,
   /* exposure            */ 0,
+  /* pipe                */ 0,
 };
 
 static int exec_arg = 0;
@@ -212,6 +213,10 @@ static struct argp_option options[] = {
     "exposure",     'x', "n_sec",       0,
     "Sample for n_sec seconds only."
   },
+  {
+    "pipe",         'P', NULL,          0,
+    "Pipe mode. Use when piping Austin output."
+  },
   #ifndef PL_LINUX
   {
     "help",         '?', NULL
@@ -311,6 +316,10 @@ parse_opt (int key, char *arg, struct argp_state *state)
       pargs.exposure > LONG_MAX
     )
       argp_error(state, "the exposure must be a positive integer");
+    break;
+
+  case 'P':
+    pargs.pipe = 1;
     break;
 
   case ARGP_KEY_ARG:
@@ -461,6 +470,7 @@ static const char * help_msg = \
 "  -o, --output=FILE          Specify an output file for the collected samples.\n"
 "  -p, --pid=PID              The the ID of the process to which Austin should\n"
 "                             attach.\n"
+"  -P, --pipe                 Pipe mode. Use when piping Austin output.\n"
 "  -s, --sleepless            Suppress idle samples to estimate CPU time.\n"
 "  -t, --timeout=n_ms         Start up wait time in milliseconds (default is\n"
 "                             100). Accepted units: s, ms.\n"
@@ -601,6 +611,10 @@ cb(const char opt, const char * arg) {
     ) {
       arg_error("the exposure must be a positive integer");
     }
+    break;
+
+  case 'P':
+    pargs.pipe = 1;
     break;
 
   case '?':
