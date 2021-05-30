@@ -146,13 +146,9 @@ stats_duration(void) {
 
 void
 stats_log_metrics(void) {
-  #if defined PL_MACOS
-  mach_port_deallocate(mach_task_self(), cclock);
-  #endif
-
   if (!_sample_cnt) {
     log_m("😣 No samples collected.");
-    return;
+    goto release;
   }
 
   log_m("\033[1mStatistics\033[0m");
@@ -176,4 +172,10 @@ stats_log_metrics(void) {
     _sample_cnt,                                         \
     (float) _error_cnt / _sample_cnt * 100               \
   );
+
+release:
+  #if defined PL_MACOS
+  mach_port_deallocate(mach_task_self(), cclock);
+  #endif
+  return;
 }
