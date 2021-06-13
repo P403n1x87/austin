@@ -31,6 +31,7 @@
 #include "mem.h"
 #include "platform.h"
 #include "pthread.h"
+#include "timing.h"
 #include "version.h"
 
 #include "py_thread.h"
@@ -477,7 +478,12 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     else
       fprintf(pargs.output_file, " " TIME_METRIC "\n", time_delta);
   }
+
+  // Update sampling stats
   stats_count_sample();
+  if (austin_errno != EOK)
+    stats_count_error();
+  stats_check_duration(stopwatch_duration());
 } /* py_thread__print_collapsed_stack */
 
 

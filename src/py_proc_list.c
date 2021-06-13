@@ -38,7 +38,7 @@
 
 #include "hints.h"
 #include "logging.h"
-#include "timer.h"
+#include "timing.h"
 
 #include "py_proc_list.h"
 
@@ -187,9 +187,9 @@ py_proc_list__sample(py_proc_list_t * self) {
 
   for (py_proc_item_t * item = self->first; item != NULL; item = item->next) {
     log_t("Sampling process with PID %d", item->py_proc->pid);
-    timer_start();
+    stopwatch_start();
     py_proc__sample(item->py_proc);  // Fail silently
-    timer_stop();
+    stopwatch_duration();
   }
 } /* py_proc_list__sample */
 

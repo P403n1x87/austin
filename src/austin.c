@@ -20,6 +20,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#ifndef AUSTIN_C
+#define AUSTIN_C
+
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,7 +40,7 @@
 #include "platform.h"
 #include "python.h"
 #include "stats.h"
-#include "timer.h"
+#include "timing.h"
 #include "version.h"
 
 #include "py_proc.h"
@@ -67,24 +70,24 @@ do_single_process(py_proc_t * py_proc) {
 
   if (pargs.exposure == 0) {
     while(interrupt == FALSE) {
-      timer_start();
+      stopwatch_start();
 
       if (fail(py_proc__sample(py_proc)))
         break;
 
-      timer_pause(timer_stop());
+      stopwatch_pause(stopwatch_duration());
     }
   }
   else {
     log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
     ctime_t end_time = gettime() + pargs.exposure * 1000000;
     while(interrupt == FALSE) {
-      timer_start();
+      stopwatch_start();
 
       if (fail(py_proc__sample(py_proc)))
         break;
 
-      timer_pause(timer_stop());
+      stopwatch_pause(stopwatch_duration());
 
       if (end_time < gettime())
         interrupt++;
@@ -153,7 +156,7 @@ do_child_processes(py_proc_t * py_proc) {
       ctime_t start_time = gettime();
       py_proc_list__update(list);
       py_proc_list__sample(list);
-      timer_pause(gettime() - start_time);
+      stopwatch_pause(gettime() - start_time);
     }
   }
   else {
@@ -163,7 +166,7 @@ do_child_processes(py_proc_t * py_proc) {
       ctime_t start_time = gettime();
       py_proc_list__update(list);
       py_proc_list__sample(list);
-      timer_pause(gettime() - start_time);
+      stopwatch_pause(gettime() - start_time);
 
       if (end_time < gettime()) interrupt++;
     }
@@ -347,3 +350,5 @@ release:
 
   return retval;
 } /* main */
+
+#endif
