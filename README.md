@@ -130,7 +130,11 @@ instance, at the following Python TUI
        style="box-shadow: #111 0px 0px 16px;" />
 </p>
 
-Keep reading for more tools ideas and examples!
+Check out [A Survey of Open-Source Python
+Profilers](https://www.usenix.org/system/files/login/articles/login_winter19_12_norton.pdf)
+by Peter Norton for a general overview of Austin.
+
+Keep reading for more tool ideas and examples!
 
 
 # Installation
@@ -159,7 +163,9 @@ repository and running the C compiler.
 
 Installing Austin using `autotools` amounts to the usual `./configure`, `make`
 and `make install` finger gymnastic. The only dependency is the standard C
-library.
+library. Before proceding with the steps below, make sure that the `autotools`
+are installed on your system. Refer to your distro's documentation for details
+on how to do so.
 
 ~~~ bash
 git clone --depth=1 https://github.com/P403n1x87/austin.git
@@ -168,6 +174,9 @@ autoreconf --install
 make
 make install
 ~~~
+
+> **NOTE** Some Linux distributions, like Manjaro, might require the execution
+> of `automake --add-missing` before `./configure`.
 
 Alternatively, sources can be compiled with just a C compiler (see below).
 
@@ -475,9 +484,17 @@ austin -Cp `pgrep apache2 | head -n 1`
 Any child processes will be automatically detected as they are created and
 Austin will sample them too.
 
-Check out [A Survey of Open-Source Python
-Profilers](https://www.usenix.org/system/files/login/articles/login_winter19_12_norton.pdf)
-by Peter Norton for other examples.
+
+## IDE Extensions
+
+It is easy to write your own extension for your favourite text editor. This, for
+example, is a demo of a [Visual Studio Code] extension that highlights the most
+hit lines of code straight into the editor
+
+<p align="center">
+  <img src="art/vscode-demo.gif"
+       style="box-shadow: #111 0px 0px 16px;" />
+</p>
 
 
 ## Austin TUI
@@ -598,17 +615,6 @@ austin2pprof [-h] [-V] input output
 where `input` is a file containing the output from Austin and `output` is the
 name of the protobuf file to use to save the result of the conversion, ready to
 be used with [Google's pprof tools][pprof].
-
-## IDE Extensions
-
-It is easy to write your own extension for your favourite text editor. This, for
-example, is a demo of a [Visual Studio Code] extension that highlights the most
-hit lines of code straight into the editor
-
-<p align="center">
-  <img src="art/vscode-demo.gif"
-       style="box-shadow: #111 0px 0px 16px;" />
-</p>
 
 
 # Contribute
