@@ -24,7 +24,7 @@ jobs:
         run: |
           sudo add-apt-repository -y ppa:deadsnakes/ppa
           # sudo add-apt-repository -y ppa:duggan/bats
-          sudo apt-get -y install valgrind python2.{3..7} python3.{3..9} # bats
+          sudo apt-get -y install valgrind python2.{3..7} python3.{3..10} # bats
           npm install bats
         if: "startsWith(matrix.os, 'ubuntu')"
 

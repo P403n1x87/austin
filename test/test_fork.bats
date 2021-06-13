@@ -123,3 +123,7 @@ function teardown {
 @test "Test Austin with Python 3.9" {
   repeat 3 invoke_austin "3.9"
 }
+
+@test "Test Austin with Python 3.10" {
+  repeat 3 invoke_austin "3.10"
+}

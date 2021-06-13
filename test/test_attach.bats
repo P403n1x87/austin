@@ -99,3 +99,8 @@ function attach_austin {
 @test "Test Austin with Python 3.9" {
   repeat 3 attach_austin "3.9"
 }
+
+
+@test "Test Austin with Python 3.10" {
+  repeat 3 attach_austin "3.10"
+}

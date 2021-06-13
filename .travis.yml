@@ -43,7 +43,7 @@ before_script:
       sudo add-apt-repository ppa:deadsnakes/ppa -y;
       sudo add-apt-repository ppa:duggan/bats -y;
 
-      sudo apt-get install -y bats valgrind python2.{3..7} python3.{3..9};
+      sudo apt-get install -y bats valgrind python2.{3..7} python3.{3..10};
 
       autoreconf --install;
     fi
