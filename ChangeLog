@@ -1,3 +1,12 @@
+2021-06-13 v3.0.0
+
+  Added pipe mode.
+
+  Bugfix: fixed file descriptor leak on Linux.
+
+  Bugfix: fixed sampling duration reporting on macOS.
+
+
 2021-04-25 v3.0.0a1
 
   The format of the emitted samples has been changed into something easier to

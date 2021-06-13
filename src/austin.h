@@ -24,6 +24,6 @@
 #define AUSTIN_H
 
 #define PROGRAM_NAME                    "austin"
-#define VERSION                         "3.0.0a1"
+#define VERSION                         "3.0.0"
 
 #endif

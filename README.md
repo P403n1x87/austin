@@ -373,8 +373,8 @@ error rates below 1% on average.
 
 # Compatibility
 
-Austin supports Python 2.3-2.7 and 3.3-3.8 and has been tested on the following
-platforms and architectures
+Austin supports Python 2.3-2.7 and 3.3-3.10 and has been tested on the
+following platforms and architectures
 
 || <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" />* | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/>** | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />*** |
 |---          |---|---|---|
@@ -474,6 +474,10 @@ austin -Cp `pgrep apache2 | head -n 1`
 
 Any child processes will be automatically detected as they are created and
 Austin will sample them too.
+
+Check out [A Survey of Open-Source Python
+Profilers](https://www.usenix.org/system/files/login/articles/login_winter19_12_norton.pdf)
+by Peter Norton for other examples.
 
 
 ## Austin TUI
@@ -649,4 +653,4 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 [pprof]: https://github.com/google/pprof
 [Scoop]: https://scoop.sh/
 [Speedscope]: https://speedscope.app
-[Visual Studio Code]: https://github.com/P403n1x87/austin-vscode
+[Visual Studio Code]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode
