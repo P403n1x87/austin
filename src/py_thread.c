@@ -102,7 +102,7 @@ _get_string_from_raddr(pid_t pid, void * raddr, char * buffer) {
 
   // This switch statement is required by the changes regarding the string type
   // introduced in Python 3.
-  switch (py_v->py_unicode.version) {
+  switch (py_v->major) {
   case 2:
     if (fail(copy_datatype(pid, raddr, string))) {
       log_ie("Cannot read remote PyStringObject");
@@ -158,7 +158,7 @@ _get_bytes_from_raddr(pid_t pid, void * raddr, unsigned char * array) {
   if (!isvalid(array))
     goto error;
 
-  switch (py_v->py_bytes.version) {
+  switch (py_v->major) {
   case 2:  // Python 2
     if (fail(copy_datatype(pid, raddr, string))) {
       log_ie("Cannot read remote PyStringObject");
@@ -246,15 +246,38 @@ _py_code__fill_from_raddr(py_code_t * self, raddr_t * raddr, int lasti) {
   }
 
   int lineno = V_FIELD(unsigned int, code, py_code, o_firstlineno);
-  for (register int i = 0, bc = 0; i < len; i++) {
-    bc += lnotab[i++];
-    if (bc > lasti)
-      break;
 
-    if (lnotab[i] >= 0x80)
-      lineno -= 0x100;
+  if (py_v->major == 3 && py_v->minor >= 10) { // Python >=3.10
+    lasti <<= 1;
+    for (register int i = 0, bc = 0; i < len; i++) {
+      int sdelta = lnotab[i++];
+      if (sdelta == 0xff)
+        break;
 
-    lineno += lnotab[i];
+      bc += sdelta;
+
+      int ldelta = lnotab[i];
+      if (ldelta == 0x80)
+        ldelta = 0;
+      else if (ldelta > 0x80)
+        lineno -= 0x100;
+
+      lineno += ldelta;
+      if (bc > lasti)
+        break;
+    }
+  }
+  else { // Python < 3.10
+    for (register int i = 0, bc = 0; i < len; i++) {
+      bc += lnotab[i++];
+      if (bc > lasti)
+        break;
+
+      if (lnotab[i] >= 0x80)
+        lineno -= 0x100;
+
+      lineno += lnotab[i];
+    }
   }
 
   self->lineno = lineno;

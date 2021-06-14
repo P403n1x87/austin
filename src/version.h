@@ -79,6 +79,7 @@ typedef struct {
   offset_t o_back;
   offset_t o_code;
   offset_t o_lasti;
+  offset_t o_lineno;
 } py_frame_v;
 
 
@@ -114,9 +115,10 @@ typedef struct {
   py_code_v    py_code;
   py_frame_v   py_frame;
   py_thread_v  py_thread;
-  py_unicode_v py_unicode;
-  py_bytes_v   py_bytes;
   py_runtime_v py_runtime;
+
+  int          major;
+  int          minor;
 } python_v;
 
 
