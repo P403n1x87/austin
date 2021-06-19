@@ -1122,15 +1122,25 @@ py_proc__sample(py_proc_t * self) {
 
 // ----------------------------------------------------------------------------
 void
-py_proc__log_version(py_proc_t * self) {
+py_proc__log_version(py_proc_t * self, int parent) {
   int major = MAJOR(self->version);
   int minor = MINOR(self->version);
   int patch = PATCH(self->version);
   if (pargs.pipe) {
-    if (patch == 0xFF)
-      log_m("# python: %d.%d.?", major, minor);
-    else
-      log_m("# python: %d.%d.%d", major, minor, patch);
+    if (patch == 0xFF) {
+      if (parent) {
+        meta("python: %d.%d.?", major, minor);
+      }
+      else
+        log_m("# python: %d.%d.?", major, minor);
+    }
+    else {
+      if (parent) {
+        meta("python: %d.%d.%d", major, minor, patch);
+      }
+      else
+        log_m("# python: %d.%d.%d", major, minor, patch);
+    }
   }
   else {
     log_m("");

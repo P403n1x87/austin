@@ -172,10 +172,11 @@ py_proc__sample(py_proc_t *);
 
 /**
  * Log the Python interpreter version
- * @param self  the process object
+ * @param self  the process object.
+ * @param int   whether the process is the parent process.
  */
 void
-py_proc__log_version(py_proc_t *);
+py_proc__log_version(py_proc_t *, int);
 
 
 /**

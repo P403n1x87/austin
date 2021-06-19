@@ -66,7 +66,8 @@ signal_callback_handler(int signum)
 void
 do_single_process(py_proc_t * py_proc) {
   log_meta_header();
-  py_proc__log_version(py_proc);
+  py_proc__log_version(py_proc, TRUE);
+  NL;
 
   if (pargs.exposure == 0) {
     while(interrupt == FALSE) {
@@ -139,7 +140,7 @@ do_child_processes(py_proc_t * py_proc) {
     }
   }
   else {
-    py_proc__log_version(py_proc);
+    py_proc__log_version(py_proc, TRUE);
   }
 
   if (!py_proc_list__is_empty(list) && interrupt == FALSE) {
@@ -149,7 +150,7 @@ do_child_processes(py_proc_t * py_proc) {
     }
   }
 
-  log_meta_header();
+  log_meta_header();NL;
 
   if (pargs.exposure == 0) {
     while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
@@ -288,9 +289,9 @@ int main(int argc, char ** argv) {
     austin_errno = EOK;
 
   // Log sampling metrics
-  meta("duration: %lu", stats_duration());
+  NL;meta("duration: %lu", stats_duration());
 
-  stats_log_metrics();
+  stats_log_metrics();NL;
 
 finally:
   py_thread_free_stack();

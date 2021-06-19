@@ -33,10 +33,12 @@
 
 #define META "# "
 
+#define NL fputc('\n', pargs.output_file)
+
 #define meta(...)                          \
   fprintf(pargs.output_file, META);        \
   fprintf(pargs.output_file, __VA_ARGS__); \
-  fputc('\n', pargs.output_file);
+  NL;
 
 #define log_header() {                   \
   log_m("\033[1m              _   _      \033[0m");    \

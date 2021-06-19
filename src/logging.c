@@ -181,7 +181,7 @@ void
 log_meta_header(void) {
   meta("austin: " VERSION);
   meta("interval: %lu", pargs.t_sampling_interval);
-  // meta("command line: %s", pargs.full)
+
   if (pargs.full)           { meta("mode: full"); }
   else if (pargs.memory)    { meta("mode: memory"); }
   else if (pargs.sleepless) { meta("mode: cpu"); }
