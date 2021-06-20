@@ -485,9 +485,9 @@ static const char * help_msg = \
 "Report bugs to <https://github.com/P403n1x87/austin/issues>.\n";
 
 static const char * usage_msg = \
-"Usage: austin [-aCefms?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-x n_sec]\n"
+"Usage: austin [-aCefmPs?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-x n_sec]\n"
 "            [--alt-format] [--children] [--exclude-empty] [--full]\n"
-"            [--interval=n_us] [--memory] [--output=FILE] [--pid=PID]\n"
+"            [--interval=n_us] [--memory] [--output=FILE] [--pid=PID] [--pipe]\n"
 "            [--sleepless] [--timeout=n_ms] [--exposure=n_sec] [--help]\n"
 "            [--usage] [--version] command [ARG...]\n";
 
