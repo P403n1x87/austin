@@ -38,7 +38,7 @@
 
 #include "hints.h"
 #include "logging.h"
-#include "timer.h"
+#include "timing.h"
 
 #include "py_proc_list.h"
 
@@ -166,6 +166,7 @@ py_proc_list__add_proc_children(py_proc_list_t * self, pid_t ppid) {
       }
 
       _py_proc_list__add(self, child_proc);
+      py_proc__log_version(child_proc, FALSE);
       py_proc_list__add_proc_children(self, pid);
     }
   }
@@ -175,7 +176,7 @@ py_proc_list__add_proc_children(py_proc_list_t * self, pid_t ppid) {
 // ----------------------------------------------------------------------------
 int
 py_proc_list__is_empty(py_proc_list_t * self) {
-  return self->first == NULL;
+  return !isvalid(self->first);
 } /* py_proc_list__is_empty */
 
 
@@ -186,11 +187,18 @@ py_proc_list__sample(py_proc_list_t * self) {
 
   for (py_proc_item_t * item = self->first; item != NULL; item = item->next) {
     log_t("Sampling process with PID %d", item->py_proc->pid);
-    timer_start();
+    stopwatch_start();
     py_proc__sample(item->py_proc);  // Fail silently
-    timer_stop();
+    stopwatch_duration();
   }
 } /* py_proc_list__sample */
+
+
+// ----------------------------------------------------------------------------
+int
+py_proc_list__size(py_proc_list_t * self) {
+  return self->count;
+}
 
 
 // ----------------------------------------------------------------------------
@@ -226,11 +234,24 @@ py_proc_list__update(py_proc_list_t * self) {
     if (stat_file == NULL)
       continue;
 
-    if (fscanf(
-      stat_file, "%d %s %c %d",
-      (int *) buffer, buffer, (char *) buffer, &(self->pid_table[pid])
-    ) != 4)
+    char * line = NULL;
+    size_t n;
+    if (getline(&line, &n, stat_file) == 0) {
+      log_w("Failed to read stat file for process %d", pid);
+      sfree(line);
+      continue;
+    }
+    char * stat = strchr(line, ')') + 2;
+    if (stat[0] == ' ') stat++;
+    if (sscanf(
+      stat, "%c %d",
+      (char *) buffer, &(self->pid_table[pid])
+    ) != 2) {
       log_w("Failed to parse stat file for process %d", pid);
+      sfree(line);
+      continue;
+    }
+    sfree(line);
 
     if (pid > self->max_pid)
       self->max_pid = pid;

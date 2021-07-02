@@ -41,7 +41,8 @@ function invoke_austin {
     n_procs=$( echo "$output" | sed -r 's/P([0-9]+);.+/\1/' | sort | uniq | wc -l )
     assert "At least 3 parallel processes" "$n_procs -ge $expected"
 
-    assert_output "do (.*test/target_mp.py);L[[:digit:]]*;fact (.*test/target_mp.py);L"
+    assert_output "# multiprocess: on"
+    assert_output ".*test/target_mp.py:do:[[:digit:]]*;.*test/target_mp.py:fact:"
 
 }
 
@@ -99,4 +100,8 @@ function invoke_austin {
 
 @test "Test Austin with Python 3.9" {
   repeat 3 invoke_austin "3.9"
+}
+
+@test "Test Austin with Python 3.10" {
+  repeat 3 invoke_austin "3.10"
 }

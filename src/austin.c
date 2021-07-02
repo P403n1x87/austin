@@ -20,6 +20,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#ifndef AUSTIN_C
+#define AUSTIN_C
+
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,7 +40,8 @@
 #include "platform.h"
 #include "python.h"
 #include "stats.h"
-#include "timer.h"
+#include "timing.h"
+#include "version.h"
 
 #include "py_proc.h"
 #include "py_proc_list.h"
@@ -61,26 +65,30 @@ signal_callback_handler(int signum)
 // ----------------------------------------------------------------------------
 void
 do_single_process(py_proc_t * py_proc) {
+  log_meta_header();
+  py_proc__log_version(py_proc, TRUE);
+  NL;
+
   if (pargs.exposure == 0) {
     while(interrupt == FALSE) {
-      timer_start();
+      stopwatch_start();
 
-      if (py_proc__sample(py_proc))
+      if (fail(py_proc__sample(py_proc)))
         break;
 
-      timer_pause(timer_stop());
+      stopwatch_pause(stopwatch_duration());
     }
   }
   else {
     log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
     ctime_t end_time = gettime() + pargs.exposure * 1000000;
     while(interrupt == FALSE) {
-      timer_start();
+      stopwatch_start();
 
       if (fail(py_proc__sample(py_proc)))
         break;
 
-      timer_pause(timer_stop());
+      stopwatch_pause(stopwatch_duration());
 
       if (end_time < gettime())
         interrupt++;
@@ -104,11 +112,18 @@ do_child_processes(py_proc_t * py_proc) {
 
   // If the parent process is not a Python process, its children might be, so we
   // attempt to attach Austin to them.
+
+  if (!pargs.pipe) {
+    log_m("");
+    log_m("\033[1mParent process\033[0m");
+  }
   if (!py_proc__is_python(py_proc)) {
-    log_d("Parent process is not a Python process. Trying with its children.");
+    log_m("👽 Not a Python process.");
 
     // Since the parent process is not running we probably have waited long
     // enough so we can try to attach to child processes straight away.
+    // TODO: In the future, we might want to consider adding the option to wait
+    // for child processes, as they might be spawned only much later.
     pargs.timeout = 1;
 
     // Store the PID before it gets deleted by the update.
@@ -116,18 +131,33 @@ do_child_processes(py_proc_t * py_proc) {
 
     py_proc_list__update(list);
     py_proc_list__add_proc_children(list, ppid);
-    if (py_proc_list__is_empty(list)) {
-      set_error(pargs.attach_pid == 0 ? EPROCFORK : EPROCATTACH);
+
+    if (py_proc_list__size(list) == 1) {
+      set_error(EPROCNOCHILDREN);
+      if (pargs.attach_pid == 0)
+        py_proc__terminate(py_proc);
       goto release;
     }
   }
+  else {
+    py_proc__log_version(py_proc, TRUE);
+  }
+
+  if (!py_proc_list__is_empty(list) && interrupt == FALSE) {
+    if (!pargs.pipe) {
+      log_m("");
+      log_m("\033[1mChild processes\033[0m");
+    }
+  }
+
+  log_meta_header();NL;
 
   if (pargs.exposure == 0) {
     while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
       ctime_t start_time = gettime();
       py_proc_list__update(list);
       py_proc_list__sample(list);
-      timer_pause(gettime() - start_time);
+      stopwatch_pause(gettime() - start_time);
     }
   }
   else {
@@ -137,7 +167,7 @@ do_child_processes(py_proc_t * py_proc) {
       ctime_t start_time = gettime();
       py_proc_list__update(list);
       py_proc_list__sample(list);
-      timer_pause(gettime() - start_time);
+      stopwatch_pause(gettime() - start_time);
 
       if (end_time < gettime()) interrupt++;
     }
@@ -162,8 +192,8 @@ int main(int argc, char ** argv) {
   int         exec_arg       = parse_args(argc, argv);
 
   logger_init();
-  log_header();
-  log_version();
+  if (!pargs.pipe)
+    log_header();
 
   if (exec_arg <= 0 && pargs.attach_pid == 0) {
     _msg(MCMDLINE);
@@ -191,19 +221,26 @@ int main(int argc, char ** argv) {
   stats_reset();
 
   if (pargs.attach_pid == 0) {
-    if (py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg]) && !pargs.children) {
+    if (
+      (fail(py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg]))
+      && !pargs.children)
+      || py_proc->pid == 0
+    ) {
       log_ie("Cannot start the process");
       py_proc__terminate(py_proc);
       goto finally;
     }
   } else {
-    if (py_proc__attach(py_proc, pargs.attach_pid, FALSE) && !pargs.children) {
+    if (
+      fail(py_proc__attach(py_proc, pargs.attach_pid, FALSE))
+      && !pargs.children
+    ) {
       log_ie("Cannot attach the process");
       goto finally;
     }
   }
 
-  if (error == EPROCPERM)
+  if (austin_errno == EPROCPERM)
     goto finally;
 
   // Redirect output to STDOUT if not output file was given.
@@ -216,39 +253,55 @@ int main(int argc, char ** argv) {
 
   if (pargs.full) {
     if (pargs.memory)
-      log_w("Requested full metrics. The memory switch is redundant");
+      log_w("The memory switch is redundant in full mode");
+    if (pargs.sleepless)
+      log_w("The sleepless switch is reduntant in full mode");
     log_i("Producing full set of metrics (time +mem -mem)");
-    pargs.memory = 1;
+    pargs.memory = TRUE;
+  }
+  else if (pargs.memory) {
+    if (pargs.sleepless)
+      log_w("The sleepless switch is incompatible with memory mode.");
+    pargs.sleepless = FALSE;
   }
 
   // Register signal handler for Ctrl+C and terminate signals.
   signal(SIGINT,  signal_callback_handler);
   signal(SIGTERM, signal_callback_handler);
 
+  stats_start();
+
   // Start sampling
-  if (pargs.children)
+  if (pargs.children) {
     do_child_processes(py_proc);
-  else
+  }
+  else {
     do_single_process(py_proc);
+  }
   // The above procedures take ownership of py_proc and are responsible for
   // destroying it. Hence once they return we need to invalidate it.
   py_proc = NULL;
 
-  if (error == EPROCNPID)
-    error = EOK;
+  if (austin_errno == EPROCNOCHILDREN)
+    goto finally;
+
+  if (austin_errno == EPROCNPID)
+    austin_errno = EOK;
 
   // Log sampling metrics
-  stats_log_metrics();
+  NL;meta("duration: %lu", stats_duration());
+
+  stats_log_metrics();NL;
 
 finally:
   py_thread_free_stack();
-  sfree(py_proc);
+  py_proc__destroy(py_proc);
 
-  log_d("Last error: %d :: %s", error, get_last_error());
-  if (is_fatal(error)) {
-    retval = error;
+  log_d("Last error: %d :: %s", austin_errno, get_last_error());
+  if (is_fatal(austin_errno)) {
+    retval = austin_errno;
 
-    switch(error) {
+    switch(retval) {
     case EPROCISTIMEOUT:
       _msg(MTIMEOUT, pargs.attach_pid == 0 ? "run" : "attach to");
       break;
@@ -268,6 +321,12 @@ finally:
       break;
     case EPROC:
       _msg(MNOPYTHON);
+      break;
+    case EPROCNOCHILDREN:
+      _msg(MNOCHILDREN);
+      break;
+    case ENOVERSION:
+      _msg(MNOVERSION);
       break;
     case EMEMCOPY:
       // Ignore. At this point we expect remote memory reads to fail.
@@ -292,3 +351,5 @@ release:
 
   return retval;
 } /* main */
+
+#endif

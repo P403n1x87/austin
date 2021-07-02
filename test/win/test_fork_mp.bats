@@ -20,36 +20,34 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-load "../common"
+load "common"
 
 
-test_case() {
-  bats test/macos/test_$1.bats
+function invoke_austin {
+  check_python
+
+  log "Fork Multi-processing [Python]"
+
+  # -------------------------------------------------------------------------
+  step "Profiling of multi-process program"
+  # -------------------------------------------------------------------------
+    run $AUSTIN -i 100ms -C $PYTHON test/target_mp.py
+
+    assert_success
+
+    expected=3
+    n_procs=$( echo "$output" | sed -r 's/P([0-9]+);.+/\1/' | sort | uniq | wc -l )
+    assert "At least 3 parallel processes" "$n_procs -ge $expected"
+
+    assert_output "# multiprocess: on"
+    assert_output ".*test[\\]target_mp.py:do:[[:digit:]]*;.*test[\\]target_mp.py:fact:"
 }
 
 
-@test "Test Austin: fork" {
-  test_case fork
-}
+# -----------------------------------------------------------------------------
+# -- Test Cases
+# -----------------------------------------------------------------------------
 
-@test "Test Austin: fork multi-process" {
-  test_case fork_mp
-}
-
-@test "Test Austin: attach" {
-  test_case attach
-}
-
-@test "Test Austin: valgrind" {
-  ignore
-  if ! which valgrind; then skip "Valgrind not found"; fi
-  test_case valgrind
-}
-
-@test "Test Austin: error messages" {
-  test_case error
-}
-
-@test "Test Austin: sleepless" {
-  test_case sleepless
+@test "Test Austin with Python" {
+  repeat 3 invoke_austin
 }

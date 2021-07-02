@@ -1,88 +1,79 @@
 name: Tests
 on: push
 jobs:
-  tests:
-    runs-on: ${{ matrix.os }}
+  tests-linux:
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
-    name: Tests on ${{ matrix.os }}
+    name: Tests on Linux
     steps:
       - uses: actions/checkout@v2
-
-      # ---- LINUX ----
-
-      - name: Compile Austin on Linux
+      - name: Compile Austin
         run: |
           autoreconf --install
           ./configure
           make
-        if: startsWith(matrix.os, 'ubuntu')
 
-      - name: Install test dependencies on Linux
+      - name: Install test dependencies
         run: |
           sudo add-apt-repository -y ppa:deadsnakes/ppa
-          sudo add-apt-repository -y ppa:duggan/bats
-          sudo apt-get -y install bats valgrind python2.{3..7} python3.{3..9}
-        if: "startsWith(matrix.os, 'ubuntu')"
+          sudo apt-get -y install valgrind python2.{3..7} python3.{3..10}
+          npm install bats
 
-      - name: Run tests on Linux
-        run: sudo make check
-        if: "startsWith(matrix.os, 'ubuntu')"
+      - name: Run tests
+        run: sudo node_modules/.bin/bats test/test.bats
 
       - name: Show test logs
-        run: test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log
-        if: always() && startsWith(matrix.os, 'ubuntu')
+        run: |
+          test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log || true
+          test -f ./test-suite.log && cat ./test-suite.log || true
+        if: always()
 
-      # ---- MACOS ----
-
-      - name: Compile Austin on macOS
+  tests-osx:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+    name: Tests on macOS
+    steps:
+      - uses: actions/checkout@v2
+      - name: Compile Austin
         run: gcc -Wall -O3 -Os src/*.c -o src/austin -DDEBUG
-        if: startsWith(matrix.os, 'macos')
 
-      - name: Install test dependencies on macOS
+      - name: Install test dependencies
         run: |
           brew install python || brew upgrade python
           brew install python@3.8 || true
           brew install python@3.9 || true
           brew install bats-core || true
           brew cask install anaconda || true
-        if: startsWith(matrix.os, 'macos')
 
-      - name: Run tests on macOS
+      - name: Run tests
         run: sudo bats test/macos/test.bats
-        if: startsWith(matrix.os, 'macos')
 
       - name: Show test logs
         run: test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log
-        if: always() && startsWith(matrix.os, 'macos')
+        if: always()
 
-      # ---- WINDOWS ----
-
-      - name: Compile Austin on Windows
+  tests-win:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+    name: Tests on Windows
+    steps:
+      - uses: actions/checkout@v2
+      - name: Compile Austin
         run: |
-          gcc.exe -O3 -o src/austin.exe src/*.c -lpsapi -Wall -Os -s -DDEBUG
+          gcc.exe -O3 -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Os -s -DDEBUG
           src\austin.exe --usage
-        if: startsWith(matrix.os, 'windows')
 
-      # - name: Install test dependencies on Windows
-      #   run: |
-      #     choco install -y python --version=3.6
-      #     choco install -y python --version=3.7
-      #     choco install -y python --version=3.8
-      #     choco install -y python --version=3.9
-      #   if: "startsWith(matrix.os, 'windows')"
+      - name: Install test dependencies
+        run: |
+          git clone --depth=1 https://github.com/bats-core/bats-core.git
 
-      # - name: Run tests on Windows
-      #   run: |
-      #     refreshenv
-      #     src\austin.exe -Ci 100000 py -3.6 test\target34.py
-      #     src\austin.exe -Ci 100000 py -3.7 test\target34.py
-      #     src\austin.exe -Ci 100000 py -3.8 test\target34.py
-      #     src\austin.exe -ci 100000 py -3.9 test\target34.py
-      #   if: startsWith(matrix.os, 'windows')
-      #
-      # - name: Show austin logs
-      #   run: Get-Content -Path $env:TEMP\austin.log
-      #   if: always() && startsWith(matrix.os, 'windows')
+      - name: Run tests
+        run: |
+          bats-core/bin/bats test/win/test.bats
+      
+      - name: Show austin logs
+        run: test -f /tmp/austin.log && cat /tmp/austin.log || true
+        if: always()

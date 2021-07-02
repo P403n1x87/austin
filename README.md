@@ -130,7 +130,11 @@ instance, at the following Python TUI
        style="box-shadow: #111 0px 0px 16px;" />
 </p>
 
-Keep reading for more tools ideas and examples!
+Check out [A Survey of Open-Source Python
+Profilers](https://www.usenix.org/system/files/login/articles/login_winter19_12_norton.pdf)
+by Peter Norton for a general overview of Austin.
+
+Keep reading for more tool ideas and examples!
 
 
 # Installation
@@ -159,7 +163,9 @@ repository and running the C compiler.
 
 Installing Austin using `autotools` amounts to the usual `./configure`, `make`
 and `make install` finger gymnastic. The only dependency is the standard C
-library.
+library. Before proceding with the steps below, make sure that the `autotools`
+are installed on your system. Refer to your distro's documentation for details
+on how to do so.
 
 ~~~ bash
 git clone --depth=1 https://github.com/P403n1x87/austin.git
@@ -168,6 +174,9 @@ autoreconf --install
 make
 make install
 ~~~
+
+> **NOTE** Some Linux distributions, like Manjaro, might require the execution
+> of `automake --add-missing` before `./configure`.
 
 Alternatively, sources can be compiled with just a C compiler (see below).
 
@@ -260,10 +269,10 @@ whereas on macOS it is enough to run
 gcc -O3 -Os -Wall src/*.c -o src/austin
 ~~~
 
-On Windows, the `-lpsapi` switch is needed
+On Windows, the `-lpsapi -lntdll` switches are needed
 
 ~~~ bash
-gcc -O3 -Os -Wall -lpsapi src/*.c -o src/austin
+gcc -O3 -Os -Wall -lpsapi -lntdll src/*.c -o src/austin
 ~~~
 
 Add `-DDEBUG` if you need a more verbose log. This is useful if you encounter a
@@ -287,7 +296,8 @@ Austin -- A frame stack sampler for Python.
   -o, --output=FILE          Specify an output file for the collected samples.
   -p, --pid=PID              The the ID of the process to which Austin should
                              attach.
-  -s, --sleepless            Suppress idle samples.
+  -P, --pipe                 Pipe mode. Use when piping Austin output.
+  -s, --sleepless            Suppress idle samples to estimate CPU time.
   -t, --timeout=n_ms         Start up wait time in milliseconds (default is
                              100). Accepted units: s, ms.
   -x, --exposure=n_sec       Sample for n_sec seconds only.
@@ -318,35 +328,36 @@ depend on the mode.
 
 ## Normal Mode
 
-When no special switch are passed to Austin from the command line, the process
-identifier is omitted and `[frame]` has the structure
+In normal mode, the `[frame]` part of each emitted sample has the structure
 
 ~~~
-[frame] := <function> (<module>);L<line number>
+[frame] := <module>:<function>:<line number>
 ~~~
 
-The reason for not including the line number in the `([module])` part, as one
-might have expected, is that this way the flame graph will show the total time
-spent in each function, plus the finer detail of the time spent on each line. A
-drawback of this format is that frame stacks double in height. If you prefer
-something more conventional, you can use the `-a` option to switch to the
-alternative format in which `[frame]` has the structure
+If you want the flame graph to show the total time spent in each function, plus
+the finer detail of the time spent on each line, you can use the alternative
+format by passing the `-a` option. In this mode, `[frame]` has the structure
 
 ~~~
-[frame] := <function> (<module>:<line number>)
+[frame] := <module>:<function>;L<line number>
 ~~~
 
 Each line then ends with a single `[metric]`, i.e. the sampling time measured in
 microseconds.
 
 
+> **NOTE** This was changed in Austin 3. In previous version, the alternative
+> format used to be the default one.
+
 ## Memory and Full Metrics
 
 When profiling in memory mode with the `-m` or `--memory` switch, the metric
 value at the end of each line is the memory delta between samples, measured in
-bytes. In full mode (`-f` or `--full` switches), each samples ends with three
-values: the time delta, any positive memory delta (memory allocations) or zero
-and any negative memory delta (memory releases) or zero.
+bytes. In full mode (`-f` or `--full` switches), each sample ends with a
+comma-separated list of three values: the time delta, the idle state (1 for
+idle, 0 otherwise) and the RSS memory delta (positive for memory allocations,
+negative for deallocations). This way it is possible to estimate wall-clock
+time, CPU time and memory pressure, all from a single run.
 
 > **NOTE** The reported memory allocations and deallocations are obtained by
 > computing resident memory deltas between samples. Hence these values give an
@@ -371,10 +382,10 @@ error rates below 1% on average.
 
 # Compatibility
 
-Austin supports Python 2.3-2.7 and 3.3-3.8 and has been tested on the following
-platforms and architectures
+Austin supports Python 2.3-2.7 and 3.3-3.10 and has been tested on the
+following platforms and architectures
 
-|| <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" />* | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/> | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />** |
+|| <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" />* | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/>** | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />*** |
 |---          |---|---|---|
 | **x86_64**  | ✓ | ✓ | ✓ |
 | **i686**    | ✓ |   | ✓ |
@@ -393,7 +404,14 @@ sudo setcap cap_sys_ptrace+ep `which austin`
 In order for Austin to work with Docker, the `--cap-add SYS_PTRACE` option needs
 to be passed when starting a container.
 
-\** Due to the **System Integrity Protection** introduced in **MacOS** with El
+\** Depending on how Python is installed on Windows, the invocation of the
+`python` binary might actually happen via a proxy script or launcher (e.g.
+`py`). Since these are not actual Python processes, Austin will fail to profile
+them. To work around this, either use a path to the actual Python executable or
+add the `-C` option to allow Austin to automatically discore the actual child
+Python process.
+
+\*** Due to the **System Integrity Protection** introduced in **MacOS** with El
 Capitan, Austin cannot profile Python processes that use an executable located
 in the `/bin` folder, even with `sudo`. Hence, either run the interpreter from a
 virtual environment or use a Python interpreter that is installed in, e.g.,
@@ -465,6 +483,18 @@ austin -Cp `pgrep apache2 | head -n 1`
 
 Any child processes will be automatically detected as they are created and
 Austin will sample them too.
+
+
+## IDE Extensions
+
+It is easy to write your own extension for your favourite text editor. This, for
+example, is a demo of a [Visual Studio Code] extension that highlights the most
+hit lines of code straight into the editor
+
+<p align="center">
+  <img src="art/vscode-demo.gif"
+       style="box-shadow: #111 0px 0px 16px;" />
+</p>
 
 
 ## Austin TUI
@@ -586,17 +616,6 @@ where `input` is a file containing the output from Austin and `output` is the
 name of the protobuf file to use to save the result of the conversion, ready to
 be used with [Google's pprof tools][pprof].
 
-## IDE Extensions
-
-It is easy to write your own extension for your favourite text editor. This, for
-example, is a demo of a [Visual Studio Code] extension that highlights the most
-hit lines of code straight into the editor
-
-<p align="center">
-  <img src="art/vscode-demo.gif"
-       style="box-shadow: #111 0px 0px 16px;" />
-</p>
-
 
 # Contribute
 
@@ -640,4 +659,4 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 [pprof]: https://github.com/google/pprof
 [Scoop]: https://scoop.sh/
 [Speedscope]: https://speedscope.app
-[Visual Studio Code]: https://github.com/P403n1x87/austin-vscode
+[Visual Studio Code]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode

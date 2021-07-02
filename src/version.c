@@ -29,7 +29,7 @@
 
 #define UNSUPPORTED_VERSION             log_w("Unsupported Python version detected. Austin might not work as expected.")
 
-#define LATEST_VERSION                  (&python_v3_8)
+#define LATEST_VERSION                  (&python_v3_10)
 
 #define PY_CODE(s) {                    \
   sizeof(s),                            \
@@ -44,6 +44,7 @@
   offsetof(s, f_back),                  \
   offsetof(s, f_code),                  \
   offsetof(s, f_lasti),                 \
+  offsetof(s, f_lineno),                \
 }
 
 /* Hack. Python 3.3 and below don't have the prev field */
@@ -83,9 +84,7 @@
 python_v python_v2 = {
   PY_CODE     (PyCodeObject2),
   PY_FRAME    (PyFrameObject2),
-  PY_THREAD_H (PyThreadState2),
-  PY_UNICODE  (2),
-  PY_BYTES    (2)
+  PY_THREAD_H (PyThreadState2)
 };
 
 // ---- Python 3.3 ------------------------------------------------------------
@@ -93,9 +92,7 @@ python_v python_v2 = {
 python_v python_v3_3 = {
   PY_CODE     (PyCodeObject3_3),
   PY_FRAME    (PyFrameObject2),
-  PY_THREAD_H (PyThreadState2),
-  PY_UNICODE  (3),
-  PY_BYTES    (3)
+  PY_THREAD_H (PyThreadState2)
 };
 
 // ---- Python 3.4 ------------------------------------------------------------
@@ -103,9 +100,7 @@ python_v python_v3_3 = {
 python_v python_v3_4 = {
   PY_CODE     (PyCodeObject3_3),
   PY_FRAME    (PyFrameObject2),
-  PY_THREAD   (PyThreadState3_4),
-  PY_UNICODE  (3),
-  PY_BYTES    (3)
+  PY_THREAD   (PyThreadState3_4)
 };
 
 // ---- Python 3.6 ------------------------------------------------------------
@@ -113,9 +108,7 @@ python_v python_v3_4 = {
 python_v python_v3_6 = {
   PY_CODE     (PyCodeObject3_6),
   PY_FRAME    (PyFrameObject2),
-  PY_THREAD   (PyThreadState3_4),
-  PY_UNICODE  (3),
-  PY_BYTES    (3)
+  PY_THREAD   (PyThreadState3_4)
 };
 
 // ---- Python 3.7 ------------------------------------------------------------
@@ -123,9 +116,7 @@ python_v python_v3_6 = {
 python_v python_v3_7 = {
   PY_CODE     (PyCodeObject3_6),
   PY_FRAME    (PyFrameObject3_7),
-  PY_THREAD   (PyThreadState3_4),
-  PY_UNICODE  (3),
-  PY_BYTES    (3),
+  PY_THREAD   (PyThreadState3_7),
   PY_RUNTIME  (_PyRuntimeState3_7)
 };
 
@@ -134,12 +125,18 @@ python_v python_v3_7 = {
 python_v python_v3_8 = {
   PY_CODE     (PyCodeObject3_8),
   PY_FRAME    (PyFrameObject3_7),
-  PY_THREAD   (PyThreadState3_4),
-  PY_UNICODE  (3),
-  PY_BYTES    (3),
+  PY_THREAD   (PyThreadState3_8),
   PY_RUNTIME  (_PyRuntimeState3_8)
 };
 
+// ---- Python 3.10 -----------------------------------------------------------
+
+python_v python_v3_10 = {
+  PY_CODE     (PyCodeObject3_8),
+  PY_FRAME    (PyFrameObject3_10),
+  PY_THREAD   (PyThreadState3_8),
+  PY_RUNTIME  (_PyRuntimeState3_8)
+};
 
 // ----------------------------------------------------------------------------
 void
@@ -191,12 +188,18 @@ set_version(int version) {
     // 3.7
     case 7: py_v = &python_v3_7; break;
 
-    // 3.8
+    // 3.8, 3.9
     case 8:
     case 9: py_v = &python_v3_8; break;
+
+    // 3.10
+    case 10: py_v = &python_v3_10; break;
 
     default: py_v = LATEST_VERSION;
       UNSUPPORTED_VERSION;
     }
   }
+
+  py_v->major = major;
+  py_v->minor = minor;
 }

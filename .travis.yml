@@ -1,4 +1,12 @@
 language: c
+python:
+  - 2.7
+  - 3.3
+  - 3.4
+  - 3.5
+  - 3.6
+  - 3.8
+  - 3.9
 
 compiler:
   - gcc
@@ -35,16 +43,14 @@ before_script:
       sudo add-apt-repository ppa:deadsnakes/ppa -y;
       sudo add-apt-repository ppa:duggan/bats -y;
 
-      sudo apt-get install -y bats valgrind python2.{3..7} python3.{3..9};
+      sudo apt-get install -y bats valgrind python2.{3..7} python3.{3..10};
 
       autoreconf --install;
     fi
 
   - if [[ "$TRAVIS_OS_NAME" == "osx" ]];
     then
-      brew install python@3.8 || true;
-      brew install python@3.9 || true;
-      brew install bats-core;
+      git clone --depth=1 https://github.com/bats-core/bats-core.git;
     fi
     # brew install --HEAD valgrind       || true;
 
@@ -82,14 +88,14 @@ script:
   - if [[ "$TRAVIS_OS_NAME" == "osx"     ]];
     then
       gcc -Wall -O3 -Os -o src/austin src/*.c &&
-      sudo bats test/macos/test.bats;
+      sudo bats-core/bin/bats test/macos/test.bats;
 
       test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log;
     fi
 
   - if [[ "$TRAVIS_OS_NAME" == "windows" ]];
     then
-      gcc -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi;
+      gcc -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll;
     fi
 
 after_success:

@@ -118,49 +118,12 @@ py_proc__attach(py_proc_t *, pid_t, int);
 
 
 /**
- * Get the remote address of the PyInterpreterState instance.
- *
- * @param  py_proc_t * the process object.
- *
- * @return the remote address of the PyInterpreterState instance.
- */
-void *
-py_proc__get_istate_raddr(py_proc_t *);
-
-
-/**
- * Get the remote address of the current PyThreadState instance.
- *
- * @param  py_proc_t * the process object.
- *
- * @return the remote address of the current PyThreadState instance. If no
- *         thread is currently running then this returns NULL. If an error
- *         occurred, the return value is (void *) -1.
- */
-void *
-py_proc__get_current_thread_state_raddr(py_proc_t *);
-
-
-/**
  * Wait for the process to terminate.
  *
  * @param py_proc_t * the process object.
  */
 void
 py_proc__wait(py_proc_t *);
-
-
-/**
- * Find the offset of the pointer to the current thread structure from the
- * beginning of the _PyRuntimeState structure (Python 3.7+ only).
- *
- * @param py_proc_t * the process object.
- * @param void      * the remote address of the thread to use for comparison.
- *
- * @return 0 on success, 1 otherwise.
- */
-int
-py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr);
 
 
 /**
@@ -186,17 +149,6 @@ py_proc__is_python(py_proc_t *);
 
 
 /**
- * Get the memory size delta since last call.
- *
- * @param py_proc_t * the process object.
- *
- * @return the computed memory usage delta in bytes.
- */
-ssize_t
-py_proc__get_memory_delta(py_proc_t *);
-
-
-/**
  * Sample the frame stack of each thread of the given Python process.
  *
  * @param  py_proc_t *  self.
@@ -217,6 +169,14 @@ py_proc__sample(py_proc_t *);
  * @return 0 on success.
  */
 #define py_proc__get_type(self, raddr, dt) (py_proc__memcpy(self, raddr, sizeof(dt), &dt))
+
+/**
+ * Log the Python interpreter version
+ * @param self  the process object.
+ * @param int   whether the process is the parent process.
+ */
+void
+py_proc__log_version(py_proc_t *, int);
 
 
 /**

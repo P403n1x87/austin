@@ -20,16 +20,39 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#define PY_THREAD_C
+
 #include <string.h>
 
 #include "argparse.h"
 #include "error.h"
 #include "hints.h"
 #include "logging.h"
+#include "mem.h"
 #include "platform.h"
+#include "pthread.h"
+#include "timing.h"
 #include "version.h"
 
 #include "py_thread.h"
+
+// ----------------------------------------------------------------------------
+// -- Platform-dependent implementations of _py_thread__is_idle
+// ----------------------------------------------------------------------------
+
+#if defined(PL_LINUX)
+
+  #include "linux/py_thread.h"
+
+#elif defined(PL_WIN)
+
+  #include "win/py_thread.h"
+
+#elif defined(PL_MACOS)
+
+  #include "mac/py_thread.h"
+
+#endif
 
 
 // ---- PRIVATE ---------------------------------------------------------------
@@ -68,7 +91,9 @@ py_frame_t * _stack = NULL;
 #define p_ascii_data(raddr)                     (raddr + sizeof(PyASCIIObject))
 
 
+
 // ----------------------------------------------------------------------------
+
 
 static inline int
 _get_string_from_raddr(pid_t pid, void * raddr, char * buffer) {
@@ -77,7 +102,7 @@ _get_string_from_raddr(pid_t pid, void * raddr, char * buffer) {
 
   // This switch statement is required by the changes regarding the string type
   // introduced in Python 3.
-  switch (py_v->py_unicode.version) {
+  switch (py_v->major) {
   case 2:
     if (fail(copy_datatype(pid, raddr, string))) {
       log_ie("Cannot read remote PyStringObject");
@@ -133,7 +158,7 @@ _get_bytes_from_raddr(pid_t pid, void * raddr, unsigned char * array) {
   if (!isvalid(array))
     goto error;
 
-  switch (py_v->py_bytes.version) {
+  switch (py_v->major) {
   case 2:  // Python 2
     if (fail(copy_datatype(pid, raddr, string))) {
       log_ie("Cannot read remote PyStringObject");
@@ -221,15 +246,38 @@ _py_code__fill_from_raddr(py_code_t * self, raddr_t * raddr, int lasti) {
   }
 
   int lineno = V_FIELD(unsigned int, code, py_code, o_firstlineno);
-  for (register int i = 0, bc = 0; i < len; i++) {
-    bc += lnotab[i++];
-    if (bc > lasti)
-      break;
 
-    if (lnotab[i] >= 0x80)
-      lineno -= 0x100;
+  if (py_v->major == 3 && py_v->minor >= 10) { // Python >=3.10
+    lasti <<= 1;
+    for (register int i = 0, bc = 0; i < len; i++) {
+      int sdelta = lnotab[i++];
+      if (sdelta == 0xff)
+        break;
 
-    lineno += lnotab[i];
+      bc += sdelta;
+
+      int ldelta = lnotab[i];
+      if (ldelta == 0x80)
+        ldelta = 0;
+      else if (ldelta > 0x80)
+        lineno -= 0x100;
+
+      lineno += ldelta;
+      if (bc > lasti)
+        break;
+    }
+  }
+  else { // Python < 3.10
+    for (register int i = 0, bc = 0; i < len; i++) {
+      bc += lnotab[i++];
+      if (bc > lasti)
+        break;
+
+      if (lnotab[i] >= 0x80)
+        lineno -= 0x100;
+
+      lineno += lnotab[i];
+    }
   }
 
   self->lineno = lineno;
@@ -290,11 +338,27 @@ _py_frame__prev(py_frame_t * self) {
 }
 
 
+// ----------------------------------------------------------------------------
+static inline void
+_py_thread__unwind_frame_stack(py_thread_t * self) {
+  register size_t i = 0;
+  while (success(_py_frame__prev(_stack + i)) && i < MAX_STACK_SIZE) {
+    if (_stack[++i].invalid) {
+      log_d("Frame number %d is invalid", i);
+      return;
+    }
+  }
+  if (i >= MAX_STACK_SIZE)
+    log_w("Frames limit reached. Discarding the rest");
+  self->stack_height += i;
+}
+
+
 // ---- PUBLIC ----------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
 int
-py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr) {
+py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc) {
   PyThreadState ts;
 
   self->invalid      = 1;
@@ -312,21 +376,12 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr) {
       SUCCESS;
     }
     self->stack_height = 1;
-
-    register size_t i = 0;
-    while (success(_py_frame__prev(_stack + i)) && i < MAX_STACK_SIZE) {
-      if (_stack[++i].invalid) {
-        log_d("Frame number %d is invalid", i);
-        SUCCESS;
-      }
-    }
-    if (i >= MAX_STACK_SIZE)
-      log_w("Frames limit reached. Discarding the rest");
-    self->stack_height += i ;
   }
 
   self->raddr.pid  = raddr->pid;
   self->raddr.addr = raddr->addr;
+
+  self->proc = proc;
 
   self->next_raddr.pid  = raddr->pid;
   self->next_raddr.addr = V_FIELD(void*, ts, py_thread, o_next) == raddr->addr \
@@ -334,8 +389,33 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr) {
     : V_FIELD(void*, ts, py_thread, o_next);
 
   self->tid  = V_FIELD(long, ts, py_thread, o_thread_id);
-  if (self->tid == 0)
+  if (self->tid == 0) {
+    // If we fail to get a valid Thread ID, we resort to the PyThreadState
+    // remote address
+    log_t("Thread ID fallback to remote address");
     self->tid = (uintptr_t) raddr->addr;
+  }
+  #if defined PL_LINUX
+  else {
+    // Try to determine the TID by reading the remote struct pthread structure.
+    // We can then use this information to parse the appropriate procfs file and
+    // determine the native thread's running state.
+    if (unlikely(_pthread_tid_offset == 0)) {
+      _infer_tid_field_offset(self);
+      if (unlikely(_pthread_tid_offset == 0)) {
+        log_d("tid field offset not ready");
+      }
+    }
+    if (likely(_pthread_tid_offset != 0) && success(copy_memory(
+        self->raddr.pid,
+        (void *) self->tid,
+        PTHREAD_BUFFER_SIZE * sizeof(void *),
+        _pthread_buffer
+    ))) {
+      self->tid = (uintptr_t) _pthread_buffer[_pthread_tid_offset];
+    }
+  }
+  #endif
 
   self->invalid = 0;
   SUCCESS;
@@ -350,22 +430,32 @@ py_thread__next(py_thread_t * self) {
 
   raddr_t next_raddr = { .pid = self->next_raddr.pid, .addr = self->next_raddr.addr };
 
-  return py_thread__fill_from_raddr(self, &next_raddr);
+  return py_thread__fill_from_raddr(self, &next_raddr, self->proc);
 }
 
 
 // ----------------------------------------------------------------------------
 #if defined PL_WIN
   #define SAMPLE_HEAD "P%I64d;T%I64x"
-  #define MEM_METRIC " %I64d"
+  #define MEM_METRIC "%I64d"
 #else
-  #define SAMPLE_HEAD "P%d;T%lx"
-  #define MEM_METRIC " %ld"
+  #define SAMPLE_HEAD "P%d;T%ld"
+  #define MEM_METRIC "%ld"
 #endif
+#define TIME_METRIC "%lu"
+#define IDLE_METRIC "%d"
+#define METRIC_SEP  ","
 
 void
-py_thread__print_collapsed_stack(py_thread_t * self, ctime_t delta, ssize_t mem_delta) {
-  if (!pargs.full && pargs.memory && mem_delta <= 0)
+py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t mem_delta) {
+  #if defined PL_LINUX
+  // If we still don't have this offset then the thread ID is bonkers so we
+  // do not emit the sample
+  if (unlikely(_pthread_tid_offset == 0))
+    return;
+  #endif
+
+  if (!pargs.full && pargs.memory && mem_delta == 0)
     return;
 
   if (self->invalid)
@@ -375,35 +465,49 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t delta, ssize_t mem_
     // Skip if thread has no frames and we want to exclude empty threads
     return;
 
+  if (mem_delta == 0 && time_delta == 0)
+    return;
+
+  int is_idle = FALSE;
+  if (pargs.full || pargs.sleepless) {
+    is_idle = _py_thread__is_idle(self);
+    if (!pargs.full && is_idle && pargs.sleepless)
+      return;
+  }
+
   // Group entries by thread.
-  fprintf(pargs.output_file, SAMPLE_HEAD, self->raddr.pid, self->tid);
+  fprintf(pargs.output_file, SAMPLE_HEAD, self->proc->pid, self->tid);
 
   if (self->stack_height) {
+    _py_thread__unwind_frame_stack(self);
+
     // Append frames
     register int i = self->stack_height;
-    while(i > 0) {
+    while (i > 0) {
       py_code_t code = _stack[--i].code;
-      if (pargs.sleepless && strstr(code.scope, "wait") != NULL) {
-        delta = 0;
-        fprintf(pargs.output_file, ";<idle>");
-        break;
-      }
-      fprintf(pargs.output_file, pargs.format, code.scope, code.filename, code.lineno);
+      fprintf(pargs.output_file, pargs.format, code.filename, code.scope, code.lineno);
     }
   }
+
   // Finish off sample with the metric(s)
   if (pargs.full) {
-    fprintf(pargs.output_file, " %lu" MEM_METRIC MEM_METRIC "\n",
-      delta, mem_delta >= 0 ? mem_delta : 0, mem_delta < 0 ? mem_delta : 0
+    fprintf(pargs.output_file, " " TIME_METRIC METRIC_SEP IDLE_METRIC METRIC_SEP MEM_METRIC "\n",
+      time_delta, !!is_idle, mem_delta
     );
   }
   else {
     if (pargs.memory)
-      fprintf(pargs.output_file, MEM_METRIC "\n", mem_delta);
+      fprintf(pargs.output_file, " " MEM_METRIC "\n", mem_delta);
     else
-      fprintf(pargs.output_file, " %lu\n", delta);
+      fprintf(pargs.output_file, " " TIME_METRIC "\n", time_delta);
   }
-}
+
+  // Update sampling stats
+  stats_count_sample();
+  if (austin_errno != EOK)
+    stats_count_error();
+  stats_check_duration(stopwatch_duration());
+} /* py_thread__print_collapsed_stack */
 
 
 // ----------------------------------------------------------------------------
@@ -413,12 +517,29 @@ py_thread_allocate_stack(void) {
     SUCCESS;
 
   _stack = (py_frame_t *) calloc(MAX_STACK_SIZE, sizeof(py_frame_t));
-  return _stack == NULL;
+  if (!isvalid(_stack))
+    FAIL;
+
+  #if defined PL_WIN
+  // On Windows we need to fetch process and thread information to detect idle
+  // threads. We allocate a buffer for periodically fetching that data and, if
+  // needed we grow it at runtime.
+  _pi_buffer_size = (1 << 16) * sizeof(void *);
+  _pi_buffer      = calloc(1, _pi_buffer_size);
+  if (!isvalid(_pi_buffer))
+    FAIL;
+  #endif
+
+  SUCCESS;
 }
 
 
 // ----------------------------------------------------------------------------
 void
 py_thread_free_stack(void) {
+  #if defined PL_WIN
+  sfree(_pi_buffer);
+  #endif
+
   sfree(_stack);
 }

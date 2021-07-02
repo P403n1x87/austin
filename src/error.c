@@ -78,9 +78,9 @@ const char * _error_msg_tab[MAXERROR] = {
   "Failed to load memory maps",
   "Interpreter state search timed out",
   "Failed to attach to running process",
-  "Permission denied. Try with elevated privileges.",
-  "No such process.",
-  NULL,
+  "Permission denied. Try with elevated privileges",
+  "No such process",
+  "Non-Python parent process has no Python children",
 };
 
 
@@ -88,7 +88,7 @@ const int _fatal_error_tab[MAXERROR] = {
   // generic error messages
   0,
   1,
-  1,
+  0,
   1,
   0,
   1,
@@ -133,7 +133,7 @@ const int _fatal_error_tab[MAXERROR] = {
   1,
   1,
   1,
-  0,
+  1,
 };
 
 

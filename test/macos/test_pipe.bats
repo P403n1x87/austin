@@ -28,42 +28,41 @@ function invoke_austin {
 
   if ! $python_bin -V; then skip "$python_bin not found."; fi
 
-    log "Fork [Python $python_bin]"
+    log "Pipe [Python $python_bin]"
 
   # -------------------------------------------------------------------------
-  step "Standard profiling"
+  step "Test pipe output (wall time)"
   # -------------------------------------------------------------------------
-    run sudo $AUSTIN -i 1000 -t 10000 $python_bin test/target34.py
+    run sudo $AUSTIN -Pi 100ms -t 1s $PYTHON test/target34.py
 
     assert_success
-    assert_output "# austin: [[:digit:]]*.[[:digit:]]*.[[:digit:]]*"
-    assert_output ".*test/target34.py:keep_cpu_busy:32"
-    assert_not_output "Unwanted"
+    assert_output "# python: [[:digit:]]*.[[:digit:]]*."
+    assert_output "# mode: wall"
+    assert_output "# duration: [[:digit:]]*"
+    assert_output "# interval: 100000"
 
   # -------------------------------------------------------------------------
-  step "Memory profiling"
+  step "Test pipe output (CPU time)"
   # -------------------------------------------------------------------------
-    run sudo $AUSTIN -i 1000 -t 10000 -m $python_bin test/target34.py
+    run sudo $AUSTIN -Psi 100ms -t 1s $PYTHON test/target34.py
 
     assert_success
-    assert_output ".*test/target34.py:keep_cpu_busy:32"
+    assert_output "# python: [[:digit:]]*.[[:digit:]]*."
+    assert_output "# mode: cpu"
+    assert_output "# duration: [[:digit:]]*"
+    assert_output "# interval: 100000"
 
   # -------------------------------------------------------------------------
-  step "Output file"
+  step "Test pipe output (multiprocess)"
   # -------------------------------------------------------------------------
-    run sudo $AUSTIN -i 10000 -t 10000 -o /tmp/austin_out.txt $python_bin test/target34.py
+    run sudo $AUSTIN -CPi 100ms -t 1s $PYTHON test/target34.py
 
     assert_success
-    assert_output "Unwanted"
-    assert_not_output ".*test/target34.py:keep_cpu_busy:32"
-    assert_file "/tmp/austin_out.txt" ".*test/target34.py:keep_cpu_busy:32"
-
-}
-
-# -----------------------------------------------------------------------------
-
-teardown() {
-  if [ -f /tmp/austin_out.txt ]; then rm /tmp/austin_out.txt; fi
+    assert_output "# python: [[:digit:]]*.[[:digit:]]*."
+    assert_output "# mode: wall"
+    assert_output "# duration: [[:digit:]]*"
+    assert_output "# interval: 100000"
+    assert_output "# multiprocess: on"
 }
 
 
@@ -84,10 +83,3 @@ teardown() {
   ignore
   repeat 3 invoke_austin "/usr/local/anaconda3/bin/python"
 }
-
-# @test "Test Austin with the default Python 3" {
-#   /usr/bin/python3 -m venv --copies --without-pip /tmp/py3
-#   source /tmp/py3/bin/activate
-# 	invoke_austin "python3"
-#   test -d /tmp/py3 && rm -rf /tmp/py3
-# }

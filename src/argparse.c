@@ -33,8 +33,8 @@
 #define DEFAULT_SAMPLING_INTERVAL    100
 #define DEFAULT_INIT_RETRY_CNT       100
 
-const char SAMPLE_FORMAT_NORMAL[]      = ";%s (%s);L%d";
-const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s (%s:%d)";
+const char SAMPLE_FORMAT_NORMAL[]      = ";%s:%s:%d";
+const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s:%s;L%d";
 
 
 // Globals for command line arguments
@@ -51,6 +51,7 @@ parsed_args_t pargs = {
   /* output_filename     */ NULL,
   /* children            */ 0,
   /* exposure            */ 0,
+  /* pipe                */ 0,
 };
 
 static int exec_arg = 0;
@@ -186,7 +187,7 @@ static struct argp_option options[] = {
   },
   {
     "sleepless",    's', NULL,          0,
-    "Suppress idle samples."
+    "Suppress idle samples to estimate CPU time."
   },
   {
     "memory",       'm', NULL,          0,
@@ -211,6 +212,10 @@ static struct argp_option options[] = {
   {
     "exposure",     'x', "n_sec",       0,
     "Sample for n_sec seconds only."
+  },
+  {
+    "pipe",         'P', NULL,          0,
+    "Pipe mode. Use when piping Austin output."
   },
   #ifndef PL_LINUX
   {
@@ -311,6 +316,10 @@ parse_opt (int key, char *arg, struct argp_state *state)
       pargs.exposure > LONG_MAX
     )
       argp_error(state, "the exposure must be a positive integer");
+    break;
+
+  case 'P':
+    pargs.pipe = 1;
     break;
 
   case ARGP_KEY_ARG:
@@ -461,7 +470,8 @@ static const char * help_msg = \
 "  -o, --output=FILE          Specify an output file for the collected samples.\n"
 "  -p, --pid=PID              The the ID of the process to which Austin should\n"
 "                             attach.\n"
-"  -s, --sleepless            Suppress idle samples.\n"
+"  -P, --pipe                 Pipe mode. Use when piping Austin output.\n"
+"  -s, --sleepless            Suppress idle samples to estimate CPU time.\n"
 "  -t, --timeout=n_ms         Start up wait time in milliseconds (default is\n"
 "                             100). Accepted units: s, ms.\n"
 "  -x, --exposure=n_sec       Sample for n_sec seconds only.\n"
@@ -475,9 +485,9 @@ static const char * help_msg = \
 "Report bugs to <https://github.com/P403n1x87/austin/issues>.\n";
 
 static const char * usage_msg = \
-"Usage: austin [-aCefms?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-x n_sec]\n"
+"Usage: austin [-aCefmPs?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-x n_sec]\n"
 "            [--alt-format] [--children] [--exclude-empty] [--full]\n"
-"            [--interval=n_us] [--memory] [--output=FILE] [--pid=PID]\n"
+"            [--interval=n_us] [--memory] [--output=FILE] [--pid=PID] [--pipe]\n"
 "            [--sleepless] [--timeout=n_ms] [--exposure=n_sec] [--help]\n"
 "            [--usage] [--version] command [ARG...]\n";
 
@@ -601,6 +611,10 @@ cb(const char opt, const char * arg) {
     ) {
       arg_error("the exposure must be a positive integer");
     }
+    break;
+
+  case 'P':
+    pargs.pipe = 1;
     break;
 
   case '?':

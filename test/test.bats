@@ -50,3 +50,7 @@ test_case() {
 @test "Test Austin: errors" {
   test_case error
 }
+
+@test "Test Austin: sleepless" {
+  test_case sleepless
+}
