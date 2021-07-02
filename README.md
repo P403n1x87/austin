@@ -14,10 +14,6 @@
 </p>
 
 <p align="center">
-  <a href="https://travis-ci.org/P403n1x87/austin">
-    <img src="https://travis-ci.org/P403n1x87/austin.svg?branch=master"
-         alt="Travis CI Build Status" />
-  </a>
   <a href="https://github.com/P403n1x87/austin/actions?query=workflow%3ATests">
     <img src="https://github.com/P403n1x87/austin/workflows/Tests/badge.svg"
          alt="GitHub Action Status: Tests" />
