@@ -27,12 +27,24 @@
 #define DEBUG
 #endif
 
+#include "argparse.h"
+#include "austin.h"
+
+
+#define META "# "
+
+#define NL fputc('\n', pargs.output_file)
+
+#define meta(...)                          \
+  fprintf(pargs.output_file, META);        \
+  fprintf(pargs.output_file, __VA_ARGS__); \
+  NL;
 
 #define log_header() {                   \
-  log_m("              _   _      ");    \
-  log_m(" __ _ _  _ __| |_(_)_ _  ");    \
-  log_m("/ _` | || (_-<  _| | ' \\ ");   \
-  log_m("\\__,_|\\_,_/__/\\__|_|_||_|"); \
+  log_m("\033[1m              _   _      \033[0m");    \
+  log_m("\033[1m __ _ _  _ __| |_(_)_ _  \033[0m");    \
+  log_m("\033[1m/ _` | || (_-<  _| | ' \\ \033[0m");   \
+  log_m("\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m \033[36;1m%s\033[0m", VERSION); \
   log_i("====[ AUSTIN ]===="); \
 }
 #define log_footer() {}
@@ -89,10 +101,6 @@ log_t(const char *, ...);
 #endif
 
 
-void
-log_version(void);
-
-
 /**
  * Close the logger.
  *
@@ -100,5 +108,9 @@ log_version(void);
  */
 void
 logger_close(void);
+
+
+void
+log_meta_header(void);
 
 #endif // LOGGING_H

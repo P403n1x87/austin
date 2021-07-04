@@ -28,51 +28,18 @@ function invoke_austin {
 
   check_python $version
 
-  log "Valgrind [Python $version]"
+  log "Sleepless [Python $version]"
 
   # -------------------------------------------------------------------------
-  step "Valgrind wall test"
+  step "Sleepless test"
   # -------------------------------------------------------------------------
-    run valgrind \
-      --error-exitcode=42 \
-      --leak-check=full \
-      --show-leak-kinds=all \
-      --errors-for-leak-kinds=all \
-      --track-fds=yes \
-      $AUSTIN -i 100ms -t 1s -o /dev/null $PYTHON test/target34.py
+    run $AUSTIN -si 100ms -t 1s $PYTHON test/target34.py
 
-    if [ ! $status == 0 ]
-    then
-      log "       Valgrind Report"
-      log "       ==============="
-      for line in "${lines[@]}"
-      do
-        log "       $line"
-      done
-      check_ignored
-    fi
+    assert_success
+    assert_output "# mode: cpu"
+    assert_output "test/target34.py:keep_cpu_busy:32"
+    assert_not_output ":35"
 
-  # -------------------------------------------------------------------------
-  step "Valgrind CPU test"
-  # -------------------------------------------------------------------------
-    run valgrind \
-      --error-exitcode=42 \
-      --leak-check=full \
-      --show-leak-kinds=all \
-      --errors-for-leak-kinds=all \
-      --track-fds=yes \
-      $AUSTIN -si 100 -t 1s -o /dev/null $PYTHON test/target34.py
-
-    if [ ! $status == 0 ]
-    then
-      log "       Valgrind Report"
-      log "       ==============="
-      for line in "${lines[@]}"
-      do
-        log "       $line"
-      done
-      check_ignored
-    fi
 }
 
 

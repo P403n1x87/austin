@@ -24,6 +24,9 @@
 #define STATS_H
 
 
+#include "argparse.h"
+
+
 typedef unsigned long ctime_t;  /* Forward */
 typedef unsigned long ustat_t;  /* non-negative statistics metric */
 
@@ -95,8 +98,8 @@ stats_get_avg_sampling_time(void);
  * @param ctime_t the time it took to obtain the sample.
  * @param ctime_t the sampling interval.
  */
-#define stats_check_duration(delta, sampling_interval) { \
-  if (delta > sampling_interval)                         \
+#define stats_check_duration(delta) { \
+  if (delta > pargs.t_sampling_interval)                 \
     _long_cnt++;                                         \
   if (_min_sampling_time > delta)                        \
     _min_sampling_time = delta;                          \
@@ -111,5 +114,19 @@ stats_get_avg_sampling_time(void);
  */
 void
 stats_log_metrics(void);
+
+
+/**
+ * Set the start time.
+ */
+void
+stats_start(void);
+
+
+/**
+ * Return the current sampling duration.
+ */
+ctime_t
+stats_duration(void);
 
 #endif

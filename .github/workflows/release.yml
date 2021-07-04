@@ -1,0 +1,131 @@
+name: Release
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  release-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    name: Release (Linux)
+    steps:
+      - uses: actions/checkout@v2
+        name: Checkout Austin
+
+      - name: Generate artifacts
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install autoconf build-essential
+
+          autoreconf --install
+          ./configure
+          make
+          
+          export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p");
+
+          pushd src
+          tar -Jcf austin-$VERSION-linux-amd64.tar.xz austin
+          popd
+
+      - name: Upload artifacts to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: src/austin-*
+          tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true
+
+  release-win:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+    name: Release (Windows)
+    steps:
+      - uses: actions/checkout@v2
+        name: Checkout Austin
+        with:
+          fetch-depth: 0
+
+      - name: Generate artifacts
+        shell: bash
+        run: |
+          echo "C:\Program Files (x86)\WiX Toolset v3.11\bin" >> $GITHUB_PATH
+          export PATH="/c/Program Files (x86)/`ls /c/Program\ Files\ \(x86\) | grep \"[wW]i[xX] [tT]oolset\"`/bin:$PATH"
+          export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+
+          gcc -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll
+
+          git checkout "packaging/msi"
+          git checkout master
+          git checkout "packaging/msi" -- wix
+
+          export WIN_MSI="austin-$VERSION-win64.msi"
+
+          sed -i "s/%VERSION%/$VERSION/g" wix/Austin.wxs
+          pushd wix
+          candle Austin.wxs -out Austin.wixobj
+          light -ext WixUIExtension Austin.wixobj -out $WIN_MSI
+          popd
+          
+          mv wix/$WIN_MSI src/$WIN_MSI;
+          test -f src/$WIN_MSI && echo ">> Windows MSI installer at src/$WIN_MSI" || echo ">> ERROR No Windows MSI installer generated."
+
+          pushd src
+          7z a -tzip austin-${VERSION}-win64.zip austin.exe
+          popd
+
+      - name: Upload to choco
+        shell: bash
+        run: |
+          export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          export WIN_MSI="austin-$VERSION-win64.msi"
+          export WIN_MSI_HASH=$( sha256sum src/$WIN_MSI | head -c 64 )
+          git checkout "packaging/msi" -- choco
+
+          pushd choco
+          sed -i "s/%WIN_MSI_HASH%/$WIN_MSI_HASH/g" tools/chocolateyinstall.ps1
+          /bin/find . -type f -exec sed -i "s/%VERSION%/$VERSION/g" {} \; ;
+          choco apikey --key ${{ secrets.CHOCO_APIKEY }} --source https://push.chocolatey.org/
+          choco pack
+          choco push
+          popd
+
+      - name: Upload artifacts to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: src/austin-*
+          tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true
+
+  release-osx:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+    name: Release (macOS)
+    steps:
+      - uses: actions/checkout@v2
+        name: Checkout Austin
+
+      - name: Generate artifacts
+        run: |
+          export VERSION=$(cat src/austin.h | sed -n -E "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          echo "::set-output name=version::$VERSION"
+
+          gcc -Wall -O3 -Os -o src/austin src/*.c
+
+          pushd src
+          zip -r austin-${VERSION}-mac64.zip austin
+          popd
+
+      - name: Upload artifacts to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: src/austin-*
+          tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true

@@ -20,20 +20,20 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-load "../common"
+load "common"
 
 
 function invoke_austin {
-  python_bin="${1}"
+  local version="${1}"
 
-  if ! $python_bin -V; then skip "$python_bin not found."; fi
+  check_python $version
 
-    log "Fork [Python $python_bin]"
+  log "Fork [Python $version]"
 
   # -------------------------------------------------------------------------
   step "Standard profiling"
   # -------------------------------------------------------------------------
-    run sudo $AUSTIN -i 1000 -t 10000 $python_bin test/target34.py
+    run $AUSTIN -i 1ms -t 1s $PYTHON test/target34.py
 
     assert_success
     assert_output "# austin: [[:digit:]]*.[[:digit:]]*.[[:digit:]]*"
@@ -43,7 +43,7 @@ function invoke_austin {
   # -------------------------------------------------------------------------
   step "Memory profiling"
   # -------------------------------------------------------------------------
-    run sudo $AUSTIN -i 1000 -t 10000 -m $python_bin test/target34.py
+    run $AUSTIN -i 1000 -t 1000 -m $PYTHON test/target34.py
 
     assert_success
     assert_output ".*test/target34.py:keep_cpu_busy:32"
@@ -51,7 +51,7 @@ function invoke_austin {
   # -------------------------------------------------------------------------
   step "Output file"
   # -------------------------------------------------------------------------
-    run sudo $AUSTIN -i 10000 -t 10000 -o /tmp/austin_out.txt $python_bin test/target34.py
+    run $AUSTIN -i 10000 -t 1000 -o /tmp/austin_out.txt $PYTHON test/target34.py
 
     assert_success
     assert_output "Unwanted"
@@ -62,7 +62,7 @@ function invoke_austin {
 
 # -----------------------------------------------------------------------------
 
-teardown() {
+function teardown {
   if [ -f /tmp/austin_out.txt ]; then rm /tmp/austin_out.txt; fi
 }
 
@@ -71,23 +71,6 @@ teardown() {
 # -- Test Cases
 # -----------------------------------------------------------------------------
 
-@test "Test Austin with default Python 3 from Homebrew" {
-	repeat 3 invoke_austin "/usr/local/bin/python3"
+@test "Test Austin with Python" {
+  repeat 3 invoke_austin
 }
-
-@test "Test Austin with Python 3.8 from Homebrew (if available)" {
-  ignore
-  repeat 3 invoke_austin "/usr/local/opt/python@3.8/bin/python3"
-}
-
-@test "Test Austin with Python 3 from Anaconda (if available)" {
-  ignore
-  repeat 3 invoke_austin "/usr/local/anaconda3/bin/python"
-}
-
-# @test "Test Austin with the default Python 3" {
-#   /usr/bin/python3 -m venv --copies --without-pip /tmp/py3
-#   source /tmp/py3/bin/activate
-# 	invoke_austin "python3"
-#   test -d /tmp/py3 && rm -rf /tmp/py3
-# }

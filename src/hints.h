@@ -37,4 +37,16 @@
 
 #define isvalid(x)                      ((x) != NULL)
 
+#ifndef likely
+#define likely(x)                       __builtin_expect(!!(x), 1)
+#endif
+
+#ifndef unlikely
+#define unlikely(x)                     __builtin_expect(!!(x), 0)
+#endif
+
+#define with_resources                  int retval = 0;
+#define NOK                             retval = 1; goto release;
+#define released                        return retval;
+
 #endif

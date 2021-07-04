@@ -41,24 +41,23 @@ load "common"
 
   run src/austin -C
 
-  assert_status 255
+  assert_status 127
   assert_output "command to run or a PID"
 }
 
 @test "Test not Python" {
-  skip "Unstable"
   log "Test Austin with a non-Python command"
 
   run src/austin cat
 
-  assert_status 32
-  assert_output "not a Python" || assert_output "Cannot launch"
+  assert_status 33
+  assert_output "Cannot launch"
 }
 
 @test "Test not Python nor Python children" {
   log "Test Austin with a non-Python command that spawns no Python children"
 
-  run src/austin -C bash -c "sleep 1"
+  run src/austin -C cat
 
   assert_status 39
   assert_output "not a Python" || assert_output "Cannot launch"
@@ -80,19 +79,4 @@ load "common"
 
   assert_status 36
   assert_output "Cannot attach"
-}
-
-@test "Test no permission" {
-  log "Test Austin with no permissions"
-
-  if [[ $EUID -eq 0 ]]; then
-    skip "must not be root"
-  fi
-
-  python3 test/sleepy.py &
-  sleep 1
-  run src/austin -i 100ms -p $!
-
-  assert_status 37
-  assert_output "Insufficient permissions"
 }

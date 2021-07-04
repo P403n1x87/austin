@@ -1,0 +1,53 @@
+name: Release (Linux archs)
+on:
+  push:
+    tags:
+      - 'v*'
+jobs:
+  release-linux-archs:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: ["armv7", "aarch64", "ppc64le"]
+      fail-fast: false
+    name: Build on ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v2
+        name: Checkout sources
+      - uses: uraimo/run-on-arch-action@v2.0.5
+        name: Run tests on ${{ matrix.arch }}
+        id: run-tests-on-arch
+        with:
+          arch: ${{ matrix.arch }}
+          distro: ubuntu20.04
+          githubToken: ${{ github.token }}
+          dockerRunArgs:  --volume "${GITHUB_WORKSPACE}/artifacts:/artifacts"
+          setup: |
+            mkdir -p ./artifacts
+          run: |
+            apt-get update
+            apt-get -y install autoconf build-essential
+
+            autoreconf --install
+            ./configure
+            make
+            
+            export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p");
+
+            pushd src
+            tar -Jcf austin-$VERSION-linux-${{ matrix.arch }}.tar.xz austin
+            mv austin-$VERSION-linux-${{ matrix.arch }}.tar.xz /artifacts
+            popd
+
+      - name: Show artifacts
+        run: |
+          ls -al ./artifacts
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: artifacts/austin-*
+          tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true

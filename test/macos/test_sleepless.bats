@@ -28,42 +28,16 @@ function invoke_austin {
 
   if ! $python_bin -V; then skip "$python_bin not found."; fi
 
-    log "Fork [Python $python_bin]"
+    log "Sleepless [Python $python_bin]"
 
   # -------------------------------------------------------------------------
-  step "Standard profiling"
+  step "Sleepless test"
   # -------------------------------------------------------------------------
-    run sudo $AUSTIN -i 1000 -t 10000 $python_bin test/target34.py
+    run sudo $AUSTIN -si 10ms -t 1s $python_bin test/sleepy.py
 
     assert_success
-    assert_output "# austin: [[:digit:]]*.[[:digit:]]*.[[:digit:]]*"
-    assert_output ".*test/target34.py:keep_cpu_busy:32"
-    assert_not_output "Unwanted"
-
-  # -------------------------------------------------------------------------
-  step "Memory profiling"
-  # -------------------------------------------------------------------------
-    run sudo $AUSTIN -i 1000 -t 10000 -m $python_bin test/target34.py
-
-    assert_success
-    assert_output ".*test/target34.py:keep_cpu_busy:32"
-
-  # -------------------------------------------------------------------------
-  step "Output file"
-  # -------------------------------------------------------------------------
-    run sudo $AUSTIN -i 10000 -t 10000 -o /tmp/austin_out.txt $python_bin test/target34.py
-
-    assert_success
-    assert_output "Unwanted"
-    assert_not_output ".*test/target34.py:keep_cpu_busy:32"
-    assert_file "/tmp/austin_out.txt" ".*test/target34.py:keep_cpu_busy:32"
-
-}
-
-# -----------------------------------------------------------------------------
-
-teardown() {
-  if [ -f /tmp/austin_out.txt ]; then rm /tmp/austin_out.txt; fi
+    assert_output ".*test/sleepy.py:cpu_bound:"
+    assert_not_output ":35)"
 }
 
 
@@ -84,10 +58,3 @@ teardown() {
   ignore
   repeat 3 invoke_austin "/usr/local/anaconda3/bin/python"
 }
-
-# @test "Test Austin with the default Python 3" {
-#   /usr/bin/python3 -m venv --copies --without-pip /tmp/py3
-#   source /tmp/py3/bin/activate
-# 	invoke_austin "python3"
-#   test -d /tmp/py3 && rm -rf /tmp/py3
-# }

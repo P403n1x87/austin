@@ -38,7 +38,8 @@ function attach_austin {
     run sudo $AUSTIN -i 10000 -t 100 -p $!
 
     assert_success
-    assert_output ";<module> (.*test/sleepy.py);L[[:digit:]]* "
+    assert_output "# austin: [[:digit:]]*.[[:digit:]]*.[[:digit:]]*"
+    assert_output ";.*test/sleepy.py:<module>:[[:digit:]]* "
 
 }
 

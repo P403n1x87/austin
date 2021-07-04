@@ -20,13 +20,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-load "../common"
+load "common"
 
 
 test_case() {
-  bats test/macos/test_$1.bats
+  bats test/win/test_$1.bats
 }
-
 
 @test "Test Austin: fork" {
   test_case fork
@@ -36,20 +35,6 @@ test_case() {
   test_case fork_mp
 }
 
-@test "Test Austin: attach" {
-  test_case attach
-}
-
-@test "Test Austin: valgrind" {
-  ignore
-  if ! which valgrind; then skip "Valgrind not found"; fi
-  test_case valgrind
-}
-
-@test "Test Austin: error messages" {
+@test "Test Austin: errors" {
   test_case error
-}
-
-@test "Test Austin: sleepless" {
-  test_case sleepless
 }
