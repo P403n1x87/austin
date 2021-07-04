@@ -65,7 +65,10 @@ const char * MFORK =
 "❌ Cannot launch the given command. Either it is not valid or the process\n"
 "terminated too quickly";
 #else
-"❌ Cannot launch the given command. Please make sure it is correct";
+"❌ Cannot launch the given command. Please make sure it is correct. If you\n"
+"think it is, then try passing an output file via the -o/--output option.\n"
+"Sometimes, the Python wrapper launch fails to duplicate the standard out\n"
+"handle and fails to launch your Python application.";
 #endif
 
 const char * MATTACH = \
@@ -88,6 +91,18 @@ const char * MNOPYTHON = \
 "process is actually a child of the target process then use the -C option to\n"
 "discover it automatically";
 
+const char * MNOCHILDREN = \
+"🚼 It looks like you are trying to profile a process that is not a Python\n"
+"process, and that has not spawned any child Python processes. Make sure that\n"
+"you are targeting the right application";
+
+const char * MNOVERSION = \
+"🔢 Cannot determine the version of the Python interpreter. This could be due\n"
+"to the binary not being an actual Python binary, like uWSGI. Please report an\n"
+"issue at\n"
+URL("https://github.com/P403n1x87/austin/issues")
+"together with details about the application that you were trying to profile,\n"
+"like frameworks used, command line etc ...";
 
 // ----------------------------------------------------------------------------
 static inline void

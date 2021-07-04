@@ -30,34 +30,27 @@
 #include "error.h"
 #include "stats.h"
 
-
-static ctime_t _sample_timestamp;
-static ctime_t _sample_delta;
+#ifndef AUSTIN_C
+extern
+#endif
+ctime_t _sample_timestamp;
 
 
 static inline void
-timer_start(void) {
+stopwatch_start(void) {
   _sample_timestamp = gettime();
-  error = EOK;
+  austin_errno = EOK;
 } /* timer_start */
 
 
 static inline ctime_t
-timer_stop(void) {
-  _sample_delta = gettime() - _sample_timestamp;
-
-  // Record stats
-  stats_check_duration(_sample_delta, pargs.t_sampling_interval);
-  stats_count_sample();
-  if (error != EOK)
-    stats_count_error();
-
-  return _sample_delta;
+stopwatch_duration(void) {
+  return gettime() - _sample_timestamp;
 } /* timer_stop */
 
 
 static inline void
-timer_pause(ctime_t delta) {
+stopwatch_pause(ctime_t delta) {
   // Pause if sampling took less than the sampling interval.
   if (delta < pargs.t_sampling_interval)
     usleep(pargs.t_sampling_interval - delta);

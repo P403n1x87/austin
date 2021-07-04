@@ -1,3 +1,22 @@
+austin (3.0.0-1) unstable; urgency=medium
+
+  The format of the emitted samples has been changed into something easier to
+  parse.
+
+  The sleepless mode now gives an estimate of CPU time.
+
+  Binaries with arbitrary names are now supported, allowing Austin to easily
+  profile applications like uWSGI.
+
+  Windows compatibility has been enhanced to support wrapper launchers.
+
+  Added pipe mode.
+
+  Bugfix: report the correct process ID on macOS.
+
+ -- Gabriele N. Tornetta <phoenix1987@gmail.com>  Sun, 04 Jul 2021 14:33:00 +0100
+
+
 austin (2.1.1-1) unstable; urgency=medium
 
   Improved general Python support on all the supported platforms.

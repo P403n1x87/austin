@@ -46,18 +46,23 @@ load "common"
 }
 
 @test "Test not Python" {
+  skip "Unstable"
   log "Test Austin with a non-Python command"
   requires_root
 
   run src/austin cat
 
-  assert_status 32             || assert_status 33
-  assert_output "not a Python" || assert_output "Cannot launch"
-
-  run src/austin -p 1
-
   assert_status 32
-  assert_output "not a Python"
+  assert_output "not a Python" || assert_output "Cannot launch"
+}
+
+@test "Test not Python nor Python children" {
+  log "Test Austin with a non-Python command that spawns no Python children"
+
+  run src/austin -C bash -c "sleep 1"
+
+  assert_status 39
+  assert_output "not a Python" || assert_output "Cannot launch"
 }
 
 @test "Test invalid command" {

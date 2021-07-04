@@ -251,6 +251,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * base, void * map) {
 // ----------------------------------------------------------------------------
 static bin_attr_t
 _py_proc__analyze_fat(py_proc_t * self, void * base, void * map) {
+  log_t("Analyze fat binary");
   bin_attr_t bin_attrs = 0;
 
   void * vm_map = malloc(sizeof(struct mach_header_64));
@@ -302,13 +303,26 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * base, mach_vm_size
   bin_attr_t bin_attrs = 0;
 
   int fd = open(path, O_RDONLY);
+  if (fd == -1) {
+    log_e("Cannot open binary %s", path);
+    return 0;
+  }
+
+  with_resources;
 
   // This would cause problem if allocated in the stack frame
-  struct stat * fs = (struct stat *) malloc(sizeof(struct stat));
-  fstat(fd, fs);  // Get file size
+  struct stat * fs  = (struct stat *) malloc(sizeof(struct stat));
+  void        * map = MAP_FAILED;
+  if (fstat(fd, fs) == -1) {  // Get file size
+    log_e("Cannot get size of binary %s", path);
+    NOK;
+  }
 
-  void * map = mmap(NULL, fs->st_size, PROT_READ, MAP_SHARED, fd, 0);
-  free(fs);
+  map = mmap(NULL, fs->st_size, PROT_READ, MAP_SHARED, fd, 0);
+  if (map == MAP_FAILED) {
+    log_e("Cannot map binary %s", path);
+    NOK;
+  }
 
   log_t("Local Mach-O file mapping %p-%p\n", map, map+size);
 
@@ -333,10 +347,14 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * base, mach_vm_size
     self->sym_loaded = 0;
   }
 
-  munmap(map, size);
+release:
+  if (map != MAP_FAILED) munmap(map, fs->st_size);
+  sfree(fs);
   close(fd);
 
-  return bin_attrs;
+  retval = bin_attrs;
+
+  released;
 } // _py_proc__analyze_macho
 
 
@@ -409,6 +427,12 @@ _py_proc__get_maps(py_proc_t * self) {
   self->min_raddr = (void *) -1;
   self->max_raddr = NULL;
 
+  sfree(self->bin_path);
+  self->bin_path = NULL;
+
+  sfree(self->lib_path);
+  self->lib_path = NULL;
+
   while (mach_vm_region(
     self->extra->task_id,
     &address,
@@ -429,13 +453,15 @@ _py_proc__get_maps(py_proc_t * self) {
 
     if (size > 0 && len && !self->sym_loaded) {
       path[len] = 0;
-      if (strstr(path, "ython")) {
-        bin_attr_t bin_attrs = _py_proc__analyze_macho(self, path, (void *) address, size);
-        if (bin_attrs & B_SYMBOLS && size < BINARY_MIN_SIZE) {
+
+      bin_attr_t bin_attrs = _py_proc__analyze_macho(self, path, (void *) address, size);
+      if (bin_attrs & B_SYMBOLS) {
+        if (size < BINARY_MIN_SIZE) {
           // We found the symbols in the binary but we are probably going to use the wrong base
           // since the map is too small. So pretend we didin't find them.
           self->sym_loaded = 0;
-        } else if (bin_attrs != 0) {
+        }
+        else {
           switch (BINARY_TYPE(bin_attrs)) {
           case BT_EXEC:
             if (self->bin_path == NULL) {
@@ -487,6 +513,7 @@ _py_proc__get_resident_memory(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t * self) {
+  log_t("macOS: py_proc init");
   if (!isvalid(self))
     FAIL;
 

@@ -28,53 +28,42 @@ function invoke_austin {
 
   check_python $version
 
-  log "Valgrind [Python $version]"
+  log "Pipe [Python $version]"
 
   # -------------------------------------------------------------------------
-  step "Valgrind wall test"
+  step "Test pipe output (wall time)"
   # -------------------------------------------------------------------------
-    run valgrind \
-      --error-exitcode=42 \
-      --leak-check=full \
-      --show-leak-kinds=all \
-      --errors-for-leak-kinds=all \
-      --track-fds=yes \
-      $AUSTIN -i 100ms -t 1s -o /dev/null $PYTHON test/target34.py
+    run $AUSTIN -Pi 100ms -t 1s $PYTHON test/target34.py
 
-    if [ ! $status == 0 ]
-    then
-      log "       Valgrind Report"
-      log "       ==============="
-      for line in "${lines[@]}"
-      do
-        log "       $line"
-      done
-      check_ignored
-    fi
+    assert_success
+    assert_output "# python: [[:digit:]]*.[[:digit:]]*."
+    assert_output "# mode: wall"
+    assert_output "# duration: [[:digit:]]*"
+    assert_output "# interval: 100000"
 
   # -------------------------------------------------------------------------
-  step "Valgrind CPU test"
+  step "Test pipe output (CPU time)"
   # -------------------------------------------------------------------------
-    run valgrind \
-      --error-exitcode=42 \
-      --leak-check=full \
-      --show-leak-kinds=all \
-      --errors-for-leak-kinds=all \
-      --track-fds=yes \
-      $AUSTIN -si 100 -t 1s -o /dev/null $PYTHON test/target34.py
+    run $AUSTIN -Psi 100ms -t 1s $PYTHON test/target34.py
 
-    if [ ! $status == 0 ]
-    then
-      log "       Valgrind Report"
-      log "       ==============="
-      for line in "${lines[@]}"
-      do
-        log "       $line"
-      done
-      check_ignored
-    fi
+    assert_success
+    assert_output "# python: [[:digit:]]*.[[:digit:]]*."
+    assert_output "# mode: cpu"
+    assert_output "# duration: [[:digit:]]*"
+    assert_output "# interval: 100000"
+
+  # -------------------------------------------------------------------------
+  step "Test pipe output (multiprocess)"
+  # -------------------------------------------------------------------------
+    run $AUSTIN -CPi 100ms -t 1s $PYTHON test/target34.py
+
+    assert_success
+    assert_output "# python: [[:digit:]]*.[[:digit:]]*."
+    assert_output "# mode: wall"
+    assert_output "# duration: [[:digit:]]*"
+    assert_output "# interval: 100000"
+    assert_output "# multiprocess: on"
 }
-
 
 # -----------------------------------------------------------------------------
 # -- Test Cases

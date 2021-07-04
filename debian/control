@@ -19,8 +19,3 @@ Description: Frame stack sampler for CPython
  samples the stack traces of a Python application so that they can be visualised
  and analysed. As such, it serves the basis for building powerful profilers for
  Python.
- .
- The most interesting use of Austin is probably in conjunction with FlameGraph
- to profile Python applications while they are running, without the need of
- instrumentation. This means that Austin can be used on production code with
- little or even no impact on performance.

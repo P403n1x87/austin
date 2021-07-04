@@ -42,6 +42,7 @@ typedef struct {
   char    * output_filename;
   int       children;
   ctime_t   exposure;
+  int       pipe;
 } parsed_args_t;
 
 
