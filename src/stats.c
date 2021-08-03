@@ -34,6 +34,7 @@
 #include <profileapi.h>
 #endif
 
+#include "argparse.h"
 #include "error.h"
 #include "logging.h"
 #include "stats.h"
@@ -59,6 +60,8 @@ ctime_t _start_time;
 
 ustat_t _error_cnt;
 ustat_t _long_cnt;
+
+ctime_t _gc_time;
 
 #if defined PL_MACOS
 static clock_serv_t cclock;
@@ -162,6 +165,8 @@ stats_log_metrics(void) {
     meta("errors: %ld/%ld", _error_cnt, _sample_cnt);
   }
   else {
+    ctime_t duration = stats_duration();
+
     log_m("");
     if (!_sample_cnt) {
       log_m("😣 No samples collected.");
@@ -170,7 +175,14 @@ stats_log_metrics(void) {
 
     log_m("\033[1mStatistics\033[0m");
 
-    log_m("⌛ Sampling duration : \033[1m%.2f s\033[0m", stats_duration() / 1000000.);
+    log_m("⌛ Sampling duration : \033[1m%.2f s\033[0m", duration / 1000000.);
+
+    if (pargs.gc) {
+      log_m("🗑️  Garbage collector : \033[1m%.2f s\033[0m (\033[1m%.2f %%\033[0m)", \
+        _gc_time / 1000000., \
+        (float) _gc_time / duration * 100 \
+      );
+    }
 
     log_m("⏱️  Frame sampling (min/avg/max) : \033[1m%lu/%lu/%lu μs\033[0m",
       stats_get_min_sampling_time(),

@@ -489,6 +489,11 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     }
   }
 
+  if (pargs.gc && py_proc__is_gc_collecting(self->proc) == TRUE) {
+    fprintf(pargs.output_file, ";:GC:");
+    stats_gc_time(time_delta);
+  }
+
   // Finish off sample with the metric(s)
   if (pargs.full) {
     fprintf(pargs.output_file, " " TIME_METRIC METRIC_SEP IDLE_METRIC METRIC_SEP MEM_METRIC "\n",

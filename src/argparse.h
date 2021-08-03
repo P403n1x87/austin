@@ -43,6 +43,7 @@ typedef struct {
   int       children;
   ctime_t   exposure;
   int       pipe;
+  int       gc;
 } parsed_args_t;
 
 

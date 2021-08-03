@@ -289,7 +289,11 @@ int main(int argc, char ** argv) {
     austin_errno = EOK;
 
   // Log sampling metrics
-  NL;meta("duration: %lu", stats_duration());
+  NL;
+  meta("duration: %lu", stats_duration());
+  if (pargs.gc) {
+    meta("gc: %lu", _gc_time);
+  }
 
   stats_log_metrics();NL;
 
