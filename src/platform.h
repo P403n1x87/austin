@@ -23,6 +23,8 @@
 #ifndef PLATFORM_H
 #define PLATFORM_H
 
+#include <stddef.h>
+
 
 #if defined(__linux__)
   #define PL_LINUX
@@ -45,5 +47,18 @@
 
   #define NULL_DEVICE "/dev/null"
 #endif
+
+// ----------------------------------------------------------------------------
+
+#if defined PL_MACOS
+#define PID_MAX                    99999  // From sys/proc_internal.h
+#endif
+
+
+/**
+ * Get the maximum PID for the platform.
+ */
+size_t
+pid_max();
 
 #endif

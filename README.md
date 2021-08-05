@@ -367,6 +367,22 @@ Austin can be told to profile multi-process applications with the `-C` or
 process.
 
 
+## Native Frame Stack
+
+If you want observability into the native frame stacks, you can use the
+`austinp` variant of `austin` which cam be obtained by compiling the source
+with `-DAUSTINP`, or from the released binaries.
+
+On Unix, `austinp` makes use of `ptrace` to halt the application and grab a
+snapshot of the call stack with `libunwind`. If you are compiling `austinp` from
+sources make sure that you have the development version of the `libunwind`
+library available on your system and compile with
+
+~~~ shell
+gcc -O3 -Os -Wall -pthread src/*.c -DAUSTINP -lunwind-ptrace -lunwind-generic -o src/austinp
+~~~
+
+
 ## Logging
 
 Austin uses `syslog` on Linux and macOS, and `%TEMP%\austin.log` on Windows

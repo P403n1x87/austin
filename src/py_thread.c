@@ -23,6 +23,8 @@
 #define PY_THREAD_C
 
 #include <string.h>
+#include <sys/types.h>
+#include <signal.h>
 
 #include "argparse.h"
 #include "error.h"
@@ -79,6 +81,10 @@ typedef struct frame {
 
 
 py_frame_t * _stack = NULL;
+
+#if defined(AUSTINP) && defined(PL_UNIX)
+void ** _tids = NULL;
+#endif
 
 
 // ---- PyCode ----------------------------------------------------------------
@@ -413,13 +419,30 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
         _pthread_buffer
     ))) {
       self->tid = (uintptr_t) _pthread_buffer[_pthread_tid_offset];
+      #if defined(AUSTINP) && defined(PL_UNIX)
+      // TODO: If a TID is reused we will never seize it!
+      if (!isvalid(_tids[self->tid])) {
+        if (fail(ptrace(PTRACE_SEIZE, self->tid, 0, 0))) {
+          log_e("ptrace: cannot seize thread %d: %d\n", self->tid, errno);
+          FAIL;
+        }
+        else {
+          log_d("ptrace: thread %d seized", self->tid);
+        }
+        _tids[self->tid] = _UPT_create(self->tid);
+        if (!isvalid(_tids[self->tid])) {
+          log_e("libunwind: failed to create context for thread %d", self->tid);
+          FAIL;
+        }
+      }
+      #endif
     }
   }
   #endif
 
   self->invalid = 0;
   SUCCESS;
-}
+} /* py_thread__fill_from_raddr */
 
 
 // ----------------------------------------------------------------------------
@@ -478,16 +501,94 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   // Group entries by thread.
   fprintf(pargs.output_file, SAMPLE_HEAD, self->proc->pid, self->tid);
 
+  #if defined(AUSTINP) && defined(PL_UNIX)
+  if (ptrace(PTRACE_INTERRUPT, self->tid, 0, 0)) {
+    log_e("ptrace: failed to interrupt thread %d", self->tid);
+    return;
+  }
+  log_d("ptrace: thread %d interrupted", self->tid);
+
+  void *context = _tids[self->tid];
+  unw_cursor_t cursor;
+
+  while (unw_init_remote(&cursor, self->proc->unwind.as, context));
+
+  unsigned int depth = 0;
+  char sym[255][256];
+  do {
+    unw_word_t offset, pc;
+    char buffer[256];
+    
+    if (unw_get_reg(&cursor, UNW_REG_IP, &pc)) {
+      log_e("libunwind: cannot read program counter\n");
+      break;
+    }
+
+    if (unw_get_proc_name(&cursor, buffer, sizeof(buffer), &offset) == 0) {
+      // To retrieve source name and line number we would need to
+      // - resolve the PC to a map to get the binary path
+      // - use the offset with the binary to get the line number from DWARF (see
+      //   https://kernel.googlesource.com/pub/scm/linux/kernel/git/hjl/binutils/+/hjl/secondary/binutils/addr2line.c)
+      if (strstr(buffer, "PyEval_EvalFrame")) {
+        sym[depth][0] = '\0';
+      }
+      else {
+        sprintf(sym[depth], ";native:%s:%p", buffer, (void *) offset);
+      }
+    }
+    else
+      strcpy(sym[depth], ";native:<noname>:0");
+
+    depth++;
+  } while (depth < 255 && unw_step(&cursor) > 0);
+  #endif
+
   if (self->stack_height) {
     _py_thread__unwind_frame_stack(self);
 
-    // Append frames
+    #if !defined(AUSTINP)
     register int i = self->stack_height;
-    while (i > 0) {
+    while(i > 0) {
       py_code_t code = _stack[--i].code;
       fprintf(pargs.output_file, pargs.format, code.filename, code.scope, code.lineno);
     }
+    #endif
   }
+
+  #if defined(AUSTINP) && defined(PL_UNIX)
+  if (ptrace(PTRACE_CONT, self->tid, 0, 0)) {
+    log_e("ptrace: failed to resume thread %d", self->tid);
+    return;
+  }
+  log_d("ptrace: thread %d resumed", self->tid);
+  #endif
+
+  #if defined(AUSTINP) && defined(PL_UNIX)
+  // Append frames
+  register int i = self->stack_height;
+  while (depth-- > 0) {
+    if (sym[depth][0] == '\0') {
+      if (i == 0) {
+        #ifdef DEBUG
+        fprintf(pargs.output_file, ";:MISMATCH %d:", self->stack_height);
+        #endif
+        continue;
+      }
+      py_code_t code = _stack[--i].code;
+      fprintf(pargs.output_file, pargs.format, code.filename, code.scope, code.lineno);
+    }
+    else {
+      fputs(sym[depth], pargs.output_file);
+    }
+  }
+  if (i != 0) {
+    log_e("Stack mismatch: left with %d Python frames after interleaving", i);
+    #ifdef DEBUG
+    fprintf(pargs.output_file, ";:%d FRAMES LEFT:", i);
+    #endif
+  }
+  #endif
+
 
   // Finish off sample with the metric(s)
   if (pargs.full) {
@@ -512,7 +613,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
 
 // ----------------------------------------------------------------------------
 int
-py_thread_allocate_stack(void) {
+py_thread_allocate(void) {
   if (isvalid(_stack))
     SUCCESS;
 
@@ -530,16 +631,34 @@ py_thread_allocate_stack(void) {
     FAIL;
   #endif
 
+  #if defined(AUSTINP) && defined(PL_UNIX)
+  _tids = (void **) calloc(pid_max(), sizeof(void *));
+  if (!isvalid(_tids))
+    FAIL;
+  #endif
+
   SUCCESS;
 }
 
 
 // ----------------------------------------------------------------------------
 void
-py_thread_free_stack(void) {
+py_thread_free(void) {
   #if defined PL_WIN
   sfree(_pi_buffer);
   #endif
 
   sfree(_stack);
+
+  #if defined(AUSTINP) && defined(PL_UNIX)
+  pid_t max_pid = pid_max();
+  for (pid_t tid = 0; tid < max_pid; tid++) {
+    if (isvalid(_tids[tid])) {
+      _UPT_destroy(_tids[tid]);
+      ptrace(PTRACE_DETACH, tid, 0, 0);
+      log_d("ptrace: thread %ld detached", tid);
+    }
+  }
+  sfree(_tids);
+  #endif
 }

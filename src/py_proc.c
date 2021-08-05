@@ -732,6 +732,9 @@ _py_proc__run(py_proc_t * self, int try_once) {
 
   self->timestamp = gettime();
 
+  #if defined(AUSTINP) && defined(PL_UNIX)
+  self->unwind.as = unw_create_addr_space(&_UPT_accessors, 0);
+  #endif
   SUCCESS;
 } /* _py_proc__run */
 
@@ -986,7 +989,11 @@ py_proc__wait(py_proc_t * self) {
   #ifdef PL_WIN                                                        /* WIN */
   WaitForSingleObject(self->extra->h_proc, INFINITE);
   #else                                                               /* UNIX */
+  #if defined AUSTINP
+  wait(NULL);
+  #else
   waitpid(self->pid, 0, 0);
+  #endif
   #endif
 }
 
@@ -1083,8 +1090,10 @@ py_proc__sample(py_proc_t * self) {
   if (is.tstate_head != NULL) {
     raddr_t raddr = { .pid = PROC_REF, .addr = is.tstate_head };
     py_thread_t py_thread;
-    if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self)))
+
+    if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self))) {
       FAIL;
+    }
 
     if (pargs.memory) {
       // Use the current thread to determine which thread is manipulating memory

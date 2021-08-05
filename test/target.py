@@ -22,13 +22,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import threading
 
 def keep_cpu_busy():
     a = []
     for i in range(60_000_000):
         a.append(i)
 
+
 if __name__ == "__main__":
-    threading.Thread(target=keep_cpu_busy).start()
     keep_cpu_busy()

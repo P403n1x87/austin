@@ -212,7 +212,7 @@ int main(int argc, char ** argv) {
     goto finally;
   }
 
-  if (fail(py_thread_allocate_stack())) {
+  if (fail(py_thread_allocate())) {
     log_ie("Cannot allocate memory for thread stack");
     goto finally;
   }
@@ -294,7 +294,7 @@ int main(int argc, char ** argv) {
   stats_log_metrics();NL;
 
 finally:
-  py_thread_free_stack();
+  py_thread_free();
   py_proc__destroy(py_proc);
 
   log_d("Last error: %d :: %s", austin_errno, get_last_error());
