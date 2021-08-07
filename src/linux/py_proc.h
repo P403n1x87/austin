@@ -377,13 +377,11 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   while (getline(&line, &len, fp) != -1) {
     ssize_t lower, upper;
     char    pathname[1024];
-    char    m[sizeof(void *)]; // We don't care about these values.
 
-    int field_count = sscanf(line, "%lx-%lx %4c %lx %x:%x %x %s\n",
-      &lower, &upper,                                             // Map bounds
-      (char *) m, (ssize_t *) m, (int *) m, (int *) m, (int *) m, // Ignored
-      pathname                                                    // Binary path
-    ) - 7; // We expect between 7 and 8 matches.
+    int field_count = sscanf(line, "%lx-%lx %*s %*x %*x:%*x %*x %s\n",
+      &lower, &upper, // Map bounds
+      pathname        // Binary path
+    ) - 3; // We expect between 3 and 4 matches.
     if (field_count >= 0) {
       if (field_count == 0 || strstr(pathname, "[v") == NULL) {
         // Skip meaningless addresses like [vsyscall] which would give

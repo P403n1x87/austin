@@ -370,17 +370,31 @@ process.
 ## Native Frame Stack
 
 If you want observability into the native frame stacks, you can use the
-`austinp` variant of `austin` which cam be obtained by compiling the source
-with `-DAUSTINP`, or from the released binaries.
+`austinp` variant of `austin` which can be obtained by compiling the source
+with `-DAUSTINP` on Linux, or from the released binaries.
 
-On Unix, `austinp` makes use of `ptrace` to halt the application and grab a
+`austinp` makes use of `ptrace` to halt the application and grab a
 snapshot of the call stack with `libunwind`. If you are compiling `austinp` from
 sources make sure that you have the development version of the `libunwind`
-library available on your system and compile with
+library available on your system, for example on Ubuntu,
+
+~~~ shell
+sudo apt install libunwind-dev
+~~~
+
+and compile with
 
 ~~~ shell
 gcc -O3 -Os -Wall -pthread src/*.c -DAUSTINP -lunwind-ptrace -lunwind-generic -o src/austinp
 ~~~
+
+then use as per normal. The extra `-k/--kernel` option is available with
+`austinp` which allows sampling kernel call stacks as well.
+
+> **WARNING** Since `austinp` uses `ptrace`, the impact on the tracee is no
+> longer minimal and it becomes higher at smaller sampling intervals. Therefore
+> the use of `austinp` is not recommended in production environments. For this
+> reason, the default sampling interval for `austinp` is 10 milliseconds.
 
 
 ## Logging

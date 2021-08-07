@@ -29,8 +29,11 @@
 #include "hints.h"
 #include "platform.h"
 
-
+#ifdef NATIVE
+#define DEFAULT_SAMPLING_INTERVAL  10000  # reduces impact on tracee
+#else
 #define DEFAULT_SAMPLING_INTERVAL    100
+#endif
 #define DEFAULT_INIT_RETRY_CNT       100
 
 const char SAMPLE_FORMAT_NORMAL[]      = ";%s:%s:%d";
@@ -52,6 +55,9 @@ parsed_args_t pargs = {
   /* children            */ 0,
   /* exposure            */ 0,
   /* pipe                */ 0,
+  #ifdef NATIVE
+  /* kernel              */ 0,
+  #endif
 };
 
 static int exec_arg = 0;
@@ -217,6 +223,12 @@ static struct argp_option options[] = {
     "pipe",         'P', NULL,          0,
     "Pipe mode. Use when piping Austin output."
   },
+  #ifdef NATIVE
+  {
+    "kernel",       'k', NULL,          0,
+    "Sample the kernel call stack."
+  },
+  #endif
   #ifndef PL_LINUX
   {
     "help",         '?', NULL
@@ -321,6 +333,12 @@ parse_opt (int key, char *arg, struct argp_state *state)
   case 'P':
     pargs.pipe = 1;
     break;
+
+  #ifdef NATIVE
+  case 'k':
+    pargs.kernel = 1;
+    break;
+  #endif
 
   case ARGP_KEY_ARG:
   case ARGP_KEY_END:

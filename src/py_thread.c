@@ -82,7 +82,7 @@ typedef struct frame {
 
 py_frame_t * _stack = NULL;
 
-#if defined(AUSTINP) && defined(PL_UNIX)
+#ifdef NATIVE
 void ** _tids = NULL;
 #endif
 
@@ -346,8 +346,8 @@ _py_frame__prev(py_frame_t * self) {
 
 // ----------------------------------------------------------------------------
 static inline void
-_py_thread__unwind_frame_stack(py_thread_t * self) {
-  register size_t i = 0;
+_py_thread__unwind_frame_stack(py_thread_t * self, size_t depth) {
+  register size_t i = depth;
   while (success(_py_frame__prev(_stack + i)) && i < MAX_STACK_SIZE) {
     if (_stack[++i].invalid) {
       log_d("Frame number %d is invalid", i);
@@ -359,6 +359,81 @@ _py_thread__unwind_frame_stack(py_thread_t * self) {
   self->stack_height += i;
 }
 
+
+#ifdef NATIVE
+#if defined PL_LINUX
+static inline size_t
+_py_thread__unwind_kernel_frame_stack(py_thread_t * self) {
+  FILE   * stack_file = NULL;
+  char   * line       = NULL;
+  size_t   len        = 0;
+  char     stack_path[48];
+
+  sprintf(stack_path, "/proc/%d/task/%ld/stack", self->proc->pid, self->tid);
+  stack_file = fopen(stack_path, "r");
+  if (!isvalid(stack_file))
+    return -1;
+
+  log_t("linux: unwinding kernel stack");
+
+  size_t offset = 0;
+  while (getline(&line, &len, stack_file) != -1) {
+    char * b = strchr(line, ']');
+    if (!isvalid(b))
+      continue;
+    char * e = strchr(++b, '+');
+    if (isvalid(e))
+      *e = 0;
+    strcpy(_stack[offset].code.scope, ++b);
+    strcpy(_stack[offset].code.filename, "kernel");
+    sfree(line);
+    offset++;
+  }
+
+  fclose(stack_file);
+
+  return offset;  // TODO: Decide whether to decremet this by 2
+}
+#endif
+
+
+// ----------------------------------------------------------------------------
+static inline size_t
+_py_thread__unwind_native_frame_stack(py_thread_t * self, size_t height) {
+  void *context = _tids[self->tid];
+  unw_cursor_t cursor;
+
+  while (unw_init_remote(&cursor, self->proc->unwind.as, context));
+
+  size_t depth = height;
+  do {
+    unw_word_t offset, pc;
+    
+    if (unw_get_reg(&cursor, UNW_REG_IP, &pc)) {
+      log_e("libunwind: cannot read program counter\n");
+      break;
+    }
+
+    if (unw_get_proc_name(&cursor, _stack[depth].code.scope, MAXLEN, &offset) == 0) {
+      // To retrieve source name and line number we would need to
+      // - resolve the PC to a map to get the binary path
+      // - use the offset with the binary to get the line number from DWARF (see
+      //   https://kernel.googlesource.com/pub/scm/linux/kernel/git/hjl/binutils/+/hjl/secondary/binutils/addr2line.c)
+      strcpy(_stack[depth].code.filename, "native");
+      _stack[depth].code.lineno = offset;
+    }
+    else {
+      strcpy(_stack[depth].code.filename, "native");
+      strcpy(_stack[depth].code.filename, "<unnamed>");
+      _stack[depth].code.lineno = 0;
+    }
+
+    depth++;
+  } while (depth < 255 && unw_step(&cursor) > 0);
+
+  return depth;
+}
+#endif
 
 // ---- PUBLIC ----------------------------------------------------------------
 
@@ -419,7 +494,7 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
         _pthread_buffer
     ))) {
       self->tid = (uintptr_t) _pthread_buffer[_pthread_tid_offset];
-      #if defined(AUSTINP) && defined(PL_UNIX)
+      #ifdef NATIVE
       // TODO: If a TID is reused we will never seize it!
       if (!isvalid(_tids[self->tid])) {
         if (fail(ptrace(PTRACE_SEIZE, self->tid, 0, 0))) {
@@ -501,50 +576,34 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   // Group entries by thread.
   fprintf(pargs.output_file, SAMPLE_HEAD, self->proc->pid, self->tid);
 
-  #if defined(AUSTINP) && defined(PL_UNIX)
+  #ifdef NATIVE
+  py_frame_t first_frame;
+
+  // Save the first frame, if any.
+  if (self->stack_height) {
+    first_frame = _stack[0];
+  }
+  // We sample the kernel frame stack BEFORE interrupting because otherwise
+  // we would see the ptrace syscall call stack, which is not very interesting.
+  // The downside is that the kernel stack might not be in sync with the other
+  // ones.
+  size_t depth = pargs.kernel ? _py_thread__unwind_kernel_frame_stack(self) : 0;
   if (ptrace(PTRACE_INTERRUPT, self->tid, 0, 0)) {
     log_e("ptrace: failed to interrupt thread %d", self->tid);
     return;
   }
-  log_d("ptrace: thread %d interrupted", self->tid);
-
-  void *context = _tids[self->tid];
-  unw_cursor_t cursor;
-
-  while (unw_init_remote(&cursor, self->proc->unwind.as, context));
-
-  unsigned int depth = 0;
-  char sym[255][256];
-  do {
-    unw_word_t offset, pc;
-    char buffer[256];
-    
-    if (unw_get_reg(&cursor, UNW_REG_IP, &pc)) {
-      log_e("libunwind: cannot read program counter\n");
-      break;
-    }
-
-    if (unw_get_proc_name(&cursor, buffer, sizeof(buffer), &offset) == 0) {
-      // To retrieve source name and line number we would need to
-      // - resolve the PC to a map to get the binary path
-      // - use the offset with the binary to get the line number from DWARF (see
-      //   https://kernel.googlesource.com/pub/scm/linux/kernel/git/hjl/binutils/+/hjl/secondary/binutils/addr2line.c)
-      if (strstr(buffer, "PyEval_EvalFrame")) {
-        sym[depth][0] = '\0';
-      }
-      else {
-        sprintf(sym[depth], ";native:%s:%p", buffer, (void *) offset);
-      }
-    }
-    else
-      strcpy(sym[depth], ";native:<noname>:0");
-
-    depth++;
-  } while (depth < 255 && unw_step(&cursor) > 0);
+  log_t("ptrace: thread %d interrupted", self->tid);
+  depth = _py_thread__unwind_native_frame_stack(self, depth);
+  #else
+  size_t depth = 0;
   #endif
 
   if (self->stack_height) {
-    _py_thread__unwind_frame_stack(self);
+    #ifdef NATIVE
+    // Restore the first frame
+    _stack[depth] = first_frame;
+    #endif
+    _py_thread__unwind_frame_stack(self, depth);
 
     #if !defined(AUSTINP)
     register int i = self->stack_height;
@@ -555,40 +614,36 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     #endif
   }
 
-  #if defined(AUSTINP) && defined(PL_UNIX)
+  #ifdef NATIVE
   if (ptrace(PTRACE_CONT, self->tid, 0, 0)) {
     log_e("ptrace: failed to resume thread %d", self->tid);
     return;
   }
-  log_d("ptrace: thread %d resumed", self->tid);
+  log_t("ptrace: thread %d resumed", self->tid);
   #endif
 
-  #if defined(AUSTINP) && defined(PL_UNIX)
+  #ifdef NATIVE
   // Append frames
-  register int i = self->stack_height;
-  while (depth-- > 0) {
-    if (sym[depth][0] == '\0') {
-      if (i == 0) {
-        #ifdef DEBUG
-        fprintf(pargs.output_file, ";:MISMATCH %d:", self->stack_height);
-        #endif
-        continue;
-      }
-      py_code_t code = _stack[--i].code;
-      fprintf(pargs.output_file, pargs.format, code.filename, code.scope, code.lineno);
+  register int i = self->stack_height ? self->stack_height : depth;
+  register int j = depth;
+
+  py_code_t * code;
+  while (j-- > 0) {
+    if (strstr(_stack[j].code.scope, "PyEval_EvalFrame")) {
+      code = ((i <= depth) ? &(_stack[j].code) : &(_stack[--i].code));
     }
     else {
-      fputs(sym[depth], pargs.output_file);
+      code = &(_stack[j].code);
     }
+    fprintf(pargs.output_file, pargs.format, code->filename, code->scope, code->lineno);
   }
-  if (i != 0) {
-    log_e("Stack mismatch: left with %d Python frames after interleaving", i);
+  if (i != depth) {
+    log_e("Stack mismatch: left with %d Python frames after interleaving", i - depth);
     #ifdef DEBUG
-    fprintf(pargs.output_file, ";:%d FRAMES LEFT:", i);
+    fprintf(pargs.output_file, ";:%ld FRAMES LEFT:", i - depth);
     #endif
   }
   #endif
-
 
   // Finish off sample with the metric(s)
   if (pargs.full) {
@@ -631,7 +686,7 @@ py_thread_allocate(void) {
     FAIL;
   #endif
 
-  #if defined(AUSTINP) && defined(PL_UNIX)
+  #ifdef NATIVE
   _tids = (void **) calloc(pid_max(), sizeof(void *));
   if (!isvalid(_tids))
     FAIL;
@@ -650,7 +705,7 @@ py_thread_free(void) {
 
   sfree(_stack);
 
-  #if defined(AUSTINP) && defined(PL_UNIX)
+  #ifdef NATIVE
   pid_t max_pid = pid_max();
   for (pid_t tid = 0; tid < max_pid; tid++) {
     if (isvalid(_tids[tid])) {

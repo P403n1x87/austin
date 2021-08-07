@@ -26,7 +26,7 @@
 
 #include <sys/types.h>
 
-#if defined(AUSTINP) && defined(PL_UNIX)
+#ifdef NATIVE
 #include <sys/ptrace.h>
 #include <libunwind-ptrace.h>
 #endif
@@ -81,7 +81,7 @@ typedef struct {
   // Offset of the tstate_current field within the _PyRuntimeState structure
   unsigned int    tstate_current_offset;
 
-  #if defined(AUSTINP) && defined(PL_UNIX)
+  #ifdef NATIVE
   struct _puw {
     unw_addr_space_t   as;
   } unwind;

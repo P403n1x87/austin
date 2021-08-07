@@ -732,7 +732,7 @@ _py_proc__run(py_proc_t * self, int try_once) {
 
   self->timestamp = gettime();
 
-  #if defined(AUSTINP) && defined(PL_UNIX)
+  #ifdef NATIVE
   self->unwind.as = unw_create_addr_space(&_UPT_accessors, 0);
   #endif
   SUCCESS;
@@ -989,7 +989,7 @@ py_proc__wait(py_proc_t * self) {
   #ifdef PL_WIN                                                        /* WIN */
   WaitForSingleObject(self->extra->h_proc, INFINITE);
   #else                                                               /* UNIX */
-  #if defined AUSTINP
+  #ifdef NATIVE
   wait(NULL);
   #else
   waitpid(self->pid, 0, 0);
