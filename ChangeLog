@@ -1,3 +1,8 @@
+2021-08-03 v3.1.0-dev
+
+  Added garbage collection state sampling for Python 3.7 onward.
+
+
 2021-06-13 v3.0.0
 
   Added pipe mode.

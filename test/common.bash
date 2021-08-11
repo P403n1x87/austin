@@ -144,6 +144,40 @@ function assert_output {
 
 # -----------------------------------------------------------------------------
 
+function assert_output_min_occurrences {
+  local count="${1}"
+  local pattern="${2}"
+  : "${output?}"
+
+  occurrences=`echo "$output" | grep "${pattern}" | wc -l`
+  if [[ $occurrences < $count ]]
+  then
+    log "      Assertion failed:  Not enough occurrences of pattern '${pattern}' (E: ${count} | G: ${occurrences})"
+    check_ignored
+  fi
+
+  true
+}
+
+# -----------------------------------------------------------------------------
+
+function assert_output_max_occurrences {
+  local count="${1}"
+  local pattern="${2}"
+  : "${output?}"
+
+  occurrences=`echo "$output" | grep "${pattern}" | wc -l`
+  if [[ $occurrences > $count ]]
+  then
+    log "      Assertion failed:  Too many occurrences of pattern '${pattern}' (E: ${count} | G: ${occurrences})"
+    check_ignored
+  fi
+
+  true
+}
+
+# -----------------------------------------------------------------------------
+
 function assert_not_output {
   local pattern="${1}"
   : "${output?}"

@@ -44,6 +44,7 @@ typedef struct {
   int       children;
   ctime_t   exposure;
   int       pipe;
+  int       gc;
   #ifdef NATIVE
   int       kernel;
   #endif

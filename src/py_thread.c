@@ -361,7 +361,6 @@ _py_thread__unwind_frame_stack(py_thread_t * self, size_t depth) {
 
 
 #ifdef NATIVE
-#if defined PL_LINUX
 static inline size_t
 _py_thread__unwind_kernel_frame_stack(py_thread_t * self) {
   FILE   * stack_file = NULL;
@@ -394,7 +393,6 @@ _py_thread__unwind_kernel_frame_stack(py_thread_t * self) {
 
   return offset;  // TODO: Decide whether to decremet this by 2
 }
-#endif
 
 
 // ----------------------------------------------------------------------------
@@ -605,9 +603,9 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     #endif
     _py_thread__unwind_frame_stack(self, depth);
 
-    #if !defined(AUSTINP)
+    #ifndef NATIVE
     register int i = self->stack_height;
-    while(i > 0) {
+    while (i > 0) {
       py_code_t code = _stack[--i].code;
       fprintf(pargs.output_file, pargs.format, code.filename, code.scope, code.lineno);
     }
@@ -620,9 +618,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     return;
   }
   log_t("ptrace: thread %d resumed", self->tid);
-  #endif
 
-  #ifdef NATIVE
   // Append frames
   register int i = self->stack_height ? self->stack_height : depth;
   register int j = depth;
@@ -639,11 +635,17 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   }
   if (i != depth) {
     log_e("Stack mismatch: left with %d Python frames after interleaving", i - depth);
+    austin_errno = ETHREADINV;
     #ifdef DEBUG
     fprintf(pargs.output_file, ";:%ld FRAMES LEFT:", i - depth);
     #endif
   }
   #endif
+
+  if (pargs.gc && py_proc__is_gc_collecting(self->proc) == TRUE) {
+    fprintf(pargs.output_file, ";:GC:");
+    stats_gc_time(time_delta);
+  }
 
   // Finish off sample with the metric(s)
   if (pargs.full) {
