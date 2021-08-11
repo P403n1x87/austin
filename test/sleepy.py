@@ -32,4 +32,4 @@ def cpu_bound():
 if __name__ == "__main__":
     for n in range(2):
         cpu_bound()
-        time.sleep(.7)
+        time.sleep(0.7)

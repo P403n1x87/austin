@@ -323,7 +323,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   if (py_proc__get_type(self, raddr, is))
     return OUT_OF_BOUND;
 
-  if (py_proc__get_type(self, is.tstate_head, tstate_head)) {
+  if (py_proc__get_type(self, V_FIELD(void *, is, py_is, o_tstate_head), tstate_head)) {
     log_t(
       "Cannot copy PyThreadState head at %p from PyInterpreterState instance",
       is.tstate_head
@@ -347,7 +347,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   );
 
   // As an extra sanity check, verify that the thread state is valid
-  raddr_t thread_raddr = { .pid = PROC_REF, .addr = is.tstate_head };
+  raddr_t thread_raddr = { .pid = PROC_REF, .addr = V_FIELD(void *, is, py_is, o_tstate_head) };
   py_thread_t thread;
   if (fail(py_thread__fill_from_raddr(&thread, &thread_raddr, self))) {
     log_d("Failed to fill thread structure");
@@ -360,6 +360,11 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   }
 
   log_d("Stack trace constructed from possible interpreter state");
+
+  if (py_v->major == 3 && py_v->minor >= 9) {
+    self->gc_state_raddr = (void *) (((char *) raddr) + py_v->py_is.o_gc);
+    log_d("GC runtime state @ %p", self->gc_state_raddr);
+  }
 
   SUCCESS;
 }
@@ -475,6 +480,10 @@ _py_proc__deref_interp_head(py_proc_t * self) {
       FAIL;
     }
     interp_head_raddr = V_FIELD(void *, py_runtime, py_runtime, o_interp_head);
+    if (py_v->major == 3 && py_v->minor < 9) {
+      self->gc_state_raddr = self->py_runtime_raddr + py_v->py_runtime.o_gc;
+      log_d("GC runtime state @ %p", self->gc_state_raddr);
+    }
   }
   else if (self->interp_head_raddr != NULL) {
     if (py_proc__get_type(self, self->interp_head_raddr, interp_head_raddr)) {
@@ -706,7 +715,8 @@ _py_proc__run(py_proc_t * self, int try_once) {
   if (
     self->tstate_curr_raddr == NULL &&
     self->py_runtime_raddr  == NULL &&
-    self->interp_head_raddr == NULL
+    self->interp_head_raddr == NULL &&
+    self->gc_state_raddr    == NULL
   )
     log_w("No remote symbol references have been set.");
   #endif
@@ -746,6 +756,7 @@ py_proc_new() {
     return NULL;
 
   py_proc->min_raddr = (void *) -1;
+  py_proc->gc_state_raddr = NULL;
 
   // Pre-hash symbol names
   if (_dynsym_hash_array[0] == 0) {
@@ -1071,6 +1082,22 @@ _py_proc__get_memory_delta(py_proc_t * self) {
 
 // ----------------------------------------------------------------------------
 int
+py_proc__is_gc_collecting(py_proc_t * self) {
+  if (!isvalid(self->gc_state_raddr))
+    return FALSE;
+
+  GCRuntimeState gc_state;
+  if (fail(py_proc__get_type(self, self->gc_state_raddr, gc_state))) {
+    log_d("Failed to get GC runtime state");
+    return -1;
+  }
+
+  return V_FIELD(int, gc_state, py_gc, o_collecting);
+}
+
+
+// ----------------------------------------------------------------------------
+int
 py_proc__sample(py_proc_t * self) {
   ctime_t   time_delta     = gettime() - self->timestamp;  // Time delta since last sample.
   ssize_t   mem_delta      = 0;
@@ -1080,8 +1107,9 @@ py_proc__sample(py_proc_t * self) {
   if (fail(py_proc__get_type(self, self->is_raddr, is)))
     FAIL;
 
-  if (is.tstate_head != NULL) {
-    raddr_t raddr = { .pid = PROC_REF, .addr = is.tstate_head };
+  void * tstate_head = V_FIELD(void *, is, py_is, o_tstate_head);
+  if (isvalid(tstate_head)) {
+    raddr_t raddr = { .pid = PROC_REF, .addr = tstate_head };
     py_thread_t py_thread;
     if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self)))
       FAIL;

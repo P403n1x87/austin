@@ -77,6 +77,20 @@
 #define PY_RUNTIME(s) {                 \
   sizeof(s),                            \
   offsetof(s, interpreters.head),       \
+  offsetof(s, gc),                      \
+}
+
+#define PY_IS(s) {                      \
+  sizeof(s),                            \
+  offsetof(s, next),                    \
+  offsetof(s, tstate_head),             \
+  offsetof(s, gc),                      \
+}
+
+
+#define PY_GC(s) {                      \
+  sizeof(s),                            \
+  offsetof(s, collecting),              \
 }
 
 // ---- Python 2 --------------------------------------------------------------
@@ -84,7 +98,8 @@
 python_v python_v2 = {
   PY_CODE     (PyCodeObject2),
   PY_FRAME    (PyFrameObject2),
-  PY_THREAD_H (PyThreadState2)
+  PY_THREAD_H (PyThreadState2),
+  PY_IS       (PyInterpreterState2),
 };
 
 // ---- Python 3.3 ------------------------------------------------------------
@@ -92,7 +107,8 @@ python_v python_v2 = {
 python_v python_v3_3 = {
   PY_CODE     (PyCodeObject3_3),
   PY_FRAME    (PyFrameObject2),
-  PY_THREAD_H (PyThreadState2)
+  PY_THREAD_H (PyThreadState2),
+  PY_IS       (PyInterpreterState2),
 };
 
 // ---- Python 3.4 ------------------------------------------------------------
@@ -100,7 +116,8 @@ python_v python_v3_3 = {
 python_v python_v3_4 = {
   PY_CODE     (PyCodeObject3_3),
   PY_FRAME    (PyFrameObject2),
-  PY_THREAD   (PyThreadState3_4)
+  PY_THREAD   (PyThreadState3_4),
+  PY_IS       (PyInterpreterState2),
 };
 
 // ---- Python 3.6 ------------------------------------------------------------
@@ -108,7 +125,8 @@ python_v python_v3_4 = {
 python_v python_v3_6 = {
   PY_CODE     (PyCodeObject3_6),
   PY_FRAME    (PyFrameObject2),
-  PY_THREAD   (PyThreadState3_4)
+  PY_THREAD   (PyThreadState3_4),
+  PY_IS       (PyInterpreterState2),
 };
 
 // ---- Python 3.7 ------------------------------------------------------------
@@ -117,7 +135,9 @@ python_v python_v3_7 = {
   PY_CODE     (PyCodeObject3_6),
   PY_FRAME    (PyFrameObject3_7),
   PY_THREAD   (PyThreadState3_7),
-  PY_RUNTIME  (_PyRuntimeState3_7)
+  PY_IS       (PyInterpreterState2),
+  PY_RUNTIME  (_PyRuntimeState3_7),
+  PY_GC       (struct _gc_runtime_state3_7),
 };
 
 // ---- Python 3.8 ------------------------------------------------------------
@@ -126,8 +146,22 @@ python_v python_v3_8 = {
   PY_CODE     (PyCodeObject3_8),
   PY_FRAME    (PyFrameObject3_7),
   PY_THREAD   (PyThreadState3_8),
-  PY_RUNTIME  (_PyRuntimeState3_8)
+  PY_IS       (PyInterpreterState2),
+  PY_RUNTIME  (_PyRuntimeState3_8),
+  PY_GC       (struct _gc_runtime_state3_8),
 };
+
+// ---- Python 3.9 ------------------------------------------------------------
+
+python_v python_v3_9 = {
+  PY_CODE     (PyCodeObject3_8),
+  PY_FRAME    (PyFrameObject3_7),
+  PY_THREAD   (PyThreadState3_8),
+  PY_IS       (PyInterpreterState3_9),
+  PY_RUNTIME  (_PyRuntimeState3_8),
+  PY_GC       (struct _gc_runtime_state3_8),
+};
+
 
 // ---- Python 3.10 -----------------------------------------------------------
 
@@ -135,7 +169,9 @@ python_v python_v3_10 = {
   PY_CODE     (PyCodeObject3_8),
   PY_FRAME    (PyFrameObject3_10),
   PY_THREAD   (PyThreadState3_8),
-  PY_RUNTIME  (_PyRuntimeState3_8)
+  PY_IS       (PyInterpreterState3_9),
+  PY_RUNTIME  (_PyRuntimeState3_8),
+  PY_GC       (struct _gc_runtime_state3_8),
 };
 
 // ----------------------------------------------------------------------------
@@ -188,9 +224,11 @@ set_version(int version) {
     // 3.7
     case 7: py_v = &python_v3_7; break;
 
-    // 3.8, 3.9
-    case 8:
-    case 9: py_v = &python_v3_8; break;
+    // 3.8
+    case 8: py_v = &python_v3_8; break;
+    
+    //, 3.9
+    case 9: py_v = &python_v3_9; break;
 
     // 3.10
     case 10: py_v = &python_v3_10; break;
