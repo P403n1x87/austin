@@ -75,8 +75,12 @@ do_single_process(py_proc_t * py_proc) {
 
       if (fail(py_proc__sample(py_proc)))
         break;
-
+      
+      #ifdef NATIVE
+      stopwatch_pause(0);
+      #else
       stopwatch_pause(stopwatch_duration());
+      #endif
     }
   }
   else {
@@ -88,7 +92,11 @@ do_single_process(py_proc_t * py_proc) {
       if (fail(py_proc__sample(py_proc)))
         break;
 
+      #ifdef NATIVE
+      stopwatch_pause(0);
+      #else
       stopwatch_pause(stopwatch_duration());
+      #endif
 
       if (end_time < gettime())
         interrupt++;
@@ -154,20 +162,32 @@ do_child_processes(py_proc_t * py_proc) {
 
   if (pargs.exposure == 0) {
     while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
+      #ifndef NATIVE
       ctime_t start_time = gettime();
+      #endif
       py_proc_list__update(list);
       py_proc_list__sample(list);
+      #ifdef NATIVE
+      stopwatch_pause(0);
+      #else
       stopwatch_pause(gettime() - start_time);
+      #endif
     }
   }
   else {
     log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
     ctime_t end_time = gettime() + pargs.exposure * 1000000;
     while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
+      #ifndef NATIVE
       ctime_t start_time = gettime();
+      #endif
       py_proc_list__update(list);
       py_proc_list__sample(list);
+      #ifdef NATIVE
+      stopwatch_pause(0);
+      #else
       stopwatch_pause(gettime() - start_time);
+      #endif
 
       if (end_time < gettime()) interrupt++;
     }
@@ -244,9 +264,7 @@ int main(int argc, char ** argv) {
     goto finally;
 
   // Redirect output to STDOUT if not output file was given.
-  if (pargs.output_file == NULL)
-    pargs.output_file = stdout;
-  else
+  if (pargs.output_file != stdout)
     log_i("Output file: %s", pargs.output_filename);
 
   log_i("Sampling interval: %lu μs", pargs.t_sampling_interval);

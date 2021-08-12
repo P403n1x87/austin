@@ -408,6 +408,18 @@ then use as per normal. The extra `-k/--kernel` option is available with
 > the use of `austinp` is not recommended in production environments. For this
 > reason, the default sampling interval for `austinp` is 10 milliseconds.
 
+The `utils` folder has the script `resolve.py` that can be used to resolve the
+VM addresses to source and line numbers, provided that the referenced binaries
+have DWARF debug symbols. To resolve the references, assuming you have collected
+the samples in `mysamples.austin`, do
+
+~~~
+python3 utils/resolve.py mysamples.austin > mysamples_resolved.austin
+~~~
+
+Internally, the script uses `addr2line(1)` to determine source and line number
+given an address, when possible.
+
 
 ## Logging
 

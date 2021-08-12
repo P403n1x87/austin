@@ -417,17 +417,16 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self, size_t height) {
       // - resolve the PC to a map to get the binary path
       // - use the offset with the binary to get the line number from DWARF (see
       //   https://kernel.googlesource.com/pub/scm/linux/kernel/git/hjl/binutils/+/hjl/secondary/binutils/addr2line.c)
-      strcpy(_stack[depth].code.filename, "native");
       _stack[depth].code.lineno = offset;
     }
     else {
-      strcpy(_stack[depth].code.filename, "native");
-      strcpy(_stack[depth].code.filename, "<unnamed>");
+      strcpy(_stack[depth].code.scope, "<unnamed>");
       _stack[depth].code.lineno = 0;
     }
+    sprintf(_stack[depth].code.filename, "native@%lx", pc);
 
     depth++;
-  } while (depth < 255 && unw_step(&cursor) > 0);
+  } while (depth < MAX_STACK_SIZE && unw_step(&cursor) > 0);
 
   return depth;
 }
@@ -586,12 +585,11 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   // The downside is that the kernel stack might not be in sync with the other
   // ones.
   size_t depth = pargs.kernel ? _py_thread__unwind_kernel_frame_stack(self) : 0;
-  if (ptrace(PTRACE_INTERRUPT, self->tid, 0, 0)) {
-    log_e("ptrace: failed to interrupt thread %d", self->tid);
-    return;
-  }
-  log_t("ptrace: thread %d interrupted", self->tid);
   depth = _py_thread__unwind_native_frame_stack(self, depth);
+
+  // Update the thread state to improve guarantees that it will be in sync with
+  // the native stack just collected
+  py_thread__fill_from_raddr(self, &self->raddr, self->proc);
   #else
   size_t depth = 0;
   #endif
@@ -613,11 +611,6 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   }
 
   #ifdef NATIVE
-  if (ptrace(PTRACE_CONT, self->tid, 0, 0)) {
-    log_e("ptrace: failed to resume thread %d", self->tid);
-    return;
-  }
-  log_t("ptrace: thread %d resumed", self->tid);
 
   // Append frames
   register int i = self->stack_height ? self->stack_height : depth;
