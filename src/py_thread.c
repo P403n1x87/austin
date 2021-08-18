@@ -30,7 +30,6 @@
 #include "logging.h"
 #include "mem.h"
 #include "platform.h"
-#include "pthread.h"
 #include "timing.h"
 #include "version.h"
 
