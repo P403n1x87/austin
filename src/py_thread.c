@@ -30,7 +30,6 @@
 #include "logging.h"
 #include "mem.h"
 #include "platform.h"
-#include "pthread.h"
 #include "timing.h"
 #include "version.h"
 
@@ -487,6 +486,11 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
       py_code_t code = _stack[--i].code;
       fprintf(pargs.output_file, pargs.format, code.filename, code.scope, code.lineno);
     }
+  }
+
+  if (pargs.gc && py_proc__is_gc_collecting(self->proc) == TRUE) {
+    fprintf(pargs.output_file, ";:GC:");
+    stats_gc_time(time_delta);
   }
 
   // Finish off sample with the metric(s)

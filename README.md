@@ -286,6 +286,7 @@ Austin -- A frame stack sampler for Python.
   -e, --exclude-empty        Do not output samples of threads with no frame
                              stacks.
   -f, --full                 Produce the full set of metrics (time +mem -mem).
+  -g, --gc                   Sample the garbage collector state.
   -i, --interval=n_us        Sampling interval in microseconds (default is
                              100). Accepted units: s, ms, us.
   -m, --memory               Profile memory usage.
@@ -365,6 +366,17 @@ time, CPU time and memory pressure, all from a single run.
 Austin can be told to profile multi-process applications with the `-C` or
 `--children` switch. This way Austin will look for new children of the parent
 process.
+
+
+## Garbage Collector Sampling
+
+Austin can sample the Python garbage collector state for application running
+with Python 3.7 and later versions. If the `-g`/`--gc` option is passed, Austin
+will append `:GC:` at the end of each collected frame stack whenver the
+garbage collector is in the collecting state. This gives you a measure of how
+*busy* the Python GC is during a run.
+
+*Since Austin 3.1.0*.
 
 
 ## Logging

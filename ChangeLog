@@ -1,3 +1,10 @@
+2021-08-18 v3.1.0
+
+  Added garbage collection state sampling for Python 3.7 onward.
+
+  Bugfix: the MinGW libwinpthread library is now linked statically on Windows.
+
+
 2021-06-13 v3.0.0
 
   Added pipe mode.

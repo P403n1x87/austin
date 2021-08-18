@@ -64,6 +64,7 @@ typedef struct {
   void          * tstate_curr_raddr;
   void          * py_runtime_raddr;
   void          * interp_head_raddr;
+  void          * gc_state_raddr;
 
   void          * is_raddr;
 
@@ -146,6 +147,20 @@ py_proc__is_running(py_proc_t *);
  */
 int
 py_proc__is_python(py_proc_t *);
+
+
+/**
+ * Check whether the GC is collecting for the given process.
+ * 
+ * NOTE: This method makes sense only for Python>=3.7.
+ * 
+ * @param py_proc_t * the process object.
+ * 
+ * @return TRUE if the GC is collecting, FALSE otherwise.
+ * 
+ */
+int
+py_proc__is_gc_collecting(py_proc_t *);
 
 
 /**

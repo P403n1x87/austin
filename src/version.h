@@ -57,7 +57,7 @@
  * @return         the value of of the field of py_obj at the offset specified
  *                 by the field argument.
  */
-#define V_FIELD(ctype, py_obj, py_type, field) (*((ctype*) (((void *) &py_obj) + py_v->py_type.field)))
+#define V_FIELD(ctype, py_obj, py_type, field) (*((ctype*) (((char *) &py_obj) + py_v->py_type.field)))
 
 
 typedef unsigned long offset_t;
@@ -108,14 +108,32 @@ typedef struct {
   ssize_t  size;
 
   offset_t o_interp_head;
+  offset_t o_gc;
 } py_runtime_v;
 
+
+typedef struct {
+  ssize_t  size;
+
+  offset_t o_next;
+  offset_t o_tstate_head;
+  offset_t o_gc;
+} py_is_v;
+
+
+typedef struct {
+  ssize_t  size;
+
+  offset_t o_collecting;
+} py_gc_v;
 
 typedef struct {
   py_code_v    py_code;
   py_frame_v   py_frame;
   py_thread_v  py_thread;
+  py_is_v      py_is;
   py_runtime_v py_runtime;
+  py_gc_v      py_gc;
 
   int          major;
   int          minor;

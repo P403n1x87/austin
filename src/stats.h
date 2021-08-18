@@ -40,6 +40,8 @@ extern ctime_t _avg_sampling_time;
 
 extern ustat_t _error_cnt;
 extern ustat_t _long_cnt;
+
+extern ctime_t _gc_time;
 #endif
 
 
@@ -90,6 +92,12 @@ stats_get_avg_sampling_time(void);
  * Increase the counter of samples with errors.
  */
 #define stats_count_error()             { _error_cnt++; }
+
+
+/**
+ * Accumulate GC time.
+ */
+#define stats_gc_time(delta)             { _gc_time+=(delta); }
 
 
 /**

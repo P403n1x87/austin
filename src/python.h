@@ -218,15 +218,142 @@ typedef union {
   PyFrameObject3_10 v3_10;
 } PyFrameObject;
 
+// ---- include/objimpl.h -----------------------------------------------------
+
+typedef union _gc_head3_7 {
+    struct {
+        union _gc_head3_7 *gc_next;
+        union _gc_head3_7 *gc_prev;
+        Py_ssize_t gc_refs;
+    } gc;
+    long double dummy;  /* force worst-case alignment */
+} PyGC_Head3_7;
+
+typedef struct {
+    uintptr_t _gc_next;
+    uintptr_t _gc_prev;
+} PyGC_Head3_8;
+
+// ---- internal/mem.h --------------------------------------------------------
+
+#define NUM_GENERATIONS 3
+
+struct gc_generation3_7 {
+    PyGC_Head3_7 head;
+    int threshold; /* collection threshold */
+    int count; /* count of allocations or collections of younger
+                  generations */
+};
+
+
+struct gc_generation3_8 {
+    PyGC_Head3_8 head;
+    int threshold; /* collection threshold */
+    int count; /* count of allocations or collections of younger
+                  generations */
+};
+
+/* Running stats per generation */
+struct gc_generation_stats {
+    Py_ssize_t collections;
+    Py_ssize_t collected;
+    Py_ssize_t uncollectable;
+};
+
+struct _gc_runtime_state3_7 {
+    PyObject *trash_delete_later;
+    int trash_delete_nesting;
+    int enabled;
+    int debug;
+    struct gc_generation3_7 generations[NUM_GENERATIONS];
+    PyGC_Head3_7 *generation0;
+    struct gc_generation3_7 permanent_generation;
+    struct gc_generation_stats generation_stats[NUM_GENERATIONS];
+    int collecting;
+};
+
+struct _gc_runtime_state3_8 {
+    PyObject *trash_delete_later;
+    int trash_delete_nesting;
+    int enabled;
+    int debug;
+    struct gc_generation3_8 generations[NUM_GENERATIONS];
+    PyGC_Head3_8 *generation0;
+    struct gc_generation3_8 permanent_generation;
+    struct gc_generation_stats generation_stats[NUM_GENERATIONS];
+    int collecting;
+};
+
+typedef union {
+    struct _gc_runtime_state3_7 v3_7;
+    struct _gc_runtime_state3_8 v3_8;
+} GCRuntimeState;
+
 // ---- pystate.h -------------------------------------------------------------
 
 struct _ts; /* Forward */
-struct _is; /* Forward */
 
-typedef struct _is {
-    struct _is *next;
+typedef struct _is2 {
+    struct _is2 *next;
     struct _ts *tstate_head;
+    void* gc;  /* Dummy */
+} PyInterpreterState2;
+
+// ---- internal/pycore_interp.h ----------------------------------------------
+
+typedef void *PyThread_type_lock;
+
+typedef struct _Py_atomic_int {
+    int _value;
+} _Py_atomic_int;
+
+struct _pending_calls {
+    PyThread_type_lock lock;
+    _Py_atomic_int calls_to_do;
+    int async_exc;
+#define NPENDINGCALLS 32
+    struct {
+        int (*func)(void *);
+        void *arg;
+    } calls[NPENDINGCALLS];
+    int first;
+    int last;
+};
+
+struct _ceval_state {
+    int recursion_limit;
+    int tracing_possible;
+    _Py_atomic_int eval_breaker;
+    _Py_atomic_int gil_drop_request;
+    struct _pending_calls pending;
+};
+
+typedef struct _is3_9 {
+
+    struct _is3_9 *next;
+    struct _is3_9 *tstate_head;
+
+    /* Reference to the _PyRuntime global variable. This field exists
+       to not have to pass runtime in addition to tstate to a function.
+       Get runtime from tstate: tstate->interp->runtime. */
+    struct pyruntimestate *runtime;
+
+    int64_t id;
+    int64_t id_refcount;
+    int requires_idref;
+    PyThread_type_lock id_mutex;
+
+    int finalizing;
+
+    struct _ceval_state ceval;
+    struct _gc_runtime_state3_8 gc;
+} PyInterpreterState3_9;
+
+typedef union {
+  PyInterpreterState2   v2;
+  PyInterpreterState3_9 v3_9;
 } PyInterpreterState;
+
 
 // Dummy struct _frame
 struct _frame;
@@ -380,8 +507,6 @@ typedef union {
 
 // ---- internal/pystate.h ----------------------------------------------------
 
-typedef void *PyThread_type_lock;
-
 typedef struct pyruntimestate3_7 {
     int initialized;
     int core_initialized;
@@ -393,6 +518,14 @@ typedef struct pyruntimestate3_7 {
         PyInterpreterState *main;
         int64_t next_id;
     } interpreters;
+#define NEXITFUNCS 32
+    void (*exitfuncs[NEXITFUNCS])(void);
+    int nexitfuncs;
+
+    struct _gc_runtime_state3_7 gc;
+    // struct _warnings_runtime_state warnings;
+    // struct _ceval_runtime_state ceval;
+    // struct _gilstate_runtime_state gilstate;
 } _PyRuntimeState3_7;
 
 // ---- internal/pycore_pystate.h ---------------------------------------------
@@ -410,6 +543,21 @@ typedef struct pyruntimestate3_8 {
         PyInterpreterState *main;
         int64_t next_id;
     } interpreters;
+    // XXX Remove this field once we have a tp_* slot.
+    struct _xidregistry {
+        PyThread_type_lock mutex;
+        struct _xidregitem *head;
+    } xidregistry;
+
+    unsigned long main_thread;
+
+#define NEXITFUNCS 32
+    void (*exitfuncs[NEXITFUNCS])(void);
+    int nexitfuncs;
+
+    struct _gc_runtime_state3_8 gc;
+    // struct _ceval_runtime_state ceval;
+    // struct _gilstate_runtime_state gilstate;
 } _PyRuntimeState3_8;
 
 

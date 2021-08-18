@@ -52,6 +52,7 @@ parsed_args_t pargs = {
   /* children            */ 0,
   /* exposure            */ 0,
   /* pipe                */ 0,
+  /* gc                  */ 0,
 };
 
 static int exec_arg = 0;
@@ -217,6 +218,10 @@ static struct argp_option options[] = {
     "pipe",         'P', NULL,          0,
     "Pipe mode. Use when piping Austin output."
   },
+  {
+    "gc",         'g', NULL,          0,
+    "Sample the garbage collector state."
+  },
   #ifndef PL_LINUX
   {
     "help",         '?', NULL
@@ -320,6 +325,10 @@ parse_opt (int key, char *arg, struct argp_state *state)
 
   case 'P':
     pargs.pipe = 1;
+    break;
+
+  case 'g':
+    pargs.gc = 1;
     break;
 
   case ARGP_KEY_ARG:
@@ -464,6 +473,7 @@ static const char * help_msg = \
 "  -e, --exclude-empty        Do not output samples of threads with no frame\n"
 "                             stacks.\n"
 "  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
+"  -g, --gc                   Sample the garbage collector state.\n"
 "  -i, --interval=n_us        Sampling interval in microseconds (default is\n"
 "                             100). Accepted units: s, ms, us.\n"
 "  -m, --memory               Profile memory usage.\n"
@@ -615,6 +625,10 @@ cb(const char opt, const char * arg) {
 
   case 'P':
     pargs.pipe = 1;
+    break;
+
+  case 'g':
+    pargs.gc = 1;
     break;
 
   case '?':
