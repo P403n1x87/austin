@@ -80,10 +80,12 @@ typedef struct frame {
 } py_frame_t;
 
 
-py_frame_t * _stack = NULL;
+py_frame_t * _stack  = NULL;
+size_t       _stackp = 0;
 
 #ifdef NATIVE
-void ** _tids = NULL;
+void          ** _tids      = NULL;
+unsigned char *  _tids_idle = NULL;
 #endif
 
 
@@ -296,9 +298,10 @@ _py_code__fill_from_raddr(py_code_t * self, raddr_t * raddr, int lasti) {
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_frame__fill_from_raddr(py_frame_t * self, raddr_t * raddr) {
+_py_frame_fill_from_raddr(raddr_t * raddr) {
   PyFrameObject frame;
 
+  py_frame_t * self = _stack + _stackp;
   self->invalid = 1;
 
   if (fail(copy_from_raddr_v(raddr, frame, py_v->py_frame.size))) {
@@ -325,13 +328,19 @@ _py_frame__fill_from_raddr(py_frame_t * self, raddr_t * raddr) {
 
   self->invalid = 0;
 
+  _stackp++;
+
   SUCCESS;
 }
 
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_frame__prev(py_frame_t * self) {
+_py_frame__prev() {
+  if (_stackp <= 0)
+    FAIL;
+
+  py_frame_t * self = _stack + _stackp - 1;
   if (!isvalid(self) || !isvalid(self->prev_raddr.addr))
     FAIL;
 
@@ -340,28 +349,45 @@ _py_frame__prev(py_frame_t * self) {
     .addr = self->prev_raddr.addr
   };
 
-  return _py_frame__fill_from_raddr(self + 1, &prev_raddr);
+  return _py_frame_fill_from_raddr(&prev_raddr);
 }
 
 
 // ----------------------------------------------------------------------------
 static inline void
-_py_thread__unwind_frame_stack(py_thread_t * self, size_t depth) {
-  register size_t i = depth;
-  while (success(_py_frame__prev(_stack + i)) && i < MAX_STACK_SIZE) {
-    if (_stack[++i].invalid) {
-      log_d("Frame number %d is invalid", i);
+_py_thread__unwind_frame_stack(py_thread_t * self) {
+  size_t basep = _stackp;
+
+  while (success(_py_frame__prev()) && _stackp < MAX_STACK_SIZE) {
+    if (_stack[_stackp-1].invalid) {
+      log_d("Frame number %d is invalid", _stackp - basep);
       return;
     }
   }
-  if (i >= MAX_STACK_SIZE)
+  if (_stackp >= MAX_STACK_SIZE)
     log_w("Frames limit reached. Discarding the rest");
-  self->stack_height += i;
+  
+  self->stack_height += _stackp - basep;
 }
 
 
 #ifdef NATIVE
-static inline size_t
+// ----------------------------------------------------------------------------
+void
+py_thread__set_idle(py_thread_t * self) {
+  size_t index  = self->tid >> 3;
+  int    offset = self->tid & 7;
+
+  unsigned char idle_bit = _py_thread__is_idle(self) << offset;
+  if (idle_bit) {
+    _tids_idle[index] |= idle_bit;
+  } else {
+    _tids_idle[index] &= ~idle_bit;
+  }
+}
+
+// ----------------------------------------------------------------------------
+static inline int
 _py_thread__unwind_kernel_frame_stack(py_thread_t * self) {
   FILE   * stack_file = NULL;
   char   * line       = NULL;
@@ -371,11 +397,10 @@ _py_thread__unwind_kernel_frame_stack(py_thread_t * self) {
   sprintf(stack_path, "/proc/%d/task/%ld/stack", self->proc->pid, self->tid);
   stack_file = fopen(stack_path, "r");
   if (!isvalid(stack_file))
-    return -1;
+    FAIL;
 
   log_t("linux: unwinding kernel stack");
 
-  size_t offset = 0;
   while (getline(&line, &len, stack_file) != -1) {
     char * b = strchr(line, ']');
     if (!isvalid(b))
@@ -383,52 +408,51 @@ _py_thread__unwind_kernel_frame_stack(py_thread_t * self) {
     char * e = strchr(++b, '+');
     if (isvalid(e))
       *e = 0;
-    strcpy(_stack[offset].code.scope, ++b);
-    strcpy(_stack[offset].code.filename, "kernel");
+    strcpy(_stack[_stackp].code.scope, ++b);
+    strcpy(_stack[_stackp].code.filename, "kernel");
     sfree(line);
-    offset++;
+    _stackp++;  // TODO: Decide whether to decremet this by 2 before returning.
   }
 
   fclose(stack_file);
 
-  return offset;  // TODO: Decide whether to decremet this by 2
+  SUCCESS;
 }
 
 
 // ----------------------------------------------------------------------------
-static inline size_t
-_py_thread__unwind_native_frame_stack(py_thread_t * self, size_t height) {
+static inline int
+_py_thread__unwind_native_frame_stack(py_thread_t * self) {
   void *context = _tids[self->tid];
   unw_cursor_t cursor;
 
   while (unw_init_remote(&cursor, self->proc->unwind.as, context));
 
-  size_t depth = height;
   do {
     unw_word_t offset, pc;
     
     if (unw_get_reg(&cursor, UNW_REG_IP, &pc)) {
       log_e("libunwind: cannot read program counter\n");
-      break;
+      FAIL;
     }
 
-    if (unw_get_proc_name(&cursor, _stack[depth].code.scope, MAXLEN, &offset) == 0) {
+    if (unw_get_proc_name(&cursor, _stack[_stackp].code.scope, MAXLEN, &offset) == 0) {
       // To retrieve source name and line number we would need to
       // - resolve the PC to a map to get the binary path
       // - use the offset with the binary to get the line number from DWARF (see
       //   https://kernel.googlesource.com/pub/scm/linux/kernel/git/hjl/binutils/+/hjl/secondary/binutils/addr2line.c)
-      _stack[depth].code.lineno = offset;
+      _stack[_stackp].code.lineno = offset;
     }
     else {
-      strcpy(_stack[depth].code.scope, "<unnamed>");
-      _stack[depth].code.lineno = 0;
+      strcpy(_stack[_stackp].code.scope, "<unnamed>");
+      _stack[_stackp].code.lineno = 0;
     }
-    sprintf(_stack[depth].code.filename, "native@%lx", pc);
+    sprintf(_stack[_stackp].code.filename, "native@%lx", pc);
 
-    depth++;
-  } while (depth < MAX_STACK_SIZE && unw_step(&cursor) > 0);
-
-  return depth;
+    _stackp++;
+  } while (_stackp < MAX_STACK_SIZE && unw_step(&cursor) > 0);
+  
+  SUCCESS;
 }
 #endif
 
@@ -449,7 +473,7 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
 
   if (V_FIELD(void*, ts, py_thread, o_frame) != NULL) {
     raddr_t frame_raddr = { .pid = raddr->pid, .addr = V_FIELD(void*, ts, py_thread, o_frame) };
-    if (fail(_py_frame__fill_from_raddr(_stack, &frame_raddr))) {
+    if (fail(_py_frame_fill_from_raddr(&frame_raddr))) {
       log_d("Failed to fill last frame");
       SUCCESS;
     }
@@ -520,6 +544,8 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
 // ----------------------------------------------------------------------------
 int
 py_thread__next(py_thread_t * self) {
+  _stackp = 0;
+  
   if (!isvalid(self->next_raddr.addr))
     FAIL;
 
@@ -565,41 +591,48 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
 
   int is_idle = FALSE;
   if (pargs.full || pargs.sleepless) {
+    #ifdef NATIVE
+    size_t index  = self->tid >> 3;
+    int    offset = self->tid & 7;
+
+    is_idle = _tids_idle[index] & (1 << offset);
+    #else
     is_idle = _py_thread__is_idle(self);
-    if (!pargs.full && is_idle && pargs.sleepless)
+    #endif
+    if (!pargs.full && is_idle && pargs.sleepless) {
+      #ifdef NATIVE
+      // If we don't sample the threads stall :(
+      _py_thread__unwind_native_frame_stack(self);
+      #endif
       return;
+    }
   }
 
   // Group entries by thread.
   fprintf(pargs.output_file, SAMPLE_HEAD, self->proc->pid, self->tid);
 
-  #ifdef NATIVE
-  py_frame_t first_frame;
 
-  // Save the first frame, if any.
-  if (self->stack_height) {
-    first_frame = _stack[0];
-  }
+  #ifdef NATIVE
+  _stackp = 0;
+
   // We sample the kernel frame stack BEFORE interrupting because otherwise
   // we would see the ptrace syscall call stack, which is not very interesting.
   // The downside is that the kernel stack might not be in sync with the other
   // ones.
-  size_t depth = pargs.kernel ? _py_thread__unwind_kernel_frame_stack(self) : 0;
-  depth = _py_thread__unwind_native_frame_stack(self, depth);
+  if (pargs.kernel) {
+    log_t("unwinding kernel stack");
+    _py_thread__unwind_kernel_frame_stack(self);
+  }
+  _py_thread__unwind_native_frame_stack(self);
 
+  size_t basep = _stackp;
   // Update the thread state to improve guarantees that it will be in sync with
   // the native stack just collected
   py_thread__fill_from_raddr(self, &self->raddr, self->proc);
-  #else
-  size_t depth = 0;
   #endif
 
   if (self->stack_height) {
-    #ifdef NATIVE
-    // Restore the first frame
-    _stack[depth] = first_frame;
-    #endif
-    _py_thread__unwind_frame_stack(self, depth);
+    _py_thread__unwind_frame_stack(self);
 
     #ifndef NATIVE
     register int i = self->stack_height;
@@ -613,24 +646,24 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   #ifdef NATIVE
 
   // Append frames
-  register int i = self->stack_height ? self->stack_height : depth;
-  register int j = depth;
+  register int i = _stackp;
+  register int j = basep;
 
   py_code_t * code;
   while (j-- > 0) {
     if (strstr(_stack[j].code.scope, "PyEval_EvalFrame")) {
-      code = ((i <= depth) ? &(_stack[j].code) : &(_stack[--i].code));
+      code = ((i <= basep) ? &(_stack[j].code) : &(_stack[--i].code));
     }
     else {
       code = &(_stack[j].code);
     }
     fprintf(pargs.output_file, pargs.format, code->filename, code->scope, code->lineno);
   }
-  if (i != depth) {
-    log_e("Stack mismatch: left with %d Python frames after interleaving", i - depth);
+  if (i != basep) {
+    log_e("Stack mismatch: left with %d Python frames after interleaving", i - basep);
     austin_errno = ETHREADINV;
     #ifdef DEBUG
-    fprintf(pargs.output_file, ";:%ld FRAMES LEFT:", i - depth);
+    fprintf(pargs.output_file, ";:%ld FRAMES LEFT:", i - basep);
     #endif
   }
   #endif
@@ -682,8 +715,13 @@ py_thread_allocate(void) {
   #endif
 
   #ifdef NATIVE
-  _tids = (void **) calloc(pid_max(), sizeof(void *));
+  size_t max = pid_max();
+  _tids = (void **) calloc(max, sizeof(void *));
   if (!isvalid(_tids))
+    FAIL;
+
+  _tids_idle = (unsigned char *) calloc(max >> 8, sizeof(unsigned char*));
+  if (!isvalid(_tids_idle))
     FAIL;
   #endif
 
@@ -710,5 +748,6 @@ py_thread_free(void) {
     }
   }
   sfree(_tids);
+  sfree(_tids_idle);
   #endif
 }

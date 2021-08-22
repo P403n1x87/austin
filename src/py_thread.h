@@ -94,4 +94,10 @@ py_thread_allocate(void);
 void
 py_thread_free(void);
 
+#ifdef NATIVE
+void
+py_thread__set_idle(py_thread_t *);
+#endif
+
+
 #endif // PY_THREAD_H

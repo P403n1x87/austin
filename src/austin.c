@@ -363,13 +363,14 @@ finally:
     retval = SIGTERM;
 
   log_footer();
-  logger_close();
 
 release:
   if (pargs.output_file != NULL && pargs.output_file != stdout) {
     fclose(pargs.output_file);
     log_d("Output file closed.");
   }
+
+  logger_close();
 
   return retval;
 } /* main */

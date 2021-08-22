@@ -1114,6 +1114,7 @@ _py_proc__interrupt_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
   }
 
   do {
+    py_thread__set_idle(&py_thread);
     if (ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0)) {
       log_e("ptrace: failed to interrupt thread %d", py_thread.tid);
       FAIL;
