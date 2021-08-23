@@ -79,6 +79,6 @@
       <ComponentRef Id='MainExecutable' />
     </Feature>
     <MajorUpgrade
-      DowngradeErrorMessage="A later version of Austin is already installed. Setup will now exit.">
+      DowngradeErrorMessage="A later version of Austin is already installed. Setup will now exit."/>
   </Product>
 </Wix>
