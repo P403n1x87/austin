@@ -56,7 +56,6 @@
         </Directory>
       </Directory>
     </Directory>
-    
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
     <UI>
       <UIRef Id="WixUI_InstallDir" />
