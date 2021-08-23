@@ -56,7 +56,7 @@
         </Directory>
       </Directory>
     </Directory>
-
+    
     <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
     <UI>
       <UIRef Id="WixUI_InstallDir" />
@@ -78,6 +78,7 @@
       ConfigurableDirectory='INSTALLDIR'>
       <ComponentRef Id='MainExecutable' />
     </Feature>
-
+    <MajorUpgrade
+      DowngradeErrorMessage="A later version of Austin is already installed. Setup will now exit.">
   </Product>
 </Wix>
