@@ -144,7 +144,11 @@ _get_version_from_executable(char * binary, int * major, int * minor, int * patc
   char   version[64];
   char   cmd[256];
 
+  #if defined PL_WIN
+  sprintf(cmd, "\"\"%s\"\" -V 2>&1", binary);
+  #else
   sprintf(cmd, "%s -V 2>&1", binary);
+  #endif
 
   fp = _popen(cmd, "r");
   if (!isvalid(fp)) {
