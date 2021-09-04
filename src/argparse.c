@@ -225,7 +225,7 @@ static struct argp_option options[] = {
     "Pipe mode. Use when piping Austin output."
   },
   {
-    "gc",         'g', NULL,            0,
+    "gc",           'g', NULL,          0,
     "Sample the garbage collector state."
   },
   #ifdef NATIVE
@@ -317,7 +317,7 @@ parse_opt (int key, char *arg, struct argp_state *state)
 
   case 'o':
     pargs.output_file = fopen(arg, "w");
-    if (pargs.output_file == stdout) {
+    if (pargs.output_file == NULL) {
       argp_error(state, "Unable to create the given output file");
     }
     pargs.output_filename = arg;
@@ -621,7 +621,7 @@ cb(const char opt, const char * arg) {
 
   case 'o':
     pargs.output_file = fopen(arg, "w");
-    if (pargs.output_file == stdout) {
+    if (pargs.output_file == NULL) {
       puts("Unable to create the given output file.");
       return ARG_INVALID_VALUE;
     }

@@ -1,3 +1,4 @@
+import os
 import sys
 import typing as t
 from subprocess import check_output
@@ -92,7 +93,15 @@ class Maps:
 
 
 def main():
-    stats = sys.argv[1]
+    try:
+        stats = sys.argv[1]
+        assert os.isfile(stats)
+    except IndexError:
+        print("Usage: python resolve.py <austin-file>", file=sys.stderr)
+        sys.exit(1)
+    except AssertionError:
+        print("Austin file does not exist", file=sys.stderr)
+        sys.exit(1)
 
     maps = Maps()
     with open(stats) as s:

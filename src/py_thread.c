@@ -635,6 +635,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     _py_thread__unwind_frame_stack(self);
 
     #ifndef NATIVE
+    // Append frames
     register int i = self->stack_height;
     while (i > 0) {
       py_code_t code = _stack[--i].code;
@@ -645,7 +646,6 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
 
   #ifdef NATIVE
 
-  // Append frames
   register int i = _stackp;
   register int j = basep;
 

@@ -40,6 +40,5 @@ def keep_gc_busy():
         a.append(Foo(i))
 
 
-
 if __name__ == "__main__":
     keep_gc_busy()
