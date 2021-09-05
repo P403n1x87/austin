@@ -29,8 +29,11 @@
 #include "hints.h"
 #include "platform.h"
 
-
+#ifdef NATIVE
+#define DEFAULT_SAMPLING_INTERVAL  10000  // reduces impact on tracee
+#else
 #define DEFAULT_SAMPLING_INTERVAL    100
+#endif
 #define DEFAULT_INIT_RETRY_CNT       100
 
 const char SAMPLE_FORMAT_NORMAL[]      = ";%s:%s:%d";
@@ -53,6 +56,9 @@ parsed_args_t pargs = {
   /* exposure            */ 0,
   /* pipe                */ 0,
   /* gc                  */ 0,
+  #ifdef NATIVE
+  /* kernel              */ 0,
+  #endif
 };
 
 static int exec_arg = 0;
@@ -219,9 +225,15 @@ static struct argp_option options[] = {
     "Pipe mode. Use when piping Austin output."
   },
   {
-    "gc",         'g', NULL,          0,
+    "gc",           'g', NULL,          0,
     "Sample the garbage collector state."
   },
+  #ifdef NATIVE
+  {
+    "kernel",       'k', NULL,          0,
+    "Sample the kernel call stack."
+  },
+  #endif
   #ifndef PL_LINUX
   {
     "help",         '?', NULL
@@ -330,6 +342,12 @@ parse_opt (int key, char *arg, struct argp_state *state)
   case 'g':
     pargs.gc = 1;
     break;
+  
+  #ifdef NATIVE
+  case 'k':
+    pargs.kernel = 1;
+    break;
+  #endif
 
   case ARGP_KEY_ARG:
   case ARGP_KEY_END:
@@ -662,6 +680,8 @@ cb(const char opt, const char * arg) {
 // ----------------------------------------------------------------------------
 int
 parse_args(int argc, char ** argv) {
+  pargs.output_file = stdout;
+
   #ifdef PL_LINUX
   struct argp args = {options, parse_opt, "command [ARG...]", doc};
   argp_parse(&args, argc, argv, 0, 0, 0);

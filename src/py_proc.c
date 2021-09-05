@@ -330,12 +330,12 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   if (py_proc__get_type(self, V_FIELD(void *, is, py_is, o_tstate_head), tstate_head)) {
     log_t(
       "Cannot copy PyThreadState head at %p from PyInterpreterState instance",
-      is.tstate_head
+      V_FIELD(void *, is, py_is, o_tstate_head)
     );
     FAIL;
   }
 
-  log_t("PyThreadState head loaded @ %p", is.tstate_head);
+  log_t("PyThreadState head loaded @ %p", V_FIELD(void *, is, py_is, o_tstate_head));
 
   if (V_FIELD(void*, tstate_head, py_thread, o_interp) != raddr)
     FAIL;
@@ -347,7 +347,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   log_t(
     "PyInterpreterState loaded @ %p. Thread State head @ %p",
-    raddr, is.tstate_head
+    raddr, V_FIELD(void *, is, py_is, o_tstate_head)
   );
 
   // As an extra sanity check, verify that the thread state is valid
@@ -746,6 +746,9 @@ _py_proc__run(py_proc_t * self, int try_once) {
 
   self->timestamp = gettime();
 
+  #ifdef NATIVE
+  self->unwind.as = unw_create_addr_space(&_UPT_accessors, 0);
+  #endif
   SUCCESS;
 } /* _py_proc__run */
 
@@ -840,7 +843,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   siStartInfo.hStdError  = GetStdHandle(STD_ERROR_HANDLE);
   siStartInfo.dwFlags   |= STARTF_USESTDHANDLES;
 
-  if (pargs.output_file == NULL) {
+  if (pargs.output_file == stdout) {
     HANDLE nullStdOut = CreateFile(
       TEXT(NULL_DEVICE), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL
     );
@@ -898,7 +901,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   if (self->pid == 0) {
     // If we are not writing to file we need to ensure the child process is
     // not writing to stdout.
-    if (pargs.output_file == NULL) {
+    if (pargs.output_file == stdout) {
       log_d("Redirecting child's STDOUT to " NULL_DEVICE);
       if (freopen(NULL_DEVICE, "w", stdout) == NULL)
         log_e(error_get_msg(ENULLDEV));
@@ -1001,7 +1004,11 @@ py_proc__wait(py_proc_t * self) {
   #ifdef PL_WIN                                                        /* WIN */
   WaitForSingleObject(self->extra->h_proc, INFINITE);
   #else                                                               /* UNIX */
+  #ifdef NATIVE
+  wait(NULL);
+  #else
   waitpid(self->pid, 0, 0);
+  #endif
   #endif
 }
 
@@ -1100,6 +1107,51 @@ py_proc__is_gc_collecting(py_proc_t * self) {
 }
 
 
+#ifdef NATIVE
+// ----------------------------------------------------------------------------
+static int
+_py_proc__interrupt_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
+  py_thread_t py_thread;
+
+  if (fail(py_thread__fill_from_raddr(&py_thread, tstate_head_raddr, self))) {
+    FAIL;
+  }
+
+  do {
+    py_thread__set_idle(&py_thread);
+    if (ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0)) {
+      log_e("ptrace: failed to interrupt thread %d", py_thread.tid);
+      FAIL;
+    }
+    log_t("ptrace: thread %d interrupted", py_thread.tid);
+  } while (success(py_thread__next(&py_thread)));
+  
+  SUCCESS;
+}
+
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__resume_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
+  py_thread_t py_thread;
+
+  if (fail(py_thread__fill_from_raddr(&py_thread, tstate_head_raddr, self))) {
+    FAIL;
+  }
+
+  do {
+    if (ptrace(PTRACE_CONT, py_thread.tid, 0, 0)) {
+      log_e("ptrace: failed to resume thread %d", py_thread.tid);
+      FAIL;
+    }
+    log_t("ptrace: thread %d resumed", py_thread.tid);
+  } while (success(py_thread__next(&py_thread)));
+
+  SUCCESS;
+}
+#endif
+
+
 // ----------------------------------------------------------------------------
 int
 py_proc__sample(py_proc_t * self) {
@@ -1115,14 +1167,23 @@ py_proc__sample(py_proc_t * self) {
   if (isvalid(tstate_head)) {
     raddr_t raddr = { .pid = PROC_REF, .addr = tstate_head };
     py_thread_t py_thread;
-    if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self)))
+
+    #ifdef NATIVE
+    _py_proc__interrupt_threads(self, &raddr);
+    #endif
+
+    if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self))) {
       FAIL;
+    }
 
     if (pargs.memory) {
       // Use the current thread to determine which thread is manipulating memory
       current_thread = _py_proc__get_current_thread_state_raddr(self);
     }
 
+    #ifdef NATIVE
+    time_delta = gettime() - self->timestamp;
+    #endif
     do {
       if (pargs.memory) {
         mem_delta = 0;
@@ -1144,9 +1205,16 @@ py_proc__sample(py_proc_t * self) {
         mem_delta
       );
     } while (success(py_thread__next(&py_thread)));
+    #ifdef NATIVE
+    self->timestamp = gettime();
+    _py_proc__resume_threads(self, &raddr);
+    #endif
+
   }
 
+  #ifndef NATIVE
   self->timestamp += time_delta;
+  #endif
 
   SUCCESS;
 } /* py_proc__sample */

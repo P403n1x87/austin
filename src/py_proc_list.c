@@ -26,7 +26,6 @@
 #include <dirent.h>
 #elif defined PL_MACOS
 #include <libproc.h>
-#define PID_MAX 99999  // From sys/proc_internal.h
 #elif defined PL_WIN
 #include <windows.h>
 #include <tlhelp32.h>
@@ -114,23 +113,7 @@ py_proc_list_new(py_proc_t * parent_py_proc) {
   if (list == NULL)
     return NULL;
 
-  #if defined PL_LINUX                                               /* LINUX */
-  FILE * pid_max_file = fopen("/proc/sys/kernel/pid_max", "rb");
-  if (pid_max_file == NULL)
-    return NULL;
-
-  int has_pid_max = (fscanf(pid_max_file, "%d", &(list->pids)) == 1);
-  fclose(pid_max_file);
-  if (!has_pid_max)
-    return NULL;
-
-  #elif defined PL_MACOS                                             /* MACOS */
-  list->pids = PID_MAX;
-
-  #elif defined PL_WIN                                                 /* WIN */
-  list->pids = (1 << 22);  // 4M.  WARNING: This could potentially be violated!
-
-  #endif
+  list->pids = pid_max();
 
   log_t("Maximum number of PIDs: %d", list->pids);
 

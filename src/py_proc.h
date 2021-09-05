@@ -26,6 +26,11 @@
 
 #include <sys/types.h>
 
+#ifdef NATIVE
+#include <sys/ptrace.h>
+#include <libunwind-ptrace.h>
+#endif
+
 #include "stats.h"
 
 
@@ -76,6 +81,12 @@ typedef struct {
 
   // Offset of the tstate_current field within the _PyRuntimeState structure
   unsigned int    tstate_current_offset;
+
+  #ifdef NATIVE
+  struct _puw {
+    unw_addr_space_t   as;
+  } unwind;
+  #endif
 
   // Platform-dependent fields
   proc_extra_info * extra;
