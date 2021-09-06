@@ -95,7 +95,7 @@ class Maps:
 def main():
     try:
         stats = sys.argv[1]
-        assert os.isfile(stats)
+        assert os.path.isfile(stats)
     except IndexError:
         print("Usage: python resolve.py <austin-file>", file=sys.stderr)
         sys.exit(1)
