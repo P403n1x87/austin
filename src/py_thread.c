@@ -23,8 +23,10 @@
 #define PY_THREAD_C
 
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <signal.h>
+#include <unistd.h>
 
 #include "argparse.h"
 #include "error.h"
@@ -85,6 +87,7 @@ size_t       _stackp = 0;
 #ifdef NATIVE
 void          ** _tids      = NULL;
 unsigned char *  _tids_idle = NULL;
+char          ** _kstacks   = NULL;
 #endif
 
 
@@ -372,10 +375,14 @@ _py_thread__unwind_frame_stack(py_thread_t * self) {
 
 #ifdef NATIVE
 // ----------------------------------------------------------------------------
-void
+int
 py_thread__set_idle(py_thread_t * self) {
   size_t index  = self->tid >> 3;
   int    offset = self->tid & 7;
+
+  if (unlikely(_pthread_tid_offset == 0)) {
+    FAIL;
+  }
 
   unsigned char idle_bit = _py_thread__is_idle(self) << offset;
   if (idle_bit) {
@@ -383,37 +390,66 @@ py_thread__set_idle(py_thread_t * self) {
   } else {
     _tids_idle[index] &= ~idle_bit;
   }
+
+  SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+#define MAX_STACK_FILE_SIZE 2048
+int
+py_thread__save_kernel_stack(py_thread_t * self) {
+  char stack_path[48];
+  int  fd;
+
+  if (unlikely(_pthread_tid_offset == 0) || !isvalid(_kstacks) ) {
+    FAIL;
+  }
+
+  log_d("kstacks: %p", _kstacks);
+  sfree(_kstacks[self->tid]);
+
+  sprintf(stack_path, "/proc/%d/task/%ld/stack", self->proc->pid, self->tid);
+  fd = open(stack_path, O_RDONLY);
+  if (fd == -1)
+    FAIL;
+
+  _kstacks[self->tid] = (char *) calloc(1, MAX_STACK_FILE_SIZE);
+  if (read(fd, _kstacks[self->tid], MAX_STACK_FILE_SIZE) == -1) {
+    log_e("stack: filed to read %s", stack_path);
+    close(fd);
+    FAIL;
+  };
+  close(fd);
+
+  SUCCESS;
 }
 
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_kernel_frame_stack(py_thread_t * self) {
-  FILE   * stack_file = NULL;
-  char   * line       = NULL;
-  size_t   len        = 0;
-  char     stack_path[48];
-
-  sprintf(stack_path, "/proc/%d/task/%ld/stack", self->proc->pid, self->tid);
-  stack_file = fopen(stack_path, "r");
-  if (!isvalid(stack_file))
-    FAIL;
+  char * line = _kstacks[self->tid];
+  if (!isvalid(line))
+    SUCCESS;
 
   log_t("linux: unwinding kernel stack");
 
-  while (getline(&line, &len, stack_file) != -1) {
-    char * b = strchr(line, ']');
-    if (!isvalid(b))
-      continue;
-    char * e = strchr(++b, '+');
-    if (isvalid(e))
-      *e = 0;
-    strcpy(_stack[_stackp].code.scope, ++b);
-    strcpy(_stack[_stackp].code.filename, "kernel");
-    sfree(line);
-    _stackp++;  // TODO: Decide whether to decremet this by 2 before returning.
-  }
+  for (;;) {
+    char * eol = strchr(line, '\n');
+    if (!isvalid(eol))
+      break;
+    *eol = '\0';
 
-  fclose(stack_file);
+    char * b = strchr(line, ']');
+    if (isvalid(b)) {
+      char * e = strchr(++b, '+');
+      if (isvalid(e))
+        *e = 0;
+      strcpy(_stack[_stackp].code.scope, ++b);
+      strcpy(_stack[_stackp].code.filename, "kernel");
+      _stackp++;  // TODO: Decide whether to decremet this by 2 before returning.
+    }
+    line = eol + 1;
+  }
 
   SUCCESS;
 }
@@ -719,9 +755,15 @@ py_thread_allocate(void) {
   if (!isvalid(_tids))
     FAIL;
 
-  _tids_idle = (unsigned char *) calloc(max >> 8, sizeof(unsigned char*));
+  _tids_idle = (unsigned char *) calloc(max >> 8, sizeof(unsigned char));
   if (!isvalid(_tids_idle))
     FAIL;
+
+  if (pargs.kernel) {
+    _kstacks = (char **) calloc(max, sizeof(char *));
+    if (!isvalid(_kstacks))
+      FAIL;
+  }
   #endif
 
   SUCCESS;
@@ -745,8 +787,12 @@ py_thread_free(void) {
       ptrace(PTRACE_DETACH, tid, 0, 0);
       log_d("ptrace: thread %ld detached", tid);
     }
+    if (isvalid(_kstacks) && isvalid(_kstacks[tid])) {
+      sfree(_kstacks[tid]);
+    }
   }
   sfree(_tids);
   sfree(_tids_idle);
+  sfree(_kstacks);
   #endif
 }

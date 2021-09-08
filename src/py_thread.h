@@ -95,8 +95,11 @@ void
 py_thread_free(void);
 
 #ifdef NATIVE
-void
+int
 py_thread__set_idle(py_thread_t *);
+
+int
+py_thread__save_kernel_stack(py_thread_t *);
 #endif
 
 
