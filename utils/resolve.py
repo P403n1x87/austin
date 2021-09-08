@@ -5,11 +5,20 @@ from subprocess import check_output
 
 
 def demangle_cython(function: str) -> str:
+    if function.startswith("__pyx_pymod_"):
+        _, _, function = function[12:].partition("_")
+        return function
+
+    if function.startswith("__pyx_fuse_"):
+        function = function[function[12:].index("__pyx_") + 12 :]
     for i, d in enumerate(function):
         if d.isdigit():
             break
     else:
-        raise ValueError("Invalid Cython mangled name")
+        raise ValueError(f"Invalid Cython mangled name: {function}")
+
+    if function.startswith("__pyx_pf_"):
+        function = function[: function.rindex(".isra.")]
 
     n = 0
     while i < len(function):
@@ -22,6 +31,38 @@ def demangle_cython(function: str) -> str:
             n = 0
             if not function[i].isdigit():
                 return function[i:]
+
+    return function
+
+
+def demangle_cpp(function: str) -> str:
+    for i, d in enumerate(function):
+        if d.isdigit():
+            break
+    else:
+        return function[2:]
+
+    function = function.rstrip("_")
+    n = 0
+    last = function
+    while i < len(function):
+        c = function[i]
+        if c.isdigit():
+            n = n * 10 + int(c)
+            i += 1
+        else:
+            last = function[i : i + n]
+            i += n
+            n = 0
+            if i >= len(function):
+                break
+            try:
+                while not function[i].isdigit():
+                    i += 1
+            except IndexError:
+                break
+
+    return last
 
 
 class Maps:
@@ -77,14 +118,16 @@ class Maps:
                 if function.startswith("__pyx_pw_"):
                     # skip Cython wrappers (cpdef)
                     continue
+                if function.startswith("__pyx_"):
+                    function = demangle_cython(function)
+                elif function.startswith("_Z"):
+                    function = demangle_cpp(function)
                 _, _, address = head.partition("@")
                 resolved = self.addr2line(address)
                 if resolved is None:
-                    parts.append(part)
+                    parts.append(":".join((head, function, lineno)))
                 else:
                     source, native_lineno = resolved
-                    if function.startswith("__pyx_"):
-                        function = demangle_cython(function)
                     parts.append(f"{source}:{function}:{native_lineno or lineno}")
             else:
                 parts.append(part)
