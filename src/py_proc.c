@@ -1173,6 +1173,7 @@ py_proc__sample(py_proc_t * self) {
 
     #ifdef NATIVE
     _py_proc__interrupt_threads(self, &raddr);
+    time_delta = gettime() - self->timestamp;
     #endif
 
     if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self))) {
@@ -1184,9 +1185,6 @@ py_proc__sample(py_proc_t * self) {
       current_thread = _py_proc__get_current_thread_state_raddr(self);
     }
 
-    #ifdef NATIVE
-    time_delta = gettime() - self->timestamp;
-    #endif
     do {
       if (pargs.memory) {
         mem_delta = 0;

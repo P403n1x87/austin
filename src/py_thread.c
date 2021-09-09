@@ -405,7 +405,6 @@ py_thread__save_kernel_stack(py_thread_t * self) {
     FAIL;
   }
 
-  log_d("kstacks: %p", _kstacks);
   sfree(_kstacks[self->tid]);
 
   sprintf(stack_path, "/proc/%d/task/%ld/stack", self->proc->pid, self->tid);
@@ -461,7 +460,8 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
   void *context = _tids[self->tid];
   unw_cursor_t cursor;
 
-  while (unw_init_remote(&cursor, self->proc->unwind.as, context));
+  if (unw_init_remote(&cursor, self->proc->unwind.as, context))
+    FAIL;
 
   do {
     unw_word_t offset, pc;
@@ -643,10 +643,6 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     }
   }
 
-  // Group entries by thread.
-  fprintf(pargs.output_file, SAMPLE_HEAD, self->proc->pid, self->tid);
-
-
   #ifdef NATIVE
   _stackp = 0;
 
@@ -655,16 +651,19 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   // The downside is that the kernel stack might not be in sync with the other
   // ones.
   if (pargs.kernel) {
-    log_t("unwinding kernel stack");
     _py_thread__unwind_kernel_frame_stack(self);
   }
-  _py_thread__unwind_native_frame_stack(self);
+  if (fail(_py_thread__unwind_native_frame_stack(self)))
+    return;
 
   size_t basep = _stackp;
   // Update the thread state to improve guarantees that it will be in sync with
   // the native stack just collected
   py_thread__fill_from_raddr(self, &self->raddr, self->proc);
   #endif
+
+  // Group entries by thread.
+  fprintf(pargs.output_file, SAMPLE_HEAD, self->proc->pid, self->tid);
 
   if (self->stack_height) {
     _py_thread__unwind_frame_stack(self);
