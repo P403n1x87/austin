@@ -29,6 +29,10 @@
 #include "hints.h"
 #include "platform.h"
 
+#if defined PL_LINUX && !defined __MUSL__
+#define GNU_ARGP
+#endif
+
 #ifdef NATIVE
 #define DEFAULT_SAMPLING_INTERVAL  10000  // reduces impact on tracee
 #else
@@ -150,7 +154,7 @@ parse_timeout(char * str, long * num) {
 
 // ---- GNU C -----------------------------------------------------------------
 
-#ifdef PL_LINUX                                                      /* LINUX */
+#ifdef GNU_ARGP                                                      /* LINUX */
 
 #include <argp.h>
 
@@ -234,7 +238,7 @@ static struct argp_option options[] = {
     "Sample the kernel call stack."
   },
   #endif
-  #ifndef PL_LINUX
+  #ifndef GNU_ARGP
   {
     "help",         '?', NULL
   },
@@ -249,7 +253,7 @@ static struct argp_option options[] = {
 };
 
 
-#ifdef PL_LINUX
+#ifdef GNU_ARGP
 
 // ----------------------------------------------------------------------------
 static int
@@ -513,8 +517,8 @@ static const char * help_msg = \
 "Report bugs to <https://github.com/P403n1x87/austin/issues>.\n";
 
 static const char * usage_msg = \
-"Usage: austin [-aCefmPs?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-x n_sec]\n"
-"            [--alt-format] [--children] [--exclude-empty] [--full]\n"
+"Usage: austin [-aCefgmPs?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-x n_sec]\n"
+"            [--alt-format] [--children] [--exclude-empty] [--full] [--gc]\n"
 "            [--interval=n_us] [--memory] [--output=FILE] [--pid=PID] [--pipe]\n"
 "            [--sleepless] [--timeout=n_ms] [--exposure=n_sec] [--help]\n"
 "            [--usage] [--version] command [ARG...]\n";
@@ -682,7 +686,7 @@ int
 parse_args(int argc, char ** argv) {
   pargs.output_file = stdout;
 
-  #ifdef PL_LINUX
+  #ifdef GNU_ARGP
   struct argp args = {options, parse_opt, "command [ARG...]", doc};
   argp_parse(&args, argc, argv, 0, 0, 0);
 
