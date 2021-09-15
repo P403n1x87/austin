@@ -319,7 +319,7 @@ _py_frame_fill_from_raddr(raddr_t * raddr) {
     &(self->code), &py_code_raddr, V_FIELD(int, frame, py_frame, o_lasti)
   )) {
     log_ie("Cannot get PyCodeObject for frame");
-    SUCCESS;
+    goto push;
   }
 
   self->raddr.pid  = raddr->pid;
@@ -330,6 +330,7 @@ _py_frame_fill_from_raddr(raddr_t * raddr) {
 
   self->invalid = 0;
 
+push:
   _stackp++;
 
   SUCCESS;
