@@ -52,9 +52,16 @@ function attach_austin {
 	attach_austin "/usr/local/bin/python3"
 }
 
-@test "Test Austin with Python 3.8 from Homebrew (if available)" {
-  ignore
+@test "Test Austin with Python 3.8 from Homebrew" {
   repeat 3 attach_austin "/usr/local/opt/python@3.8/bin/python3"
+}
+
+@test "Test Austin with Python 3.9 from Homebrew" {
+  repeat 3 attach_austin "/usr/local/opt/python@3.9/bin/python3"
+}
+
+@test "Test Austin with Python 3.10 from Homebrew" {
+  repeat 3 attach_austin "/usr/local/opt/python@3.10/bin/python3"
 }
 
 @test "Test Austin with Python 3 from Anaconda (if available)" {
