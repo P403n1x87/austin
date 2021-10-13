@@ -508,20 +508,23 @@ is written in C, implementing the new changes is rather straight-forward.
 The following flame graph has been obtained with the command
 
 ~~~ bash
-austin -i 1ms ./test.py | ./flamegraph.pl --countname=μs > test.svg
+austin -i 1ms ./test.py | sed '/^#/d' | ./flamegraph.pl --countname=μs > test.svg
 ~~~
 
-where the sample `test.py` script has the following content
+where the sample `test.py` script has the execute permission and the following
+content
 
 ~~~ python
-import psutil
+#!/usr/bin/env python3
+
+import dis
 
 for i in range(1000):
-    list(psutil.process_iter())
+    dis.dis(dis.dis)
 ~~~
 
-<object data="art/process_iter_fg.svg" type="image/svg+xml" width="100%" >
-  <img src="art/process_iter_fg.svg" style="width:100%;"/>
+<object data="art/dis_fg.svg" type="image/svg+xml" width="100%" >
+  <img src="art/dis_fg.svg" style="width:100%;"/>
 </object>
 
 To profile Apache2 WSGI application, one can attach Austin to the web server
