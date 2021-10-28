@@ -50,9 +50,9 @@ _infer_tid_field_offset(py_thread_t * py_thread) {
       PTHREAD_BUFFER_SIZE * sizeof(void *),
       _pthread_buffer
   ))) {
-    for (register int i = 0; i < PTHREAD_BUFFER_SIZE; i++) {
+    for (register int i = 0; i < PTHREAD_BUFFER_SIZE * sizeof(void *) / sizeof(pid_t); i++) {
       log_d("pthread_t at %p", py_thread->tid);
-      if (py_thread->raddr.pid == (uintptr_t) _pthread_buffer[i]) {
+      if (py_thread->raddr.pid == *((pid_t *) _pthread_buffer + i)) {
         log_d("TID field offset: %d", i);
         _pthread_tid_offset = i;
         return;
