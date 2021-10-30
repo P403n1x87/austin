@@ -802,13 +802,19 @@ py_proc__attach(py_proc_t * self, pid_t pid, int child_process) {
   self->pid = pid;
 
   if (fail(_py_proc__run(self, child_process))) {
-    if (austin_errno == EPROCNPID) {
-      set_error(EPROCATTACH);
+    #if defined PL_WIN
+    if (fail(_py_proc__try_child_proc(self))) {
+    #endif
+      if (austin_errno == EPROCNPID) {
+        set_error(EPROCATTACH);
+      }
+      else {
+        log_ie("Cannot attach to running process.");
+      }
+      FAIL;
+    #if defined PL_WIN
     }
-    else {
-      log_ie("Cannot attach to running process.");
-    }
-    FAIL;
+    #endif
   }
 
   SUCCESS;
@@ -826,6 +832,8 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   SECURITY_ATTRIBUTES saAttr;
   HANDLE              hChildStdInRd = NULL;
   HANDLE              hChildStdInWr = NULL;
+  HANDLE              hChildStdOutRd = NULL;
+  HANDLE              hChildStdOutWr = NULL;
 
   ZeroMemory(&piProcInfo,  sizeof(PROCESS_INFORMATION));
   ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
@@ -835,7 +843,10 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   saAttr.lpSecurityDescriptor = NULL;
 
   CreatePipe(&hChildStdInRd, &hChildStdInWr, &saAttr, 0);
+  CreatePipe(&hChildStdOutRd, &hChildStdOutWr, &saAttr, 0);
+
   SetHandleInformation(hChildStdInWr, HANDLE_FLAG_INHERIT, 0);
+  SetHandleInformation(hChildStdOutRd, HANDLE_FLAG_INHERIT, 0);
 
   siStartInfo.cb         = sizeof(STARTUPINFO);
   siStartInfo.hStdInput  = hChildStdInRd;
@@ -844,16 +855,22 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   siStartInfo.dwFlags   |= STARTF_USESTDHANDLES;
 
   if (pargs.output_file == stdout) {
-    HANDLE nullStdOut = CreateFile(
-      TEXT(NULL_DEVICE), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL
+    log_d("Redirecting child's STDOUT to a pipe");
+    siStartInfo.hStdOutput = hChildStdOutWr;
+
+    // On Windows, Python is normally started by a launcher that duplicates the
+    // standard streams, so redirecting to the NULL device causes issues. To
+    // support these cases, we spawn a reader thread that reads from the pipe
+    // and ensures that the buffer never gets full, stalling STDOUT operations
+    // in the child process.
+    DWORD dwThreadId;
+    self->extra->h_reader_thread = CreateThread( 
+      NULL, 0, reader_thread, hChildStdOutRd, 0, &dwThreadId
     );
-
-    if (nullStdOut == INVALID_HANDLE_VALUE) {
-      log_e(error_get_msg(ENULLDEV));
+    if (self->extra->h_reader_thread == NULL) {
+      log_e("Failed to start STDOUT reader thread.");
+      set_error(ENULLDEV);
     }
-
-    log_d("Redirecting child's STDOUT to " NULL_DEVICE);
-    siStartInfo.hStdOutput = nullStdOut;
   }
 
   // Concatenate the command line arguments
@@ -895,6 +912,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   self->pid = (pid_t) piProcInfo.dwProcessId;
 
   CloseHandle(hChildStdInRd);
+  CloseHandle(hChildStdOutWr);
 
   #else                                                               /* UNIX */
   self->pid = fork();
@@ -924,66 +942,15 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
 
   if (fail(_py_proc__run(self, FALSE))) {
     #if defined PL_WIN
-    // On Windows, if we fail with the parent process we look if it has a single
-    // child and try to attach to that instead. We keep going until we either
-    // find a single Python process or more or less than a single child.
-    log_d("Process is not Python so we look for a single child Python process");
-    HANDLE orig_hproc = self->extra->h_proc;
-    pid_t  orig_pid   = self->pid;
-    while (TRUE) {
-      pid_t parent_pid = self->pid;
-
-      HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-      if (h == INVALID_HANDLE_VALUE)
-        break;
-
-      PROCESSENTRY32 pe = { 0 };
-      pe.dwSize = sizeof(PROCESSENTRY32);
-
-      if (Process32First(h, &pe)) {
-        pid_t child_pid = 0;
-        do {
-          if (pe.th32ParentProcessID == parent_pid) {
-            if (child_pid) {
-              log_d("Process has more than one child");
-              goto exit;
-            }
-            child_pid = pe.th32ProcessID;
-          }
-        } while (Process32Next(h, &pe));
-
-        if (!child_pid) {
-          log_d("Process has no children");
-          goto exit;
-        }
-
-        self->pid = child_pid;
-        self->extra->h_proc = OpenProcess(
-          PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, child_pid
-        );
-        if (self->extra->h_proc == INVALID_HANDLE_VALUE) {
-          goto exit;
-        }
-        if (success(_py_proc__run(self, FALSE))) {
-          log_d("Process has a single Python child with PID %d. We will attach to that", child_pid);
-          SUCCESS;
-        }
-        else {
-          log_d("Process had a single non-Python child with PID %d. Taking it as new parent", child_pid);
-          CloseHandle(self->extra->h_proc);
-        }
-      }
-
-      CloseHandle(h);
-    }
-  exit:
-    self->pid = orig_pid;
-    self->extra->h_proc = orig_hproc;
+    if (fail(_py_proc__try_child_proc(self))) {
     #endif
-    if (austin_errno == EPROCNPID)
-      set_error(EPROCFORK);
-    log_ie("Cannot start new process");
-    FAIL;
+      if (austin_errno == EPROCNPID)
+        set_error(EPROCFORK);
+      log_ie("Cannot start new process");
+      FAIL;
+    #if defined PL_WIN
+    }
+    #endif
   }
 
   SUCCESS;
@@ -1002,7 +969,12 @@ py_proc__wait(py_proc_t * self) {
   #endif
 
   #ifdef PL_WIN                                                        /* WIN */
+  if (isvalid(self->extra->h_reader_thread)) {
+    WaitForSingleObject(self->extra->h_reader_thread, INFINITE);
+    CloseHandle(self->extra->h_reader_thread);
+  }
   WaitForSingleObject(self->extra->h_proc, INFINITE);
+  CloseHandle(self->extra->h_proc);
   #else                                                               /* UNIX */
   #ifdef NATIVE
   wait(NULL);

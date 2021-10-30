@@ -40,6 +40,7 @@
 
 struct _proc_extra_info {
   HANDLE h_proc;
+  HANDLE h_reader_thread;
 };
 
 
@@ -184,6 +185,95 @@ _py_proc__init(py_proc_t * self) {
     FAIL;
 
   return _py_proc__get_modules(self);
+}
+
+
+// ----------------------------------------------------------------------------
+// The default stream buffer size should be 4KB, so this chunk size should be
+// enough to avoid blocking while keeping the number of reads to a minimum.
+#define STDOUT_CHUNK_SIZE (1 << 10)
+
+DWORD WINAPI
+reader_thread(LPVOID lpParam) {
+  char buffer[STDOUT_CHUNK_SIZE];
+  while (ReadFile(lpParam, &buffer, STDOUT_CHUNK_SIZE, NULL, NULL));
+  return 0;
+}
+
+
+// ----------------------------------------------------------------------------
+// Forward declaration.
+static int
+_py_proc__run(py_proc_t *, int);
+
+
+// On Windows, if we fail with the parent process we look if it has a single
+// child and try to attach to that instead. We keep going until we either find
+// a single Python process or more or less than a single child.
+static int
+_py_proc__try_child_proc(py_proc_t * self) {
+  log_d("Process is not Python so we look for a single child Python process");
+
+  HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (h == INVALID_HANDLE_VALUE) {
+    log_e("Cannot inspect processes details");
+    FAIL;
+  }
+
+with_resources;
+
+  HANDLE orig_hproc = self->extra->h_proc;
+  pid_t  orig_pid   = self->pid;
+  while (TRUE) {
+    pid_t parent_pid = self->pid;
+
+    PROCESSENTRY32 pe = { 0 };
+    pe.dwSize = sizeof(PROCESSENTRY32);
+
+    if (Process32First(h, &pe)) {
+      pid_t child_pid = 0;
+      do {
+        if (pe.th32ParentProcessID == parent_pid) {
+          if (child_pid) {
+            log_d("Process has more than one child");
+            NOK;
+          }
+          child_pid = pe.th32ProcessID;
+        }
+      } while (Process32Next(h, &pe));
+
+      if (!child_pid) {
+        log_d("Process has no children");
+        NOK;
+      }
+
+      self->pid = child_pid;
+      self->extra->h_proc = OpenProcess(
+        PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, child_pid
+      );
+      if (self->extra->h_proc == INVALID_HANDLE_VALUE) {
+        log_e("Cannot open child process handle");
+        NOK;
+      }
+      if (success(_py_proc__run(self, FALSE))) {
+        log_d("Process has a single Python child with PID %d. We will attach to that", child_pid);
+        OK;
+      }
+      else {
+        log_d("Process had a single non-Python child with PID %d. Taking it as new parent", child_pid);
+        CloseHandle(self->extra->h_proc);
+      }
+    }
+  }
+
+release:
+  CloseHandle(h);
+  if (retval) {
+    self->pid = orig_pid;
+    self->extra->h_proc = orig_hproc;
+  }
+  
+  released;
 }
 
 #endif
