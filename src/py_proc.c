@@ -248,10 +248,20 @@ _py_proc__get_version(py_proc_t * self) {
 
   if (isvalid(self->lib_path)) {
     #if defined PL_LINUX                                             /* LINUX */
-    if (sscanf(
-        strstr(self->lib_path, "python"), "python%d.%d", &major, &minor
-    ) == 2) {
-      return PYVERSION(major, minor, patch) | 0xFF;
+    char         * base       = self->lib_path;
+    char         * end        = base + strlen(self->lib_path);
+    const char   * needle     = "python";
+    const size_t   needle_len = strlen(needle);
+
+    while (base < end) {
+      base = strstr(base, needle);
+      if (!isvalid(base)) {
+        break;
+      }
+      base += needle_len;
+      if (sscanf(base,"%d.%d", &major, &minor) == 2) {
+        return PYVERSION(major, minor, patch) | 0xFF;
+      }
     }
 
     #elif defined PL_WIN                                               /* WIN */
