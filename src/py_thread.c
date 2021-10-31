@@ -582,7 +582,7 @@ int
 py_thread__next(py_thread_t * self) {
   _stackp = 0;
   
-  if (!isvalid(self->next_raddr.addr))
+  if (self->invalid || !isvalid(self->next_raddr.addr))
     FAIL;
 
   raddr_t next_raddr = { .pid = self->next_raddr.pid, .addr = self->next_raddr.addr };
