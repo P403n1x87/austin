@@ -57,7 +57,8 @@
  * @return         the value of of the field of py_obj at the offset specified
  *                 by the field argument.
  */
-#define V_FIELD(ctype, py_obj, py_type, field) (*((ctype*) (((char *) &py_obj) + py_v->py_type.field)))
+#define V_FIELD(ctype, py_obj, py_type, field) (*((ctype*) (((void *) &py_obj) + py_v->py_type.field)))
+#define V_FIELD_PTR(ctype, py_obj_ptr, py_type, field) (*((ctype*) (((void *) py_obj_ptr) + py_v->py_type.field)))
 
 
 typedef unsigned long offset_t;

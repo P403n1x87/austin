@@ -41,6 +41,7 @@ typedef struct thread {
   struct thread * next;
 
   size_t          stack_height;
+  void          * top_frame;
 
   int             invalid;
 } py_thread_t;
