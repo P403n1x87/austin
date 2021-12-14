@@ -361,17 +361,17 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   );
 
   // As an extra sanity check, verify that the thread state is valid
-  raddr_t thread_raddr = { .pid = PROC_REF, .addr = V_FIELD(void *, is, py_is, o_tstate_head) };
-  py_thread_t thread;
-  if (fail(py_thread__fill_from_raddr(&thread, &thread_raddr, self))) {
-    log_d("Failed to fill thread structure");
-    FAIL;
-  }
+  // raddr_t thread_raddr = { .pid = PROC_REF, .addr = V_FIELD(void *, is, py_is, o_tstate_head) };
+  // py_thread_t thread;
+  // if (fail(py_thread__fill_from_raddr(&thread, &thread_raddr, self))) {
+  //   log_d("Failed to fill thread structure");
+  //   FAIL;
+  // }
 
-  if (thread.invalid) {
-    log_d("... but Head Thread State is invalid!");
-    FAIL;
-  }
+  // if (thread.invalid) {
+  //   log_d("... but Head Thread State is invalid!");
+  //   FAIL;
+  // }
 
   log_d("Stack trace constructed from possible interpreter state");
 
@@ -782,6 +782,8 @@ py_proc_new() {
     }
   }
 
+  py_proc->frames_heap.newlo = py_proc->frames.newlo = (void *) -1;
+
   py_proc->extra = (proc_extra_info *) calloc(1, sizeof(proc_extra_info));
   if (!isvalid(py_proc->extra))
     goto error;
@@ -1125,9 +1127,8 @@ _py_proc__resume_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
   }
 
   do {
-    if (ptrace(PTRACE_CONT, py_thread.tid, 0, 0)) {
-      log_e("ptrace: failed to resume thread %d", py_thread.tid);
-      FAIL;
+    while (ptrace(PTRACE_CONT, py_thread.tid, 0, 0)) {
+      log_t("ptrace: failed to resume thread %d", py_thread.tid);
     }
     log_t("ptrace: thread %d resumed", py_thread.tid);
   } while (success(py_thread__next(&py_thread)));
@@ -1159,7 +1160,10 @@ py_proc__sample(py_proc_t * self) {
     #endif
 
     if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self))) {
-      FAIL;
+      if (is_fatal(austin_errno)) {
+        FAIL;
+      }
+      SUCCESS;
     }
 
     if (pargs.memory) {
@@ -1254,17 +1258,10 @@ py_proc__destroy(py_proc_t * self) {
   if (!isvalid(self))
     return;
 
-  if (self->bin_path != NULL)
-    free(self->bin_path);
-
-  if (self->lib_path != NULL)
-    free(self->lib_path);
-
-  if (self->bss != NULL)
-    free(self->bss);
-
-  if (self->extra != NULL)
-    free(self->extra);
+  sfree(self->bin_path);
+  sfree(self->lib_path);
+  sfree(self->bss);
+  sfree(self->extra);
 
   free(self);
 }

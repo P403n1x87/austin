@@ -287,6 +287,8 @@ Austin -- A frame stack sampler for Python.
                              stacks.
   -f, --full                 Produce the full set of metrics (time +mem -mem).
   -g, --gc                   Sample the garbage collector state.
+  -h, --heap=n_mb            Maximum heap size to allocate to increase sampling
+                             accuracy, in MB (default is 256).
   -i, --interval=n_us        Sampling interval in microseconds (default is
                              100). Accepted units: s, ms, us.
   -m, --memory               Profile memory usage.
@@ -377,6 +379,21 @@ garbage collector is in the collecting state. This gives you a measure of how
 *busy* the Python GC is during a run.
 
 *Since Austin 3.1.0*.
+
+
+## Sampling Accuracy
+
+Austin tries to keep perturbations to the tracee at a minimum. In order to do
+so, the tracee is never halted. To improve sampling accuracy, Austin allocates a
+heap that is used to get large snapshots of the private VM of the tracee that is
+likely to contain frame information in a single attempt. The larger the heap is
+allowed the grow, the more accurate the results. The maximum size of the heap
+that Austin is allowed to allocate can be controlled with the `-h/--heap`
+option, followed by the maximum size in bytes. By default Austin allocates a
+maximum of 256 MB. On systems with low resource limits, it is advisable to
+reduce this value.
+
+*Since Austin 3.2.0*.
 
 
 ## Native Frame Stack

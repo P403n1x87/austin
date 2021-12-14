@@ -31,6 +31,7 @@
 #include <libunwind-ptrace.h>
 #endif
 
+#include "heap.h"
 #include "stats.h"
 
 
@@ -81,6 +82,10 @@ typedef struct {
 
   // Offset of the tstate_current field within the _PyRuntimeState structure
   unsigned int    tstate_current_offset;
+
+  // Frame objects VM ranges
+  _mem_block_t    frames;
+  _mem_block_t    frames_heap;
 
   #ifdef NATIVE
   struct _puw {
