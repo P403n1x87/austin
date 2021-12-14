@@ -447,6 +447,17 @@ entries for bad frames will not be visible in a flame graph as all tests show
 error rates below 1% on average.
 
 
+## Cheat sheet
+
+All the above Austin options and arguments are summarised in a cheat sheet that
+you can find in the [art](https://github.com/P403n1x87/austin/blob/master/art/)
+folder in either the SVG or PNG format
+
+<p align="center">
+  <img src="art/cheatsheet.png"
+       style="box-shadow: #111 0px 0px 16px;" />
+</p>
+
 # Compatibility
 
 Austin supports Python 2.3-2.7 and 3.3-3.10 and has been tested on the
