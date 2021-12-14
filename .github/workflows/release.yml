@@ -16,16 +16,27 @@ jobs:
       - name: Generate artifacts
         run: |
           sudo apt-get update
-          sudo apt-get -y install autoconf build-essential
+          sudo apt-get -y install autoconf build-essential libunwind-dev musl-tools
 
+          # Build austin
           autoreconf --install
           ./configure
           make
           
           export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p");
 
+          # Build austinp
+          gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austinp -DAUSTINP -l:libunwind-ptrace.a -l:liblzma.a -l:libunwind-generic.a -l:libunwind.a
+
           pushd src
-          tar -Jcf austin-$VERSION-linux-amd64.tar.xz austin
+          tar -Jcf austin-$VERSION-gnu-linux-amd64.tar.xz austin
+          tar -Jcf austinp-$VERSION-gnu-linux-amd64.tar.xz austinp
+          popd
+
+          # Build with musl
+          musl-gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austin -D__MUSL__
+          pushd src
+          tar -Jcf austin-$VERSION-musl-linux-amd64.tar.xz austin
           popd
 
       - name: Upload artifacts to release

@@ -26,17 +26,28 @@ jobs:
             mkdir -p ./artifacts
           run: |
             apt-get update
-            apt-get -y install autoconf build-essential
+            apt-get -y install autoconf build-essential libunwind-dev musl-tools
 
+            # Build austin
             autoreconf --install
             ./configure
             make
-            
-            export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p");
+
+            export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+
+            # Build austinp
+            gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austinp -DAUSTINP -l:libunwind-ptrace.a -l:liblzma.a -l:libunwind-generic.a -l:libunwind.a
 
             pushd src
-            tar -Jcf austin-$VERSION-linux-${{ matrix.arch }}.tar.xz austin
-            mv austin-$VERSION-linux-${{ matrix.arch }}.tar.xz /artifacts
+            tar -Jcf austin-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz austin
+            tar -Jcf austinp-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz austinp
+
+            musl-gcc -O3 -Os -s -Wall -pthread *.c -o austin -D__MUSL__
+            tar -Jcf austin-$VERSION-musl-linux-${{ matrix.arch }}.tar.xz austin
+
+            mv austin-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz /artifacts
+            mv austinp-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz /artifacts
+            mv austin-$VERSION-musl-linux-${{ matrix.arch }}.tar.xz /artifacts
             popd
 
       - name: Show artifacts
