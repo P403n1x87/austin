@@ -44,23 +44,33 @@ void * _pthread_buffer[PTHREAD_BUFFER_SIZE];
 // ----------------------------------------------------------------------------
 static void
 _infer_tid_field_offset(py_thread_t * py_thread) {
-  if (success(copy_memory(
+  if (fail(copy_memory(
       py_thread->raddr.pid,
       (void *) py_thread->tid,  // At this point this is still the pthread_t *
       PTHREAD_BUFFER_SIZE * sizeof(void *),
       _pthread_buffer
   ))) {
-    for (register int i = 0; i < PTHREAD_BUFFER_SIZE; i++) {
-      log_d("pthread_t at %p", py_thread->tid);
-      if (py_thread->raddr.pid == (uintptr_t) _pthread_buffer[i]) {
-        log_d("TID field offset: %d", i);
-        _pthread_tid_offset = i;
-        return;
-      }
+    log_d("Cannot copy pthread_t structure");
+    return;
+  }
+
+  log_d("pthread_t at %p", py_thread->tid);
+
+  for (register int i = 0; i < PTHREAD_BUFFER_SIZE; i++) {
+    if (py_thread->raddr.pid == (uintptr_t) _pthread_buffer[i]) {
+      log_d("TID field offset: %d", i);
+      _pthread_tid_offset = i;
+      return;
     }
   }
-  else {
-    log_d("Cannot copy pthread_t structure");
+
+  // Fall-back to smaller steps if we failed
+  for (register int i = 0; i < PTHREAD_BUFFER_SIZE * sizeof(uintptr_t) / sizeof(pid_t); i++) {
+    if (py_thread->raddr.pid == (pid_t) ((pid_t*) _pthread_buffer)[i]) {
+      log_d("TID field offset (from fall-back): %d", i);
+      _pthread_tid_offset = i;
+      return;
+    }
   }
 }
 
