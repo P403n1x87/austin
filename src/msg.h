@@ -61,8 +61,7 @@ URL("https://github.com/P403n1x87/austin#compatibility")
 
 
 const char * MFORK =
-"❌ Cannot profile the given command. Either it is invalid or the process\n"
-"terminated too quickly";
+"❌ Cannot launch the given command or it terminated too quickly";
 
 const char * MATTACH = \
 "🛑 Cannot attach to the given process. Make sure that the PID you have provided\n"
