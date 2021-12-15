@@ -35,36 +35,6 @@ def demangle_cython(function: str) -> str:
     return function
 
 
-def demangle_cpp(function: str) -> str:
-    for i, d in enumerate(function):
-        if d.isdigit():
-            break
-    else:
-        return function[2:]
-
-    function = function.rstrip("_")
-    n = 0
-    last = function
-    while i < len(function):
-        c = function[i]
-        if c.isdigit():
-            n = n * 10 + int(c)
-            i += 1
-        else:
-            last = function[i : i + n]
-            i += n
-            n = 0
-            if i >= len(function):
-                break
-            try:
-                while not function[i].isdigit():
-                    i += 1
-            except IndexError:
-                break
-
-    return last
-
-
 class Maps:
     def __init__(self):
         # TODO: Use an interval tree instead!
@@ -85,7 +55,7 @@ class Maps:
             return None
 
         resolved, _, _ = (
-            check_output(["addr2line", "-e", binary, f"{addr-self.bases[binary]:x}"])
+            check_output(["addr2line", "-Ce", binary, f"{addr-self.bases[binary]:x}"])
             .decode()
             .strip()
             .partition(" ")
