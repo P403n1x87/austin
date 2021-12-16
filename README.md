@@ -167,7 +167,7 @@ are installed on your system. Refer to your distro's documentation for details
 on how to do so.
 
 ~~~ console
-git clone --depth=1 https://github.com/P403n1x87/austin.git
+git clone --depth=1 https://github.com/P403n1x87/austin.git && cd austin
 autoreconf --install
 ./configure
 make
