@@ -35,6 +35,9 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#ifdef NATIVE
+#include "../argparse.h"
+#endif
 #include "../dict.h"
 #include "../hints.h"
 #include "../py_proc.h"
@@ -377,13 +380,11 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   while (getline(&line, &len, fp) != -1) {
     ssize_t lower, upper;
     char    pathname[1024];
-    char    m[sizeof(void *)]; // We don't care about these values.
 
-    int field_count = sscanf(line, "%lx-%lx %4c %lx %x:%x %x %s\n",
-      &lower, &upper,                                             // Map bounds
-      (char *) m, (ssize_t *) m, (int *) m, (int *) m, (int *) m, // Ignored
-      pathname                                                    // Binary path
-    ) - 7; // We expect between 7 and 8 matches.
+    int field_count = sscanf(line, "%lx-%lx %*s %*x %*x:%*x %*x %s\n",
+      &lower, &upper, // Map bounds
+      pathname        // Binary path
+    ) - 3; // We expect between 3 and 4 matches.
     if (field_count >= 0) {
       if (field_count == 0 || strstr(pathname, "[v") == NULL) {
         // Skip meaningless addresses like [vsyscall] which would give
@@ -488,6 +489,51 @@ _py_proc__get_resident_memory(py_proc_t * self) {
 } /* _py_proc__get_resident_memory */
 
 
+#ifdef NATIVE
+// ----------------------------------------------------------------------------
+static int
+_py_proc__dump_maps(py_proc_t * self) {
+  char      file_name[32];
+  FILE    * fp        = NULL;
+  char    * line      = NULL;
+  size_t    len       = 0;
+
+  sprintf(file_name, "/proc/%d/maps", self->pid);
+  fp = fopen(file_name, "r");
+  if (fp == NULL) {
+    switch (errno) {
+    case EACCES:  // Needs elevated privileges
+      set_error(EPROCPERM);
+      break;
+    case ENOENT:  // Invalid pid
+      set_error(EPROCNPID);
+      break;
+    default:
+      set_error(EPROCVM);
+    }
+    FAIL;
+  }
+
+  while (getline(&line, &len, fp) != -1) {
+    ssize_t lower, upper;
+    char    pathname[1024];
+
+    if (sscanf(line, "%lx-%lx %*s %*x %*x:%*x %*x %s\n",
+      &lower, &upper, // Map bounds
+      pathname        // Binary path
+    ) == 3 && pathname[0] != '[') {
+      fprintf(pargs.output_file, "# map: %lx-%lx %s\n", lower, upper, pathname);
+    }
+  }
+
+  sfree(line);
+  fclose(fp);
+
+  SUCCESS;
+} /* _py_proc__dump_maps */
+#endif
+
+
 // ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t * self) {
@@ -502,6 +548,10 @@ _py_proc__init(py_proc_t * self) {
   sprintf(self->extra->statm_file, "/proc/%d/statm", self->pid);
 
   self->last_resident_memory = _py_proc__get_resident_memory(self);
+
+  #ifdef NATIVE
+  _py_proc__dump_maps(self);
+  #endif
 
   SUCCESS;
 } /* _py_proc__init */

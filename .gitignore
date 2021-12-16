@@ -36,6 +36,7 @@ stamp-h1
 *.gcda
 
 src/austin
+src/austinp
 src/austin.exe
 
 

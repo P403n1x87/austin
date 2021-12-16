@@ -63,6 +63,7 @@
   <a href="#synopsis"><b>Synopsis</b></a>&nbsp;&bull;
   <a href="#installation"><b>Installation</b></a>&nbsp;&bull;
   <a href="#usage"><b>Usage</b></a>&nbsp;&bull;
+  <a href="#cheat-sheet"><b>Cheat sheet</b></a>&nbsp;&bull;
   <a href="#compatibility"><b>Compatibility</b></a>&nbsp;&bull;
   <a href="#why--austin"><b>Why <img src="art/austin_logo.svg" height="20px" /> Austin</b></a>&nbsp;&bull;
   <a href="#examples"><b>Examples</b></a>&nbsp;&bull;
@@ -115,10 +116,12 @@ The key features of Austin are:
 - Time and memory profiling;
 - Built-in support for multi-process applications (e.g. `mod_wsgi`).
 
-The simplest way to turn Austin into a full-fledged profiler is to combine it
-with [FlameGraph] or [Speedscope]. However, Austin's simple output format can be
-piped into any other external or custom tool for further processing. Look, for
-instance, at the following Python TUI
+The simplest way to turn Austin into a full-fledged profiler is to use together
+with the [VS
+Code](https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode)
+extension or combine it with [FlameGraph] or [Speedscope]. However, Austin's
+simple output format can be piped into any other external or custom tool for
+further processing. Look, for instance, at the following Python TUI
 
 
 <p align="center">
@@ -163,7 +166,7 @@ library. Before proceding with the steps below, make sure that the `autotools`
 are installed on your system. Refer to your distro's documentation for details
 on how to do so.
 
-~~~ bash
+~~~ console
 git clone --depth=1 https://github.com/P403n1x87/austin.git && cd austin
 autoreconf --install
 ./configure
@@ -183,7 +186,7 @@ Austin can be installed on [many major Linux
 distributions](https://snapcraft.io/docs/installing-snapd) from the Snap Store
 with the following command
 
-~~~ bash
+~~~ console
 sudo snap install austin --classic
 ~~~
 
@@ -198,7 +201,7 @@ can therefore be installed with the `apt` utility.
 
 Austin can be installed on macOS using [Homebrew](https://docs.brew.sh):
 
-~~~bash
+~~~ console
 brew install austin
 ~~~
 
@@ -208,13 +211,13 @@ brew install austin
 To install [Austin from Chocolatey](https://chocolatey.org/packages/austin), run
 the following command from the command line or from PowerShell
 
-~~~ shell
+~~~ console
 choco install austin
 ~~~
 
 To upgrade run the following command from the command line or from PowerShell:
 
-~~~ shell
+~~~ console
 choco upgrade austin
 ~~~
 
@@ -224,13 +227,13 @@ choco upgrade austin
 To install Austin using Scoop, run the following command from the command line
 or from PowerShell
 
-~~~ shell
+~~~ console
 scoop install austin
 ~~~
 
 To upgrade run the following command from the command line or from PowerShell:
 
-~~~ shell
+~~~ console
 scoop update
 ~~~
 
@@ -240,7 +243,7 @@ scoop update
 Anaconda users on Linux and macOS can install Austin from [Conda Forge] with the
 command
 
-~~~ bash
+~~~ console
 conda install -c conda-forge austin
 ~~~
 
@@ -249,25 +252,25 @@ conda install -c conda-forge austin
 To install Austin from sources using the GNU C compiler, without `autotools`,
 clone the repository with
 
-~~~ bash
+~~~ console
 git clone --depth=1 https://github.com/P403n1x87/austin.git
 ~~~
 
 On Linux one can then use the command
 
-~~~ bash
+~~~ console
 gcc -O3 -Os -Wall -pthread src/*.c -o src/austin
 ~~~
 
 whereas on macOS it is enough to run
 
-~~~ bash
+~~~ console
 gcc -O3 -Os -Wall src/*.c -o src/austin
 ~~~
 
 On Windows, the `-lpsapi -lntdll` switches are needed
 
-~~~ bash
+~~~ console
 gcc -O3 -Os -Wall -lpsapi -lntdll src/*.c -o src/austin
 ~~~
 
@@ -287,6 +290,8 @@ Austin -- A frame stack sampler for Python.
                              stacks.
   -f, --full                 Produce the full set of metrics (time +mem -mem).
   -g, --gc                   Sample the garbage collector state.
+  -h, --heap=n_mb            Maximum heap size to allocate to increase sampling
+                             accuracy, in MB (default is 256).
   -i, --interval=n_us        Sampling interval in microseconds (default is
                              100). Accepted units: s, ms, us.
   -m, --memory               Profile memory usage.
@@ -379,6 +384,63 @@ garbage collector is in the collecting state. This gives you a measure of how
 *Since Austin 3.1.0*.
 
 
+## Sampling Accuracy
+
+Austin tries to keep perturbations to the tracee at a minimum. In order to do
+so, the tracee is never halted. To improve sampling accuracy, Austin allocates a
+heap that is used to get large snapshots of the private VM of the tracee that is
+likely to contain frame information in a single attempt. The larger the heap is
+allowed the grow, the more accurate the results. The maximum size of the heap
+that Austin is allowed to allocate can be controlled with the `-h/--heap`
+option, followed by the maximum size in bytes. By default Austin allocates a
+maximum of 256 MB. On systems with low resource limits, it is advisable to
+reduce this value.
+
+*Since Austin 3.2.0*.
+
+
+## Native Frame Stack
+
+If you want observability into the native frame stacks, you can use the
+`austinp` variant of `austin` which can be obtained by compiling the source
+with `-DAUSTINP` on Linux, or from the released binaries.
+
+`austinp` makes use of `ptrace` to halt the application and grab a
+snapshot of the call stack with `libunwind`. If you are compiling `austinp` from
+sources make sure that you have the development version of the `libunwind`
+library available on your system, for example on Ubuntu,
+
+~~~ console
+sudo apt install libunwind-dev
+~~~
+
+and compile with
+
+~~~ console
+gcc -O3 -Os -Wall -pthread src/*.c -DAUSTINP -lunwind-ptrace -lunwind-generic -o src/austinp
+~~~
+
+then use as per normal. The extra `-k/--kernel` option is available with
+`austinp` which allows sampling kernel call stacks as well.
+
+> **WARNING** Since `austinp` uses `ptrace`, the impact on the tracee is no
+> longer minimal and it becomes higher at smaller sampling intervals. Therefore
+> the use of `austinp` is not recommended in production environments. For this
+> reason, the default sampling interval for `austinp` is 10 milliseconds.
+
+The `utils` folder has the script `resolve.py` that can be used to resolve the
+VM addresses to source and line numbers, provided that the referenced binaries
+have DWARF debug symbols. To resolve the references, assuming you have collected
+the samples in `mysamples.austin`, do
+
+~~~
+python3 utils/resolve.py mysamples.austin > mysamples_resolved.austin
+~~~
+
+Internally, the script uses `addr2line(1)` to determine source and line number
+given an address, when possible.
+
+
 ## Logging
 
 Austin uses `syslog` on Linux and macOS, and `%TEMP%\austin.log` on Windows
@@ -387,6 +449,17 @@ statistics. _Bad_ frames are output together with the other frames. In general,
 entries for bad frames will not be visible in a flame graph as all tests show
 error rates below 1% on average.
 
+
+## Cheat sheet
+
+All the above Austin options and arguments are summarised in a cheat sheet that
+you can find in the [art](https://github.com/P403n1x87/austin/blob/master/art/)
+folder in either the SVG or PNG format
+
+<p align="center">
+  <img src="art/cheatsheet.png"
+       style="box-shadow: #111 0px 0px 16px;" />
+</p>
 
 # Compatibility
 
@@ -405,7 +478,7 @@ capability. This means that you will have to either use ``sudo`` when attaching
 to a running Python process or grant the CAP_SYS_PTRACE capability to the Austin
 binary with, e.g.
 
-~~~ bash
+~~~ console
 sudo setcap cap_sys_ptrace+ep `which austin`
 ~~~
 
@@ -465,7 +538,7 @@ is written in C, implementing the new changes is rather straight-forward.
 
 The following flame graph has been obtained with the command
 
-~~~ bash
+~~~ console
 austin -i 1ms ./test.py | sed '/^#/d' | ./flamegraph.pl --countname=μs > test.svg
 ~~~
 
@@ -488,7 +561,7 @@ for i in range(1000):
 To profile Apache2 WSGI application, one can attach Austin to the web server
 with
 
-~~~ bash
+~~~ console
 austin -Cp `pgrep apache2 | head -n 1`
 ~~~
 
@@ -519,13 +592,13 @@ or convert it to the [pprof] format.
 
 If you want to give it a go you can install it using `pip` with
 
-~~~ bash
+~~~ console
 pip install austin-tui --upgrade
 ~~~
 
 and run it with
 
-~~~ bash
+~~~ console
 austin-tui [OPTION...] command [ARG...]
 ~~~
 
@@ -557,13 +630,13 @@ be used for _remote_ profiling by setting the `--host` and `--port` options.
 
 If you want to give it a go you can install it using `pip` with
 
-~~~ bash
+~~~ console
 pip install austin-web --upgrade
 ~~~
 
 and run it with
 
-~~~ bash
+~~~ console
 austin-web [OPTION...] command [ARG...]
 ~~~
 
@@ -588,13 +661,13 @@ Austin to the Speedscope JSON format.
 
 If you want to give it a go you can install it using `pip` with
 
-~~~ bash
+~~~ console
 pip install austin-python --upgrade
 ~~~
 
 and run it with
 
-~~~ bash
+~~~ console
 austin2speedscope [-h] [--indent INDENT] [-V] input output
 ~~~
 
@@ -613,13 +686,13 @@ Austin's format can also be converted to the Google pprof format using the
 `austin2pprof` utility that comes with [`austin-python`]. If you want to give it
 a go you can install it using `pip` with
 
-~~~ bash
+~~~ console
 pip install austin-python --upgrade
 ~~~
 
 and run it with
 
-~~~ bash
+~~~ console
 austin2pprof [-h] [-V] input output
 ~~~
 

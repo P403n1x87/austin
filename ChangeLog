@@ -1,3 +1,14 @@
+2021-xx-xx v3.2.0
+
+  Improved detection of invalid samples
+
+  Added support for Python launchers on Windows
+
+  Improved Python version detection on Linux
+
+  Fixed support of older versions of glibc on Linux
+
+
 2021-08-18 v3.1.0
 
   Added garbage collection state sampling for Python 3.7 onward.

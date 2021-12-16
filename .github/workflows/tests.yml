@@ -41,11 +41,13 @@ jobs:
 
       - name: Install test dependencies
         run: |
+          brew update
           brew install python || brew upgrade python
           brew install python@3.8 || true
           brew install python@3.9 || true
+          brew install python@3.10 || true
           brew install bats-core || true
-          brew cask install anaconda || true
+          brew install --cask anaconda || true
 
       - name: Run tests
         run: sudo bats test/macos/test.bats

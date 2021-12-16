@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 
+#include "platform.h"
 #include "stats.h"
 
 typedef struct {
@@ -44,6 +45,10 @@ typedef struct {
   ctime_t   exposure;
   int       pipe;
   int       gc;
+  size_t    heap;
+  #ifdef NATIVE
+  int       kernel;
+  #endif
 } parsed_args_t;
 
 

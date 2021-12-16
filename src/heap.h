@@ -5,7 +5,7 @@
 //
 // Austin is a Python frame stack sampler for CPython.
 //
-// Copyright (c) 2018 Gabriele N. Tornetta <phoenix1987@gmail.com>.
+// Copyright (c) 2018-2021 Gabriele N. Tornetta <phoenix1987@gmail.com>.
 // All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -20,10 +20,22 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef AUSTIN_H
-#define AUSTIN_H
+#ifndef HEAP_H
+#define HEAP_H
 
-#define PROGRAM_NAME                    "austin"
-#define VERSION                         "3.2.0"
+#include <sys/types.h>
+
+typedef struct {
+    void   * lo;
+    void   * hi;
+    void   * newlo;
+    void   * newhi;
+} _mem_block_t;
+
+
+typedef struct {
+    void   * content;
+    size_t   size;
+} _heap_t;
 
 #endif

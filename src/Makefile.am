@@ -32,6 +32,7 @@ austin_SOURCES = \
   logging.c      \
   version.c      \
   stats.c        \
+  platform.c     \
   py_proc_list.c \
   py_proc.c      \
   py_thread.c

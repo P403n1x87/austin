@@ -29,9 +29,17 @@
 #include "hints.h"
 #include "platform.h"
 
+#if defined PL_LINUX && !defined __MUSL__
+#define GNU_ARGP
+#endif
 
+#ifdef NATIVE
+#define DEFAULT_SAMPLING_INTERVAL  10000  // reduces impact on tracee
+#else
 #define DEFAULT_SAMPLING_INTERVAL    100
+#endif
 #define DEFAULT_INIT_RETRY_CNT       100
+#define DEFAULT_HEAP_SIZE            256
 
 const char SAMPLE_FORMAT_NORMAL[]      = ";%s:%s:%d";
 const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s:%s;L%d";
@@ -53,6 +61,10 @@ parsed_args_t pargs = {
   /* exposure            */ 0,
   /* pipe                */ 0,
   /* gc                  */ 0,
+  /* heap                */ DEFAULT_HEAP_SIZE,
+  #ifdef NATIVE
+  /* kernel              */ 0,
+  #endif
 };
 
 static int exec_arg = 0;
@@ -144,7 +156,7 @@ parse_timeout(char * str, long * num) {
 
 // ---- GNU C -----------------------------------------------------------------
 
-#ifdef PL_LINUX                                                      /* LINUX */
+#ifdef GNU_ARGP                                                      /* LINUX */
 
 #include <argp.h>
 
@@ -219,10 +231,22 @@ static struct argp_option options[] = {
     "Pipe mode. Use when piping Austin output."
   },
   {
-    "gc",         'g', NULL,          0,
+    "gc",           'g', NULL,          0,
     "Sample the garbage collector state."
   },
-  #ifndef PL_LINUX
+  {
+    "heap",         'h', "n_mb",        0,
+    "Maximum heap size to allocate to increase sampling accuracy, in MB "
+    "(default is 256)."
+  },
+
+  #ifdef NATIVE
+  {
+    "kernel",       'k', NULL,          0,
+    "Sample the kernel call stack."
+  },
+  #endif
+  #ifndef GNU_ARGP
   {
     "help",         '?', NULL
   },
@@ -237,7 +261,7 @@ static struct argp_option options[] = {
 };
 
 
-#ifdef PL_LINUX
+#ifdef GNU_ARGP
 
 // ----------------------------------------------------------------------------
 static int
@@ -330,6 +354,20 @@ parse_opt (int key, char *arg, struct argp_state *state)
   case 'g':
     pargs.gc = 1;
     break;
+
+  case 'h':
+    if (
+      fail(str_to_num(arg, (long *) &(pargs.heap))) ||
+      pargs.heap > LONG_MAX
+    )
+      argp_error(state, "the heap size must be a positive integer");
+    break;
+
+  #ifdef NATIVE
+  case 'k':
+    pargs.kernel = 1;
+    break;
+  #endif
 
   case ARGP_KEY_ARG:
   case ARGP_KEY_END:
@@ -474,6 +512,8 @@ static const char * help_msg = \
 "                             stacks.\n"
 "  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
 "  -g, --gc                   Sample the garbage collector state.\n"
+"  -h, --heap=n_mb            Maximum heap size to allocate to increase sampling\n"
+"                             accuracy, in MB (default is 256).\n"
 "  -i, --interval=n_us        Sampling interval in microseconds (default is\n"
 "                             100). Accepted units: s, ms, us.\n"
 "  -m, --memory               Profile memory usage.\n"
@@ -495,11 +535,11 @@ static const char * help_msg = \
 "Report bugs to <https://github.com/P403n1x87/austin/issues>.\n";
 
 static const char * usage_msg = \
-"Usage: austin [-aCefmPs?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-x n_sec]\n"
-"            [--alt-format] [--children] [--exclude-empty] [--full]\n"
-"            [--interval=n_us] [--memory] [--output=FILE] [--pid=PID] [--pipe]\n"
-"            [--sleepless] [--timeout=n_ms] [--exposure=n_sec] [--help]\n"
-"            [--usage] [--version] command [ARG...]\n";
+"Usage: austin [-aCefgmPs?V] [-h n_mb] [-i n_us] [-o FILE] [-p PID] [-t n_ms]\n"
+"            [-x n_sec] [--alt-format] [--children] [--exclude-empty] [--full]\n"
+"            [--gc] [--heap=n_mb] [--interval=n_us] [--memory] [--output=FILE]\n"
+"            [--pid=PID] [--pipe] [--sleepless] [--timeout=n_ms]\n"
+"            [--exposure=n_sec] [--help] [--usage] [--version] command [ARG...]\n";
 
 
 static void
@@ -631,6 +671,14 @@ cb(const char opt, const char * arg) {
     pargs.gc = 1;
     break;
 
+  case 'h':
+    if (
+      fail(str_to_num((char*) arg, (long *) &(pargs.heap))) ||
+      pargs.heap > LONG_MAX
+    )
+      arg_error("the heap size must be a positive integer");
+    break;
+
   case '?':
     puts(help_msg);
     exit(0);
@@ -662,7 +710,9 @@ cb(const char opt, const char * arg) {
 // ----------------------------------------------------------------------------
 int
 parse_args(int argc, char ** argv) {
-  #ifdef PL_LINUX
+  pargs.output_file = stdout;
+
+  #ifdef GNU_ARGP
   struct argp args = {options, parse_opt, "command [ARG...]", doc};
   argp_parse(&args, argc, argv, 0, 0, 0);
 

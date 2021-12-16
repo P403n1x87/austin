@@ -41,6 +41,7 @@ typedef struct thread {
   struct thread * next;
 
   size_t          stack_height;
+  void          * top_frame;
 
   int             invalid;
 } py_thread_t;
@@ -80,19 +81,27 @@ py_thread__print_collapsed_stack(py_thread_t *, ctime_t, ssize_t);
 
 
 /**
- * Allocate memory for dumping the frame stack.
+ * Allocate memory for dumping the thread data.
  *
  * @return either SUCCESS or FAIL.
  */
 int
-py_thread_allocate_stack(void);
+py_thread_allocate(void);
 
 
 /**
- * Deallocate memory for dumping the frame stack.
+ * Deallocate memory for dumping the thread data.
  */
 void
-py_thread_free_stack(void);
+py_thread_free(void);
+
+#ifdef NATIVE
+int
+py_thread__set_idle(py_thread_t *);
+
+int
+py_thread__save_kernel_stack(py_thread_t *);
+#endif
 
 
 #endif // PY_THREAD_H

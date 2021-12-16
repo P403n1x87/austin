@@ -1,8 +1,8 @@
-name: Release
+name: Development release
 on:
   push:
     tags:
-      - 'v*'
+      - 'dev'
 jobs:
   release-linux:
     runs-on: ubuntu-latest
@@ -22,8 +22,11 @@ jobs:
           autoreconf --install
           ./configure
           make
-          
-          export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p");
+
+          # Compute dev version
+          export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          export VERSION=$(echo $PREV_VERSION | awk -F. '{A=NF-1; $A = $A + 1; $NF=0} 1' | sed 's/ /./g')-dev+$(git rev-parse --short HEAD)
+          sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
 
           # Build austinp
           gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austinp -DAUSTINP -l:libunwind-ptrace.a -l:liblzma.a -l:libunwind-generic.a -l:libunwind.a
@@ -43,9 +46,11 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: src/austin-*
+          file: src/austin*xz
           tag: ${{ github.ref }}
           overwrite: true
+          prerelease: true
+          release_name: Development build
           file_glob: true
 
   release-win:
@@ -64,15 +69,22 @@ jobs:
         run: |
           echo "C:\Program Files (x86)\WiX Toolset v3.11\bin" >> $GITHUB_PATH
           export PATH="/c/Program Files (x86)/`ls /c/Program\ Files\ \(x86\) | grep \"[wW]i[xX] [tT]oolset\"`/bin:$PATH"
-          export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
 
-          gcc -static -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll
+          # Compute dev version
+          export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          export VERSION=$(echo $PREV_VERSION | awk -F. '{A=NF-1; $A = $A + 1; $NF=0} 1' | sed 's/ /./g')
+          export VERSION_DEV=$(echo $PREV_VERSION | awk -F. '{A=NF-1; $A = $A + 1; $NF=0} 1' | sed 's/ /./g')-dev+$(git rev-parse --short HEAD)
+          sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
+
+          gcc -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll
+
+          git checkout HEAD -- src/austin.h 
 
           git checkout "packaging/msi"
           git checkout master
           git checkout "packaging/msi" -- wix
 
-          export WIN_MSI="austin-$VERSION-win64.msi"
+          export WIN_MSI="austin-$VERSION_DEV-win64.msi"
 
           sed -i "s/%VERSION%/$VERSION/g" wix/Austin.wxs
           pushd wix
@@ -84,23 +96,7 @@ jobs:
           test -f src/$WIN_MSI && echo ">> Windows MSI installer at src/$WIN_MSI" || echo ">> ERROR No Windows MSI installer generated."
 
           pushd src
-          7z a -tzip austin-${VERSION}-win64.zip austin.exe
-          popd
-
-      - name: Upload to choco
-        shell: bash
-        run: |
-          export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
-          export WIN_MSI="austin-$VERSION-win64.msi"
-          export WIN_MSI_HASH=$( sha256sum src/$WIN_MSI | head -c 64 )
-          git checkout "packaging/msi" -- choco
-
-          pushd choco
-          sed -i "s/%WIN_MSI_HASH%/$WIN_MSI_HASH/g" tools/chocolateyinstall.ps1
-          /bin/find . -type f -exec sed -i "s/%VERSION%/$VERSION/g" {} \; ;
-          choco apikey --key ${{ secrets.CHOCO_APIKEY }} --source https://push.chocolatey.org/
-          choco pack
-          choco push
+          7z a -tzip austin-${VERSION_DEV}-win64.zip austin.exe
           popd
 
       - name: Upload artifacts to release
@@ -110,6 +106,8 @@ jobs:
           file: src/austin-*
           tag: ${{ github.ref }}
           overwrite: true
+          prerelease: true
+          release_name: Development build
           file_glob: true
 
   release-osx:
@@ -123,7 +121,10 @@ jobs:
 
       - name: Generate artifacts
         run: |
-          export VERSION=$(cat src/austin.h | sed -n -E "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          # Compute dev version
+          export PREV_VERSION=$(cat src/austin.h | sed -n -E "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          export VERSION=$(echo $PREV_VERSION | awk -F. '{A=NF-1; $A = $A + 1; $NF=0} 1' | sed 's/ /./g')-dev+$(git rev-parse --short HEAD)
+          sed -i "" "s/$PREV_VERSION/$VERSION/g" src/austin.h
           echo "::set-output name=version::$VERSION"
 
           gcc -Wall -O3 -Os -o src/austin src/*.c
@@ -139,4 +140,6 @@ jobs:
           file: src/austin-*
           tag: ${{ github.ref }}
           overwrite: true
+          prerelease: true
+          release_name: Development build
           file_glob: true
