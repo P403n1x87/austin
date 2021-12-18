@@ -454,7 +454,7 @@ error rates below 1% on average.
 
 All the above Austin options and arguments are summarised in a cheat sheet that
 you can find in the [art](https://github.com/P403n1x87/austin/blob/master/art/)
-folder in either the SVG or PNG format
+folder in either the SVG, PDF or PNG format
 
 <p align="center">
   <img src="art/cheatsheet.png"
