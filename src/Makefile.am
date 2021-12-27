@@ -27,7 +27,7 @@ bin_PROGRAMS = austin
 austin_SOURCES = \
   argparse.c     \
   austin.c       \
-  dict.c         \
+  cache.c        \
   error.c        \
   logging.c      \
   version.c      \

@@ -269,6 +269,9 @@ int main(int argc, char ** argv) {
 
   log_i("Sampling interval: %lu μs", pargs.t_sampling_interval);
 
+  if (pargs.heap)
+    log_i("Maximum frame heap size: %d MB", pargs.heap >> 20);
+
   if (pargs.full) {
     if (pargs.memory)
       log_w("The memory switch is redundant in full mode");

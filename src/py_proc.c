@@ -40,11 +40,12 @@
 
 #include "argparse.h"
 #include "bin.h"
-#include "dict.h"
+#include "strhash.h"
 #include "error.h"
 #include "hints.h"
 #include "logging.h"
 #include "mem.h"
+#include "stack.h"
 #include "stats.h"
 #include "version.h"
 
@@ -782,7 +783,14 @@ py_proc_new() {
     }
   }
 
-  py_proc->frames_heap.newlo = py_proc->frames.newlo = (void *) -1;
+  py_proc->frames_heap = py_proc->frames = NULL_MEM_BLOCK;
+
+  py_proc->frame_cache = lru_cache_new(MAX_STACK_SIZE, (void (*)(value_t)) frame__destroy);
+
+  if (!isvalid(py_proc->frame_cache)) {
+    log_e("Failed to allocate code object cache");
+    goto error;
+  }
 
   py_proc->extra = (proc_extra_info *) calloc(1, sizeof(proc_extra_info));
   if (!isvalid(py_proc->extra))
@@ -1110,6 +1118,12 @@ _py_proc__interrupt_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
       log_e("ptrace: failed to interrupt thread %d", py_thread.tid);
       FAIL;
     }
+    if (fail(py_thread__set_interrupted(&py_thread, TRUE))) {
+      while (ptrace(PTRACE_CONT, py_thread.tid, 0, 0)) {
+        log_t("ptrace: failed to resume interrupted thread %d", py_thread.tid);
+      }
+      FAIL;
+    }
     log_t("ptrace: thread %d interrupted", py_thread.tid);
   } while (success(py_thread__next(&py_thread)));
   
@@ -1127,10 +1141,13 @@ _py_proc__resume_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
   }
 
   do {
-    while (ptrace(PTRACE_CONT, py_thread.tid, 0, 0)) {
-      log_t("ptrace: failed to resume thread %d", py_thread.tid);
+    if (py_thread__is_interrupted(&py_thread)) {
+      while (ptrace(PTRACE_CONT, py_thread.tid, 0, 0)) {
+        log_t("ptrace: failed to resume thread %d", py_thread.tid);
+      }
+      log_t("ptrace: thread %d resumed", py_thread.tid);
+      py_thread__set_interrupted(&py_thread, FALSE);
     }
-    log_t("ptrace: thread %d resumed", py_thread.tid);
   } while (success(py_thread__next(&py_thread)));
 
   SUCCESS;
@@ -1262,6 +1279,12 @@ py_proc__destroy(py_proc_t * self) {
   sfree(self->lib_path);
   sfree(self->bss);
   sfree(self->extra);
+
+  lru_cache__destroy(self->frame_cache);
+
+  #ifdef NATIVE
+  unw_destroy_addr_space(self->unwind.as);
+  #endif
 
   free(self);
 }

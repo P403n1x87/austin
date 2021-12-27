@@ -38,7 +38,7 @@
 #ifdef NATIVE
 #include "../argparse.h"
 #endif
-#include "../dict.h"
+#include "../strhash.h"
 #include "../hints.h"
 #include "../py_proc.h"
 
