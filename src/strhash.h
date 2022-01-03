@@ -20,6 +20,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#ifndef STRHASH_H
+#define STRHASH_H
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -27,7 +30,7 @@
 #define MAGIC_BIG                       1000003
 
 // Stolen from stringobject.c
-long
+static inline long
 string_hash(char * string) {
   register unsigned char *p;
   register long x;
@@ -39,3 +42,5 @@ string_hash(char * string) {
   x ^= strlen(string);
   return x == 0 ? 1 : x;
 }
+
+#endif

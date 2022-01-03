@@ -39,7 +39,7 @@
 #define DEFAULT_SAMPLING_INTERVAL    100
 #endif
 #define DEFAULT_INIT_RETRY_CNT       100
-#define DEFAULT_HEAP_SIZE            256
+#define DEFAULT_HEAP_SIZE            0
 
 const char SAMPLE_FORMAT_NORMAL[]      = ";%s:%s:%d";
 const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s:%s;L%d";
@@ -237,7 +237,7 @@ static struct argp_option options[] = {
   {
     "heap",         'h', "n_mb",        0,
     "Maximum heap size to allocate to increase sampling accuracy, in MB "
-    "(default is 256)."
+    "(default is 0)."
   },
 
   #ifdef NATIVE
@@ -361,6 +361,7 @@ parse_opt (int key, char *arg, struct argp_state *state)
       pargs.heap > LONG_MAX
     )
       argp_error(state, "the heap size must be a positive integer");
+    pargs.heap <<= 20;
     break;
 
   #ifdef NATIVE
@@ -513,7 +514,7 @@ static const char * help_msg = \
 "  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
 "  -g, --gc                   Sample the garbage collector state.\n"
 "  -h, --heap=n_mb            Maximum heap size to allocate to increase sampling\n"
-"                             accuracy, in MB (default is 256).\n"
+"                             accuracy, in MB (default is 0).\n"
 "  -i, --interval=n_us        Sampling interval in microseconds (default is\n"
 "                             100). Accepted units: s, ms, us.\n"
 "  -m, --memory               Profile memory usage.\n"
@@ -677,6 +678,7 @@ cb(const char opt, const char * arg) {
       pargs.heap > LONG_MAX
     )
       arg_error("the heap size must be a positive integer");
+    pargs.heap <<= 20;
     break;
 
   case '?':

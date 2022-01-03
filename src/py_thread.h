@@ -31,6 +31,10 @@
 #include "stats.h"
 
 
+#define MAXLEN                      1024
+#define MAX_STACK_SIZE              2048
+
+
 typedef struct thread {
   raddr_t         raddr;
   raddr_t         next_raddr;
@@ -40,7 +44,6 @@ typedef struct thread {
   uintptr_t       tid;
   struct thread * next;
 
-  size_t          stack_height;
   void          * top_frame;
 
   int             invalid;
@@ -98,6 +101,12 @@ py_thread_free(void);
 #ifdef NATIVE
 int
 py_thread__set_idle(py_thread_t *);
+
+int
+py_thread__set_interrupted(py_thread_t *, int);
+
+int
+py_thread__is_interrupted(py_thread_t * self);
 
 int
 py_thread__save_kernel_stack(py_thread_t *);

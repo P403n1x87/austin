@@ -42,7 +42,7 @@ const char * _error_msg_tab[MAXERROR] = {
   NULL,
   NULL,
 
-  // py_code_t
+  // PyCodeObject
   "Failed to retrieve PyCodeObject",
   "Encountered unsupported string format",
   "Not a compact unicode object",
@@ -52,7 +52,7 @@ const char * _error_msg_tab[MAXERROR] = {
   "Unable to get line number from code object",
   "Failed to retrieve PyUnicodeObject",
 
-  // py_frame_t
+  // PyFrameObject
   "Failed to create frame object",
   "Failed to get code object for frame",
   "Invalid frame",
@@ -95,7 +95,7 @@ const int _fatal_error_tab[MAXERROR] = {
   0,
   0,
 
-  // py_code_t
+  // PyCodeObject
   0,
   0,
   0,
@@ -105,7 +105,7 @@ const int _fatal_error_tab[MAXERROR] = {
   0,
   0,
 
-  // py_frame_t
+  // PyFrameObject
   0,
   0,
   0,

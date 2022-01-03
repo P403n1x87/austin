@@ -29,11 +29,13 @@
 #include <unistd.h>
 
 #include "argparse.h"
+#include "cache.h"
 #include "error.h"
 #include "hints.h"
 #include "logging.h"
 #include "mem.h"
 #include "platform.h"
+#include "stack.h"
 #include "timing.h"
 #include "version.h"
 
@@ -61,45 +63,25 @@
 
 // ---- PRIVATE ---------------------------------------------------------------
 
-#define MAX_STACK_SIZE              4096
-#define MAXLEN                      1024
+#define NULL_HEAP ((_heap_t) {NULL, 0})
 
-
-typedef struct {
-  char         filename [MAXLEN];
-  char         scope    [MAXLEN];
-  unsigned int lineno;
-} py_code_t;
-
-
-typedef struct frame {
-  raddr_t        raddr;
-  raddr_t        prev_raddr;
-
-  py_code_t      code;
-
-  int            invalid;  // Set when prev_radd != null but unable to copy.
-} py_frame_t;
-
-
-static py_frame_t * _stack       = NULL;
-static size_t       _stackp      = 0;
-static _heap_t      _frames      = {NULL, 0};
-static _heap_t      _frames_heap = {NULL, 0};
+static _heap_t      _frames      = NULL_HEAP;
+static _heap_t      _frames_heap = NULL_HEAP;
 
 #ifdef NATIVE
 static void          ** _tids      = NULL;
 static unsigned char *  _tids_idle = NULL;
+static unsigned char *  _tids_int  = NULL;
 static char          ** _kstacks   = NULL;
 #endif
 
 
 // ---- PyCode ----------------------------------------------------------------
 
-#define _code__get_filename(self, pid, dest)    _get_string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_filename)), dest)
-#define _code__get_name(self, pid, dest)        _get_string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_name)), dest)
+#define _code__get_filename(self, pid)    _get_string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_filename)))
+#define _code__get_name(self, pid)        _get_string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_name)))
 
-#define _code__get_lnotab(self, pid, buf)       _get_bytes_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_lnotab)), buf)
+#define _code__get_lnotab(self, pid, len) _get_bytes_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_lnotab)), len)
 
 #define p_ascii_data(raddr)                     (raddr + sizeof(PyASCIIObject))
 
@@ -108,10 +90,12 @@ static char          ** _kstacks   = NULL;
 // ----------------------------------------------------------------------------
 
 
-static inline int
-_get_string_from_raddr(pid_t pid, void * raddr, char * buffer) {
-  PyStringObject    string;
-  PyUnicodeObject3  unicode;
+char *
+_get_string_from_raddr(pid_t pid, void * raddr) {
+  PyStringObject     string;
+  PyUnicodeObject3   unicode;
+  char             * buffer = NULL;
+  ssize_t            len = 0;
 
   // This switch statement is required by the changes regarding the string type
   // introduced in Python 3.
@@ -119,15 +103,14 @@ _get_string_from_raddr(pid_t pid, void * raddr, char * buffer) {
   case 2:
     if (fail(copy_datatype(pid, raddr, string))) {
       log_ie("Cannot read remote PyStringObject");
-      FAIL;
+      goto failed;
     }
 
-    ssize_t len = string.ob_base.ob_size;
-    if (len >= MAXLEN)
-      len = MAXLEN-1;
+    len    = string.ob_base.ob_size;
+    buffer = (char *) malloc(len + 1);
     if (fail(copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, buffer))) {
       log_ie("Cannot read remote value of PyStringObject");
-      FAIL;
+      goto failed;
     }
     buffer[len] = 0;
     break;
@@ -135,41 +118,41 @@ _get_string_from_raddr(pid_t pid, void * raddr, char * buffer) {
   case 3:
     if (fail(copy_datatype(pid, raddr, unicode))) {
       log_ie("Cannot read remote PyUnicodeObject3");
-      FAIL;
+      goto failed;
     }
     if (unicode._base._base.state.kind != 1) {
       set_error(ECODEFMT);
-      FAIL;
+      goto failed;
     }
     if (unicode._base._base.state.compact != 1) {
       set_error(ECODECMPT);
-      FAIL;
+      goto failed;
     }
 
-    len = unicode._base._base.length;
-    if (len >= MAXLEN)
-      len = MAXLEN-1;
-
+    len    = unicode._base._base.length;
+    buffer = (char *) malloc(len + 1);
     if (fail(copy_memory(pid, p_ascii_data(raddr), len, buffer))) {
       log_ie("Cannot read remote value of PyUnicodeObject3");
-      FAIL;
+      goto failed;
     }
     buffer[len] = 0;
   }
 
-  SUCCESS;
+  return buffer;
+
+failed:
+  sfree(buffer);
+  return NULL;
 }
 
 
 // ----------------------------------------------------------------------------
-static inline int
-_get_bytes_from_raddr(pid_t pid, void * raddr, unsigned char * array) {
-  PyStringObject string;
-  PyBytesObject  bytes;
-  ssize_t        len = 0;
-
-  if (!isvalid(array))
-    goto error;
+unsigned char *
+_get_bytes_from_raddr(pid_t pid, void * raddr, ssize_t * size) {
+  PyStringObject  string;
+  PyBytesObject   bytes;
+  ssize_t         len = 0;
+  unsigned char * array = NULL;
 
   switch (py_v->major) {
   case 2:  // Python 2
@@ -185,15 +168,11 @@ _get_bytes_from_raddr(pid_t pid, void * raddr, unsigned char * array) {
       // value for len. In that case, chop it down to an int and try again.
       // This approach is simpler than adding version support.
       len = (int) len;
-      if (len >= MAXLEN) {
-        log_w("Using MAXLEN when retrieving Bytes object.");
-        len = MAXLEN-1;
-      }
     }
 
+    array = (unsigned char *) malloc((len + 1) * sizeof(unsigned char *));
     if (fail(copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, array))) {
       log_ie("Cannot read remote value of PyStringObject");
-      len = 0;
       goto error;
     }
     break;
@@ -206,56 +185,55 @@ _get_bytes_from_raddr(pid_t pid, void * raddr, unsigned char * array) {
 
     if ((len = bytes.ob_base.ob_size + 1) < 1) { // Include null-terminator
       set_error(ECODEBYTES);
+      log_e("PyBytesObject is too short");
       goto error;
     }
 
-    if (len >= MAXLEN) {
-      log_w("Using MAXLEN when retrieving Bytes object.");
-      len = MAXLEN-1;
-    }
-
+    array = (unsigned char *) malloc((len + 1) * sizeof(unsigned char *));
     if (fail(copy_memory(pid, raddr + offsetof(PyBytesObject, ob_sval), len, array))) {
       log_ie("Cannot read remote value of PyBytesObject");
-      len = 0;
       goto error;
     }
   }
 
   array[len] = 0;
+  *size      = len - 1;
+
+  return array;
 
 error:
-  return len - 1;  // The last char is guaranteed to be the null terminator
+  sfree(array);
+  return NULL;
 }
 
 
 // ----------------------------------------------------------------------------
-static inline int
-_py_code__fill_from_raddr(py_code_t * self, raddr_t * raddr, int lasti) {
-  PyCodeObject  code;
-  unsigned char lnotab[MAXLEN];
-  int           len;
-
-  if (self == NULL)
-    FAIL;
+static inline frame_t *
+_get_frame_from_code(raddr_t * raddr, int lasti) {
+  PyCodeObject code;
 
   if (fail(copy_from_raddr_v(raddr, code, py_v->py_code.size))) {
     log_ie("Cannot read remote PyCodeObject");
-    FAIL;
+    return NULL;
   }
 
-  if (fail(_code__get_filename(&code, raddr->pid, self->filename))) {
+  char * filename = _code__get_filename(&code, raddr->pid);
+  if (!isvalid(filename)) {
     log_ie("Cannot get file name from PyCodeObject");
-    FAIL;
+    return NULL;
   }
 
-  if (fail(_code__get_name(&code, raddr->pid, self->scope))) {
+  char * scope = _code__get_name(&code, raddr->pid);
+  if (!isvalid(scope)) {
     log_ie("Cannot get scope name from PyCodeObject");
-    FAIL;
+    goto failed;
   }
 
-  else if ((len = _code__get_lnotab(&code, raddr->pid, lnotab)) < 0 || len % 2) {
+  ssize_t len = 0;
+  unsigned char * lnotab = _code__get_lnotab(&code, raddr->pid, &len);
+  if (!isvalid(lnotab) || len % 2) {
     log_ie("Cannot get line number from PyCodeObject");
-    FAIL;
+    goto failed;
   }
 
   int lineno = V_FIELD(unsigned int, code, py_code, o_firstlineno);
@@ -293,9 +271,21 @@ _py_code__fill_from_raddr(py_code_t * self, raddr_t * raddr, int lasti) {
     }
   }
 
-  self->lineno = lineno;
+  free(lnotab);
 
-  SUCCESS;
+  frame_t * frame = frame_new(filename, scope, lineno);
+  if (!isvalid(frame)) {
+    log_e("Failed to create frame object");
+    goto failed;
+  }
+
+  return frame;
+
+failed:
+  sfree(filename);
+  sfree(scope);
+  
+  return NULL;
 }
 
 
@@ -303,10 +293,12 @@ _py_code__fill_from_raddr(py_code_t * self, raddr_t * raddr, int lasti) {
 
 // ----------------------------------------------------------------------------
 #define _use_heaps (pargs.heap > 0)
-#define _no_heaps  {pargs.heap = 0;}
 
-static inline int
+static inline void
 _py_thread__read_frames(py_thread_t * self) {
+  if (!pargs.heap)
+    return;
+
   size_t newsize;
   size_t maxsize = pargs.heap >> 1;
 
@@ -321,8 +313,12 @@ _py_thread__read_frames(py_thread_t * self) {
       self->proc->frames.hi = self->proc->frames.newhi;
       self->proc->frames.lo = self->proc->frames.newlo;
     }
-    if (fail(copy_memory(self->raddr.pid, self->proc->frames.lo, newsize, _frames.content)))
-      FAIL;
+    if (fail(copy_memory(self->raddr.pid, self->proc->frames.lo, newsize, _frames.content))) {
+      log_d("Failed to read remote frame area; will reset");
+      sfree(_frames.content);
+      _frames = NULL_HEAP;
+      self->proc->frames = NULL_MEM_BLOCK;
+    }
   }
 
   if (isvalid(self->proc->frames_heap.newhi)) {
@@ -336,38 +332,74 @@ _py_thread__read_frames(py_thread_t * self) {
       self->proc->frames_heap.hi = self->proc->frames_heap.newhi;
       self->proc->frames_heap.lo = self->proc->frames_heap.newlo;
     }
-    return copy_memory(self->raddr.pid, self->proc->frames_heap.lo, newsize, _frames_heap.content);
+    if (fail(copy_memory(self->raddr.pid, self->proc->frames_heap.lo, newsize, _frames_heap.content))) {
+      log_d("Failed to read remote frame area near heap; will reset");
+      sfree(_frames_heap.content);
+      _frames_heap = NULL_HEAP;
+      self->proc->frames_heap = NULL_MEM_BLOCK;
+
+    }
   }
+}
+
+
+// ----------------------------------------------------------------------------
+#ifdef DEBUG
+static unsigned int _frame_cache_miss = 0;
+static unsigned int _frame_cache_total = 0;
+#endif
+
+static inline int
+_py_thread__resolve_py_stack(py_thread_t * self) {
+  lru_cache_t * cache = self->proc->frame_cache;
+
+  for (int i = 0; i < stack_pointer(); i++) {
+    py_frame_t py_frame = stack_py_get(i);
+
+    int       lasti     = py_frame.lasti;
+    key_dt    frame_key = ((key_dt) py_frame.code << 16) | lasti;
+    frame_t * frame     = lru_cache__maybe_hit(cache, frame_key);
+    
+    #ifdef DEBUG
+    _frame_cache_total++;
+    #endif
+
+    if (!isvalid(frame)) {
+      #ifdef DEBUG
+      _frame_cache_miss++;
+      #endif
+      frame = _get_frame_from_code(&(raddr_t) {self->raddr.pid, py_frame.code}, lasti);
+      if (!isvalid(frame)) {
+        log_ie("Failed to get frame from code object");
+        // Truncate the stack to the point where we have successfully resolved.
+        _stack->pointer = i;
+        FAIL;
+      }
+      lru_cache__store(cache, frame_key, frame);
+    }
+
+    stack_set(i, frame);
+  }
+
   SUCCESS;
 }
 
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_frame_fill_from_addr(PyFrameObject * frame, raddr_t * raddr) {
-  py_frame_t * self = _stack + _stackp;
-  self->invalid = TRUE;
-
-  raddr_t py_code_raddr = {
-    .pid  = raddr->pid,
-    .addr = V_FIELD_PTR(void *, frame, py_frame, o_code)
-  };
-  if (_py_code__fill_from_raddr(
-    &(self->code), &py_code_raddr, V_FIELD_PTR(int, frame, py_frame, o_lasti)
-  )) {
-    log_ie("Cannot get PyCodeObject for frame");
+_py_thread__push_frame_from_addr(py_thread_t * self, PyFrameObject * frame_obj, void ** prev) {
+  void * origin = *prev;
+  *prev = V_FIELD_PTR(void *, frame_obj, py_frame, o_back);
+  if (origin == *prev) {
+    log_d("Frame points to itself!");
     FAIL;
   }
 
-  self->raddr.pid  = raddr->pid;
-  self->raddr.addr = raddr->addr;
-
-  self->prev_raddr.pid  = raddr->pid;
-  self->prev_raddr.addr = V_FIELD_PTR(void *, frame, py_frame, o_back);
-
-  self->invalid = FALSE;
-
-  _stackp++;
+  stack_py_push(
+    origin,
+    V_FIELD_PTR(void *, frame_obj, py_frame, o_code),
+    V_FIELD_PTR(int, frame_obj, py_frame, o_lasti)
+  );
 
   SUCCESS;
 }
@@ -375,142 +407,118 @@ _py_frame_fill_from_addr(PyFrameObject * frame, raddr_t * raddr) {
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_frame_fill_from_raddr(raddr_t * raddr) {
+_py_thread__push_frame_from_raddr(py_thread_t * self, void ** prev) {
   PyFrameObject frame;
 
-  if (fail(copy_from_raddr_v(raddr, frame, py_v->py_frame.size))) {
+  raddr_t raddr = {self->raddr.pid, *prev};
+  if (fail(copy_from_raddr_v((&raddr), frame, py_v->py_frame.size))) {
     log_ie("Cannot read remote PyFrameObject");
-    log_d("  raddr: (%p, %ld)", raddr->addr, raddr->pid);
     FAIL;
   }
 
-  return _py_frame_fill_from_addr(&frame, raddr);
+  return _py_thread__push_frame_from_addr(self, &frame, prev);
 }
 
 
 // ----------------------------------------------------------------------------
-#define REL(raddr, block, base) (raddr->addr - block.lo + base)
+#define REL(raddr, block, base) (raddr - block.lo + base)
+
+#ifdef DEBUG
+static unsigned int _frames_total = 0;
+static unsigned int _frames_miss  = 0;
+#endif
 
 static inline int
-_py_frame_fill(raddr_t * raddr, py_thread_t * thread) {
+_py_thread__push_frame(py_thread_t * self, void ** prev) {
+  void * raddr = *prev;
   if (_use_heaps) {
-    py_proc_t * proc = thread->proc;
+    #ifdef DEBUG
+    _frames_total++;
+    #endif
+    py_proc_t * proc = self->proc;
 
     if (isvalid(_frames.content)
-      && raddr->addr >= proc->frames.lo
-      && raddr->addr <  proc->frames.lo + _frames.size
+      && raddr >= proc->frames.lo
+      && raddr <  proc->frames.lo + _frames.size
     ) {
-      return _py_frame_fill_from_addr(
-        REL(raddr, proc->frames, _frames.content),
-        raddr
+      return _py_thread__push_frame_from_addr(
+        self, REL(raddr, proc->frames, _frames.content), prev
       );
     }
     else if (isvalid(_frames_heap.content)
-      && raddr->addr >= proc->frames_heap.lo
-      && raddr->addr <  proc->frames_heap.lo + _frames_heap.size
+      && raddr >= proc->frames_heap.lo
+      && raddr <  proc->frames_heap.lo + _frames_heap.size
     ) {
-      return _py_frame_fill_from_addr(
-        REL(raddr, proc->frames_heap, _frames_heap.content),
-        raddr
+      return _py_thread__push_frame_from_addr(
+        self, REL(raddr, proc->frames_heap, _frames_heap.content), prev
       );
     }
+
+    #ifdef DEBUG
+    _frames_miss++;
+    #endif
 
     // Miss: update ranges
     // We quite likely set the bss map data so this should be a pretty reliable
     // platform-independent way of dualising the frame heap.
-    if (raddr->addr >= proc->map.bss.base && raddr->addr <= proc->map.bss.base + (1 << 27)) {
-      if (raddr->addr + sizeof(PyFrameObject) > proc->frames_heap.newhi) {
-        proc->frames_heap.newhi = raddr->addr + sizeof(PyFrameObject);
+    if (raddr >= proc->map.bss.base && raddr <= proc->map.bss.base + (1 << 27)) {
+      if (raddr + sizeof(PyFrameObject) > proc->frames_heap.newhi) {
+        proc->frames_heap.newhi = raddr + sizeof(PyFrameObject);
       }
-      if (raddr->addr < proc->frames_heap.newlo) {
-        proc->frames_heap.newlo = raddr->addr;
+      if (raddr < proc->frames_heap.newlo) {
+        proc->frames_heap.newlo = raddr;
       }
     }
     else {    
-      if (raddr->addr + sizeof(PyFrameObject) > proc->frames.newhi) {
-        proc->frames.newhi = raddr->addr + sizeof(PyFrameObject);
+      if (raddr + sizeof(PyFrameObject) > proc->frames.newhi) {
+        proc->frames.newhi = raddr + sizeof(PyFrameObject);
       }
-      if (raddr->addr < proc->frames.newlo) {
-        proc->frames.newlo = raddr->addr;
+      if (raddr < proc->frames.newlo) {
+        proc->frames.newlo = raddr;
       }
     }
   }
 
-  return _py_frame_fill_from_raddr(raddr);
-}
-
-
-// ----------------------------------------------------------------------------
-static inline int
-_py_frame__prev(py_thread_t * thread) {
-  if (_stackp <= 0)
-    FAIL;
-
-  py_frame_t * self = _stack + _stackp - 1;
-  if (!isvalid(self) || !isvalid(self->prev_raddr.addr)) {
-    // Double-check it's the end of the stack if we're using the heap.
-    _stackp--;
-    if (fail(_py_frame_fill_from_raddr(&self->raddr)) || !isvalid(self->prev_raddr.addr)) {
-      FAIL;
-    }
-  }
-
-  raddr_t prev_raddr = {
-    .pid  = self->prev_raddr.pid,
-    .addr = self->prev_raddr.addr
-  };
-
-  int result = _py_frame_fill(&prev_raddr, thread);
-
-  if (!_use_heaps) {
-    return result;
-  }
-
-  // This sucks! :(
-  py_frame_t * last = self + 1;
-  for (py_frame_t * f = self; f >= _stack; f--) {
-    if (last->prev_raddr.addr == f->raddr.addr) {
-      log_d("Circular frame reference detected");
-      last->invalid = TRUE;
-      FAIL;
-    }
-  }
-
-  return result;
+  return _py_thread__push_frame_from_raddr(self, prev);
 }
 
 
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_frame_stack(py_thread_t * self) {
-  size_t basep = _stackp;
+  int invalid = FALSE;
 
-  if (_use_heaps && fail(_py_thread__read_frames(self))) {
-    log_ie("Failed to read frames heaps");
-    _no_heaps;
-    FAIL;
-  }
-  raddr_t frame_raddr = { .pid = self->raddr.pid, .addr = self->top_frame };
-  if (fail(_py_frame_fill(&frame_raddr, self))) {
+  _py_thread__read_frames(self);
+  
+  stack_reset();
+
+  void * prev = self->top_frame;
+  if (fail(_py_thread__push_frame(self, &prev))) {
     log_ie("Failed to fill top frame");
     FAIL;
   }
 
-  while (success(_py_frame__prev(self))) {
-    if (_stackp >= MAX_STACK_SIZE) {
-      log_w("Discarding frame stack: too tall");
-      FAIL;
+  while (isvalid(prev)) {
+    if (fail(_py_thread__push_frame(self, &prev))) {
+      log_d("Failed to retrieve frame #%d (from top).", stack_pointer());
+      invalid = TRUE;
+      break;
+    }
+    if (stack_full()) {
+      log_w("Invalid frame stack: too tall");
+      invalid = TRUE;
+      break;
+    }
+    if (stack_has_cycle()) {
+      log_d("Circular frame reference detected");
+      invalid = TRUE;
+      break;
     }
   }
   
-  if (_stack[_stackp-1].invalid) {
-    log_d("Frame number %d is invalid", _stackp - basep);
-    FAIL;
-  }
+  invalid = fail(_py_thread__resolve_py_stack(self)) || invalid;
 
-  self->stack_height += _stackp - basep;
-
-  SUCCESS;
+  return invalid;
 }
 
 
@@ -518,21 +526,46 @@ _py_thread__unwind_frame_stack(py_thread_t * self) {
 // ----------------------------------------------------------------------------
 int
 py_thread__set_idle(py_thread_t * self) {
-  size_t index  = self->tid >> 3;
-  int    offset = self->tid & 7;
-
-  if (unlikely(_pthread_tid_offset == 0)) {
+  if (unlikely(_pthread_tid_offset == 0))
     FAIL;
-  }
 
-  unsigned char idle_bit = _py_thread__is_idle(self) << offset;
-  if (idle_bit) {
-    _tids_idle[index] |= idle_bit;
+  unsigned char bit   = 1 << (self->tid & 7);
+  size_t        index = self->tid >> 3;
+
+  if (_py_thread__is_idle(self)) {
+    _tids_idle[index] |= bit;
   } else {
-    _tids_idle[index] &= ~idle_bit;
+    _tids_idle[index] &= ~bit;
   }
 
   SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+int
+py_thread__set_interrupted(py_thread_t * self, int state) {
+  if (unlikely(_pthread_tid_offset == 0))
+    FAIL;
+
+  unsigned char bit   = 1 << (self->tid & 7);
+  size_t        index = self->tid >> 3;
+
+  if (state) {
+    _tids_int[index] |= bit;
+  } else {
+    _tids_int[index] &= ~bit;
+  }
+
+  SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+int
+py_thread__is_interrupted(py_thread_t * self) {
+  if (unlikely(_pthread_tid_offset == 0))
+    return FALSE;
+
+  return _tids_int[self->tid >> 3] & (1 << (self->tid & 7));
 }
 
 // ----------------------------------------------------------------------------
@@ -555,7 +588,7 @@ py_thread__save_kernel_stack(py_thread_t * self) {
 
   _kstacks[self->tid] = (char *) calloc(1, MAX_STACK_FILE_SIZE);
   if (read(fd, _kstacks[self->tid], MAX_STACK_FILE_SIZE) == -1) {
-    log_e("stack: filed to read %s", stack_path);
+    log_e("stack: failed to read %s", stack_path);
     close(fd);
     FAIL;
   };
@@ -573,6 +606,8 @@ _py_thread__unwind_kernel_frame_stack(py_thread_t * self) {
 
   log_t("linux: unwinding kernel stack");
 
+  stack_kernel_reset();
+
   for (;;) {
     char * eol = strchr(line, '\n');
     if (!isvalid(eol))
@@ -584,9 +619,8 @@ _py_thread__unwind_kernel_frame_stack(py_thread_t * self) {
       char * e = strchr(++b, '+');
       if (isvalid(e))
         *e = 0;
-      strcpy(_stack[_stackp].code.scope, ++b);
-      strcpy(_stack[_stackp].code.filename, "kernel");
-      _stackp++;  // TODO: Decide whether to decremet this by 2 before returning.
+
+      stack_kernel_push(strdup(++b));
     }
     line = eol + 1;
   }
@@ -596,14 +630,20 @@ _py_thread__unwind_kernel_frame_stack(py_thread_t * self) {
 
 
 // ----------------------------------------------------------------------------
+static char _native_buf[MAXLEN];
+
 static inline int
 _py_thread__unwind_native_frame_stack(py_thread_t * self) {
-  void *context = _tids[self->tid];
   unw_cursor_t cursor;
   unw_word_t   offset, pc;
 
+  lru_cache_t * cache   = self->proc->frame_cache;
+  void        * context = _tids[self->tid];
+
   if (unw_init_remote(&cursor, self->proc->unwind.as, context))
     FAIL;
+
+  stack_native_reset();
 
   do {
     if (unw_get_reg(&cursor, UNW_REG_IP, &pc)) {
@@ -611,21 +651,43 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
       FAIL;
     }
 
-    if (unw_get_proc_name(&cursor, _stack[_stackp].code.scope, MAXLEN, &offset) == 0) {
-      // To retrieve source name and line number we would need to
-      // - resolve the PC to a map to get the binary path
-      // - use the offset with the binary to get the line number from DWARF (see
-      //   https://kernel.googlesource.com/pub/scm/linux/kernel/git/hjl/binutils/+/hjl/secondary/binutils/addr2line.c)
-      _stack[_stackp].code.lineno = offset;
-    }
-    else {
-      strcpy(_stack[_stackp].code.scope, "<unnamed>");
-      _stack[_stackp].code.lineno = 0;
-    }
-    sprintf(_stack[_stackp].code.filename, "native@%lx", pc);
+    #ifdef DEBUG
+    _frame_cache_total++;
+    #endif
 
-    _stackp++;
-  } while (_stackp < MAX_STACK_SIZE && unw_step(&cursor) > 0);
+    frame_t * frame = lru_cache__maybe_hit(cache, pc);
+    if (!isvalid(frame)) {
+      #ifdef DEBUG
+      _frame_cache_miss++;
+      #endif
+      char * scope, * filename;
+      if (unw_get_proc_name(&cursor, _native_buf, MAXLEN, &offset) == 0) {
+        // To retrieve source name and line number we would need to
+        // - resolve the PC to a map to get the binary path
+        // - use the offset with the binary to get the line number from DWARF (see
+        //   https://kernel.googlesource.com/pub/scm/linux/kernel/git/hjl/binutils/+/hjl/secondary/binutils/addr2line.c)
+        scope = strdup(_native_buf);
+      }
+      else {
+        scope = strdup("<unnamed>");
+        offset = 0;
+      }
+      sprintf(_native_buf, "native@%lx", pc);
+      filename = strdup(_native_buf);
+
+      frame = frame_new(filename, scope, offset);
+      if (!isvalid(frame)) {
+        log_ie("Failed to make native frame");
+        sfree(filename);
+        sfree(scope);
+        FAIL;
+      }
+
+      lru_cache__store(cache, (key_dt) pc, (value_t) frame);
+    }
+
+    stack_native_push(frame);
+  } while (!stack_native_full() && unw_step(&cursor) > 0);
   
   SUCCESS;
 }
@@ -639,7 +701,6 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   PyThreadState ts;
 
   self->invalid      = 1;
-  self->stack_height = 0;
 
   if (fail(copy_from_raddr(raddr, ts))) {
     log_ie("Cannot read remote PyThreadState");
@@ -650,12 +711,9 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
 
   self->raddr.pid  = raddr->pid;
   self->raddr.addr = raddr->addr;
-
+  
+  self->top_frame = V_FIELD(void*, ts, py_thread, o_frame);
    
-  if (isvalid(self->top_frame = V_FIELD(void*, ts, py_thread, o_frame))) {
-    self->stack_height = 1;
-  }
-
   self->next_raddr.pid  = raddr->pid;
   self->next_raddr.addr = V_FIELD(void*, ts, py_thread, o_next) == raddr->addr \
     ? NULL \
@@ -751,7 +809,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   if (self->invalid)
     return;
 
-  if (self->stack_height == 0 && pargs.exclude_empty)
+  if (pargs.exclude_empty && stack_is_empty())
     // Skip if thread has no frames and we want to exclude empty threads
     return;
 
@@ -771,15 +829,11 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     if (!pargs.full && is_idle && pargs.sleepless) {
       #ifdef NATIVE
       // If we don't sample the threads stall :(
-      _stackp = 0;
       _py_thread__unwind_native_frame_stack(self);
       #endif
       return;
     }
   }
-
-  // Reset the frame stack before unwinding
-  _stackp = 0;
 
   #ifdef NATIVE
 
@@ -793,7 +847,6 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   if (fail(_py_thread__unwind_native_frame_stack(self)))
     return;
 
-  size_t basep = _stackp;
   // Update the thread state to improve guarantees that it will be in sync with
   // the native stack just collected
   py_thread__fill_from_raddr(self, &self->raddr, self->proc);
@@ -802,44 +855,51 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   // Group entries by thread.
   fprintf(pargs.output_file, SAMPLE_HEAD, self->proc->pid, self->tid);
 
-  if (self->stack_height) {
+  if (isvalid(self->top_frame)) {
     if (fail(_py_thread__unwind_frame_stack(self))) {
       fprintf(pargs.output_file, ";:INVALID:");
       stats_count_error();
     }
-
-    #ifndef NATIVE
-    // Append frames
-    while (_stackp > 0) {
-      py_code_t code = _stack[--_stackp].code;
-      fprintf(pargs.output_file, pargs.format, code.filename, code.scope, code.lineno);
-    }
-    #endif
   }
 
   #ifdef NATIVE
 
-  register int i = _stackp;
-  register int j = basep;
-
-  py_code_t * code;
-  while (j-- > 0) {
-    if (strstr(_stack[j].code.scope, "PyEval_EvalFrame")) {
-      code = ((i <= basep) ? &(_stack[j].code) : &(_stack[--i].code));
+  while (!stack_native_is_empty()) {
+    frame_t * native_frame = stack_native_pop();
+    if (!isvalid(native_frame)) {
+      log_e("Invalid native frame");
+      break;
+    }
+    if (!stack_is_empty() && strstr(native_frame->scope, "PyEval_EvalFrameDefault")) {
+      // TODO: if the py stack is empty we have a mismatch.
+      frame_t * frame = stack_pop();
+      fprintf(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
     }
     else {
-      code = &(_stack[j].code);
+      fprintf(pargs.output_file, pargs.format, native_frame->filename, native_frame->scope, native_frame->line);
     }
-    fprintf(pargs.output_file, pargs.format, code->filename, code->scope, code->lineno);
   }
-  if (i != basep) {
-    log_e("Stack mismatch: left with %d Python frames after interleaving", i - basep);
+  if (!stack_is_empty()) {
+    log_e("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
     austin_errno = ETHREADINV;
     #ifdef DEBUG
-    fprintf(pargs.output_file, ";:%ld FRAMES LEFT:", i - basep);
+    fprintf(pargs.output_file, ";:%ld FRAMES LEFT:", stack_pointer());
     #endif
   }
+  while (!stack_kernel_is_empty()) {
+    char * kernel_frame = stack_kernel_pop();
+    if (isvalid(kernel_frame)) {
+      fprintf(pargs.output_file, pargs.format, "kernel", kernel_frame, 0);
+      free(kernel_frame);
+    }
+  }
+  #else
+  while (!stack_is_empty()) {
+    frame_t * frame = stack_pop();
+    fprintf(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
+  }
   #endif
+
 
   if (pargs.gc && py_proc__is_gc_collecting(self->proc) == TRUE) {
     fprintf(pargs.output_file, ";:GC:");
@@ -871,8 +931,7 @@ py_thread_allocate(void) {
   if (isvalid(_stack))
     SUCCESS;
 
-  _stack = (py_frame_t *) calloc(MAX_STACK_SIZE, sizeof(py_frame_t));
-  if (!isvalid(_stack))
+  if (fail(stack_allocate(MAX_STACK_SIZE)))
     FAIL;
 
   #if defined PL_WIN
@@ -889,17 +948,31 @@ py_thread_allocate(void) {
   size_t max = pid_max();
   _tids = (void **) calloc(max, sizeof(void *));
   if (!isvalid(_tids))
-    FAIL;
+    goto failed;
 
-  _tids_idle = (unsigned char *) calloc(max >> 8, sizeof(unsigned char));
+  _tids_idle = (unsigned char *) calloc(max >> 3, sizeof(unsigned char));
   if (!isvalid(_tids_idle))
-    FAIL;
+    goto failed;
+
+  _tids_int = (unsigned char *) calloc(max >> 3, sizeof(unsigned char));
+  if (!isvalid(_tids_int))
+    goto failed;
 
   if (pargs.kernel) {
     _kstacks = (char **) calloc(max, sizeof(char *));
     if (!isvalid(_kstacks))
-      FAIL;
+      goto failed;
   }
+  goto ok;
+
+failed:
+  sfree(_tids);
+  sfree(_tids_idle);
+  sfree(_tids_int);
+  sfree(_kstacks);
+  FAIL;
+
+ok:
   #endif
 
   SUCCESS;
@@ -913,7 +986,25 @@ py_thread_free(void) {
   sfree(_pi_buffer);
   #endif
 
-  sfree(_stack);
+  log_d(
+    "Frame cache hit ratio: %d/%d (%0.2f%%)\n",
+    _frame_cache_total - _frame_cache_miss,
+    _frame_cache_total,
+    (_frame_cache_total - _frame_cache_miss) * 100.0 / _frame_cache_total
+  );
+
+  #ifdef DEBUG
+  if (_frames_total) {
+    log_d(
+      "Frame heaps hit ratio: %d/%d (%0.2f%%)\n",
+      _frames_total - _frames_miss,
+      _frames_total,
+      (_frames_total - _frames_miss) * 100.0 / _frames_total
+    );
+  }
+  #endif
+
+  stack_deallocate();
   sfree(_frames.content);
   sfree(_frames_heap.content);
 
@@ -931,6 +1022,7 @@ py_thread_free(void) {
   }
   sfree(_tids);
   sfree(_tids_idle);
+  sfree(_tids_int);
   sfree(_kstacks);
   #endif
 }

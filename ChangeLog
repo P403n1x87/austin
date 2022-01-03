@@ -1,4 +1,17 @@
-2021-xx-xx v3.2.0
+2021-xx-xx v3.3.0
+
+  Overall performance and accuracy improvements
+
+  The heap allocation has been turned off by default
+
+  Bugfix: fixed heap size handling
+
+  Bugfix: fixed a potential segmentation fault issue in the austinp variant
+
+  Bugfix: fixed a potential deadlock scenario in austinp
+
+
+2021-12-16 v3.2.0
 
   Improved detection of invalid samples
 

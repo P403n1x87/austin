@@ -36,7 +36,7 @@
 #define ENULLDEV              4
 #define ECMDLINE              5
 
-// py_code_t
+// PyCodeObject
 #define ECODE                 ((1 << 3) + 0)
 #define ECODEFMT              ((1 << 3) + 1)
 #define ECODECMPT             ((1 << 3) + 2)
@@ -46,7 +46,7 @@
 #define ECODENOLINENO         ((1 << 3) + 6)
 #define ECODEUNICODE          ((1 << 3) + 7)
 
-// py_frame_t
+// PyFrameObject
 #define EFRAME                ((2 << 3) + 0)
 #define EFRAMENOCODE          ((2 << 3) + 1)
 #define EFRAMEINV             ((2 << 3) + 2)

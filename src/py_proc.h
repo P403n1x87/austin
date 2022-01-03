@@ -31,6 +31,7 @@
 #include <libunwind-ptrace.h>
 #endif
 
+#include "cache.h"
 #include "heap.h"
 #include "stats.h"
 
@@ -73,6 +74,8 @@ typedef struct {
   void          * gc_state_raddr;
 
   void          * is_raddr;
+
+  lru_cache_t   * frame_cache;
 
   // Temporal profiling support
   ctime_t         timestamp;
