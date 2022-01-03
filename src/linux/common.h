@@ -5,7 +5,7 @@
 //
 // Austin is a Python frame stack sampler for CPython.
 //
-// Copyright (c) 2018 Gabriele N. Tornetta <phoenix1987@gmail.com>.
+// Copyright (c) 2018-2021 Gabriele N. Tornetta <phoenix1987@gmail.com>.
 // All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -20,10 +20,24 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef AUSTIN_H
-#define AUSTIN_H
+#ifndef COMMON_H
+#define COMMON_H
 
-#define PROGRAM_NAME                    "austin"
-#define VERSION                         "3.3.0"
+#include <pthread.h>
+
+
+#define PTHREAD_BUFFER_SIZE          200
+static void * _pthread_buffer[PTHREAD_BUFFER_SIZE];
+
+#define read_pthread_t(pid, addr) (copy_memory(pid, addr, PTHREAD_BUFFER_SIZE * sizeof(void *), _pthread_buffer))
+
+
+struct _proc_extra_info {
+  unsigned int page_size;
+  char         statm_file[24];
+  pthread_t    wait_thread_id;
+  unsigned int pthread_tid_offset;
+};
+
 
 #endif

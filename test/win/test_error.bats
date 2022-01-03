@@ -30,7 +30,7 @@ load "common"
 @test "Test no arguments" {
   log "Test Austin with no arguments"
 
-  run src/austin
+  run ${AUSTIN}
 
   assert_success
   assert_output "Usage:"
@@ -39,7 +39,7 @@ load "common"
 @test "Test no command & PID" {
   log "Test Austin with no command nor PID"
 
-  run src/austin -C
+  run ${AUSTIN} -C
 
   assert_status 127
   assert_output "command to run or a PID"
@@ -48,16 +48,16 @@ load "common"
 @test "Test not Python" {
   log "Test Austin with a non-Python command"
 
-  run src/austin cat
+  run ${AUSTIN} cat
 
-  assert_status 33
-  assert_output "Cannot launch"
+  assert_status 3
+  assert_output "Cannot determine"
 }
 
 @test "Test not Python nor Python children" {
   log "Test Austin with a non-Python command that spawns no Python children"
 
-  run src/austin -C cat
+  run ${AUSTIN} -C cat
 
   assert_status 39
   assert_output "not a Python" || assert_output "Cannot launch"
@@ -66,7 +66,7 @@ load "common"
 @test "Test invalid command" {
   log "Test Austin with an invalid command"
 
-  run src/austin snafubar
+  run ${AUSTIN} snafubar
 
   assert_status 33
   assert_output "Cannot launch"
@@ -75,7 +75,7 @@ load "common"
 @test "Test invalid PID" {
   log "Test Austin with an invalid PID"
 
-  run src/austin -p 9999999
+  run ${AUSTIN} -p 9999999
 
   assert_status 36
   assert_output "Cannot attach"

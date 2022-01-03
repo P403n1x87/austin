@@ -32,9 +32,11 @@ AUSTIN=`test -f src/austin.exe && echo "src/austin.exe" || echo "austin.exe"`
 # -----------------------------------------------------------------------------
 
 function check_python {
-  if ! python -V; then skip "Python not found."; fi
+  version="${1}"
 
-  PYTHON="python"
+  if ! python$version -V; then skip "Python $version not found."; fi
+
+  PYTHON="python$version"
 }
 
 # -----------------------------------------------------------------------------

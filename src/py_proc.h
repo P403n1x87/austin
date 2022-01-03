@@ -54,6 +54,7 @@ typedef struct _proc_extra_info proc_extra_info;  // Forward declaration.
 
 typedef struct {
   pid_t           pid;
+  int             child;
 
   char          * bin_path;
   char          * lib_path;
@@ -104,11 +105,13 @@ typedef struct {
 /**
  * Create a new process object. Use it to start the process that needs to be
  * sampled from austin.
+ * 
+ * @param child  whether this is a child process.
  *
- * @return  a pointer to the newly created py_proc_t object.
+ * @return a pointer to the newly created py_proc_t object.
  */
 py_proc_t *
-py_proc_new(void);
+py_proc_new(int child);
 
 
 /**
@@ -129,12 +132,11 @@ py_proc__start(py_proc_t *, const char *, char **);
  *
  * @param py_proc_t *  the process object.
  * @param pid_t        the PID of the process to attach.
- * @param int          TRUE if this is a child process, FALSE otherwise.
  *
  * @return 0 on success.
  */
 int
-py_proc__attach(py_proc_t *, pid_t, int);
+py_proc__attach(py_proc_t *, pid_t);
 
 
 /**

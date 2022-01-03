@@ -23,24 +23,26 @@
 load "common"
 
 
-function invoke_austin {
-  check_python
+function where_austin {
+  local version="${1}"
 
-  log "Fork Multi-processing [Python]"
+  check_python $version
+
+  log "Where [Python $version]"
 
   # -------------------------------------------------------------------------
-  step "Profiling of multi-process program"
+  step "Where sleepy"
   # -------------------------------------------------------------------------
-    run $AUSTIN -i 1ms -C $PYTHON test/target_mp.py
+    $PYTHON test/sleepy.py &
+    sleep 1
+    run $AUSTIN -w $!
 
     assert_success
+    assert_output "Process"
+    assert_output "Thread"
+    assert_output "test/sleepy.py"
+    assert_output "<module>"
 
-    expected=3
-    n_procs=$( echo "$output" | sed -r 's/P([0-9]+);.+/\1/' | sort | uniq | wc -l )
-    assert "At least 3 parallel processes" "$n_procs -ge $expected"
-
-    assert_output "# multiprocess: on"
-    assert_output ".*test[\\]target_mp.py:do:[[:digit:]]*;.*test[\\]target_mp.py:fact:"
 }
 
 
@@ -48,6 +50,58 @@ function invoke_austin {
 # -- Test Cases
 # -----------------------------------------------------------------------------
 
-@test "Test Austin with Python" {
-  repeat 3 invoke_austin
+@test "Test Austin with Python 2.3" {
+  ignore
+	repeat 3 where_austin "2.3"
+}
+
+@test "Test Austin with Python 2.4" {
+  ignore
+	repeat 3 where_austin "2.4"
+}
+
+@test "Test Austin with Python 2.5" {
+	repeat 3 where_austin "2.5"
+}
+
+@test "Test Austin with Python 2.6" {
+  ignore "This test is known to fail"
+	repeat 3 where_austin "2.6"
+}
+
+@test "Test Austin with Python 2.7" {
+	repeat 3 where_austin "2.7"
+}
+
+@test "Test Austin with Python 3.3" {
+  ignore "No longer tested"
+	repeat 3 where_austin "3.3"
+}
+
+@test "Test Austin with Python 3.4" {
+	repeat 3 where_austin "3.4"
+}
+
+@test "Test Austin with Python 3.5" {
+	repeat 3 where_austin "3.5"
+}
+
+@test "Test Austin with Python 3.6" {
+  repeat 3 where_austin "3.6"
+}
+
+@test "Test Austin with Python 3.7" {
+  repeat 3 where_austin "3.7"
+}
+
+@test "Test Austin with Python 3.8" {
+  repeat 3 where_austin "3.8"
+}
+
+@test "Test Austin with Python 3.9" {
+  repeat 3 where_austin "3.9"
+}
+
+@test "Test Austin with Python 3.10" {
+  repeat 3 where_austin "3.10"
 }
