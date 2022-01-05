@@ -38,3 +38,7 @@ test_case() {
 @test "Test Austin: errors" {
   test_case error
 }
+
+@test "Test Austin: where" {
+  test_case where
+}

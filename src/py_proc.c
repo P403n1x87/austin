@@ -361,18 +361,26 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     raddr, V_FIELD(void *, is, py_is, o_tstate_head)
   );
 
-  // As an extra sanity check, verify that the thread state is valid
-  // raddr_t thread_raddr = { .pid = PROC_REF, .addr = V_FIELD(void *, is, py_is, o_tstate_head) };
-  // py_thread_t thread;
-  // if (fail(py_thread__fill_from_raddr(&thread, &thread_raddr, self))) {
-  //   log_d("Failed to fill thread structure");
-  //   FAIL;
-  // }
+  #if defined PL_LINUX
+  raddr_t thread_raddr = {PROC_REF, V_FIELD(void *, is, py_is, o_tstate_head)};
+  py_thread_t thread;
 
-  // if (thread.invalid) {
-  //   log_d("... but Head Thread State is invalid!");
-  //   FAIL;
-  // }
+  if (fail(py_thread__fill_from_raddr(&thread, &thread_raddr, self))) {
+    log_d("Failed to fill thread structure");
+    FAIL;
+  }
+
+  // Try to determine the TID by reading the remote struct pthread structure.
+  // We can then use this information to parse the appropriate procfs file and
+  // determine the native thread's running state.
+  while (isvalid(thread.raddr.addr)) {
+    if (success(_infer_tid_field_offset(&thread)))
+      SUCCESS;
+    py_thread__next(&thread);
+  }
+  log_d("tid field offset not ready");
+  FAIL;
+  #endif
 
   log_d("Stack trace constructed from possible interpreter state");
 
@@ -674,7 +682,8 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__run(py_proc_t * self, int try_once) {
+_py_proc__run(py_proc_t * self) {
+  int try_once = self->child;
   #ifdef DEBUG
   if (try_once == FALSE)
     log_d("Start up timeout: %d ms", pargs.timeout / 1000);
@@ -768,11 +777,12 @@ _py_proc__run(py_proc_t * self, int try_once) {
 
 // ----------------------------------------------------------------------------
 py_proc_t *
-py_proc_new() {
+py_proc_new(int child) {
   py_proc_t * py_proc = (py_proc_t *) calloc(1, sizeof(py_proc_t));
   if (!isvalid(py_proc))
     return NULL;
 
+  py_proc->child = child;
   py_proc->min_raddr = (void *) -1;
   py_proc->gc_state_raddr = NULL;
 
@@ -806,7 +816,7 @@ error:
 
 // ----------------------------------------------------------------------------
 int
-py_proc__attach(py_proc_t * self, pid_t pid, int child_process) {
+py_proc__attach(py_proc_t * self, pid_t pid) {
   log_d("Attaching to process with PID %d", pid);
 
   #if defined PL_WIN                                                   /* WIN */
@@ -821,7 +831,7 @@ py_proc__attach(py_proc_t * self, pid_t pid, int child_process) {
 
   self->pid = pid;
 
-  if (fail(_py_proc__run(self, child_process))) {
+  if (fail(_py_proc__run(self))) {
     #if defined PL_WIN
     if (fail(_py_proc__try_child_proc(self))) {
     #endif
@@ -960,7 +970,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
 
   log_d("New process created with PID %d", self->pid);
 
-  if (fail(_py_proc__run(self, FALSE))) {
+  if (fail(_py_proc__run(self))) {
     #if defined PL_WIN
     if (fail(_py_proc__try_child_proc(self))) {
     #endif

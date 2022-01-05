@@ -23,47 +23,25 @@
 load "common"
 
 
-function invoke_austin {
+function where_austin {
   local version="${1}"
 
   check_python $version
 
-  log "Fork [Python $version]"
+  log "Where [Python $version]"
 
   # -------------------------------------------------------------------------
-  step "Standard profiling"
+  step "Where sleepy"
   # -------------------------------------------------------------------------
-    run $AUSTIN -i 1ms -t 1s $PYTHON test/target34.py
+    $PYTHON test/sleepy.py &
+    sleep 1
+    run $AUSTIN -w $!
 
     assert_success
-    assert_output "# austin: [[:digit:]]*.[[:digit:]]*.[[:digit:]]*"
-    assert_output ".*target34.py:keep_cpu_busy:32"
-    assert_not_output "Unwanted"
-
-  # -------------------------------------------------------------------------
-  step "Memory profiling"
-  # -------------------------------------------------------------------------
-    run $AUSTIN -i 1000 -t 1000 -m $PYTHON test/target34.py
-
-    assert_success
-    assert_output ".*target34.py:keep_cpu_busy:32"
-
-  # -------------------------------------------------------------------------
-  step "Output file"
-  # -------------------------------------------------------------------------
-    run $AUSTIN -i 10000 -t 1000 -o /tmp/austin_out.txt $PYTHON test/target34.py
-
-    assert_success
-    assert_output "Unwanted"
-    assert_not_output ".*target34.py:keep_cpu_busy:32"
-    assert_file "/tmp/austin_out.txt" ".*target34.py:keep_cpu_busy:32"
-
-}
-
-# -----------------------------------------------------------------------------
-
-function teardown {
-  if [ -f /tmp/austin_out.txt ]; then rm /tmp/austin_out.txt; fi
+    assert_output "Process"
+    assert_output "Thread"
+    assert_output "sleepy.py"
+    assert_output "<module>"
 }
 
 
@@ -71,6 +49,6 @@ function teardown {
 # -- Test Cases
 # -----------------------------------------------------------------------------
 
-@test "Test Austin with Python" {
-  repeat 3 invoke_austin
+@test "Test Where mode" {
+  repeat 3 where_austin "3.9"
 }

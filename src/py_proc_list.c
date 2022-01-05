@@ -139,11 +139,11 @@ void
 py_proc_list__add_proc_children(py_proc_list_t * self, pid_t ppid) {
   for (register pid_t pid = 0; pid <= self->max_pid; pid++) {
     if (self->pid_table[pid] == ppid && !_py_proc_list__has_pid(self, pid)) {
-      py_proc_t * child_proc = py_proc_new();
+      py_proc_t * child_proc = py_proc_new(TRUE);
       if (child_proc == NULL)
         continue;
 
-      if (py_proc__attach(child_proc, pid, TRUE)) {
+      if (py_proc__attach(child_proc, pid)) {
         py_proc__destroy(child_proc);
         continue;
       }

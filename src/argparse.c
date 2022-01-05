@@ -43,6 +43,17 @@
 
 const char SAMPLE_FORMAT_NORMAL[]      = ";%s:%s:%d";
 const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s:%s;L%d";
+const char SAMPLE_FORMAT_WHERE[]       = "    \033[33;1m%2$s\033[0m (\033[36;1m%1$s\033[0m:\033[32;1m%3$d\033[0m)\n";
+#ifdef NATIVE
+const char SAMPLE_FORMAT_WHERE_NATIVE[]= "    \033[38;5;246m%2$s\033[0m (\033[38;5;248;1m%1$s\033[0m:\033[38;5;246m%3$d\033[0m)\n";
+#endif
+#if defined PL_WIN
+const char HEAD_FORMAT_DEFAULT[]       = "P%I64d;T%I64x";
+const char HEAD_FORMAT_WHERE[]         = "\n\n%3$s%4$s Process \033[35;1m%1$I64d\033[0m 🧵 Thread \033[34;1m%2$I64d\033[0m\n\n";
+#else
+const char HEAD_FORMAT_DEFAULT[]       = "P%d;T%ld";
+const char HEAD_FORMAT_WHERE[]         = "\n\n%3$s%4$s Process \033[35;1m%1$d\033[0m 🧵 Thread \033[34;1m%2$ld\033[0m\n\n";
+#endif
 
 
 // Globals for command line arguments
@@ -50,9 +61,14 @@ parsed_args_t pargs = {
   /* t_sampling_interval */ DEFAULT_SAMPLING_INTERVAL,
   /* timeout             */ DEFAULT_INIT_RETRY_CNT * 1000,
   /* attach_pid          */ 0,
+  /* where               */ 0,
   /* exclude_empty       */ 0,
   /* sleepless           */ 0,
   /* format              */ (char *) SAMPLE_FORMAT_NORMAL,
+  #ifdef NATIVE
+  /* native_format       */ (char *) SAMPLE_FORMAT_NORMAL,
+  #endif
+  /* head_format         */ (char *) HEAD_FORMAT_DEFAULT,
   /* full                */ 0,
   /* memory              */ 0,
   /* output_file         */ NULL,
@@ -212,7 +228,11 @@ static struct argp_option options[] = {
   },
   {
     "pid",          'p', "PID",         0,
-    "The the ID of the process to which Austin should attach."
+    "Attach to the process with the given PID."
+  },
+  {
+    "where",        'w', "PID",         0,
+    "Dump the stacks of all the threads within the process with the given PID."
   },
   {
     "output",       'o', "FILE",        0,
@@ -303,6 +323,9 @@ parse_opt (int key, char *arg, struct argp_state *state)
 
   case 'a':
     pargs.format = (char *) SAMPLE_FORMAT_ALTERNATIVE;
+    #ifdef NATIVE
+    pargs.native_format = pargs.format;
+    #endif
     break;
 
   case 'e':
@@ -362,6 +385,22 @@ parse_opt (int key, char *arg, struct argp_state *state)
     )
       argp_error(state, "the heap size must be a positive integer");
     pargs.heap <<= 20;
+    break;
+
+  case 'w':
+    if (str_to_num(arg, &l_pid) == 1 || l_pid <= 0)
+      argp_error(state, "invalid PID");
+    pargs.attach_pid = (pid_t) l_pid;
+    pargs.where = TRUE;
+
+    pargs.head_format = (char *) HEAD_FORMAT_WHERE;
+    pargs.format = (char *) SAMPLE_FORMAT_WHERE;
+    #ifdef NATIVE
+    pargs.native_format = (char *) SAMPLE_FORMAT_WHERE_NATIVE;
+    #endif
+    
+    // We use the exposure branch to emulate sampling once
+    pargs.exposure = 1;
     break;
 
   #ifdef NATIVE
@@ -519,12 +558,13 @@ static const char * help_msg = \
 "                             100). Accepted units: s, ms, us.\n"
 "  -m, --memory               Profile memory usage.\n"
 "  -o, --output=FILE          Specify an output file for the collected samples.\n"
-"  -p, --pid=PID              The the ID of the process to which Austin should\n"
-"                             attach.\n"
+"  -p, --pid=PID              Attach to the process with the given PID.\n"
 "  -P, --pipe                 Pipe mode. Use when piping Austin output.\n"
 "  -s, --sleepless            Suppress idle samples to estimate CPU time.\n"
 "  -t, --timeout=n_ms         Start up wait time in milliseconds (default is\n"
 "                             100). Accepted units: s, ms.\n"
+"  -w, --where=PID            Dump the stacks of all the threads within the\n"
+"                             process with the given PID.\n"
 "  -x, --exposure=n_sec       Sample for n_sec seconds only.\n"
 "  -?, --help                 Give this help list\n"
 "      --usage                Give a short usage message\n"
@@ -640,6 +680,22 @@ cb(const char opt, const char * arg) {
     ) {
       arg_error("invalid PID");
     }
+    break;
+
+  case 'w':
+    if (
+      str_to_num((char *) arg, (long *) &pargs.attach_pid) == 1 ||
+      pargs.attach_pid <= 0
+    ) {
+      arg_error("invalid PID");
+    }
+    pargs.where = TRUE;
+
+    pargs.head_format = (char *) HEAD_FORMAT_WHERE;
+    pargs.format = (char *) SAMPLE_FORMAT_WHERE;
+    
+    // We use the exposure branch to emulate sampling once
+    pargs.exposure = 1;
     break;
 
   case 'o':

@@ -35,6 +35,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "common.h"
+
 #ifdef NATIVE
 #include "../argparse.h"
 #endif
@@ -62,11 +64,6 @@
 #define ELF_SH_OFF(ehdr, i) /* as */ (ehdr->e_shoff + i * ehdr->e_shentsize)
 
 
-struct _proc_extra_info {
-  unsigned int page_size;
-  char         statm_file[24];
-  pthread_t    wait_thread_id;
-};
 
 
 union {
@@ -556,5 +553,40 @@ _py_proc__init(py_proc_t * self) {
   SUCCESS;
 } /* _py_proc__init */
 
+
+// Support for CPU time on Linux. We need to retrieve the TID from the the
+// struct pthread pointed to by the native thread ID stored by Python. We do not
+// have the definition of the structure, so we need to "guess" the offset of the
+// tid field within struct pthread.
+
+// ----------------------------------------------------------------------------
+static int
+_infer_tid_field_offset(py_thread_t * py_thread) {
+  if (fail(read_pthread_t(py_thread->raddr.pid, (void *) py_thread->tid))) {
+    log_d("Cannot copy pthread_t structure");
+    FAIL;
+  }
+
+  log_d("pthread_t at %p", py_thread->tid);
+
+  for (register int i = 0; i < PTHREAD_BUFFER_SIZE; i++) {
+    if (py_thread->raddr.pid == (uintptr_t) _pthread_buffer[i]) {
+      log_d("TID field offset: %d", i);
+      py_thread->proc->extra->pthread_tid_offset = i;
+      SUCCESS;
+    }
+  }
+
+  // Fall-back to smaller steps if we failed
+  for (register int i = 0; i < PTHREAD_BUFFER_SIZE * sizeof(uintptr_t) / sizeof(pid_t); i++) {
+    if (py_thread->raddr.pid == (pid_t) ((pid_t*) _pthread_buffer)[i]) {
+      log_d("TID field offset (from fall-back): %d", i);
+      py_thread->proc->extra->pthread_tid_offset = i;
+      SUCCESS;
+    }
+  }
+
+  FAIL;
+}
 
 #endif

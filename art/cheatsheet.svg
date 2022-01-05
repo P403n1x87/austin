@@ -756,9 +756,9 @@
      borderopacity="1.0"
      inkscape:pageopacity="1"
      inkscape:pageshadow="2"
-     inkscape:zoom="1.979899"
-     inkscape:cx="354.73748"
-     inkscape:cy="1022.7744"
+     inkscape:zoom="0.9899495"
+     inkscape:cx="195.32501"
+     inkscape:cy="503.18102"
      inkscape:document-units="mm"
      inkscape:current-layer="layer3"
      showgrid="false"
@@ -5448,17 +5448,17 @@
      inkscape:label="Footer"
      style="display:inline">
     <rect
-       style="display:inline;opacity:1;fill:#2b3e63;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1.15260661;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       style="display:inline;opacity:1;fill:#2b3e63;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:1.12182224;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
        id="rect1371"
        width="210"
-       height="30.427084"
+       height="28.823467"
        x="0"
-       y="266.57291" />
+       y="268.17651" />
     <g
        style="display:inline;opacity:1"
        inkscape:label="Layer 1"
        id="g2121-2"
-       transform="matrix(0.13803625,0,0,0.13803625,172.64096,254.62898)">
+       transform="matrix(0.12290635,0,0,0.12290635,175.90439,258.43432)">
       <g
          style="fill:#9c9c9c;fill-opacity:1;stroke:none;stroke-width:0.5291667;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1;filter:url(#filter1125-9)"
          id="g2097-1"
@@ -5533,14 +5533,14 @@
            style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:213.33334351px;font-family:'Action Is';-inkscape-font-specification:'Action Is';text-align:start;text-anchor:start;fill:url(#linearGradient2500);fill-opacity:1;stroke:none;stroke-width:4;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1">austin</flowPara></flowRoot>    </g>
     <path
        id="path9499"
-       d="m 65.402182,282.30856 c -0.352568,0.34215 -0.741564,0.28882 -1.112346,0.12749 -0.394198,-0.16457 -0.754573,-0.17498 -1.170889,0 -0.518444,0.22376 -0.793604,0.15872 -1.105842,-0.12749 -1.762839,-1.81489 -1.50264,-4.57949 0.500881,-4.68356 0.48592,0.0259 0.826128,0.26865 1.112346,0.28882 0.425423,-0.0865 0.832633,-0.33436 1.287979,-0.30184 0.547067,0.0442 0.956227,0.2602 1.229434,0.64854 -1.125356,0.67653 -0.858652,2.15965 0.174982,2.57596 -0.206856,0.54317 -0.472258,1.07983 -0.917196,1.47663 z m -1.814879,-4.70308 c -0.0527,-0.80661 0.601056,-1.47011 1.353027,-1.53517 0.103429,0.93021 -0.845642,1.62624 -1.353027,1.53517 z"
+       d="m 60.686537,282.50144 c -0.243841,0.23663 -0.512875,0.19975 -0.769312,0.0882 -0.272632,-0.11382 -0.521872,-0.12101 -0.809801,0 -0.358562,0.15476 -0.548866,0.10977 -0.764814,-0.0882 -1.2192,-1.2552 -1.039243,-3.16723 0.346416,-3.23921 0.336068,0.0179 0.57136,0.1858 0.769312,0.19975 0.294227,-0.0598 0.575859,-0.23124 0.890782,-0.20875 0.378357,0.0305 0.661337,0.17995 0.850291,0.44854 -0.77831,0.46789 -0.593854,1.49363 0.12102,1.78156 -0.143065,0.37567 -0.32662,0.74683 -0.634344,1.02126 z m -1.255192,-3.25271 c -0.03645,-0.55786 0.415698,-1.01675 0.935769,-1.06174 0.07153,0.64334 -0.584856,1.12472 -0.935769,1.06174 z"
        inkscape:connector-curvature="0"
-       style="fill:#e6f0ff;fill-opacity:1;stroke-width:0.00650494" />
+       style="fill:#e6f0ff;fill-opacity:1;stroke-width:0.00449889" />
     <path
        id="path13-3"
-       d="m 71.119604,276.99061 2.648198,-0.36066 9.29e-4,2.55435 -2.646889,0.015 z m 2.646935,2.48803 0.0019,2.55662 -2.646898,-0.36391 -1.57e-4,-2.20982 z m 0.321016,-2.89586 3.511258,-0.51246 v 3.08152 l -3.511258,0.0279 z m 3.512084,2.91989 -9.01e-4,3.06764 -3.511257,-0.49557 -0.0046,-2.57779 z"
+       d="m 64.640775,278.82348 1.831526,-0.24943 6.42e-4,1.76661 -1.83062,0.0103 z m 1.830652,1.72075 0.0013,1.76819 -1.830626,-0.25169 -1.09e-4,-1.52833 z m 0.222019,-2.00281 2.428428,-0.35442 v 2.13122 l -2.428428,0.0193 z m 2.428999,2.01943 -6.23e-4,2.12162 -2.428428,-0.34275 -0.0032,-1.78282 z"
        inkscape:connector-curvature="0"
-       style="fill:#e6f0ff;fill-opacity:1;stroke-width:0.07420535" />
+       style="fill:#e6f0ff;fill-opacity:1;stroke-width:0.05132131" />
   </g>
   <g
      inkscape:label="Content"
@@ -5600,67 +5600,67 @@
        inkscape:connector-curvature="0" />
     <text
        id="text1330"
-       y="87.016724"
+       y="96.536354"
        x="110.67267"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:end;letter-spacing:7.18872929px;word-spacing:0px;text-anchor:end;fill:#5c5c5c;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.3499999px;font-family:'action is';-inkscape-font-specification:'action is';text-align:start;letter-spacing:0px;text-anchor:start;fill:#5c5c5c;fill-opacity:1;stroke-width:0.26458332"
-         y="87.016724"
+         y="96.536354"
          x="110.67267"
          id="tspan1328"
          sodipodi:role="line">OUTPUT</tspan></text>
     <path
        inkscape:connector-curvature="0"
        id="path1332"
-       d="m 110.12579,89.177684 h 95.28158"
+       d="m 110.12579,98.697321 h 95.28158"
        style="fill:none;stroke:#236693;stroke-width:1.05833328;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:end;letter-spacing:7.18872929px;word-spacing:0px;text-anchor:end;fill:#5c5c5c;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="110.67267"
-       y="147.98775"
+       y="157.50723"
        id="text1336"><tspan
          sodipodi:role="line"
          id="tspan1334"
          x="110.67267"
-         y="147.98775"
+         y="157.50723"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.3499999px;font-family:'action is';-inkscape-font-specification:'action is';text-align:start;letter-spacing:0px;text-anchor:start;fill:#5c5c5c;fill-opacity:1;stroke-width:0.26458332">FORMAT</tspan></text>
     <path
        style="fill:none;stroke:#236693;stroke-width:1.05833328;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="m 110.12579,150.14936 h 95.28158"
+       d="m 110.12579,159.66903 h 95.28158"
        id="path1338"
        inkscape:connector-curvature="0" />
     <text
        id="text1342"
-       y="218.70673"
+       y="230.8774"
        x="6.1702833"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:end;letter-spacing:7.18872929px;word-spacing:0px;text-anchor:end;fill:#5c5c5c;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.3499999px;font-family:'action is';-inkscape-font-specification:'action is';text-align:start;letter-spacing:0px;text-anchor:start;fill:#5c5c5c;fill-opacity:1;stroke-width:0.26458332"
-         y="218.70673"
+         y="230.8774"
          x="6.1702833"
          id="tspan1340"
          sodipodi:role="line">Mode</tspan></text>
     <path
        inkscape:connector-curvature="0"
        id="path1344"
-       d="M 5.6234048,220.86835 H 100.90498"
+       d="M 5.6234048,233.03926 H 100.90498"
        style="fill:none;stroke:#236693;stroke-width:1.05833328;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        id="text1348"
-       y="224.33611"
+       y="232.26811"
        x="110.67267"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:end;letter-spacing:7.18872929px;word-spacing:0px;text-anchor:end;fill:#5c5c5c;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.3499999px;font-family:'action is';-inkscape-font-specification:'action is';text-align:start;letter-spacing:0px;text-anchor:start;fill:#5c5c5c;fill-opacity:1;stroke-width:0.26458332"
-         y="224.33611"
+         y="232.26811"
          x="110.67267"
          id="tspan1346"
          sodipodi:role="line">TOOLS</tspan></text>
     <path
        inkscape:connector-curvature="0"
        id="path1350"
-       d="m 110.12579,226.49834 h 95.28158"
+       d="m 110.12579,234.4305 h 95.28158"
        style="fill:none;stroke:#236693;stroke-width:1.05833328;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        xml:space="preserve"
@@ -5765,7 +5765,7 @@
          y="130.29233"
          x="5.8901877"
          id="tspan1460"
-         sodipodi:role="line">Attach to a running process</tspan></text>
+         sodipodi:role="line">Attach to a running process*</tspan></text>
     <rect
        y="132.16324"
        x="5.6229186"
@@ -5874,19 +5874,19 @@
    id="tspan1526">-p 123</tspan> -i 10ms</tspan></tspan></text>
     <text
        id="text1536"
-       y="188.96536"
+       y="202.19435"
        x="5.5122108"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"
        inkscape:export-xdpi="191.99664"
        inkscape:export-ydpi="191.99664"><tspan
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332"
-         y="188.96536"
+         y="202.19435"
          x="5.5122108"
          id="tspan1534"
          sodipodi:role="line">Set start-up timeout (on slow machines)</tspan></text>
     <rect
-       y="190.83626"
+       y="204.06525"
        x="5.2449455"
        height="6.4413304"
        width="95.000885"
@@ -5894,12 +5894,12 @@
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        id="text1546"
-       y="194.99504"
+       y="208.22403"
        x="6.741787"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332"
-         y="194.99504"
+         y="208.22403"
          x="6.741787"
          id="tspan1544"
          sodipodi:role="line">austin <tspan
@@ -5909,17 +5909,17 @@
    style="font-weight:normal;fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">-p 123</tspan> -t 1s</tspan></tspan></text>
     <text
        id="text1767"
-       y="226.99681"
+       y="239.16748"
        x="5.8901877"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332"
-         y="226.99681"
+         y="239.16748"
          x="5.8901877"
          id="tspan1765"
          sodipodi:role="line">Wall clock time</tspan></text>
     <rect
-       y="228.86771"
+       y="241.03838"
        x="5.6229186"
        height="6.4413304"
        width="95.000885"
@@ -5927,12 +5927,12 @@
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        id="text1775"
-       y="233.02649"
+       y="245.19716"
        x="7.1197639"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332"
-         y="233.02649"
+         y="245.19716"
          x="7.1197639"
          id="tspan1773"
          sodipodi:role="line">austin python myscript.py</tspan></text>
@@ -5940,12 +5940,12 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="5.8901877"
-       y="239.70287"
+       y="251.87354"
        id="text1779"><tspan
          sodipodi:role="line"
          id="tspan1777"
          x="5.8901877"
-         y="239.70287"
+         y="251.87354"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332">CPU time</tspan></text>
     <rect
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
@@ -5953,47 +5953,47 @@
        width="95.000885"
        height="6.4413304"
        x="5.6229186"
-       y="241.57376" />
+       y="253.74443" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="7.1197639"
-       y="245.73254"
+       y="257.90326"
        id="text1785"><tspan
          sodipodi:role="line"
          id="tspan1783"
          x="7.1197639"
-         y="245.73254"
+         y="257.90326"
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">austin <tspan
    style="font-weight:bold;fill:#eeff81;fill-opacity:1"
    id="tspan1787">-s</tspan> python myscript.py</tspan></text>
     <text
        id="text1795"
-       y="252.14703"
-       x="5.8901877"
+       y="29.710491"
+       x="110.21161"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332"
-         y="252.14703"
-         x="5.8901877"
+         y="29.710491"
+         x="110.21161"
          id="tspan1793"
          sodipodi:role="line">Memory</tspan></text>
     <rect
-       y="254.01793"
-       x="5.6229186"
+       y="31.581387"
+       x="109.94434"
        height="6.4413304"
        width="95.000885"
        id="rect1797"
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        id="text1803"
-       y="258.17679"
-       x="7.1197639"
+       y="35.740246"
+       x="111.44118"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332"
-         y="258.17679"
-         x="7.1197639"
+         y="35.740246"
+         x="111.44118"
          id="tspan1801"
          sodipodi:role="line">austin <tspan
    id="tspan1799"
@@ -6002,12 +6002,12 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="110.21161"
-       y="32.24485"
+       y="41.764481"
        id="text1807"><tspan
          sodipodi:role="line"
          id="tspan1805"
          x="110.21161"
-         y="32.24485"
+         y="41.764481"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332">Wall clock time and garbage collector</tspan></text>
     <rect
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
@@ -6015,33 +6015,33 @@
        width="95.000885"
        height="6.4413304"
        x="109.94434"
-       y="34.115746" />
+       y="43.635376" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="111.44118"
-       y="38.274582"
+       y="47.794212"
        id="text1815"><tspan
          sodipodi:role="line"
          id="tspan1813"
          x="111.44118"
-         y="38.274582"
+         y="47.794212"
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">austin <tspan
    style="font-weight:bold;fill:#eeff81;fill-opacity:1"
    id="tspan1811">-g</tspan> python myscript.py</tspan></text>
     <text
        id="text1819"
-       y="57.384239"
+       y="66.90387"
        x="110.21162"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332"
-         y="57.384239"
+         y="66.90387"
          x="110.21162"
          id="tspan1817"
          sodipodi:role="line">All metrics</tspan></text>
     <rect
-       y="59.255135"
+       y="68.774765"
        x="109.94434"
        height="6.4413304"
        width="95.000885"
@@ -6049,12 +6049,12 @@
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        id="text1827"
-       y="63.413918"
+       y="72.933548"
        x="111.44119"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332"
-         y="63.413918"
+         y="72.933548"
          x="111.44119"
          id="tspan1825"
          sodipodi:role="line">austin <tspan
@@ -6064,12 +6064,12 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="110.21162"
-       y="70.362953"
+       y="79.882584"
        id="text1831"><tspan
          sodipodi:role="line"
          id="tspan1829"
          x="110.21162"
-         y="70.362953"
+         y="79.882584"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332">All metrics and garbage collector</tspan></text>
     <rect
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
@@ -6077,35 +6077,35 @@
        width="95.000885"
        height="6.4413304"
        x="109.94434"
-       y="72.233894" />
+       y="81.753525" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="111.44119"
-       y="76.392708"
+       y="85.912338"
        id="text1839"><tspan
          sodipodi:role="line"
          id="tspan1837"
          x="111.44119"
-         y="76.392708"
+         y="85.912338"
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">austin <tspan
    style="font-weight:bold;fill:#eeff81;fill-opacity:1"
    id="tspan1835">-fg</tspan> -p 123</tspan></text>
     <text
        id="text1843"
-       y="93.727196"
+       y="103.24681"
        x="110.35671"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332"
-         y="93.727196"
+         y="103.24681"
          x="110.35671"
          id="tspan1841"
          sodipodi:role="line">Emit to STDOUT <tspan
    style="font-weight:normal;font-size:2.99861121px"
    id="tspan9831">(Python STDOUT suppressed)</tspan></tspan></text>
     <rect
-       y="95.598122"
+       y="105.11771"
        x="110.08945"
        height="6.4413304"
        width="95.000885"
@@ -6113,12 +6113,12 @@
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        id="text1851"
-       y="99.75692"
+       y="109.27655"
        x="111.58628"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332"
-         y="99.75692"
+         y="109.27655"
          x="111.58628"
          id="tspan1849"
          sodipodi:role="line">austin python -m mymodule</tspan></text>
@@ -6126,12 +6126,12 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="110.35671"
-       y="119.1333"
+       y="128.65288"
        id="text1855"><tspan
          sodipodi:role="line"
          id="tspan1853"
          x="110.35671"
-         y="119.1333"
+         y="128.65288"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332">Pipe to other tools <tspan
    style="font-weight:normal;font-size:2.99861121px"
    id="tspan9833">(Python STDOUT suppressed)</tspan></tspan></text>
@@ -6141,17 +6141,17 @@
        width="95.000885"
        height="6.4413304"
        x="110.08945"
-       y="121.00412" />
+       y="130.5237" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="111.58628"
-       y="125.16294"
+       y="134.68246"
        id="text1861"><tspan
          sodipodi:role="line"
          id="tspan1859"
          x="111.58628"
-         y="125.16294"
+         y="134.68246"
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">austin <tspan
    style="font-weight:bold;fill:#eeff81;fill-opacity:1"
    id="tspan9869">-P</tspan> ./myscript.py <tspan
@@ -6161,12 +6161,12 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="110.35671"
-       y="154.97858"
+       y="164.49806"
        id="text1871"><tspan
          sodipodi:role="line"
          id="tspan1869"
          x="110.35671"
-         y="154.97858"
+         y="164.49806"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332">Default</tspan></text>
     <rect
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
@@ -6174,31 +6174,31 @@
        width="95.000885"
        height="6.4413304"
        x="110.08945"
-       y="156.8494" />
+       y="166.36888" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="111.58628"
-       y="161.00815"
+       y="170.52763"
        id="text1877"><tspan
          sodipodi:role="line"
          id="tspan1875"
          x="111.58628"
-         y="161.00815"
+         y="170.52763"
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">austin ./myscript.py</tspan></text>
     <text
        id="text1881"
-       y="183.17917"
+       y="192.69865"
        x="110.35671"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332"
-         y="183.17917"
+         y="192.69865"
          x="110.35671"
          id="tspan1879"
          sodipodi:role="line">Alternative</tspan></text>
     <rect
-       y="185.05008"
+       y="194.56956"
        x="110.08945"
        height="6.4413304"
        width="95.000885"
@@ -6206,12 +6206,12 @@
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        id="text1889"
-       y="189.20883"
+       y="198.72832"
        x="111.58628"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332"
-         y="189.20883"
+         y="198.72832"
          x="111.58628"
          id="tspan1887"
          sodipodi:role="line">austin <tspan
@@ -6223,9 +6223,9 @@
        width="55.931793"
        height="3.96875"
        x="110.46354"
-       y="174.61496" />
+       y="184.13445" />
     <rect
-       y="174.61496"
+       y="184.13445"
        x="166.93866"
        height="3.96875"
        width="37.019398"
@@ -6233,12 +6233,12 @@
        style="opacity:1;fill:#00bd19;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.59863174;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        id="text1897"
-       y="177.37228"
+       y="186.89177"
        x="110.96257"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-size:2.82222223px;fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332"
-         y="177.37228"
+         y="186.89177"
          x="110.96257"
          id="tspan1895"
          sodipodi:role="line">foomodule:foo:42</tspan></text>
@@ -6246,15 +6246,15 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="167.71144"
-       y="177.37228"
+       y="186.89177"
        id="text1901"><tspan
          sodipodi:role="line"
          id="tspan1899"
          x="167.71144"
-         y="177.37228"
+         y="186.89177"
          style="font-size:2.82222223px;fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">foomodule:foo:43</tspan></text>
     <rect
-       y="170.14514"
+       y="179.66463"
        x="110.46354"
        height="3.96875"
        width="45.68787"
@@ -6264,12 +6264,12 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="110.96257"
-       y="172.9025"
+       y="182.42198"
        id="text1907"><tspan
          sodipodi:role="line"
          id="tspan1905"
          x="110.96257"
-         y="172.9025"
+         y="182.42198"
          style="font-size:2.82222223px;fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">barmodule:bar:13</tspan></text>
     <rect
        style="opacity:1;fill:#ffa45f;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.45443353;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
@@ -6277,9 +6277,9 @@
        width="21.332933"
        height="3.96875"
        x="166.94833"
-       y="170.14514" />
+       y="179.66463" />
     <rect
-       y="165.68037"
+       y="175.19986"
        x="110.46354"
        height="3.96875"
        width="21.332933"
@@ -6291,9 +6291,9 @@
        width="11.62367"
        height="3.96875"
        x="132.4334"
-       y="165.68037" />
+       y="175.19986" />
     <rect
-       y="211.52411"
+       y="221.04359"
        x="110.46354"
        height="3.96875"
        width="93.49453"
@@ -6305,17 +6305,17 @@
        width="37.019398"
        height="3.96875"
        x="166.93866"
-       y="207.11417" />
+       y="216.63365" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="110.96257"
-       y="214.28145"
+       y="223.80093"
        id="text1921"><tspan
          sodipodi:role="line"
          id="tspan1919"
          x="110.96257"
-         y="214.28145"
+         y="223.80093"
          style="font-size:2.82222223px;fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">foomodule:foo</tspan></text>
     <rect
        style="opacity:1;fill:#6c5fff;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.66503656;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
@@ -6323,20 +6323,20 @@
        width="45.68787"
        height="3.96875"
        x="110.46354"
-       y="202.7075" />
+       y="212.22699" />
     <text
        id="text1931"
-       y="205.67574"
+       y="215.19522"
        x="110.96257"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-size:2.82222223px;fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332"
-         y="205.67574"
+         y="215.19522"
          x="110.96257"
          id="tspan1929"
          sodipodi:role="line">barmodule:bar</tspan></text>
     <rect
-       y="202.7075"
+       y="212.22699"
        x="166.94833"
        height="3.96875"
        width="21.332933"
@@ -6348,16 +6348,16 @@
        width="21.332933"
        height="3.96875"
        x="110.46354"
-       y="193.97156" />
+       y="203.49104" />
     <rect
-       y="193.97156"
+       y="203.49104"
        x="132.4334"
        height="3.96875"
        width="11.62367"
        id="rect1937"
        style="opacity:1;fill:#c05fff;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.33544144;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <rect
-       y="207.11417"
+       y="216.63365"
        x="110.46354"
        height="3.96875"
        width="56.059948"
@@ -6365,12 +6365,12 @@
        style="opacity:1;fill:#a0a0a0;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.73666734;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        id="text1943"
-       y="209.8875"
+       y="219.40698"
        x="110.96257"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-size:2.82222223px;fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332"
-         y="209.8875"
+         y="219.40698"
          x="110.96257"
          id="tspan1941"
          sodipodi:role="line">L42</tspan></text>
@@ -6378,12 +6378,12 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="167.61176"
-       y="209.8875"
+       y="219.40698"
        id="text1947"><tspan
          sodipodi:role="line"
          id="tspan1945"
          x="167.61176"
-         y="209.8875"
+         y="219.40698"
          style="font-size:2.82222223px;fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">L43</tspan></text>
     <rect
        style="opacity:1;fill:#a0a0a0;fill-opacity:1;fill-rule:nonzero;stroke:none;stroke-width:0.66470248;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
@@ -6391,17 +6391,17 @@
        width="45.641979"
        height="3.96875"
        x="110.46354"
-       y="198.26018" />
+       y="207.77966" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="110.96257"
-       y="201.03351"
+       y="210.55299"
        id="text1953"><tspan
          sodipodi:role="line"
          id="tspan1951"
          x="110.96257"
-         y="201.03351"
+         y="210.55299"
          style="font-size:2.82222223px;fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">L13</tspan></text>
     <text
        xml:space="preserve"
@@ -6436,18 +6436,18 @@
    id="tspan1963"> -x 3s</tspan> ./myscript.py</tspan></text>
     <text
        id="text8922"
-       y="273.63858"
+       y="275.75528"
        x="49.886612"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#e6f0ff;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
-         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:4.23333311px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.26458332"
-         y="273.63858"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.88055563px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.26458332"
+         y="275.75528"
          x="49.886612"
          id="tspan8920"
          sodipodi:role="line">Supported platforms</tspan></text>
     <g
        id="g9199"
-       transform="matrix(0.00757744,0,0,0.00757744,50.103343,276.06274)">
+       transform="matrix(0.00524065,0,0,0.00524065,50.105676,278.18175)">
       <path
          style="fill:#202020;fill-opacity:1"
          id="path3"
@@ -6514,7 +6514,7 @@
          id="tspan9518"
          x="49.886612"
          y="288.56863"
-         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:4.23333311px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.26458332">Supported interpreters</tspan></text>
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.88055556px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.26458332">Supported interpreters</tspan></text>
     <text
        id="text9524"
        y="293.48233"
@@ -6525,7 +6525,7 @@
          y="293.48233"
          x="49.886612"
          id="tspan9522"
-         sodipodi:role="line">2.7 and 3.3 thru 3.10</tspan></text>
+         sodipodi:role="line">2.3 thru 2.7 and 3.3 thru 3.10</tspan></text>
     <text
        id="text9528"
        y="34.646587"
@@ -6737,17 +6737,17 @@
        id="path9718" />
     <text
        id="text9821"
-       y="44.699707"
+       y="54.219337"
        x="110.21162"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332"
-         y="44.699707"
+         y="54.219337"
          x="110.21162"
          id="tspan9819"
          sodipodi:role="line">CPU time and garbage collector</tspan></text>
     <rect
-       y="46.570648"
+       y="56.090279"
        x="109.94434"
        height="6.4413304"
        width="95.000885"
@@ -6755,12 +6755,12 @@
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        id="text9829"
-       y="50.729462"
+       y="60.249092"
        x="111.44119"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332"
-         y="50.729462"
+         y="60.249092"
          x="111.44119"
          id="tspan9827"
          sodipodi:role="line">austin <tspan
@@ -6770,12 +6770,12 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="110.35671"
-       y="106.4272"
+       y="115.94681"
        id="text9839"><tspan
          sodipodi:role="line"
          id="tspan9837"
          x="110.35671"
-         y="106.4272"
+         y="115.94681"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332">Redirect to file <tspan
    id="tspan9835"
    style="font-weight:normal;font-size:2.99861121px">(Python STDOUT suppressed)</tspan></tspan></text>
@@ -6785,35 +6785,35 @@
        width="95.000885"
        height="6.4413304"
        x="110.08945"
-       y="108.29811" />
+       y="117.81771" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="111.58628"
-       y="112.45691"
+       y="121.97652"
        id="text9845"><tspan
          sodipodi:role="line"
          id="tspan9843"
          x="111.58628"
-         y="112.45691"
+         y="121.97652"
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">austin -p 123 <tspan
    style="font-weight:bold;fill:#eeff81;fill-opacity:1"
    id="tspan9847">&gt; /path/to/samples.austin</tspan></tspan></text>
     <text
        id="text9853"
-       y="131.83324"
+       y="141.35272"
        x="110.35671"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332"
-         y="131.83324"
+         y="141.35272"
          x="110.35671"
          id="tspan9851"
          sodipodi:role="line">Emit to file <tspan
    id="tspan9849"
    style="font-weight:normal;font-size:2.99861121px">(Python STDOUT preserved)</tspan></tspan></text>
     <rect
-       y="133.70404"
+       y="143.22353"
        x="110.08945"
        height="6.4413304"
        width="95.000885"
@@ -6821,12 +6821,12 @@
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        id="text9861"
-       y="137.86281"
+       y="147.38229"
        x="111.58628"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332"
-         y="137.86281"
+         y="147.38229"
          x="111.58628"
          id="tspan9859"
          sodipodi:role="line">austin <tspan
@@ -6834,17 +6834,17 @@
    style="font-weight:bold;fill:#eeff81;fill-opacity:1">-o /path/to/samples.austin</tspan> -p 123</tspan></text>
     <text
        id="text9877"
-       y="231.41751"
+       y="239.34952"
        x="110.39257"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332"
-         y="231.41751"
+         y="239.34952"
          x="110.39257"
          id="tspan9875"
          sodipodi:role="line">Austin TUI</tspan></text>
     <rect
-       y="233.28841"
+       y="241.22041"
        x="110.12531"
        height="6.4413304"
        width="95.000885"
@@ -6917,12 +6917,12 @@
        id="path9720" />
     <text
        id="text9885"
-       y="237.44719"
+       y="245.3792"
        x="111.62214"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332"
-         y="237.44719"
+         y="245.3792"
          x="111.62214"
          id="tspan9883"
          sodipodi:role="line"><tspan
@@ -6932,12 +6932,12 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="110.39257"
-       y="244.11734"
+       y="252.04935"
        id="text9924"><tspan
          sodipodi:role="line"
          id="tspan9922"
          x="110.39257"
-         y="244.11734"
+         y="252.04935"
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332">Austin VS Code</tspan></text>
     <rect
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
@@ -6945,11 +6945,11 @@
        width="95.000885"
        height="6.4413304"
        x="110.12531"
-       y="245.98824" />
+       y="253.92024" />
     <g
        style="display:inline;opacity:0.5"
        id="g9948"
-       transform="matrix(0.00486693,0,0,0.00486693,190.03149,247.09741)">
+       transform="matrix(0.00486693,0,0,0.00486693,190.03149,255.02957)">
       <path
          style="fill:#202020;fill-opacity:1"
          id="path9928"
@@ -7008,29 +7008,29 @@
     </g>
     <path
        id="path9950"
-       d="m 197.98528,251.10905 c -0.22646,0.21976 -0.4763,0.18549 -0.71445,0.0819 -0.25319,-0.1057 -0.48466,-0.11239 -0.75206,0 -0.33299,0.14372 -0.50972,0.10195 -0.71027,-0.0819 -1.13226,-1.1657 -0.96514,-2.94139 0.32171,-3.00822 0.3121,0.0166 0.53062,0.17255 0.71445,0.1855 0.27325,-0.0556 0.5348,-0.21476 0.82727,-0.19388 0.35137,0.0284 0.61417,0.16713 0.78965,0.41657 -0.72281,0.43452 -0.5515,1.38713 0.11239,1.65451 -0.13287,0.34887 -0.30333,0.69357 -0.58911,0.94843 z m -1.16568,-3.02076 c -0.0339,-0.51808 0.38605,-0.94424 0.86904,-0.98603 0.0664,0.59746 -0.54315,1.04452 -0.86904,0.98603 z"
+       d="m 197.98528,259.04121 c -0.22646,0.21976 -0.4763,0.18549 -0.71445,0.0819 -0.25319,-0.1057 -0.48466,-0.11239 -0.75206,0 -0.33299,0.14372 -0.50972,0.10195 -0.71027,-0.0819 -1.13226,-1.1657 -0.96514,-2.94139 0.32171,-3.00822 0.3121,0.0166 0.53062,0.17255 0.71445,0.1855 0.27325,-0.0556 0.5348,-0.21476 0.82727,-0.19388 0.35137,0.0284 0.61417,0.16713 0.78965,0.41657 -0.72281,0.43452 -0.5515,1.38713 0.11239,1.65451 -0.13287,0.34887 -0.30333,0.69357 -0.58911,0.94843 z m -1.16568,-3.02076 c -0.0339,-0.51808 0.38605,-0.94424 0.86904,-0.98603 0.0664,0.59746 -0.54315,1.04452 -0.86904,0.98603 z"
        inkscape:connector-curvature="0"
        style="display:inline;opacity:0.5;fill:#e6f0ff;fill-opacity:1;stroke-width:0.00417808" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:-0.13229167px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="111.62214"
-       y="250.14702"
+       y="258.07922"
        id="text9954"><tspan
          sodipodi:role="line"
          id="tspan9952"
          x="111.62214"
-         y="250.14702"
+         y="258.07922"
          style="font-size:3.35138893px;letter-spacing:-0.079375px;fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332"><tspan
    style="font-weight:bold;fill:#eeff81;fill-opacity:1"
    id="tspan9964">code</tspan> --install-extension p403n1x87.austin-vscode</tspan></text>
     <path
        id="path9956"
-       d="m 199.785,247.69337 1.70092,-0.23165 5.9e-4,1.64064 -1.70008,0.01 z m 1.7001,1.59804 9.2e-4,1.6421 -1.70008,-0.23373 -1e-4,-1.41936 z m 0.20619,-1.85999 2.25526,-0.32915 v 1.97924 l -2.25526,0.0179 z m 2.25579,1.87543 -5.1e-4,1.97032 -2.25525,-0.3183 -0.003,-1.6557 z"
+       d="m 199.785,255.62553 1.70092,-0.23165 5.9e-4,1.64064 -1.70008,0.01 z m 1.7001,1.59804 9.2e-4,1.6421 -1.70008,-0.23373 -1e-4,-1.41936 z m 0.20619,-1.85999 2.25526,-0.32915 v 1.97924 l -2.25526,0.0179 z m 2.25579,1.87543 -5.1e-4,1.97032 -2.25525,-0.3183 -0.003,-1.6557 z"
        inkscape:connector-curvature="0"
        style="display:inline;opacity:0.5;fill:#e6f0ff;fill-opacity:1;stroke-width:0.0476616" />
     <g
-       transform="matrix(0.00486693,0,0,0.00486693,190.03149,234.44984)"
+       transform="matrix(0.00486693,0,0,0.00486693,190.03149,242.382)"
        id="g2074"
        style="display:inline;opacity:0.5">
       <path
@@ -7092,15 +7092,15 @@
     <path
        style="display:inline;opacity:0.5;fill:#e6f0ff;fill-opacity:1;stroke-width:0.00417808"
        inkscape:connector-curvature="0"
-       d="m 197.98528,238.46148 c -0.22646,0.21976 -0.4763,0.18549 -0.71445,0.0819 -0.25319,-0.1057 -0.48466,-0.11239 -0.75206,0 -0.33299,0.14372 -0.50972,0.10195 -0.71027,-0.0819 -1.13226,-1.1657 -0.96514,-2.94139 0.32171,-3.00822 0.3121,0.0166 0.53062,0.17255 0.71445,0.1855 0.27325,-0.0556 0.5348,-0.21476 0.82727,-0.19388 0.35137,0.0284 0.61417,0.16713 0.78965,0.41657 -0.72281,0.43452 -0.5515,1.38713 0.11239,1.65451 -0.13287,0.34887 -0.30333,0.69357 -0.58911,0.94843 z m -1.16568,-3.02076 c -0.0339,-0.51808 0.38605,-0.94424 0.86904,-0.98603 0.0664,0.59746 -0.54315,1.04452 -0.86904,0.98603 z"
+       d="m 197.98528,246.39364 c -0.22646,0.21976 -0.4763,0.18549 -0.71445,0.0819 -0.25319,-0.1057 -0.48466,-0.11239 -0.75206,0 -0.33299,0.14372 -0.50972,0.10195 -0.71027,-0.0819 -1.13226,-1.1657 -0.96514,-2.94139 0.32171,-3.00822 0.3121,0.0166 0.53062,0.17255 0.71445,0.1855 0.27325,-0.0556 0.5348,-0.21476 0.82727,-0.19388 0.35137,0.0284 0.61417,0.16713 0.78965,0.41657 -0.72281,0.43452 -0.5515,1.38713 0.11239,1.65451 -0.13287,0.34887 -0.30333,0.69357 -0.58911,0.94843 z m -1.16568,-3.02076 c -0.0339,-0.51808 0.38605,-0.94424 0.86904,-0.98603 0.0664,0.59746 -0.54315,1.04452 -0.86904,0.98603 z"
        id="path2076" />
     <path
        style="display:inline;opacity:0.5;fill:#e6f0ff;fill-opacity:1;stroke-width:0.0476616"
        inkscape:connector-curvature="0"
-       d="m 199.785,235.0458 1.70092,-0.23165 5.9e-4,1.64064 -1.70008,0.01 z m 1.7001,1.59804 9.2e-4,1.6421 -1.70008,-0.23373 -1e-4,-1.41936 z m 0.20619,-1.85999 2.25526,-0.32915 v 1.97924 l -2.25526,0.0179 z m 2.25579,1.87543 -5.1e-4,1.97032 -2.25525,-0.3183 -0.003,-1.6557 z"
+       d="m 199.785,242.97796 1.70092,-0.23165 5.9e-4,1.64064 -1.70008,0.01 z m 1.7001,1.59804 9.2e-4,1.6421 -1.70008,-0.23373 -1e-4,-1.41936 z m 0.20619,-1.85999 2.25526,-0.32915 v 1.97924 l -2.25526,0.0179 z m 2.25579,1.87543 -5.1e-4,1.97032 -2.25525,-0.3183 -0.003,-1.6557 z"
        id="path2078" />
     <g
-       transform="matrix(0.28909903,0,0,-0.28909903,-206.41651,251.89434)"
+       transform="matrix(0.28909903,0,0,-0.28909903,-206.41651,253.48185)"
        inkscape:label="ink_ext_XXXXXX"
        id="g2107"
        style="fill:#e6f0ff;fill-opacity:1">
@@ -7159,15 +7159,15 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#e6f0ff;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="116.23132"
-       y="272.98712"
+       y="274.57465"
        id="text2398"><tspan
          sodipodi:role="line"
          id="tspan2396"
          x="116.23132"
-         y="272.98712"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.26458332">p403n1x87/austin</tspan></text>
+         y="274.57465"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.17499995px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.26458332">p403n1x87/austin</tspan></text>
     <g
-       transform="matrix(0.0251115,0,0,0.0251115,102.49634,267.10343)"
+       transform="matrix(0.0251115,0,0,0.0251115,102.49634,268.69094)"
        id="layer1-8"
        inkscape:label="Layer 1"
        style="fill:#e6f0ff;fill-opacity:1">
@@ -7179,12 +7179,12 @@
     </g>
     <text
        id="text2454"
-       y="279.72781"
+       y="281.31534"
        x="116.34068"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#e6f0ff;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.26458332"
-         y="279.72781"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.17499995px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.26458332"
+         y="281.31534"
          x="116.34068"
          id="tspan2452"
          sodipodi:role="line">@AustinSampler</tspan></text>
@@ -7194,7 +7194,7 @@
        x="108.92651"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#e6f0ff;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        xml:space="preserve"><tspan
-         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:4.23333311px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.26458332"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.88055556px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.26458332"
          y="288.56863"
          x="108.92651"
          id="tspan2456"
@@ -7209,40 +7209,82 @@
          id="tspan2460"
          x="108.87568"
          y="293.27173"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.35138893px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.26458332">https://github.com/P403n1x87/austin/issues</tspan></text>
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.26458332">https://github.com/P403n1x87/austin/issues</tspan></text>
     <text
        inkscape:export-ydpi="191.99664"
        inkscape:export-xdpi="191.99664"
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="5.5122108"
-       y="201.78893"
+       y="215.01791"
        id="text2089"><tspan
          sodipodi:role="line"
          id="tspan2087"
          x="5.5122108"
-         y="201.78893"
-         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332">Set heap size (for accurate results)</tspan></text>
+         y="215.01791"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332">Set heap size (for more accurate results)</tspan></text>
     <rect
        style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
        id="rect2091"
        width="95.000885"
        height="6.4413304"
        x="5.2449455"
-       y="203.65982" />
+       y="216.88881" />
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
        x="6.741787"
-       y="207.8186"
+       y="221.04759"
        id="text2099"><tspan
          sodipodi:role="line"
          id="tspan2097"
          x="6.741787"
-         y="207.8186"
+         y="221.04759"
          style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">austin <tspan
-   style="fill:#eeff81;fill-opacity:1;-inkscape-font-specification:'Ubuntu Mono Bold';font-family:'Ubuntu Mono';font-weight:bold;font-style:normal;font-stretch:normal;font-variant:normal"
+   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Bold';fill:#eeff81;fill-opacity:1"
    id="tspan2101">-h 512</tspan> python -m mymodule</tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="5.8901877"
+       y="188.93648"
+       id="text2095"><tspan
+         sodipodi:role="line"
+         id="tspan2093"
+         x="5.8901877"
+         y="188.93648"
+         style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52777767px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.26458332">Where?*</tspan></text>
+    <rect
+       style="display:inline;opacity:1;fill:#404040;fill-opacity:0.50196078;fill-rule:nonzero;stroke:none;stroke-width:0.89730716;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+       id="rect2097"
+       width="95.000885"
+       height="6.4413304"
+       x="5.6229186"
+       y="190.80739" />
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="7.1197639"
+       y="194.96617"
+       id="text2104"><tspan
+         sodipodi:role="line"
+         id="tspan2102"
+         x="7.1197639"
+         y="194.96617"
+         style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.26458332">austin <tspan
+   style="font-weight:bold;fill:#eeff81;fill-opacity:1;stroke-width:0.26458332"
+   id="tspan2099">-w 123</tspan></tspan></text>
+    <text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52777767px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:-1.30968738px;word-spacing:0px;text-anchor:start;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
+       x="5.6466331"
+       y="264.79401"
+       id="text2108"><tspan
+         sodipodi:role="line"
+         id="tspan2106"
+         x="5.6466331"
+         y="264.79401"
+         style="font-size:2.64583333px;text-align:start;letter-spacing:0px;text-anchor:start;stroke-width:0.26458332;-inkscape-font-specification:Ubuntu;font-family:Ubuntu;font-weight:normal;font-style:normal;font-stretch:normal;font-variant:normal">* requires superuser capabilities on Linux</tspan></text>
   </g>
   <g
      inkscape:groupmode="layer"
@@ -7288,7 +7330,7 @@
          y="7.0526237"
          x="182.67592"
          id="tspan867"
-         sodipodi:role="line">for version 3.2</tspan></text>
+         sodipodi:role="line">for version 3.3</tspan></text>
     <flowRoot
        xml:space="preserve"
        id="flowRoot1392"
@@ -7315,12 +7357,12 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.82384205px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:end;letter-spacing:7.79203463px;word-spacing:0px;text-anchor:end;display:inline;fill:#e6f0ff;fill-opacity:1;stroke:none;stroke-width:0.28678817;stroke-opacity:1"
        x="3.1823273"
-       y="280.47269"
+       y="282.06021"
        id="text843-3-6"><tspan
          sodipodi:role="line"
          id="tspan841-6-0"
          x="3.1823273"
-         y="280.47269"
+         y="282.06021"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:13.76583195px;font-family:'action is';-inkscape-font-specification:'action is';text-align:start;letter-spacing:0px;text-anchor:start;fill:#e6f0ff;fill-opacity:1;stroke:none;stroke-width:0.28678817;stroke-opacity:1">AUSTIN</tspan></text>
     <text
        id="text8884"
@@ -7359,7 +7401,7 @@
            y="1066.0911"
            style="font-size:18.66666603px;line-height:1;text-align:justify;letter-spacing:0px;text-anchor:start" /></flowRegion><flowPara
          id="flowPara8916"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:14.66666698px;line-height:1;font-family:Ubuntu;-inkscape-font-specification:Ubuntu;text-align:start;text-anchor:start;fill:#e6f0ff;fill-opacity:1">Frame stack sampler for CPython</flowPara></flowRoot>  </g>
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:13.3333335px;line-height:1;font-family:Ubuntu;-inkscape-font-specification:Ubuntu;text-align:start;text-anchor:start;fill:#e6f0ff;fill-opacity:1">Frame stack sampler for CPython</flowPara></flowRoot>  </g>
   <g
      inkscape:groupmode="layer"
      id="layer4"

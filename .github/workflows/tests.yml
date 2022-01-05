@@ -63,19 +63,28 @@ jobs:
     name: Tests on Windows
     steps:
       - uses: actions/checkout@v2
+
       - name: Compile Austin
         run: |
           gcc.exe -O3 -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Os -s -DDEBUG
-          src\austin.exe --usage
+          src\austin.exe --help
+
+      - uses: actions/setup-python@v2
+        name: Setup Python
+        with:
+          python-version: '3.9'
 
       - name: Install test dependencies
         run: |
           git clone --depth=1 https://github.com/bats-core/bats-core.git
 
       - name: Run tests
+        shell: bash
         run: |
           bats-core/bin/bats test/win/test.bats
       
       - name: Show austin logs
-        run: test -f /tmp/austin.log && cat /tmp/austin.log || true
+        shell: bash
+        run: |
+          test -f /tmp/austin.log && cat /tmp/austin.log || true
         if: always()

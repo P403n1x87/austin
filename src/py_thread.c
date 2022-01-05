@@ -75,6 +75,11 @@ static unsigned char *  _tids_int  = NULL;
 static char          ** _kstacks   = NULL;
 #endif
 
+#if defined PL_WIN
+#define fprintfp _fprintf_p
+#else
+#define fprintfp fprintf
+#endif
 
 // ---- PyCode ----------------------------------------------------------------
 
@@ -526,9 +531,6 @@ _py_thread__unwind_frame_stack(py_thread_t * self) {
 // ----------------------------------------------------------------------------
 int
 py_thread__set_idle(py_thread_t * self) {
-  if (unlikely(_pthread_tid_offset == 0))
-    FAIL;
-
   unsigned char bit   = 1 << (self->tid & 7);
   size_t        index = self->tid >> 3;
 
@@ -544,9 +546,6 @@ py_thread__set_idle(py_thread_t * self) {
 // ----------------------------------------------------------------------------
 int
 py_thread__set_interrupted(py_thread_t * self, int state) {
-  if (unlikely(_pthread_tid_offset == 0))
-    FAIL;
-
   unsigned char bit   = 1 << (self->tid & 7);
   size_t        index = self->tid >> 3;
 
@@ -562,9 +561,6 @@ py_thread__set_interrupted(py_thread_t * self, int state) {
 // ----------------------------------------------------------------------------
 int
 py_thread__is_interrupted(py_thread_t * self) {
-  if (unlikely(_pthread_tid_offset == 0))
-    return FALSE;
-
   return _tids_int[self->tid >> 3] & (1 << (self->tid & 7));
 }
 
@@ -575,9 +571,8 @@ py_thread__save_kernel_stack(py_thread_t * self) {
   char stack_path[48];
   int  fd;
 
-  if (unlikely(_pthread_tid_offset == 0) || !isvalid(_kstacks) ) {
+  if (!isvalid(_kstacks))
     FAIL;
-  }
 
   sfree(_kstacks[self->tid]);
 
@@ -700,7 +695,7 @@ int
 py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc) {
   PyThreadState ts;
 
-  self->invalid      = 1;
+  self->invalid = TRUE;
 
   if (fail(copy_from_raddr(raddr, ts))) {
     log_ie("Cannot read remote PyThreadState");
@@ -709,17 +704,18 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
 
   self->proc = proc;
 
-  self->raddr.pid  = raddr->pid;
-  self->raddr.addr = raddr->addr;
+  self->raddr = *raddr;
   
   self->top_frame = V_FIELD(void*, ts, py_thread, o_frame);
    
-  self->next_raddr.pid  = raddr->pid;
-  self->next_raddr.addr = V_FIELD(void*, ts, py_thread, o_next) == raddr->addr \
-    ? NULL \
-    : V_FIELD(void*, ts, py_thread, o_next);
+  self->next_raddr = (raddr_t) {
+    raddr->pid,
+    V_FIELD(void*, ts, py_thread, o_next) == raddr->addr \
+      ? NULL \
+      : V_FIELD(void*, ts, py_thread, o_next)
+  };
 
-  self->tid  = V_FIELD(long, ts, py_thread, o_thread_id);
+  self->tid = V_FIELD(long, ts, py_thread, o_thread_id);
   if (self->tid == 0) {
     // If we fail to get a valid Thread ID, we resort to the PyThreadState
     // remote address
@@ -728,22 +724,11 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   }
   #if defined PL_LINUX
   else {
-    // Try to determine the TID by reading the remote struct pthread structure.
-    // We can then use this information to parse the appropriate procfs file and
-    // determine the native thread's running state.
-    if (unlikely(_pthread_tid_offset == 0)) {
-      _infer_tid_field_offset(self);
-      if (unlikely(_pthread_tid_offset == 0)) {
-        log_d("tid field offset not ready");
-      }
-    }
-    if (likely(_pthread_tid_offset != 0) && success(copy_memory(
-        self->raddr.pid,
-        (void *) self->tid,
-        PTHREAD_BUFFER_SIZE * sizeof(void *),
-        _pthread_buffer
+    if (
+      likely(proc->extra->pthread_tid_offset)
+      && success(read_pthread_t(self->raddr.pid, (void *) self->tid
     ))) {
-      self->tid = (uintptr_t) _pthread_buffer[_pthread_tid_offset];
+      self->tid = (uintptr_t) _pthread_buffer[proc->extra->pthread_tid_offset];
       #ifdef NATIVE
       // TODO: If a TID is reused we will never seize it!
       if (!isvalid(_tids[self->tid])) {
@@ -765,7 +750,7 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   }
   #endif
 
-  self->invalid = 0;
+  self->invalid = FALSE;
   SUCCESS;
 } /* py_thread__fill_from_raddr */
 
@@ -776,18 +761,14 @@ py_thread__next(py_thread_t * self) {
   if (self->invalid || !isvalid(self->next_raddr.addr))
     FAIL;
 
-  raddr_t next_raddr = { .pid = self->next_raddr.pid, .addr = self->next_raddr.addr };
-
-  return py_thread__fill_from_raddr(self, &next_raddr, self->proc);
+  return py_thread__fill_from_raddr(self, &(self->next_raddr), self->proc);
 }
 
 
 // ----------------------------------------------------------------------------
 #if defined PL_WIN
-  #define SAMPLE_HEAD "P%I64d;T%I64x"
   #define MEM_METRIC "%I64d"
 #else
-  #define SAMPLE_HEAD "P%d;T%ld"
   #define MEM_METRIC "%ld"
 #endif
 #define TIME_METRIC "%lu"
@@ -796,13 +777,6 @@ py_thread__next(py_thread_t * self) {
 
 void
 py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t mem_delta) {
-  #if defined PL_LINUX
-  // If we still don't have this offset then the thread ID is bonkers so we
-  // do not emit the sample
-  if (unlikely(_pthread_tid_offset == 0))
-    return;
-  #endif
-
   if (!pargs.full && pargs.memory && mem_delta == 0)
     return;
 
@@ -817,7 +791,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     return;
 
   int is_idle = FALSE;
-  if (pargs.full || pargs.sleepless) {
+  if (pargs.full || pargs.sleepless || unlikely(pargs.where)) {
     #ifdef NATIVE
     size_t index  = self->tid >> 3;
     int    offset = self->tid & 7;
@@ -853,7 +827,12 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   #endif
 
   // Group entries by thread.
-  fprintf(pargs.output_file, SAMPLE_HEAD, self->proc->pid, self->tid);
+  fprintfp(
+    pargs.output_file, pargs.head_format, self->proc->pid, self->tid,
+    // These are relevant only in `where` mode
+    is_idle           ? "💤" : "🚀",
+    self->proc->child ? "🧒" : ""
+  );
 
   if (isvalid(self->top_frame)) {
     if (fail(_py_thread__unwind_frame_stack(self))) {
@@ -876,7 +855,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
       fprintf(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
     }
     else {
-      fprintf(pargs.output_file, pargs.format, native_frame->filename, native_frame->scope, native_frame->line);
+      fprintf(pargs.output_file, pargs.native_format, native_frame->filename, native_frame->scope, native_frame->line);
     }
   }
   if (!stack_is_empty()) {
@@ -896,7 +875,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   #else
   while (!stack_is_empty()) {
     frame_t * frame = stack_pop();
-    fprintf(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
+    fprintfp(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
   }
   #endif
 
@@ -905,6 +884,9 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     fprintf(pargs.output_file, ";:GC:");
     stats_gc_time(time_delta);
   }
+
+  if (unlikely(pargs.where))
+    return;
 
   // Finish off sample with the metric(s)
   if (pargs.full) {

@@ -204,7 +204,7 @@ reader_thread(LPVOID lpParam) {
 // ----------------------------------------------------------------------------
 // Forward declaration.
 static int
-_py_proc__run(py_proc_t *, int);
+_py_proc__run(py_proc_t *);
 
 
 // On Windows, if we fail with the parent process we look if it has a single
@@ -255,7 +255,7 @@ with_resources;
         log_e("Cannot open child process handle");
         NOK;
       }
-      if (success(_py_proc__run(self, FALSE))) {
+      if (success(_py_proc__run(self))) {
         log_d("Process has a single Python child with PID %d. We will attach to that", child_pid);
         OK;
       }

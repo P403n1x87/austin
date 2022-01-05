@@ -1,14 +1,16 @@
-2021-xx-xx v3.3.0
+2022-01-03 v3.3.0
 
-  Overall performance and accuracy improvements
+  Added the new Where mode.
 
-  The heap allocation has been turned off by default
+  Overall performance and accuracy improvements.
 
-  Bugfix: fixed heap size handling
+  The heap allocation has been turned off by default.
 
-  Bugfix: fixed a potential segmentation fault issue in the austinp variant
+  Bugfix: fixed heap size handling.
 
-  Bugfix: fixed a potential deadlock scenario in austinp
+  Bugfix: fixed a potential segmentation fault issue in the austinp variant.
+
+  Bugfix: fixed a potential deadlock scenario in austinp.
 
 
 2021-12-16 v3.2.0

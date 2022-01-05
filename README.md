@@ -296,12 +296,13 @@ Austin -- A frame stack sampler for Python.
                              100). Accepted units: s, ms, us.
   -m, --memory               Profile memory usage.
   -o, --output=FILE          Specify an output file for the collected samples.
-  -p, --pid=PID              The the ID of the process to which Austin should
-                             attach.
+  -p, --pid=PID              Attach to the process with the given PID.
   -P, --pipe                 Pipe mode. Use when piping Austin output.
   -s, --sleepless            Suppress idle samples to estimate CPU time.
   -t, --timeout=n_ms         Start up wait time in milliseconds (default is
                              100). Accepted units: s, ms.
+  -w, --where=PID            Dump the stacks of all the threads within the
+                             process with the given PID.
   -x, --exposure=n_sec       Sample for n_sec seconds only.
   -?, --help                 Give this help list
       --usage                Give a short usage message
@@ -382,6 +383,32 @@ garbage collector is in the collecting state. This gives you a measure of how
 *busy* the Python GC is during a run.
 
 *Since Austin 3.1.0*.
+
+
+## Where?
+
+If you are only interested in what is currently happening inside a Python
+process, you can have a quick overview printed on the terminal with the
+`-w/--where` option. This takes the PID of the process whose threads you want to
+inspect, e.g.
+
+~~~ console
+sudo austin -w `pgrep -f my-running-python-app`
+~~~
+
+Below is an example of what the output looks like
+
+<p align="center">
+  <img src="art/austin-where.png"
+       alt="Austin where mode example"
+       style="box-shadow: #111 0px 0px 16px;" />
+</p>
+
+This works with the `-C/--children` option too. The emojis to the left indicate
+whether the thread is active or sleeping and whether the process is a child or
+not.
+
+*Since Austin 3.3.0*.
 
 
 ## Sampling Accuracy

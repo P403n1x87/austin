@@ -20,27 +20,29 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-load "common"
+load "../common"
 
 
-function invoke_austin {
-  check_python
+function where_austin {
+  python_bin="${1}"
 
-  log "Fork Multi-processing [Python]"
+  if ! $python_bin -V; then skip "$python_bin not found."; fi
+
+  log "Where [Python $python_bin]"
 
   # -------------------------------------------------------------------------
-  step "Profiling of multi-process program"
+  step "Where sleepy"
   # -------------------------------------------------------------------------
-    run $AUSTIN -i 1ms -C $PYTHON test/target_mp.py
+    $python_bin test/sleepy.py &
+    sleep 1
+    run sudo $AUSTIN -w $!
 
     assert_success
+    assert_output "Process"
+    assert_output "Thread"
+    assert_output "test/sleepy.py"
+    assert_output "<module>"
 
-    expected=3
-    n_procs=$( echo "$output" | sed -r 's/P([0-9]+);.+/\1/' | sort | uniq | wc -l )
-    assert "At least 3 parallel processes" "$n_procs -ge $expected"
-
-    assert_output "# multiprocess: on"
-    assert_output ".*test[\\]target_mp.py:do:[[:digit:]]*;.*test[\\]target_mp.py:fact:"
 }
 
 
@@ -48,6 +50,23 @@ function invoke_austin {
 # -- Test Cases
 # -----------------------------------------------------------------------------
 
-@test "Test Austin with Python" {
-  repeat 3 invoke_austin
+@test "Test Austin with default Python 3 from Homebrew" {
+	where_austin "/usr/local/bin/python3"
+}
+
+@test "Test Austin with Python 3.8 from Homebrew" {
+  repeat 3 where_austin "/usr/local/opt/python@3.8/bin/python3"
+}
+
+@test "Test Austin with Python 3.9 from Homebrew" {
+  repeat 3 where_austin "/usr/local/opt/python@3.9/bin/python3"
+}
+
+@test "Test Austin with Python 3.10 from Homebrew" {
+  repeat 3 where_austin "/usr/local/opt/python@3.10/bin/python3"
+}
+
+@test "Test Austin with Python 3 from Anaconda (if available)" {
+  ignore
+  repeat 3 where_austin "/usr/local/anaconda3/bin/python"
 }

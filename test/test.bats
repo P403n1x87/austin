@@ -54,3 +54,7 @@ test_case() {
 @test "Test Austin: sleepless" {
   test_case sleepless
 }
+
+@test "Test Austin: where" {
+  test_case where
+}
