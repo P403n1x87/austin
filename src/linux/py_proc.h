@@ -554,10 +554,10 @@ _py_proc__init(py_proc_t * self) {
 } /* _py_proc__init */
 
 
-// Support for CPU time on Linux. We need to retrieve the TID from the the
-// struct pthread pointed to by the native thread ID stored by Python. We do not
-// have the definition of the structure, so we need to "guess" the offset of the
-// tid field within struct pthread.
+// Support for CPU time on Linux. We need to retrieve the TID from the struct
+// pthread pointed to by the native thread ID stored by Python. We do not have
+// the definition of the structure, so we need to "guess" the offset of the tid
+// field within struct pthread.
 
 // ----------------------------------------------------------------------------
 static int

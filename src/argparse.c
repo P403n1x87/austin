@@ -181,7 +181,10 @@ const char * argp_program_version = PROGRAM_NAME " " VERSION;
 const char * argp_program_bug_address = \
   "<https://github.com/P403n1x87/austin/issues>";
 
-static const char * doc = "Austin -- A frame stack sampler for Python.";
+static const char * doc = \
+"Austin is a frame stack sampler for CPython that is used to extract profiling "
+"data out of a running Python process (and all its children, if required) "
+"that requires no instrumentation and has practically no impact on the tracee.";
 
 #else
 
@@ -544,7 +547,9 @@ _handle_opts(arg_option * opts, arg_callback cb, int * argi, int argc, char ** a
 
 static const char * help_msg = \
 "Usage: austin [OPTION...] command [ARG...]\n"
-"Austin -- A frame stack sampler for Python.\n"
+"Austin is a frame stack sampler for CPython that is used to extract profiling\n"
+"data out of a running Python process (and all its children, if required) that\n"
+"requires no instrumentation and has practically no impact on the tracee.\n"
 "\n"
 "  -a, --alt-format           Alternative collapsed stack sample format.\n"
 "  -C, --children             Attach to child processes.\n"
