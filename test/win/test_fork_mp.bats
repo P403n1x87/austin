@@ -40,7 +40,7 @@ function invoke_austin {
     assert "At least 3 parallel processes" "$n_procs -ge $expected"
 
     assert_output "# multiprocess: on"
-    assert_output ".*test[\\]target_mp.py:do:[[:digit:]]*;.*test[\\]target_mp.py:fact:"
+    assert_output ".*target_mp.py:do:[[:digit:]]*;.*target_mp.py:fact:"
 }
 
 

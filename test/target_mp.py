@@ -22,7 +22,6 @@
 
 # source: https://lobste.rs/s/qairy5/austin_python_frame_stack_sampler_for
 
-import time
 import multiprocessing
 
 
@@ -43,7 +42,7 @@ def do(N):
 if __name__ == "__main__":
     processes = []
     for _ in range(2):
-        process = multiprocessing.Process(target=do, args=(2000,))
+        process = multiprocessing.Process(target=do, args=(3000,))
         process.start()
         processes.append(process)
 
