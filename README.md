@@ -482,11 +482,11 @@ error rates below 1% on average.
 ## Cheat sheet
 
 All the above Austin options and arguments are summarised in a cheat sheet that
-you can find in the [art](https://github.com/P403n1x87/austin/blob/master/art/)
+you can find in the [doc](https://github.com/P403n1x87/austin/blob/master/doc/)
 folder in either the SVG, PDF or PNG format
 
 <p align="center">
-  <img src="art/cheatsheet.png"
+  <img src="doc/cheatsheet.png"
        style="box-shadow: #111 0px 0px 16px;" />
 </p>
 
@@ -637,7 +637,7 @@ TUI to work.
 
 > The TUI is based on `python-curses`. The version included with the standard
 > Windows installations of Python is broken so it won't work out of the box. A
-> solution is to install the the wheel of the port to Windows from
+> solution is to install the wheel of the port to Windows from
 > [this](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses) page. Wheel files
 > can be installed directly with `pip`, as described in the
 > [linked](https://pip.pypa.io/en/latest/user_guide/#installing-from-wheels)

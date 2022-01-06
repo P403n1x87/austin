@@ -1,0 +1,63 @@
+[examples]
+.PP
+Profile wall time of a Python script
+.PP
+.RS
+$ austin python3 \fI\,myscript.py\fR
+.RE
+.PP
+Profile CPU time of an executable Python script
+.PP
+.RS
+$ austin -s \fI\,./myscript.py\/\fR
+.RE
+.PP
+Profile a Python application
+.PP
+.RS
+$ austin \fI\,uwsgi\fR --http :9090 --wsgi-file foobar.py
+.RE
+.PP
+Profile child processes
+.PP
+.RS
+$ austin \fI\,-C\fR uwsgi --http :9090 --wsgi-file foobar.py
+.RE
+.PP
+Attach to a running Python process
+.PP
+.RS
+# austin -p \fI\,<pid>\fR
+.RE
+.PP
+Attach to a process and its children
+.PP
+.RS
+# austin -Cp \fI\,<pid>\fR
+.RE
+.PP
+Where is a Python process at?
+.PP
+.RS
+# austin -w \fI\,<pid>\fR
+.RE
+.PP
+Set the sampling interval
+.PP
+.RS
+# austin -i \fI\,10ms\fR -p <pid>
+.RE
+.PP
+Save collected on-CPU samples to file
+.PP
+.RS
+$ austin -so \fI/path/to/file.austin\fR ./myscript.py
+.RE
+.PP
+Sample for 5 seconds only
+.PP
+.RS
+# austin -x \fI5\fR -p <pid>
+.RE
+
+
