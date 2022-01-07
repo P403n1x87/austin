@@ -282,7 +282,9 @@ bug with Austin and you want to report it here.
 
 ~~~
 Usage: austin [OPTION...] command [ARG...]
-Austin -- A frame stack sampler for Python.
+Austin is a frame stack sampler for CPython that is used to extract profiling
+data out of a running Python process (and all its children, if required) that
+requires no instrumentation and has practically no impact on the tracee.
 
   -a, --alt-format           Alternative collapsed stack sample format.
   -C, --children             Attach to child processes.
@@ -495,12 +497,12 @@ folder in either the SVG, PDF or PNG format
 Austin supports Python 2.3-2.7 and 3.3-3.10 and has been tested on the
 following platforms and architectures
 
-|| <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" />* | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/>** | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />*** |
-|---          |---|---|---|
-| **x86_64**  | ✓ | ✓ | ✓ |
-| **i686**    | ✓ |   | ✓ |
-| **arm64**   | ✓ |   |   |
-| **ppc64le** | ✓ |   |   |
+|             | <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" />* | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/>** | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />*** |
+| ----------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| **x86_64**  | ✓                                                                                                               | ✓                                                                                                            | ✓                                                                                                       |
+| **i686**    | ✓                                                                                                               |                                                                                                              | ✓                                                                                                       |
+| **arm64**   | ✓                                                                                                               |                                                                                                              |                                                                                                         |
+| **ppc64le** | ✓                                                                                                               |                                                                                                              |                                                                                                         |
 
 \* In order to attach to an external process, Austin requires the CAP_SYS_PTRACE
 capability. This means that you will have to either use ``sudo`` when attaching
