@@ -90,8 +90,6 @@ class Maps:
                     continue
                 if function.startswith("__pyx_"):
                     function = demangle_cython(function)
-                elif function.startswith("_Z"):
-                    function = demangle_cpp(function)
                 _, _, address = head.partition("@")
                 resolved = self.addr2line(address)
                 if resolved is None:
