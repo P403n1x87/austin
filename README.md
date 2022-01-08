@@ -442,13 +442,13 @@ sources make sure that you have the development version of the `libunwind`
 library available on your system, for example on Ubuntu,
 
 ~~~ console
-sudo apt install libunwind-dev
+sudo apt install libunwind-dev binutils-dev
 ~~~
 
 and compile with
 
 ~~~ console
-gcc -O3 -Os -Wall -pthread src/*.c -DAUSTINP -lunwind-ptrace -lunwind-generic -o src/austinp
+gcc -O3 -Os -Wall -pthread src/*.c -DAUSTINP -lunwind-ptrace -lunwind-generic -lbfd -o src/austinp
 ~~~
 
 then use as per normal. The extra `-k/--kernel` option is available with
@@ -470,6 +470,11 @@ python3 utils/resolve.py mysamples.austin > mysamples_resolved.austin
 
 Internally, the script uses `addr2line(1)` to determine source and line number
 given an address, when possible.
+
+> Whilst `austinp` comes with a stripped-down implementation of `addr2line`, it
+> is only used for the "where" mode, as resolving symbols at runtime is
+> expensive. This is to minimise the impact of austinp on the tracee, increase
+> accuracy and maximise the sampling rate.
 
 
 ## Logging

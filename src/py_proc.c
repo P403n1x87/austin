@@ -1130,7 +1130,7 @@ _py_proc__interrupt_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
     }
     if (fail(py_thread__set_interrupted(&py_thread, TRUE))) {
       while (ptrace(PTRACE_CONT, py_thread.tid, 0, 0)) {
-        log_t("ptrace: failed to resume interrupted thread %d", py_thread.tid);
+        log_d("ptrace: failed to resume interrupted thread %d (errno: %d)", py_thread.tid, errno);
       }
       FAIL;
     }
@@ -1153,7 +1153,7 @@ _py_proc__resume_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
   do {
     if (py_thread__is_interrupted(&py_thread)) {
       while (ptrace(PTRACE_CONT, py_thread.tid, 0, 0)) {
-        log_t("ptrace: failed to resume thread %d", py_thread.tid);
+        log_d("ptrace: failed to resume thread %d (errno: %d)", py_thread.tid, errno);
       }
       log_t("ptrace: thread %d resumed", py_thread.tid);
       py_thread__set_interrupted(&py_thread, FALSE);
@@ -1285,16 +1285,18 @@ py_proc__destroy(py_proc_t * self) {
   if (!isvalid(self))
     return;
 
+  #ifdef NATIVE
+  unw_destroy_addr_space(self->unwind.as);
+  vm_range_tree__destroy(self->maps_tree);
+  hash_table__destroy(self->base_table);
+  #endif
+
   sfree(self->bin_path);
   sfree(self->lib_path);
   sfree(self->bss);
   sfree(self->extra);
 
   lru_cache__destroy(self->frame_cache);
-
-  #ifdef NATIVE
-  unw_destroy_addr_space(self->unwind.as);
-  #endif
 
   free(self);
 }

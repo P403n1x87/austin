@@ -41,6 +41,7 @@
 
 #include "heap.h"
 #include "py_thread.h"
+#include "strhash.h"
 
 // ----------------------------------------------------------------------------
 // -- Platform-dependent implementations of _py_thread__is_idle
@@ -49,6 +50,9 @@
 #if defined(PL_LINUX)
 
   #include "linux/py_thread.h"
+  #ifdef NATIVE
+  #include "linux/addr2line.h"
+  #endif
 
 #elif defined(PL_WIN)
 
@@ -635,8 +639,12 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
   lru_cache_t * cache   = self->proc->frame_cache;
   void        * context = _tids[self->tid];
 
-  if (unw_init_remote(&cursor, self->proc->unwind.as, context))
+  int outcome;
+  while((outcome = unw_init_remote(&cursor, self->proc->unwind.as, context)) == -UNW_EBADREG);
+  if (fail(outcome)) {
+    log_e("unwind: failed to initialize cursor (%d)", outcome);
     FAIL;
+  }
 
   stack_native_reset();
 
@@ -656,26 +664,37 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
       _frame_cache_miss++;
       #endif
       char * scope, * filename;
-      if (unw_get_proc_name(&cursor, _native_buf, MAXLEN, &offset) == 0) {
-        // To retrieve source name and line number we would need to
-        // - resolve the PC to a map to get the binary path
-        // - use the offset with the binary to get the line number from DWARF (see
-        //   https://kernel.googlesource.com/pub/scm/linux/kernel/git/hjl/binutils/+/hjl/secondary/binutils/addr2line.c)
-        scope = strdup(_native_buf);
+      vm_range_t * range = NULL;
+      if (pargs.where) {
+        range = vm_range_tree__find(self->proc->maps_tree, pc);
+        if (isvalid(range)) {
+          unw_word_t base = (unw_word_t) hash_table__get(self->proc->base_table, string_hash(range->name));
+          if (base > 0)
+            frame = get_native_frame(range->name, pc - base);
+        }
       }
-      else {
-        scope = strdup("<unnamed>");
-        offset = 0;
-      }
-      sprintf(_native_buf, "native@%lx", pc);
-      filename = strdup(_native_buf);
-
-      frame = frame_new(filename, scope, offset);
       if (!isvalid(frame)) {
-        log_ie("Failed to make native frame");
-        sfree(filename);
-        sfree(scope);
-        FAIL;
+        if (unw_get_proc_name(&cursor, _native_buf, MAXLEN, &offset) == 0) {
+          scope = strdup(_native_buf);
+        }
+        else {
+          scope = strdup("<unnamed>");
+          offset = 0;
+        }
+        if (isvalid(range))
+          filename = strdup(range->name);
+        else {
+          sprintf(_native_buf, "native@%lx", pc);
+          filename = strdup(_native_buf);
+        }
+
+        frame = frame_new(filename, scope, offset);
+        if (!isvalid(frame)) {
+          log_ie("Failed to make native frame");
+          sfree(filename);
+          sfree(scope);
+          FAIL;
+        }
       }
 
       lru_cache__store(cache, (key_dt) pc, (value_t) frame);
@@ -818,8 +837,10 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   if (pargs.kernel) {
     _py_thread__unwind_kernel_frame_stack(self);
   }
-  if (fail(_py_thread__unwind_native_frame_stack(self)))
+  if (fail(_py_thread__unwind_native_frame_stack(self))) {
+    log_ie("Failed to unwind native stack");
     return;
+  }
 
   // Update the thread state to improve guarantees that it will be in sync with
   // the native stack just collected

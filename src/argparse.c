@@ -401,9 +401,6 @@ parse_opt (int key, char *arg, struct argp_state *state)
     #ifdef NATIVE
     pargs.native_format = (char *) SAMPLE_FORMAT_WHERE_NATIVE;
     #endif
-    
-    // We use the exposure branch to emulate sampling once
-    pargs.exposure = 1;
     break;
 
   #ifdef NATIVE
@@ -698,9 +695,6 @@ cb(const char opt, const char * arg) {
 
     pargs.head_format = (char *) HEAD_FORMAT_WHERE;
     pargs.format = (char *) SAMPLE_FORMAT_WHERE;
-    
-    // We use the exposure branch to emulate sampling once
-    pargs.exposure = 1;
     break;
 
   case 'o':
