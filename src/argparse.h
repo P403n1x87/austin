@@ -40,6 +40,7 @@ typedef struct {
   char    * format;
   #ifdef NATIVE
   char    * native_format;
+  char    * kernel_format;
   #endif
   char    * head_format;
   int       full;
