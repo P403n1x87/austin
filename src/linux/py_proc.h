@@ -39,6 +39,8 @@
 
 #ifdef NATIVE
 #include "../argparse.h"
+#include "../cache.h"
+#include "../strhash.h"
 #endif
 #include "../strhash.h"
 #include "../hints.h"
@@ -488,12 +490,29 @@ _py_proc__get_resident_memory(py_proc_t * self) {
 
 #ifdef NATIVE
 // ----------------------------------------------------------------------------
+char         pathname[1024];
+char         prevpathname[1024];
+vm_range_t * ranges[256];
+
 static int
-_py_proc__dump_maps(py_proc_t * self) {
-  char      file_name[32];
-  FILE    * fp        = NULL;
-  char    * line      = NULL;
-  size_t    len       = 0;
+_py_proc__get_vm_maps(py_proc_t * self) {
+  FILE            * fp    = NULL;
+  char            * line  = NULL;
+  size_t            len   = 0;
+  vm_range_tree_t * tree  = NULL;
+  hash_table_t    * table = NULL;
+  char              file_name[32];
+  
+  if (pargs.where) {
+    tree  = vm_range_tree_new();
+    table = hash_table_new(256);
+    
+    vm_range_tree__destroy(self->maps_tree);
+    hash_table__destroy(self->base_table);
+    
+    self->maps_tree = tree; 
+    self->base_table = table;
+  }
 
   sprintf(file_name, "/proc/%d/maps", self->pid);
   fp = fopen(file_name, "r");
@@ -511,23 +530,41 @@ _py_proc__dump_maps(py_proc_t * self) {
     FAIL;
   }
 
-  while (getline(&line, &len, fp) != -1) {
+  log_d("Rebuilding vm ranges tree");
+
+  int    nrange  = 0;
+  while (getline(&line, &len, fp) != -1 && nrange < 256) {
     ssize_t lower, upper;
-    char    pathname[1024];
 
     if (sscanf(line, "%lx-%lx %*s %*x %*x:%*x %*x %s\n",
       &lower, &upper, // Map bounds
       pathname        // Binary path
     ) == 3 && pathname[0] != '[') {
-      fprintf(pargs.output_file, "# map: %lx-%lx %s\n", lower, upper, pathname);
+      if (pargs.where) {
+        if (strcmp(pathname, prevpathname)) {
+          ranges[nrange++] = vm_range_new(lower, upper, strdup(pathname));
+          key_dt key = string_hash(pathname);
+          if (!isvalid(hash_table__get(table, key)))
+            hash_table__set(table, key, (value_t) lower);
+          strcpy(prevpathname, pathname);
+        } else
+          ranges[nrange-1]->hi = upper;
+      }
+      else
+        // We print the maps instead so that we can resolve them later and use
+        // the CPU more efficiently to collect samples.
+        fprintf(pargs.output_file, "# map: %lx-%lx %s\n", lower, upper, pathname);
     }
   }
+
+  for (int i = 0; i < nrange; i++)
+    vm_range_tree__add(tree, (vm_range_t *) ranges[i]); 
 
   sfree(line);
   fclose(fp);
 
   SUCCESS;
-} /* _py_proc__dump_maps */
+} /* _py_proc__get_vm_maps */
 #endif
 
 
@@ -547,7 +584,7 @@ _py_proc__init(py_proc_t * self) {
   self->last_resident_memory = _py_proc__get_resident_memory(self);
 
   #ifdef NATIVE
-  _py_proc__dump_maps(self);
+  _py_proc__get_vm_maps(self);
   #endif
 
   SUCCESS;

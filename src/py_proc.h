@@ -29,6 +29,8 @@
 #ifdef NATIVE
 #include <sys/ptrace.h>
 #include <libunwind-ptrace.h>
+#include "linux/vm-range-tree.h"
+#include "cache.h"
 #endif
 
 #include "cache.h"
@@ -93,8 +95,10 @@ typedef struct {
 
   #ifdef NATIVE
   struct _puw {
-    unw_addr_space_t   as;
-  } unwind;
+    unw_addr_space_t as;
+  }                 unwind;
+  vm_range_tree_t * maps_tree;
+  hash_table_t    * base_table;
   #endif
 
   // Platform-dependent fields

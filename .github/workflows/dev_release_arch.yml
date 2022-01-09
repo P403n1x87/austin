@@ -31,7 +31,7 @@ jobs:
             sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
           run: |
             apt-get update
-            apt-get -y install autoconf build-essential libunwind-dev musl-tools
+            apt-get -y install autoconf build-essential libunwind-dev musl-tools binutils-dev
 
             # Build austin
             autoreconf --install
@@ -41,7 +41,7 @@ jobs:
             export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
 
             # Build austinp
-            gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austinp -DAUSTINP -l:libunwind-ptrace.a -l:liblzma.a -l:libunwind-generic.a -l:libunwind.a
+            gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austinp -DAUSTINP -l:libunwind-ptrace.a -l:liblzma.a -l:libunwind-generic.a -l:libunwind.a -lbfd
 
             pushd src
             tar -Jcf austin-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz austin

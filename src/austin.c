@@ -276,7 +276,14 @@ int main(int argc, char ** argv) {
   if (pargs.output_file != stdout)
     log_i("Output file: %s", pargs.output_filename);
 
-  log_i("Sampling interval: %lu μs", pargs.t_sampling_interval);
+  if (pargs.where) {
+    log_i("Where mode on process %d", pargs.attach_pid);
+    pargs.t_sampling_interval = 1;
+    // We use the exposure branch to emulate sampling once
+    pargs.exposure = 1;
+  }
+  else
+    log_i("Sampling interval: %lu μs", pargs.t_sampling_interval);
 
   if (pargs.heap)
     log_i("Maximum frame heap size: %d MB", pargs.heap >> 20);
