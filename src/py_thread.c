@@ -41,7 +41,6 @@
 
 #include "heap.h"
 #include "py_thread.h"
-#include "strhash.h"
 
 // ----------------------------------------------------------------------------
 // -- Platform-dependent implementations of _py_thread__is_idle
@@ -85,220 +84,6 @@ static char          ** _kstacks   = NULL;
 #define fprintfp fprintf
 #endif
 
-// ---- PyCode ----------------------------------------------------------------
-
-#define _code__get_filename(self, pid)    _get_string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_filename)))
-#define _code__get_name(self, pid)        _get_string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_name)))
-
-#define _code__get_lnotab(self, pid, len) _get_bytes_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_lnotab)), len)
-
-#define p_ascii_data(raddr)                     (raddr + sizeof(PyASCIIObject))
-
-
-
-// ----------------------------------------------------------------------------
-
-
-char *
-_get_string_from_raddr(pid_t pid, void * raddr) {
-  PyStringObject     string;
-  PyUnicodeObject3   unicode;
-  char             * buffer = NULL;
-  ssize_t            len = 0;
-
-  // This switch statement is required by the changes regarding the string type
-  // introduced in Python 3.
-  switch (py_v->major) {
-  case 2:
-    if (fail(copy_datatype(pid, raddr, string))) {
-      log_ie("Cannot read remote PyStringObject");
-      goto failed;
-    }
-
-    len    = string.ob_base.ob_size;
-    buffer = (char *) malloc(len + 1);
-    if (fail(copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, buffer))) {
-      log_ie("Cannot read remote value of PyStringObject");
-      goto failed;
-    }
-    buffer[len] = 0;
-    break;
-
-  case 3:
-    if (fail(copy_datatype(pid, raddr, unicode))) {
-      log_ie("Cannot read remote PyUnicodeObject3");
-      goto failed;
-    }
-    if (unicode._base._base.state.kind != 1) {
-      set_error(ECODEFMT);
-      goto failed;
-    }
-    if (unicode._base._base.state.compact != 1) {
-      set_error(ECODECMPT);
-      goto failed;
-    }
-
-    len    = unicode._base._base.length;
-    buffer = (char *) malloc(len + 1);
-    if (fail(copy_memory(pid, p_ascii_data(raddr), len, buffer))) {
-      log_ie("Cannot read remote value of PyUnicodeObject3");
-      goto failed;
-    }
-    buffer[len] = 0;
-  }
-
-  return buffer;
-
-failed:
-  sfree(buffer);
-  return NULL;
-}
-
-
-// ----------------------------------------------------------------------------
-unsigned char *
-_get_bytes_from_raddr(pid_t pid, void * raddr, ssize_t * size) {
-  PyStringObject  string;
-  PyBytesObject   bytes;
-  ssize_t         len = 0;
-  unsigned char * array = NULL;
-
-  switch (py_v->major) {
-  case 2:  // Python 2
-    if (fail(copy_datatype(pid, raddr, string))) {
-      log_ie("Cannot read remote PyStringObject");
-      goto error;
-    }
-
-    len = string.ob_base.ob_size + 1;
-    if (len >= MAXLEN) {
-      // In Python 2.4, the ob_size field is of type int. If we cannot
-      // allocate on the first try it's because we are getting a ridiculous
-      // value for len. In that case, chop it down to an int and try again.
-      // This approach is simpler than adding version support.
-      len = (int) len;
-    }
-
-    array = (unsigned char *) malloc((len + 1) * sizeof(unsigned char *));
-    if (fail(copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, array))) {
-      log_ie("Cannot read remote value of PyStringObject");
-      goto error;
-    }
-    break;
-
-  case 3:  // Python 3
-    if (fail(copy_datatype(pid, raddr, bytes))) {
-      log_ie("Cannot read remote PyBytesObject");
-      goto error;
-    }
-
-    if ((len = bytes.ob_base.ob_size + 1) < 1) { // Include null-terminator
-      set_error(ECODEBYTES);
-      log_e("PyBytesObject is too short");
-      goto error;
-    }
-
-    array = (unsigned char *) malloc((len + 1) * sizeof(unsigned char *));
-    if (fail(copy_memory(pid, raddr + offsetof(PyBytesObject, ob_sval), len, array))) {
-      log_ie("Cannot read remote value of PyBytesObject");
-      goto error;
-    }
-  }
-
-  array[len] = 0;
-  *size      = len - 1;
-
-  return array;
-
-error:
-  sfree(array);
-  return NULL;
-}
-
-
-// ----------------------------------------------------------------------------
-static inline frame_t *
-_get_frame_from_code(raddr_t * raddr, int lasti) {
-  PyCodeObject code;
-
-  if (fail(copy_from_raddr_v(raddr, code, py_v->py_code.size))) {
-    log_ie("Cannot read remote PyCodeObject");
-    return NULL;
-  }
-
-  char * filename = _code__get_filename(&code, raddr->pid);
-  if (!isvalid(filename)) {
-    log_ie("Cannot get file name from PyCodeObject");
-    return NULL;
-  }
-
-  char * scope = _code__get_name(&code, raddr->pid);
-  if (!isvalid(scope)) {
-    log_ie("Cannot get scope name from PyCodeObject");
-    goto failed;
-  }
-
-  ssize_t len = 0;
-  unsigned char * lnotab = _code__get_lnotab(&code, raddr->pid, &len);
-  if (!isvalid(lnotab) || len % 2) {
-    log_ie("Cannot get line number from PyCodeObject");
-    goto failed;
-  }
-
-  int lineno = V_FIELD(unsigned int, code, py_code, o_firstlineno);
-
-  if (py_v->major == 3 && py_v->minor >= 10) { // Python >=3.10
-    lasti <<= 1;
-    for (register int i = 0, bc = 0; i < len; i++) {
-      int sdelta = lnotab[i++];
-      if (sdelta == 0xff)
-        break;
-
-      bc += sdelta;
-
-      int ldelta = lnotab[i];
-      if (ldelta == 0x80)
-        ldelta = 0;
-      else if (ldelta > 0x80)
-        lineno -= 0x100;
-
-      lineno += ldelta;
-      if (bc > lasti)
-        break;
-    }
-  }
-  else { // Python < 3.10
-    for (register int i = 0, bc = 0; i < len; i++) {
-      bc += lnotab[i++];
-      if (bc > lasti)
-        break;
-
-      if (lnotab[i] >= 0x80)
-        lineno -= 0x100;
-
-      lineno += lnotab[i];
-    }
-  }
-
-  free(lnotab);
-
-  frame_t * frame = frame_new(filename, scope, lineno);
-  if (!isvalid(frame)) {
-    log_e("Failed to create frame object");
-    goto failed;
-  }
-
-  return frame;
-
-failed:
-  sfree(filename);
-  sfree(scope);
-  
-  return NULL;
-}
-
-
-// ---- PyFrame ---------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
 #define _use_heaps (pargs.heap > 0)
@@ -377,7 +162,7 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
       #ifdef DEBUG
       _frame_cache_miss++;
       #endif
-      frame = _get_frame_from_code(&(raddr_t) {self->raddr.pid, py_frame.code}, lasti);
+      frame = _frame_from_code_raddr(&(raddr_t) {self->raddr.pid, py_frame.code}, lasti);
       if (!isvalid(frame)) {
         log_ie("Failed to get frame from code object");
         // Truncate the stack to the point where we have successfully resolved.
@@ -667,8 +452,16 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
       vm_range_t * range = NULL;
       if (pargs.where) {
         range = vm_range_tree__find(self->proc->maps_tree, pc);
+        // TODO: A failed attempt to find a range is an indication that we need
+        // to regenerate the VM maps. This would be of no use at the moment,
+        // since we only use them in `where` mode where we sample just once. If
+        // we resort to improving addr2line and use the VM range tree for
+        // normal mode, then we should consider catching the case
+        // !isvalid(range) and regenerate the VM range tree with fresh data.
         if (isvalid(range)) {
-          unw_word_t base = (unw_word_t) hash_table__get(self->proc->base_table, string_hash(range->name));
+          unw_word_t base = (unw_word_t) hash_table__get(
+            self->proc->base_table, string__hash(range->name)
+          );
           if (base > 0)
             frame = get_native_frame(range->name, pc - base);
         }

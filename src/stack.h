@@ -27,6 +27,8 @@
 #include <stdlib.h>
 
 #include "hints.h"
+#include "py_string.h"
+#include "version.h"
 
 typedef struct {
   char         * filename;
@@ -158,8 +160,104 @@ stack_py_push(void * origin, void * code, int lasti) {
 #define stack_kernel_reset()     {_stack->kernel_pointer = 0;}
 #endif
 
+
+// ----------------------------------------------------------------------------
+#define _code__get_filename(self, pid)                                         \
+  _string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_filename)))
+
+#define _code__get_name(self, pid)                                             \
+  _string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_name)))
+
+#define _code__get_lnotab(self, pid, len)                                      \
+  _bytes_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_lnotab)), len)
+
+
+// ----------------------------------------------------------------------------
+static inline frame_t *
+_frame_from_code_raddr(raddr_t * raddr, int lasti) {
+  PyCodeObject code;
+
+  if (fail(copy_from_raddr_v(raddr, code, py_v->py_code.size))) {
+    log_ie("Cannot read remote PyCodeObject");
+    return NULL;
+  }
+
+  char * filename = _code__get_filename(&code, raddr->pid);
+  if (!isvalid(filename)) {
+    log_ie("Cannot get file name from PyCodeObject");
+    return NULL;
+  }
+
+  char * scope = _code__get_name(&code, raddr->pid);
+  if (!isvalid(scope)) {
+    log_ie("Cannot get scope name from PyCodeObject");
+    goto failed;
+  }
+
+  ssize_t len = 0;
+  unsigned char * lnotab = _code__get_lnotab(&code, raddr->pid, &len);
+  if (!isvalid(lnotab) || len % 2) {
+    log_ie("Cannot get line number from PyCodeObject");
+    goto failed;
+  }
+
+  int lineno = V_FIELD(unsigned int, code, py_code, o_firstlineno);
+
+  if (py_v->major == 3 && py_v->minor >= 10) { // Python >=3.10
+    lasti <<= 1;
+    for (register int i = 0, bc = 0; i < len; i++) {
+      int sdelta = lnotab[i++];
+      if (sdelta == 0xff)
+        break;
+
+      bc += sdelta;
+
+      int ldelta = lnotab[i];
+      if (ldelta == 0x80)
+        ldelta = 0;
+      else if (ldelta > 0x80)
+        lineno -= 0x100;
+
+      lineno += ldelta;
+      if (bc > lasti)
+        break;
+    }
+  }
+  else { // Python < 3.10
+    for (register int i = 0, bc = 0; i < len; i++) {
+      bc += lnotab[i++];
+      if (bc > lasti)
+        break;
+
+      if (lnotab[i] >= 0x80)
+        lineno -= 0x100;
+
+      lineno += lnotab[i];
+    }
+  }
+
+  free(lnotab);
+
+  frame_t * frame = frame_new(filename, scope, lineno);
+  if (!isvalid(frame)) {
+    log_e("Failed to create frame object");
+    goto failed;
+  }
+
+  return frame;
+
+failed:
+  sfree(filename);
+  sfree(scope);
+  
+  return NULL;
+}
+
+
 #endif // PY_THREAD_C
 
+
+// ----------------------------------------------------------------------------
 static inline void
 frame__destroy(frame_t * self) {
   if (!isvalid(self))

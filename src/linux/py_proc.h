@@ -40,9 +40,8 @@
 #ifdef NATIVE
 #include "../argparse.h"
 #include "../cache.h"
-#include "../strhash.h"
 #endif
-#include "../strhash.h"
+#include "../py_string.h"
 #include "../hints.h"
 #include "../py_proc.h"
 
@@ -543,7 +542,7 @@ _py_proc__get_vm_maps(py_proc_t * self) {
       if (pargs.where) {
         if (strcmp(pathname, prevpathname)) {
           ranges[nrange++] = vm_range_new(lower, upper, strdup(pathname));
-          key_dt key = string_hash(pathname);
+          key_dt key = string__hash(pathname);
           if (!isvalid(hash_table__get(table, key)))
             hash_table__set(table, key, (value_t) lower);
           strcpy(prevpathname, pathname);

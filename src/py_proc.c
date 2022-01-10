@@ -40,7 +40,7 @@
 
 #include "argparse.h"
 #include "bin.h"
-#include "strhash.h"
+#include "py_string.h"
 #include "error.h"
 #include "hints.h"
 #include "logging.h"
@@ -120,7 +120,7 @@ _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
 
   for (register int i = 0; i < DYNSYM_COUNT; i++) {
     if (
-      string_hash(name) == _dynsym_hash_array[i]
+      string__hash(name) == _dynsym_hash_array[i]
     &&strcmp(name, _dynsym_array[i]) == 0
     ) {
       *(&(self->tstate_curr_raddr) + i) = value;
@@ -789,7 +789,7 @@ py_proc_new(int child) {
   // Pre-hash symbol names
   if (_dynsym_hash_array[0] == 0) {
     for (register int i = 0; i < DYNSYM_COUNT; i++) {
-      _dynsym_hash_array[i] = string_hash((char *) _dynsym_array[i]);
+      _dynsym_hash_array[i] = string__hash((char *) _dynsym_array[i]);
     }
   }
 
