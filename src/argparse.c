@@ -46,6 +46,8 @@ const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s:%s;L%d";
 const char SAMPLE_FORMAT_WHERE[]       = "    \033[33;1m%2$s\033[0m (\033[36;1m%1$s\033[0m:\033[32;1m%3$d\033[0m)\n";
 #ifdef NATIVE
 const char SAMPLE_FORMAT_WHERE_NATIVE[]= "    \033[38;5;246m%2$s\033[0m (\033[38;5;248;1m%1$s\033[0m:\033[38;5;246m%3$d\033[0m)\n";
+const char SAMPLE_FORMAT_KERNEL[]      = ";kernel:%s:0";
+const char SAMPLE_FORMAT_WHERE_KERNEL[]= "    \033[38;5;159m%s\033[0m 🐧\n";
 #endif
 #if defined PL_WIN
 const char HEAD_FORMAT_DEFAULT[]       = "P%I64d;T%I64x";
@@ -67,6 +69,7 @@ parsed_args_t pargs = {
   /* format              */ (char *) SAMPLE_FORMAT_NORMAL,
   #ifdef NATIVE
   /* native_format       */ (char *) SAMPLE_FORMAT_NORMAL,
+  /* kernel_format       */ (char *) SAMPLE_FORMAT_KERNEL,
   #endif
   /* head_format         */ (char *) HEAD_FORMAT_DEFAULT,
   /* full                */ 0,
@@ -400,6 +403,7 @@ parse_opt (int key, char *arg, struct argp_state *state)
     pargs.format = (char *) SAMPLE_FORMAT_WHERE;
     #ifdef NATIVE
     pargs.native_format = (char *) SAMPLE_FORMAT_WHERE_NATIVE;
+    pargs.kernel_format = (char *) SAMPLE_FORMAT_WHERE_KERNEL;
     #endif
     break;
 

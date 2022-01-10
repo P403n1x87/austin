@@ -151,7 +151,7 @@ stack_py_push(void * origin, void * code, int lasti) {
 #define stack_native_full()      (_stack->native_pointer >= _stack->size)
 #define stack_native_reset()     {_stack->native_pointer = 0;}
 
-#define stack_kernel_push(frame) {_stack->kernel_base[_stack->native_pointer++] = frame;}
+#define stack_kernel_push(frame) {_stack->kernel_base[_stack->kernel_pointer++] = frame;}
 #define stack_kernel_pop()       (_stack->kernel_base[--_stack->kernel_pointer])
 #define stack_kernel_is_empty()  (_stack->kernel_pointer == 0)
 #define stack_kernel_full()      (_stack->kernel_pointer >= _stack->size)

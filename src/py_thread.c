@@ -887,12 +887,11 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     #endif
   }
   while (!stack_kernel_is_empty()) {
-    char * kernel_frame = stack_kernel_pop();
-    if (isvalid(kernel_frame)) {
-      fprintf(pargs.output_file, pargs.format, "kernel", kernel_frame, 0);
-      free(kernel_frame);
-    }
+    char * scope = stack_kernel_pop();
+    fprintf(pargs.output_file, pargs.kernel_format, scope);
+    free(scope);
   }
+
   #else
   while (!stack_is_empty()) {
     frame_t * frame = stack_pop();
