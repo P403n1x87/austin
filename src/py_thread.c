@@ -162,7 +162,9 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
       #ifdef DEBUG
       _frame_cache_miss++;
       #endif
-      frame = _frame_from_code_raddr(&(raddr_t) {self->raddr.pid, py_frame.code}, lasti);
+      frame = _frame_from_code_raddr(
+        &(raddr_t) {self->raddr.pid, py_frame.code}, lasti, self->proc->py_v
+      );
       if (!isvalid(frame)) {
         log_ie("Failed to get frame from code object");
         // Truncate the stack to the point where we have successfully resolved.
@@ -182,9 +184,15 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__push_frame_from_addr(py_thread_t * self, PyFrameObject * frame_obj, void ** prev) {
+  if (!isvalid(self))
+    FAIL;
+  
+  V_DESC(self->proc->py_v);
+  
   void * origin = *prev;
+  
   *prev = V_FIELD_PTR(void *, frame_obj, py_frame, o_back);
-  if (origin == *prev) {
+  if (unlikely(origin == *prev)) {
     log_d("Frame points to itself!");
     FAIL;
   }
@@ -205,7 +213,7 @@ _py_thread__push_frame_from_raddr(py_thread_t * self, void ** prev) {
   PyFrameObject frame;
 
   raddr_t raddr = {self->raddr.pid, *prev};
-  if (fail(copy_from_raddr_v((&raddr), frame, py_v->py_frame.size))) {
+  if (fail(copy_from_raddr_v((&raddr), frame, self->proc->py_v->py_frame.size))) {
     log_ie("Cannot read remote PyFrameObject");
     FAIL;
   }
@@ -505,6 +513,11 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
 // ----------------------------------------------------------------------------
 int
 py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc) {
+  if (!isvalid(self))
+    FAIL;
+
+  V_DESC(proc->py_v);
+
   PyThreadState ts;
 
   self->invalid = TRUE;

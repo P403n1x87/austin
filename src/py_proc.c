@@ -47,7 +47,6 @@
 #include "mem.h"
 #include "stack.h"
 #include "stats.h"
-#include "version.h"
 
 #include "py_proc.h"
 #include "py_thread.h"
@@ -226,9 +225,9 @@ release:
 
 
 static int
-_py_proc__get_version(py_proc_t * self) {
+_py_proc__infer_python_version(py_proc_t * self) {
   if (self == NULL || (self->bin_path == NULL && self->lib_path == NULL))
-    return NOVERSION;
+    FAIL;
 
   int major = 0, minor = 0, patch = 0;
 
@@ -261,7 +260,8 @@ _py_proc__get_version(py_proc_t * self) {
       }
       base += needle_len;
       if (sscanf(base,"%d.%d", &major, &minor) == 2) {
-        return PYVERSION(major, minor, patch) | 0xFF;
+        self->py_v = get_version_descriptor(major, minor, patch);
+        SUCCESS;
       }
     }
 
@@ -275,13 +275,15 @@ _py_proc__get_version(py_proc_t * self) {
     char * ver_needle = strstr(self->lib_path, "/3.");
     if (ver_needle == NULL) ver_needle = strstr(self->lib_path, "/2.");
     if (ver_needle == NULL || sscanf(ver_needle, "/%d.%d", &major, &minor) == 2) {
-      return PYVERSION(major, minor, patch) | 0xFF;
+      self->py_v = get_version_descriptor(major, minor, patch);
+      SUCCESS;
     }
 
     // Still no version detected so we look into the binary content
     int version = NOVERSION;
     if (isvalid(self->lib_path) && (version = _find_version_in_binary(self->lib_path))) {
-      return version;
+      self->py_v = get_version_descriptor(MAJOR(version), MINOR(version), PATCH(version));
+      SUCCESS;
     }
     #endif
   }
@@ -292,16 +294,18 @@ _py_proc__get_version(py_proc_t * self) {
     // content for clues
     int version = NOVERSION;
     if (isvalid(self->bin_path) && (version = _find_version_in_binary(self->bin_path))) {
-      return version;
+      self->py_v = get_version_descriptor(MAJOR(version), MINOR(version), PATCH(version));
+      SUCCESS;
     }
   }
   #endif
 
   set_error(ENOVERSION);
-  return NOVERSION;
+  FAIL;
 
 from_exe:
-  return PYVERSION(major, minor, patch);
+  self->py_v = get_version_descriptor(major, minor, patch);
+  SUCCESS;
 
   // Scan the rodata section for something that looks like the Python version.
   // There are good chances this is at the very beginning of the section so
@@ -332,6 +336,11 @@ from_exe:
 // ----------------------------------------------------------------------------
 static int
 _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
+  if (!isvalid(self))
+    FAIL;
+
+  V_DESC(self->py_v);
+
   PyInterpreterState is;
   PyThreadState      tstate_head;
 
@@ -370,6 +379,13 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     FAIL;
   }
 
+  log_d("Stack trace constructed from possible interpreter state");
+
+  if (py_v->major == 3 && py_v->minor >= 9) {
+    self->gc_state_raddr = (void *) (((char *) raddr) + py_v->py_is.o_gc);
+    log_d("GC runtime state @ %p", self->gc_state_raddr);
+  }
+
   // Try to determine the TID by reading the remote struct pthread structure.
   // We can then use this information to parse the appropriate procfs file and
   // determine the native thread's running state.
@@ -381,13 +397,6 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   log_d("tid field offset not ready");
   FAIL;
   #endif
-
-  log_d("Stack trace constructed from possible interpreter state");
-
-  if (py_v->major == 3 && py_v->minor >= 9) {
-    self->gc_state_raddr = (void *) (((char *) raddr) + py_v->py_is.o_gc);
-    log_d("GC runtime state @ %p", self->gc_state_raddr);
-  }
 
   SUCCESS;
 }
@@ -491,6 +500,11 @@ _py_proc__scan_bss(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__deref_interp_head(py_proc_t * self) {
+  if (!isvalid(self))
+    FAIL;
+
+  V_DESC(self->py_v);
+  
   void * interp_head_raddr;
 
   if (self->py_runtime_raddr != NULL) {
@@ -555,6 +569,11 @@ _py_proc__get_current_thread_state_raddr(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__find_interpreter_state(py_proc_t * self) {
+  if (!isvalid(self))
+    FAIL;
+
+  V_DESC(self->py_v);
+  
   PyThreadState   tstate_current;
   void          * tstate_current_raddr;
 
@@ -752,13 +771,9 @@ _py_proc__run(py_proc_t * self) {
   #endif
 
   // Determine and set version
-  if (!self->version) {
-    if (!(self->version = _py_proc__get_version(self))) {
-      set_error(ENOVERSION);
-      FAIL;
-    }
-
-    set_version(self->version);
+  if (fail(_py_proc__infer_python_version(self))) {
+    set_error(ENOVERSION);
+    FAIL;
   }
 
   if (_py_proc__wait_for_interp_state(self))
@@ -1023,6 +1038,8 @@ _py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
   if (self->py_runtime_raddr == NULL)
     FAIL;
 
+  V_DESC(self->py_v);
+
   void            * interp_head_raddr;
   _PyRuntimeState   py_runtime;
 
@@ -1099,6 +1116,8 @@ py_proc__is_gc_collecting(py_proc_t * self) {
   if (!isvalid(self->gc_state_raddr))
     return FALSE;
 
+  V_DESC(self->py_v);
+
   GCRuntimeState gc_state;
   if (fail(py_proc__get_type(self, self->gc_state_raddr, gc_state))) {
     log_d("Failed to get GC runtime state");
@@ -1172,6 +1191,8 @@ py_proc__sample(py_proc_t * self) {
   ssize_t   mem_delta      = 0;
   void    * current_thread = NULL;
 
+  V_DESC(self->py_v);
+
   PyInterpreterState is;
   if (fail(py_proc__get_type(self, self->is_raddr, is)))
     FAIL;
@@ -1237,9 +1258,10 @@ py_proc__sample(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 void
 py_proc__log_version(py_proc_t * self, int parent) {
-  int major = MAJOR(self->version);
-  int minor = MINOR(self->version);
-  int patch = PATCH(self->version);
+  int major = self->py_v->major;
+  int minor = self->py_v->minor;
+  int patch = self->py_v->patch;
+
   if (pargs.pipe) {
     if (patch == 0xFF) {
       if (parent) {

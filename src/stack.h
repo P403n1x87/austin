@@ -162,19 +162,25 @@ stack_py_push(void * origin, void * code, int lasti) {
 
 
 // ----------------------------------------------------------------------------
-#define _code__get_filename(self, pid)                                         \
-  _string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_filename)))
+#define _code__get_filename(self, pid, py_v)                                   \
+  _string_from_raddr(                                                          \
+    pid, *((void **) ((void *) self + py_v->py_code.o_filename)), py_v         \
+  )
 
-#define _code__get_name(self, pid)                                             \
-  _string_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_name)))
+#define _code__get_name(self, pid, py_v)                                       \
+  _string_from_raddr(                                                          \
+    pid, *((void **) ((void *) self + py_v->py_code.o_name)), py_v             \
+  )
 
-#define _code__get_lnotab(self, pid, len)                                      \
-  _bytes_from_raddr(pid, *((void **) ((void *) self + py_v->py_code.o_lnotab)), len)
+#define _code__get_lnotab(self, pid, len, py_v)                                \
+  _bytes_from_raddr(                                                           \
+    pid, *((void **) ((void *) self + py_v->py_code.o_lnotab)), len, py_v      \
+  )
 
 
 // ----------------------------------------------------------------------------
 static inline frame_t *
-_frame_from_code_raddr(raddr_t * raddr, int lasti) {
+_frame_from_code_raddr(raddr_t * raddr, int lasti, python_v * py_v) {
   PyCodeObject code;
 
   if (fail(copy_from_raddr_v(raddr, code, py_v->py_code.size))) {
@@ -182,20 +188,20 @@ _frame_from_code_raddr(raddr_t * raddr, int lasti) {
     return NULL;
   }
 
-  char * filename = _code__get_filename(&code, raddr->pid);
+  char * filename = _code__get_filename(&code, raddr->pid, py_v);
   if (!isvalid(filename)) {
     log_ie("Cannot get file name from PyCodeObject");
     return NULL;
   }
 
-  char * scope = _code__get_name(&code, raddr->pid);
+  char * scope = _code__get_name(&code, raddr->pid, py_v);
   if (!isvalid(scope)) {
     log_ie("Cannot get scope name from PyCodeObject");
     goto failed;
   }
 
   ssize_t len = 0;
-  unsigned char * lnotab = _code__get_lnotab(&code, raddr->pid, &len);
+  unsigned char * lnotab = _code__get_lnotab(&code, raddr->pid, &len, py_v);
   if (!isvalid(lnotab) || len % 2) {
     log_ie("Cannot get line number from PyCodeObject");
     goto failed;
