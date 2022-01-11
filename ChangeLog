@@ -1,10 +1,13 @@
-2022-01-03 v3.3.0
+2022-01-11 v3.3.0
 
   Added the new Where mode.
 
   Overall performance and accuracy improvements.
 
   The heap allocation has been turned off by default.
+
+  Added support for profiling child processes that might have a different Python
+  runtime version than the parent process.
 
   Bugfix: fixed heap size handling.
 

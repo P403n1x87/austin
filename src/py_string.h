@@ -55,7 +55,7 @@ string__hash(char * string) {
 
 // ----------------------------------------------------------------------------
 static inline char *
-_string_from_raddr(pid_t pid, void * raddr) {
+_string_from_raddr(pid_t pid, void * raddr, python_v * py_v) {
   PyStringObject     string;
   PyUnicodeObject3   unicode;
   char             * buffer = NULL;
@@ -112,7 +112,7 @@ failed:
 
 // ----------------------------------------------------------------------------
 static inline unsigned char *
-_bytes_from_raddr(pid_t pid, void * raddr, ssize_t * size) {
+_bytes_from_raddr(pid_t pid, void * raddr, ssize_t * size, python_v * py_v) {
   PyStringObject  string;
   PyBytesObject   bytes;
   ssize_t         len = 0;

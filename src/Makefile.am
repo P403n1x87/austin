@@ -30,7 +30,6 @@ austin_SOURCES = \
   cache.c        \
   error.c        \
   logging.c      \
-  version.c      \
   stats.c        \
   platform.c     \
   py_proc_list.c \

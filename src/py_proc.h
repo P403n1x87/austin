@@ -36,6 +36,7 @@
 #include "cache.h"
 #include "heap.h"
 #include "stats.h"
+#include "version.h"
 
 
 typedef struct {
@@ -68,7 +69,7 @@ typedef struct {
   void          * bss;  // local copy of the remote bss section
 
   int             sym_loaded;
-  int             version;
+  python_v      * py_v;
 
   // Symbols from .dynsym
   void          * tstate_curr_raddr;
