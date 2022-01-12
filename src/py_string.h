@@ -20,8 +20,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef STRHASH_H
-#define STRHASH_H
+#ifndef PY_STRING_H
+#define PY_STRING_H
 
 #include <stdlib.h>
 #include <string.h>
@@ -29,7 +29,7 @@
 #include "hints.h"
 #include "logging.h"
 #include "mem.h"
-#include "python.h"
+#include "python/string.h"
 #include "version.h"
 
 #define MAGIC_TINY                            7

@@ -44,6 +44,7 @@
 #include "../py_string.h"
 #include "../hints.h"
 #include "../py_proc.h"
+#include "../version.h"
 
 
 #define CHECK_HEAP

@@ -36,7 +36,7 @@
 
 #include "logging.h"
 #include "platform.h"
-#include "python.h"
+#include "python/abi.h"
 
 
 #define PYVERSION(major, minor, patch)  ((major << 16) | (minor << 8) | patch)
