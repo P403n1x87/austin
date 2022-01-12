@@ -38,7 +38,7 @@
 #include "mem.h"
 #include "msg.h"
 #include "platform.h"
-#include "python.h"
+#include "python/abi.h"
 #include "stats.h"
 #include "timing.h"
 #include "version.h"
