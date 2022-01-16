@@ -8,6 +8,11 @@ jobs:
     name: Tests on Linux
     steps:
       - uses: actions/checkout@v2
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
+
       - name: Compile Austin
         run: |
           autoreconf --install

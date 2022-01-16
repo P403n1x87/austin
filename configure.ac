@@ -15,6 +15,35 @@ AC_PROG_CPP
 AC_LANG([C])
 
 # Checks for libraries.
+AC_CHECK_HEADER(libunwind-ptrace.h, [
+    AM_CONDITIONAL(BUILD_AUSTINP, true)
+    AUSTINP_CFLAGS="-DAUSTINP"
+    AUSTINP_LDADD="-l:libunwind-ptrace.a -l:liblzma.a -l:libunwind-generic.a -l:libunwind.a"
+    echo "including build of austinp"
+], [
+    AM_CONDITIONAL(BUILD_AUSTINP, false)
+    echo "not building austinp: missing libunwind"
+])
+AC_CHECK_LIB(bfd, bfd_openr, [
+    AC_DEFINE([HAVE_BFD], [1], ["Compile with BFD support"])
+    AUSTINP_CFLAGS+=" -DHAVE_BFD"
+    AUSTINP_LDADD+=" -lbfd"
+    echo "enabling symbol resolution support for austinp"
+], [
+    echo "austinp will be built without symbol resolution support: missing libbfd"
+])
+AC_CHECK_LIB(iberty, bfd_demangle, [
+    AC_DEFINE([HAVE_LIBERTY], [1], ["Compile with C++ name demangling support"])
+    AUSTINP_CFLAGS+=" -DHAVE_LIBERTY"
+    echo "enabling C++ name demangling support for austinp"
+], [
+    echo "austinp will be built without C++ names demangling support: missing libiberty"
+], [
+    -lbfd
+])
+
+AC_SUBST(AUSTINP_CFLAGS, [$AUSTINP_CFLAGS])
+AC_SUBST(AUSTINP_LDADD, [$AUSTINP_LDADD])
 
 # Checks for header files.
 AC_HEADER_STDC

@@ -16,7 +16,7 @@ jobs:
       - name: Generate artifacts
         run: |
           sudo apt-get update
-          sudo apt-get -y install autoconf build-essential libunwind-dev musl-tools binutils-dev
+          sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools
 
           # Build austin
           autoreconf --install
@@ -27,9 +27,6 @@ jobs:
           export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
           export VERSION=$(echo $PREV_VERSION | awk -F. '{A=NF-1; $A = $A + 1; $NF=0} 1' | sed 's/ /./g')-dev+$(git rev-parse --short HEAD)
           sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
-
-          # Build austinp
-          gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austinp -DAUSTINP -l:libunwind-ptrace.a -l:liblzma.a -l:libunwind-generic.a -l:libunwind.a -lbfd
 
           pushd src
           tar -Jcf austin-$VERSION-gnu-linux-amd64.tar.xz austin
