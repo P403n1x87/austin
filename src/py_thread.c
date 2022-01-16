@@ -49,7 +49,7 @@
 #if defined(PL_LINUX)
 
   #include "linux/py_thread.h"
-  #ifdef NATIVE
+  #if defined NATIVE && defined HAVE_BFD
   #include "linux/addr2line.h"
   #endif
 
@@ -466,6 +466,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
         // we resort to improving addr2line and use the VM range tree for
         // normal mode, then we should consider catching the case
         // !isvalid(range) and regenerate the VM range tree with fresh data.
+        #ifdef HAVE_BFD
         if (isvalid(range)) {
           unw_word_t base = (unw_word_t) hash_table__get(
             self->proc->base_table, string__hash(range->name)
@@ -473,6 +474,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
           if (base > 0)
             frame = get_native_frame(range->name, pc - base);
         }
+        #endif
       }
       if (!isvalid(frame)) {
         if (unw_get_proc_name(&cursor, _native_buf, MAXLEN, &offset) == 0) {

@@ -28,7 +28,9 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef HAVE_LIBERTY
 #include <libiberty/demangle.h>
+#endif
 
 #include "../logging.h"
 #include "../stack.h"
@@ -206,12 +208,14 @@ get_native_frame(const char *file_name, bfd_vma addr)
     name = functionname;
     if (name == NULL || *name == '\0')
         name = "<unnamed>";
+#ifdef HAVE_LIBERTY
     else
     {
         alloc = bfd_demangle(abfd, name, DMGL_PARAMS | DMGL_ANSI);
         if (alloc != NULL)
             name = alloc;
     }
+#endif
 
     free(syms);
     syms = NULL;
