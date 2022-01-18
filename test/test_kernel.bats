@@ -22,24 +22,26 @@
 
 load "common"
 
+variant "austinp"
 
-function attach_austin {
+function where_mode {
   local version="${1}"
 
   check_python $version
 
-  log "Attach [Python $version]"
+  log "Linux kernel stacks [Python $version]"
 
   # -------------------------------------------------------------------------
-  step "Standard profiling"
+  step "Where mode"
   # -------------------------------------------------------------------------
     $PYTHON test/sleepy.py &
     sleep 1
-    run $AUSTIN -i 10ms -t 100 -p $!
+    run $AUSTIN -kw $!
 
     assert_success
-    assert_output "# austin: [[:digit:]]*.[[:digit:]]*.[[:digit:]]*"
-    assert_output ".*test/sleepy.py:<module>:[[:digit:]]*"
+    assert_output "<module>.*test/sleepy.py.*:.*[[:digit:]]"
+    assert_output "__select.*libc"
+    assert_output "do_syscall_64"
 
 }
 
@@ -48,59 +50,59 @@ function attach_austin {
 # -- Test Cases
 # -----------------------------------------------------------------------------
 
-@test "Test Austin with Python 2.3" {
+@test "Test austinp with Python 2.3" {
   ignore
-	repeat 3 attach_austin "2.3"
+	repeat 3 where_mode "2.3"
 }
 
-@test "Test Austin with Python 2.4" {
+@test "Test austinp with Python 2.4" {
   ignore
-	repeat 3 attach_austin "2.4"
+	repeat 3 where_mode "2.4"
 }
 
-@test "Test Austin with Python 2.5" {
-	repeat 3 attach_austin "2.5"
+@test "Test austinp with Python 2.5" {
+	repeat 3 where_mode "2.5"
 }
 
-@test "Test Austin with Python 2.6" {
+@test "Test austinp with Python 2.6" {
   ignore "This test is known to fail"
-	repeat 3 attach_austin "2.6"
+	repeat 3 where_mode "2.6"
 }
 
-@test "Test Austin with Python 2.7" {
-	repeat 3 attach_austin "2.7"
+@test "Test austinp with Python 2.7" {
+	repeat 3 where_mode "2.7"
 }
 
-@test "Test Austin with Python 3.3" {
+@test "Test austinp with Python 3.3" {
   ignore "No longer tested"
-	repeat 3 attach_austin "3.3"
+	repeat 3 where_mode "3.3"
 }
 
-@test "Test Austin with Python 3.4" {
-	repeat 3 attach_austin "3.4"
+@test "Test austinp with Python 3.4" {
+	repeat 3 where_mode "3.4"
 }
 
-@test "Test Austin with Python 3.5" {
-	repeat 3 attach_austin "3.5"
+@test "Test austinp with Python 3.5" {
+	repeat 3 where_mode "3.5"
 }
 
-@test "Test Austin with Python 3.6" {
-  repeat 3 attach_austin "3.6"
+@test "Test austinp with Python 3.6" {
+  repeat 3 where_mode "3.6"
 }
 
-@test "Test Austin with Python 3.7" {
-  repeat 3 attach_austin "3.7"
+@test "Test austinp with Python 3.7" {
+  repeat 3 where_mode "3.7"
 }
 
-@test "Test Austin with Python 3.8" {
-  repeat 3 attach_austin "3.8"
+@test "Test austinp with Python 3.8" {
+  repeat 3 where_mode "3.8"
 }
 
-@test "Test Austin with Python 3.9" {
-  repeat 3 attach_austin "3.9"
+@test "Test austinp with Python 3.9" {
+  repeat 3 where_mode "3.9"
 }
 
 
-@test "Test Austin with Python 3.10" {
-  repeat 3 attach_austin "3.10"
+@test "Test austinp with Python 3.10" {
+  repeat 3 where_mode "3.10"
 }

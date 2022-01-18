@@ -433,7 +433,8 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
   void        * context = _tids[self->tid];
 
   int outcome;
-  while((outcome = unw_init_remote(&cursor, self->proc->unwind.as, context)) == -UNW_EBADREG);
+  int attempts = 1000;
+  while(attempts-- && (outcome = unw_init_remote(&cursor, self->proc->unwind.as, context)) == -UNW_EBADREG);
   if (fail(outcome)) {
     log_e("unwind: failed to initialize cursor (%d)", outcome);
     FAIL;
@@ -682,7 +683,8 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     int is_frame_eval = FALSE;
     if (isvalid(eval_frame_fn)) {
       char c = *(eval_frame_fn+16);
-      is_frame_eval = (c == 'D') || (self->proc->py_v->major == 2 && c == 'E');
+      V_DESC(self->proc->py_v);
+      is_frame_eval = (c == 'D') || (PYVER_ATMOST(3, 5) && c == 'E');
     }
     if (!stack_is_empty() && is_frame_eval) {
       // TODO: if the py stack is empty we have a mismatch.

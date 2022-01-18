@@ -44,6 +44,9 @@
 #define MINOR(x)                        ((x >> 8) & 0xFF)
 #define PATCH(x)                        (x & 0xFF)
 
+#define PYVER_ATMOST(maj, min) \
+  (py_v->major < maj || (py_v->major == maj && py_v->minor <= min))
+
 
 /**
  * Get the value of a field of a versioned structure.

@@ -24,7 +24,18 @@
 # -- Austin
 # -----------------------------------------------------------------------------
 
-AUSTIN=`test -f src/austin && echo "src/austin" || echo "austin"`
+if [ -z "$AUSTIN" ]
+then
+  export AUSTIN=`test -f src/austin && echo "src/austin" || echo "austin"`
+fi
+
+function variant {
+  name="${1}"
+
+  export AUSTIN=`test -f src/${name} && echo "src/${name}" || echo "${name}"`
+  
+  if ! test -f $AUSTIN; then skip "austinp not available."; fi
+}
 
 
 # -----------------------------------------------------------------------------

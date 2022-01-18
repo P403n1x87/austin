@@ -13,20 +13,20 @@ jobs:
         run: |
           sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
 
-      - name: Compile Austin
-        run: |
-          autoreconf --install
-          ./configure
-          make
-
       - name: Install test dependencies
         run: |
           sudo add-apt-repository -y ppa:deadsnakes/ppa
           sudo apt-get -y install valgrind python2.{3..7} python3.{3..10}
           npm install bats
 
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure
+          make
+
       - name: Run tests
-        run: sudo node_modules/.bin/bats test/test.bats
+        run: sudo make check
 
       - name: Show test logs
         run: |
