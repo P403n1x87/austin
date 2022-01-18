@@ -36,9 +36,8 @@ test_case() {
 }
 
 @test "Test Austin: attach" {
-  if [[ $EUID -ne 0 ]]; then
-    skip "requires root"
-  fi
+  requires_root
+  
   test_case attach
 }
 
