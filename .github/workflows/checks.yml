@@ -1,0 +1,25 @@
+name: Checks
+on: push
+jobs:
+  check-manpage:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    name: Check manpage
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install build dependencies
+        run: sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev help2man
+
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure
+          make
+
+      - name: Generate manpage
+        run: bash doc/genman.sh
+
+      - name: Check manpage
+        run: git diff --exit-code src/austin.1
