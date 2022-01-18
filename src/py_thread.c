@@ -678,7 +678,13 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
       log_e("Invalid native frame");
       break;
     }
-    if (!stack_is_empty() && strstr(native_frame->scope, "PyEval_EvalFrameDefault")) {
+    char * eval_frame_fn = strstr(native_frame->scope, "PyEval_EvalFrame");
+    int is_frame_eval = FALSE;
+    if (isvalid(eval_frame_fn)) {
+      char c = *(eval_frame_fn+16);
+      is_frame_eval = (c == 'D') || (self->proc->py_v->major == 2 && c == 'E');
+    }
+    if (!stack_is_empty() && is_frame_eval) {
       // TODO: if the py stack is empty we have a mismatch.
       frame_t * frame = stack_pop();
       fprintf(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
@@ -688,7 +694,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     }
   }
   if (!stack_is_empty()) {
-    log_e("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
+    log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
     austin_errno = ETHREADINV;
     #ifdef DEBUG
     fprintf(pargs.output_file, ";:%ld FRAMES LEFT:", stack_pointer());
