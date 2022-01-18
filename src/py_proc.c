@@ -1143,12 +1143,12 @@ _py_proc__interrupt_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
       FAIL;
     if (pargs.kernel && fail(py_thread__save_kernel_stack(&py_thread)))
       FAIL;
-    if (ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0)) {
+    if (fail(wait_ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0))) {
       log_e("ptrace: failed to interrupt thread %d", py_thread.tid);
       FAIL;
     }
     if (fail(py_thread__set_interrupted(&py_thread, TRUE))) {
-      while (ptrace(PTRACE_CONT, py_thread.tid, 0, 0)) {
+      if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
         log_d("ptrace: failed to resume interrupted thread %d (errno: %d)", py_thread.tid, errno);
       }
       FAIL;
@@ -1171,11 +1171,15 @@ _py_proc__resume_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
 
   do {
     if (py_thread__is_interrupted(&py_thread)) {
-      while (ptrace(PTRACE_CONT, py_thread.tid, 0, 0)) {
+      if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
         log_d("ptrace: failed to resume thread %d (errno: %d)", py_thread.tid, errno);
+        FAIL;
       }
       log_t("ptrace: thread %d resumed", py_thread.tid);
-      py_thread__set_interrupted(&py_thread, FALSE);
+      if (fail(py_thread__set_interrupted(&py_thread, FALSE))) {
+        log_ie("Failed to mark thread as interrupted");
+        FAIL;
+      }
     }
   } while (success(py_thread__next(&py_thread)));
 
@@ -1203,7 +1207,10 @@ py_proc__sample(py_proc_t * self) {
     py_thread_t py_thread;
 
     #ifdef NATIVE
-    _py_proc__interrupt_threads(self, &raddr);
+    if (fail(_py_proc__interrupt_threads(self, &raddr))) {
+      log_ie("Failed to interrupt threads");
+      FAIL;
+    }
     time_delta = gettime() - self->timestamp;
     #endif
 
@@ -1242,7 +1249,10 @@ py_proc__sample(py_proc_t * self) {
     } while (success(py_thread__next(&py_thread)));
     #ifdef NATIVE
     self->timestamp = gettime();
-    _py_proc__resume_threads(self, &raddr);
+    if (fail(_py_proc__resume_threads(self, &raddr))) {
+      log_ie("Failed to resume threads");
+      FAIL;
+    }
     #endif
 
   }

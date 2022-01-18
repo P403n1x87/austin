@@ -425,6 +425,16 @@ _py_thread__unwind_kernel_frame_stack(py_thread_t * self) {
 static char _native_buf[MAXLEN];
 
 static inline int
+wait_unw_init_remote(unw_cursor_t * c, unw_addr_space_t as, void * arg) {
+  int outcome = 0;
+  ctime_t end = gettime() + 1000;
+  while(gettime() <= end && (outcome = unw_init_remote(c, as, arg)) == -UNW_EBADREG);
+  if (fail(outcome))
+    log_e("unwind: failed to initialize cursor (%d)", outcome);
+  return outcome;
+}
+
+static inline int
 _py_thread__unwind_native_frame_stack(py_thread_t * self) {
   unw_cursor_t cursor;
   unw_word_t   offset, pc;
@@ -432,13 +442,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
   lru_cache_t * cache   = self->proc->frame_cache;
   void        * context = _tids[self->tid];
 
-  int outcome;
-  int attempts = 1000;
-  while(attempts-- && (outcome = unw_init_remote(&cursor, self->proc->unwind.as, context)) == -UNW_EBADREG);
-  if (fail(outcome)) {
-    log_e("unwind: failed to initialize cursor (%d)", outcome);
+  if (fail(wait_unw_init_remote(&cursor, self->proc->unwind.as, context)))
     FAIL;
-  }
+
 
   stack_native_reset();
 
@@ -560,7 +566,7 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
       #ifdef NATIVE
       // TODO: If a TID is reused we will never seize it!
       if (!isvalid(_tids[self->tid])) {
-        if (fail(ptrace(PTRACE_SEIZE, self->tid, 0, 0))) {
+        if (fail(wait_ptrace(PTRACE_SEIZE, self->tid, 0, 0))) {
           log_e("ptrace: cannot seize thread %d: %d\n", self->tid, errno);
           FAIL;
         }
@@ -831,8 +837,11 @@ py_thread_free(void) {
   for (pid_t tid = 0; tid < max_pid; tid++) {
     if (isvalid(_tids[tid])) {
       _UPT_destroy(_tids[tid]);
-      ptrace(PTRACE_DETACH, tid, 0, 0);
-      log_d("ptrace: thread %ld detached", tid);
+      if (fail(wait_ptrace(PTRACE_DETACH, tid, 0, 0))) {
+        log_d("ptrace: failed to detach thread %ld", tid);
+      } else {
+        log_d("ptrace: thread %ld detached", tid);
+      }
     }
     if (isvalid(_kstacks) && isvalid(_kstacks[tid])) {
       sfree(_kstacks[tid]);

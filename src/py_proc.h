@@ -27,7 +27,6 @@
 #include <sys/types.h>
 
 #ifdef NATIVE
-#include <sys/ptrace.h>
 #include <libunwind-ptrace.h>
 #include "linux/vm-range-tree.h"
 #include "cache.h"

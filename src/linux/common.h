@@ -24,7 +24,9 @@
 #define COMMON_H
 
 #include <pthread.h>
+#include <sys/ptrace.h>
 
+#include "../stats.h"
 
 #define PTHREAD_BUFFER_SIZE          200
 static void * _pthread_buffer[PTHREAD_BUFFER_SIZE];
@@ -38,6 +40,19 @@ struct _proc_extra_info {
   pthread_t    wait_thread_id;
   unsigned int pthread_tid_offset;
 };
+
+
+#ifdef NATIVE
+
+static inline int
+wait_ptrace(enum __ptrace_request request, pid_t pid, void * addr, void * data) {
+  int outcome = 0;
+  ctime_t end = gettime() + 1000;
+  while (gettime() < end && (outcome = ptrace(request, pid, addr, data)) && errno == 3);
+  return outcome;
+}
+
+#endif
 
 
 #endif
