@@ -193,7 +193,7 @@ py_proc__is_gc_collecting(py_proc_t *);
  *
  * @param  py_proc_t *  self.
 
- * @return 0 if the sampling succeded; 1 otherwise.
+ * @return 0 if the sampling succeeded; 1 otherwise.
  */
 int
 py_proc__sample(py_proc_t *);

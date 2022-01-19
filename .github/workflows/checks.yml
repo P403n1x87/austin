@@ -37,3 +37,26 @@ jobs:
 
       - name: Check soure code
         run: cppcheck -q -f --error-exitcode=1 src
+
+  codespell:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    name: Codespell
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: "actions/setup-python@v2"
+        with:
+          python-version: "3.9"
+
+      - name: Install codespell
+        run: pip install codespell
+
+      - name: Check source code spelling
+        run: codespell src
+
+
+
+
+
