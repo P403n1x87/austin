@@ -71,6 +71,7 @@
 static _heap_t      _frames      = NULL_HEAP;
 static _heap_t      _frames_heap = NULL_HEAP;
 
+static size_t           max_pid    = 0;
 #ifdef NATIVE
 static void          ** _tids      = NULL;
 static unsigned char *  _tids_idle = NULL;
@@ -428,7 +429,8 @@ static inline int
 wait_unw_init_remote(unw_cursor_t * c, unw_addr_space_t as, void * arg) {
   int outcome = 0;
   ctime_t end = gettime() + 1000;
-  while(gettime() <= end && (outcome = unw_init_remote(c, as, arg)) == -UNW_EBADREG);
+  while(gettime() <= end && (outcome = unw_init_remote(c, as, arg)) == -UNW_EBADREG)
+    sched_yield();
   if (fail(outcome))
     log_e("unwind: failed to initialize cursor (%d)", outcome);
   return outcome;
@@ -442,9 +444,13 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
   lru_cache_t * cache   = self->proc->frame_cache;
   void        * context = _tids[self->tid];
 
+  if (!isvalid(context)) {
+    log_e("libunwind: unexpected invalid context");
+    FAIL;
+  }
+
   if (fail(wait_unw_init_remote(&cursor, self->proc->unwind.as, context)))
     FAIL;
-
 
   stack_native_reset();
 
@@ -562,7 +568,12 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
       likely(proc->extra->pthread_tid_offset)
       && success(read_pthread_t(self->raddr.pid, (void *) self->tid
     ))) {
-      self->tid = (uintptr_t) _pthread_buffer[proc->extra->pthread_tid_offset];
+      int o = proc->extra->pthread_tid_offset;
+      self->tid = o > 0 ? _pthread_buffer[o] : (pid_t) ((pid_t *) _pthread_buffer)[-o];
+      if (self->tid >= max_pid || self->tid == 0) {
+        log_e("Invalid TID detected");
+        FAIL;
+      }
       #ifdef NATIVE
       // TODO: If a TID is reused we will never seize it!
       if (!isvalid(_tids[self->tid])) {
@@ -768,22 +779,25 @@ py_thread_allocate(void) {
     FAIL;
   #endif
 
+  max_pid = pid_max() + 1;
+
   #ifdef NATIVE
-  size_t max = pid_max();
-  _tids = (void **) calloc(max, sizeof(void *));
+  _tids = (void **) calloc(max_pid, sizeof(void *));
   if (!isvalid(_tids))
     goto failed;
 
-  _tids_idle = (unsigned char *) calloc(max >> 3, sizeof(unsigned char));
+  size_t bmsize = (max_pid >> 3) + 1;
+
+  _tids_idle = (unsigned char *) calloc(bmsize, sizeof(unsigned char));
   if (!isvalid(_tids_idle))
     goto failed;
 
-  _tids_int = (unsigned char *) calloc(max >> 3, sizeof(unsigned char));
+  _tids_int = (unsigned char *) calloc(bmsize, sizeof(unsigned char));
   if (!isvalid(_tids_int))
     goto failed;
 
   if (pargs.kernel) {
-    _kstacks = (char **) calloc(max, sizeof(char *));
+    _kstacks = (char **) calloc(max_pid, sizeof(char *));
     if (!isvalid(_kstacks))
       goto failed;
   }
@@ -833,7 +847,6 @@ py_thread_free(void) {
   sfree(_frames_heap.content);
 
   #ifdef NATIVE
-  pid_t max_pid = pid_max();
   for (pid_t tid = 0; tid < max_pid; tid++) {
     if (isvalid(_tids[tid])) {
       _UPT_destroy(_tids[tid]);

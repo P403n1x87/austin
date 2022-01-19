@@ -25,7 +25,9 @@ load "common"
 variant "austinp"
 
 test_case() {
-  bats test/test_$1.bats
+  # TODO: austinp tests seem to be a bit flaky so we cap the duration of each
+  # run for now.
+  timeout --foreground --preserve-status -k 1s 5m bats test/test_$1.bats
 }
 
 @test "Test austinp variant: fork" {
@@ -45,5 +47,7 @@ test_case() {
 }
 
 @test "Test austinp variant: kernel stacks" {
+  requires_root
+  
   test_case kernel
 }

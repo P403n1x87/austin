@@ -28,10 +28,13 @@
 
 #include "../stats.h"
 
-#define PTHREAD_BUFFER_SIZE          200
-static void * _pthread_buffer[PTHREAD_BUFFER_SIZE];
 
-#define read_pthread_t(pid, addr) (copy_memory(pid, addr, PTHREAD_BUFFER_SIZE * sizeof(void *), _pthread_buffer))
+#define PTHREAD_BUFFER_ITEMS  200
+
+static uintptr_t _pthread_buffer[PTHREAD_BUFFER_ITEMS];
+
+#define read_pthread_t(pid, addr) \
+  (copy_memory(pid, addr, sizeof(_pthread_buffer), _pthread_buffer))
 
 
 struct _proc_extra_info {
@@ -43,12 +46,14 @@ struct _proc_extra_info {
 
 
 #ifdef NATIVE
+#include <sched.h>
 
 static inline int
 wait_ptrace(enum __ptrace_request request, pid_t pid, void * addr, void * data) {
   int outcome = 0;
   ctime_t end = gettime() + 1000;
-  while (gettime() < end && (outcome = ptrace(request, pid, addr, data)) && errno == 3);
+  while (gettime() < end && (outcome = ptrace(request, pid, addr, data)) && errno == 3)
+    sched_yield();
   return outcome;
 }
 
