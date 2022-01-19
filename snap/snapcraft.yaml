@@ -24,3 +24,5 @@ parts:
 apps:
   austin:
     command: bin/austin
+  austinp:
+    command: bin/austinp

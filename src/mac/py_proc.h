@@ -493,10 +493,12 @@ _py_proc__get_maps(py_proc_t * self) {
   log_d("BSS bounds  [%p - %p]", self->map.bss.base, self->map.bss.base + self->map.bss.size);
   log_d("HEAP bounds [%p - %p]", self->map.heap.base, self->map.heap.base + self->map.heap.size);
 
+  retval = !self->sym_loaded;
+
 release:
   free(path);
 
-  return !self->sym_loaded;
+  released;
 } // _py_proc__get_maps
 
 

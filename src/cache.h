@@ -305,6 +305,19 @@ void
 hash_table__set(hash_table_t *, key_dt, value_t);
 
 
+#define hash_table__iter_start(table)                                          \
+    for (int i = 0; i < table->capacity; i++) {                                \
+        chain_t * chain = table->chains[i];                                    \
+        if (!isvalid(chain))                                                   \
+            continue;                                                          \
+        while (isvalid(chain->next)) {                                         \
+            chain = chain->next;                                               \
+            value_t value = chain->value;                                      \
+      
+
+#define hash_table__iter_stop(table) }}
+
+
 /**
  * Remove a value from the hash table.
  * 
