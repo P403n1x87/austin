@@ -478,13 +478,15 @@ _py_proc__get_resident_memory(py_proc_t * self) {
     return -1;
   }
 
+  int ret = 0;
+
   ssize_t size, resident;
   if (fscanf(statm, "%ld %ld", &size, &resident) != 2)
-    return -1;
+    ret = -1;
 
   fclose(statm);
 
-  return resident * self->extra->page_size;
+  return ret ? ret : resident * self->extra->page_size;
 } /* _py_proc__get_resident_memory */
 
 

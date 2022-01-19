@@ -23,3 +23,17 @@ jobs:
 
       - name: Check manpage
         run: git diff --exit-code src/austin.1
+
+  cppcheck:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    name: Static code analysis
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install cppcheck
+        run: sudo apt-get -y install cppcheck
+
+      - name: Check soure code
+        run: cppcheck -q -f --error-exitcode=1 src

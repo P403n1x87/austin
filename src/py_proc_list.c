@@ -110,7 +110,7 @@ _py_proc_list__remove(py_proc_list_t * self, py_proc_item_t * item) {
 py_proc_list_t *
 py_proc_list_new(py_proc_t * parent_py_proc) {
   py_proc_list_t * list = (py_proc_list_t *) calloc(1, sizeof(py_proc_list_t));
-  if (list == NULL)
+  if (!isvalid(list))
     return NULL;
 
   list->pids = pid_max();
@@ -119,18 +119,22 @@ py_proc_list_new(py_proc_t * parent_py_proc) {
 
   list->index = (py_proc_t **) calloc(list->pids, sizeof(py_proc_t *));
   if (list->index == NULL)
-    return NULL;
+    goto release;
 
   list->pid_table = (pid_t *) calloc(list->pids, sizeof(pid_t));
   if (list->pid_table == NULL) {
     free(list->index);
-    return NULL;
+    goto release;
   }
 
   // Add the parent process to the list.
   _py_proc_list__add(list, parent_py_proc);
 
   return list;
+
+release:
+  py_proc_list__destroy(list);
+  return NULL;
 } /* py_proc_list_new */
 
 
