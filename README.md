@@ -18,6 +18,14 @@
     <img src="https://github.com/P403n1x87/austin/workflows/Tests/badge.svg"
          alt="GitHub Action Status: Tests" />
   </a>
+  <a href="https://github.com/P403n1x87/austin/actions?query=workflow%3AChecks">
+    <img src="https://github.com/P403n1x87/austin/workflows/Checks/badge.svg"
+         alt="GitHub Action Status: Checks" />
+  </a>
+  <a href="https://codecov.io/gh/P403n1x87/austin">
+    <img src="https://codecov.io/gh/P403n1x87/austin/branch/master/graph/badge.svg?token=OEDWB2IYBR"
+         alt="Code coverage"/>
+  </a>
   <a href="https://github.com/P403n1x87/austin/releases/latest">
     <img src="http://img.shields.io/github/v/release/p403n1x87/austin"
          alt="latest release" />
