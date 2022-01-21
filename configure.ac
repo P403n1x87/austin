@@ -59,6 +59,17 @@ AC_FUNC_MALLOC
 AC_FUNC_REALLOC
 AC_CHECK_FUNCS([strstr])
 
+# Coverage
+AC_ARG_ENABLE([coverage], [
+  --enable-coverage    Turn on coverage], [
+case "${enableval}" in
+    yes) coverage=true ;;
+    no)  coverage=false ;;
+    *) AC_MSG_ERROR([bad value ${enableval} for --enable-coverage]) ;;
+esac], [coverage=false])
+
+AM_CONDITIONAL([COVERAGE], [test x$coverage = xtrue])
+
 AC_CONFIG_FILES([Makefile
                  src/Makefile])
 AC_OUTPUT
