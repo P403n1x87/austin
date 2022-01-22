@@ -638,6 +638,13 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
     #ifdef DEREF_SYM
     if (fail(_py_proc__find_interpreter_state(self))) {
     #endif
+      if (is_fatal(austin_errno)) {
+        log_d(
+          "Terminatig _py_proc__wait_for_interp_state loop because of fatal error code %d",
+          austin_errno
+        );
+        FAIL;
+      }
       if (self->bss == NULL) {
         self->bss = malloc(self->map.bss.size);
       }
