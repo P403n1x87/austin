@@ -20,40 +20,22 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-load "common"
+import sys
+import time
 
 
-test_case() {
-  bats test/test_$1.bats
-}
+def cpu_bound():
+    a = []
+    for i in range(1000000):
+        a.append(i)
 
-@test "Test Austin: fork" {
-  test_case fork
-}
 
-@test "Test Austin: fork multi-process" {
-  test_case fork_mp
-}
+if __name__ == "__main__":
+    try:
+        interval = float(sys.argv[1])
+    except IndexError:
+        interval = 0.7
 
-@test "Test Austin: attach" {
-  requires_root
-  
-  test_case attach
-}
-
-@test "Test Austin: valgrind" {
-  ignore
-  test_case valgrind
-}
-
-@test "Test Austin: errors" {
-  test_case error
-}
-
-@test "Test Austin: sleepless" {
-  test_case sleepless
-}
-
-@test "Test Austin: where" {
-  test_case where
-}
+    for n in range(2):
+        cpu_bound()
+        time.sleep(interval)

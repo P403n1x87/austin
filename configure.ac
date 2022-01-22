@@ -70,6 +70,17 @@ esac], [coverage=false])
 
 AM_CONDITIONAL([COVERAGE], [test x$coverage = xtrue])
 
+# Debug symbols
+AC_ARG_ENABLE([debug-symbols], [
+  --enable-debug-symbols    Include debug symbols], [
+case "${enableval}" in
+    yes) debugsymbols=true ;;
+    no)  debugsymbols=false ;;
+    *) AC_MSG_ERROR([bad value ${enableval} for --enable-debug-symbols]) ;;
+esac], [debugsymbols=false])
+
+AM_CONDITIONAL([DEBUG_SYMBOLS], [test x$debugsymbols = xtrue])
+
 AC_CONFIG_FILES([Makefile
                  src/Makefile])
 AC_OUTPUT
