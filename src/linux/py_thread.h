@@ -37,8 +37,8 @@ static int
 _py_thread__is_idle(py_thread_t * self) {
   with_resources;
 
-  char      file_name[64];
-  char      buffer[2048];
+  char file_name[64];
+  char buffer[2048] = "";
 
   retval = -1;
 

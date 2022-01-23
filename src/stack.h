@@ -181,7 +181,8 @@ stack_py_push(void * origin, void * code, int lasti) {
 // ----------------------------------------------------------------------------
 static inline frame_t *
 _frame_from_code_raddr(raddr_t * raddr, int lasti, python_v * py_v) {
-  PyCodeObject code;
+  PyCodeObject    code;
+  unsigned char * lnotab = NULL;
 
   if (fail(copy_from_raddr_v(raddr, code, py_v->py_code.size))) {
     log_ie("Cannot read remote PyCodeObject");
@@ -201,7 +202,7 @@ _frame_from_code_raddr(raddr_t * raddr, int lasti, python_v * py_v) {
   }
 
   ssize_t len = 0;
-  unsigned char * lnotab = _code__get_lnotab(&code, raddr->pid, &len, py_v);
+  lnotab = _code__get_lnotab(&code, raddr->pid, &len, py_v);
   if (!isvalid(lnotab) || len % 2) {
     log_ie("Cannot get line number from PyCodeObject");
     goto failed;
@@ -253,6 +254,7 @@ _frame_from_code_raddr(raddr_t * raddr, int lasti, python_v * py_v) {
   return frame;
 
 failed:
+  sfree(lnotab);
   sfree(filename);
   sfree(scope);
   
