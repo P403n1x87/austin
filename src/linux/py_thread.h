@@ -54,13 +54,17 @@ _py_thread__is_idle(py_thread_t * self) {
     goto release;
   }
 
-  char * p = strchr(buffer, ')') + 2;
-  if (p == NULL) {
+  char * p = strchr(buffer, ')');
+  if (!isvalid(p)) {
     log_d("Invalid format for procfs file %s", file_name);
     goto release;
   }
-  if (p[0] == ' ') ++p;
-  retval = p[0] != 'R';
+
+  p+=2;
+  if (*p == ' ')
+    p++;
+
+  retval = (*p != 'R');
 
 release:
   close(fd);
