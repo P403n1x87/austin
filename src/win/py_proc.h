@@ -130,6 +130,9 @@ _py_proc__get_modules(py_proc_t * self) {
   self->min_raddr = (void *) -1;
   self->max_raddr = NULL;
 
+  sfree(self->bin_path);
+  sfree(self->lib_path);
+
   BOOL success = Module32First(mod_hdl, &module);
   while (success) {
     if ((void *) module.modBaseAddr < self->min_raddr)
