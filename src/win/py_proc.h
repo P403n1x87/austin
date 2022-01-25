@@ -99,7 +99,7 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
       DWORD * addrs   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfFunctions);
       for (
         register int i = 0;
-        self->sym_loaded < SYMBOLS && i < e_dir->NumberOfFunctions;
+        self->sym_loaded < SYMBOLS && i < e_dir->NumberOfNames;
         i++
       ) {
         char * sym_name = (char *) map_addr_from_rva(pMapping, names[i]);
