@@ -146,7 +146,11 @@ _py_proc__get_modules(py_proc_t * self) {
       module.modBaseAddr, module.modBaseAddr + module.modBaseSize,
       module.szModule
     );
-    if (self->bin_path == NULL && strstr(module.szModule, ".exe")) {
+    if (
+      self->bin_path == NULL \
+      && strcmp(module.szModule, "py.exe") \
+      && strstr(module.szModule, ".exe") \
+    ) {
       log_d("Candidate binary: %s (size %d KB)", module.szModule, module.modBaseSize >> 10);
       self->bin_path = strdup(module.szExePath);
     }
@@ -263,7 +267,7 @@ with_resources;
         OK;
       }
       else {
-        log_d("Process had a single non-Python child with PID %d. Taking it as new parent", child_pid);
+        log_d("Process has a single non-Python child with PID %d. Taking it as new parent", child_pid);
         CloseHandle(self->extra->h_proc);
       }
     }

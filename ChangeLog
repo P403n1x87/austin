@@ -1,4 +1,4 @@
-2022-01-11 v3.3.0
+2022-01-25 v3.3.0
 
   Added the new Where mode.
 
@@ -14,6 +14,8 @@
   Bugfix: fixed a potential segmentation fault issue in the austinp variant.
 
   Bugfix: fixed a potential deadlock scenario in austinp.
+
+  Bugfix: fixed support for the py.exe launcher on Windows.
 
 
 2021-12-16 v3.2.0

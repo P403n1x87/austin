@@ -709,6 +709,8 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__run(py_proc_t * self) {
+  austin_errno = EOK;
+
   int try_once = self->child;
   #ifdef DEBUG
   if (try_once == FALSE)
