@@ -88,14 +88,15 @@ _string_from_raddr(pid_t pid, void * raddr, python_v * py_v) {
       set_error(ECODEFMT);
       goto failed;
     }
-    if (unicode._base._base.state.compact != 1) {
-      set_error(ECODECMPT);
-      goto failed;
-    }
 
-    len    = unicode._base._base.length;
-    buffer = (char *) malloc(len + 1);
-    if (fail(copy_memory(pid, p_ascii_data(raddr), len, buffer))) {
+    buffer      = (char *) malloc(len + 1);
+    void * data = unicode._base._base.state.compact 
+                ? p_ascii_data(raddr)
+                : unicode._base.utf8;
+    len         = unicode._base._base.state.compact
+                ? unicode._base._base.length
+                : unicode._base.utf8_length;
+    if (fail(copy_memory(pid, data, len, buffer))) {
       log_ie("Cannot read remote value of PyUnicodeObject3");
       goto failed;
     }
