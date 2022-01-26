@@ -21,13 +21,19 @@
 # along with this program.  If not, see <http:#www.gnu.org/licenses/>.
 
 AM_CFLAGS = -I$(srcdir) -Wall -pthread
-OPT_FLAGS = -O3 -Os -s
+OPT_FLAGS = -O3
+STRIP_FLAGS = -Os -s
+
+if DEBUG_SYMBOLS
+DEBUG_OPTS = -g
+undefine STRIP_FLAGS
+endif
 
 if COVERAGE
 COVERAGE_FLAGS = -g -fprofile-arcs -ftest-coverage
 undefine OPT_FLAGS
+undefine STRIP_FLAGS
 endif
-
 
 man_MANS = austin.1
 
@@ -35,7 +41,7 @@ bin_PROGRAMS = austin
 
 # ---- Austin ----
 
-austin_CFLAGS = $(AM_CFLAGS) $(OPT_FLAGS) $(COVERAGE_FLAGS)
+austin_CFLAGS = $(AM_CFLAGS) $(OPT_FLAGS) $(STRIP_FLAGS) $(COVERAGE_FLAGS) $(DEBUG_OPTS)
 austin_SOURCES = \
   argparse.c     \
   austin.c       \
@@ -55,6 +61,6 @@ if BUILD_AUSTINP
 bin_PROGRAMS += austinp
 
 austinp_SOURCES = $(austin_SOURCES)
-austinp_CFLAGS = $(AM_CFLAGS) $(OPT_FLAGS) $(COVERAGE_FLAGS) @AUSTINP_CFLAGS@
+austinp_CFLAGS = $(austin_CFLAGS) @AUSTINP_CFLAGS@
 austinp_LDADD = @AUSTINP_LDADD@
 endif
