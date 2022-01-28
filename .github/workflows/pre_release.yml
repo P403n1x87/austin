@@ -1,8 +1,8 @@
-name: Development release
+name: Pre-release
 on:
   push:
     tags:
-      - '*dev*'
+      - 'v*-*'
 jobs:
   release-linux:
     runs-on: ubuntu-latest
@@ -47,7 +47,7 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           prerelease: true
-          release_name: Development build
+          release_name: ${{ github.ref_name }}
           file_glob: true
 
   release-win:
@@ -104,7 +104,7 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           prerelease: true
-          release_name: Development build
+          release_name: ${{ github.ref_name }}
           file_glob: true
 
   release-osx:
@@ -138,5 +138,6 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           prerelease: true
-          release_name: Development build
+          release_name: ${{ github.ref_name }}
+          body: See the changelog for details.
           file_glob: true

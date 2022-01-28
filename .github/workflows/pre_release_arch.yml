@@ -1,8 +1,8 @@
-name: Development release (Linux archs)
+name: Pre-release (Linux archs)
 on:
   push:
     tags:
-      - '*dev*'
+      - 'v*-*'
 jobs:
   release-linux-archs:
     runs-on: ubuntu-latest
@@ -64,5 +64,6 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           prerelease: true
-          release_name: Development build
+          release_name: ${{ github.ref_name }}
+          body: See the changelog for details.
           file_glob: true
