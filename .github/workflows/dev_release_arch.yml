@@ -2,7 +2,7 @@ name: Development release (Linux archs)
 on:
   push:
     tags:
-      - 'dev'
+      - '*dev*'
 jobs:
   release-linux-archs:
     runs-on: ubuntu-latest
@@ -27,7 +27,7 @@ jobs:
 
             # Compute dev version
             export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
-            export VERSION=$(echo $PREV_VERSION | awk -F. '{A=NF-1; $A = $A + 1; $NF=0} 1' | sed 's/ /./g')-dev+$(git rev-parse --short HEAD)
+            export VERSION=${{ github.ref_name }}
             sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
           run: |
             apt-get update

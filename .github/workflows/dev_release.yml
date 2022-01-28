@@ -25,7 +25,7 @@ jobs:
 
           # Compute dev version
           export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
-          export VERSION=$(echo $PREV_VERSION | awk -F. '{A=NF-1; $A = $A + 1; $NF=0} 1' | sed 's/ /./g')-dev+$(git rev-parse --short HEAD)
+          export VERSION=${{ github.ref_name }}
           sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
 
           pushd src
@@ -69,8 +69,8 @@ jobs:
 
           # Compute dev version
           export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
-          export VERSION=$(echo $PREV_VERSION | awk -F. '{A=NF-1; $A = $A + 1; $NF=0} 1' | sed 's/ /./g')
-          export VERSION_DEV=$(echo $PREV_VERSION | awk -F. '{A=NF-1; $A = $A + 1; $NF=0} 1' | sed 's/ /./g')-dev+$(git rev-parse --short HEAD)
+          export VERSION_DEV=${{ github.ref_name }}
+          export VERSION=$(echo $PREV_VERSION | sed -r -n "s/([0-9]+\.[0-9]+\.[0-9]+).*/\1/p")
           sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
 
           gcc -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll
@@ -120,7 +120,7 @@ jobs:
         run: |
           # Compute dev version
           export PREV_VERSION=$(cat src/austin.h | sed -n -E "s/.*VERSION[ ]+\"(.+)\"/\1/p")
-          export VERSION=$(echo $PREV_VERSION | awk -F. '{A=NF-1; $A = $A + 1; $NF=0} 1' | sed 's/ /./g')-dev+$(git rev-parse --short HEAD)
+          export VERSION=${{ github.ref_name }}
           sed -i "" "s/$PREV_VERSION/$VERSION/g" src/austin.h
           echo "::set-output name=version::$VERSION"
 
