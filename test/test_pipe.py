@@ -61,7 +61,7 @@ def test_pipe_wall_time(py):
     a = sum_metric(result.stdout)
     d = int(meta["duration"])
 
-    assert 0 < 0.9 * d < a < 2.1 * d
+    assert 0 < 0.8 * d < a < 2.2 * d
 
 
 @allpythons()
@@ -116,4 +116,4 @@ def test_pipe_wall_time_multiprocess_output(py, tmp_path):
         a = sum(int(_.rpartition(" ")[-1]) for _ in samples(data))
         d = int(meta["duration"])
 
-        assert 0 < 0.9 * d < a < 2.1 * d
+        assert 0 < 0.8 * d < a < 2.2 * d

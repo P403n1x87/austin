@@ -143,6 +143,15 @@ by Peter Norton for a general overview of Austin.
 
 Keep reading for more tool ideas and examples!
 
+---
+
+<p align="center">💜</br><i>Austin is a free and open-source project. A lot of
+effort goes into its development to ensure the best performance and that it
+stays up-to-date with the latest Python releases. If you find it useful,
+consider <a href="https://github.com/sponsors/P403n1x87">sponsoring</a> this
+project.</i></br>🙏</p>
+
+---
 
 # Installation
 
@@ -164,7 +173,8 @@ On macOS, Austin can be easily installed from the command line using [Homebrew].
 Anaconda users can install Austin from [Conda Forge].
 
 For any other platform, compiling Austin from sources is as easy as cloning the
-repository and running the C compiler.
+repository and running the C compiler. The [Releases][releases] page has many
+pre-compiled binaries that are ready to be uncompressed and used.
 
 ## With `autotools`
 
@@ -480,9 +490,19 @@ Internally, the script uses `addr2line(1)` to determine source and line number
 given an address, when possible.
 
 > Whilst `austinp` comes with a stripped-down implementation of `addr2line`, it
-> is only used for the "where" mode, as resolving symbols at runtime is
+> is only used for the "where" option, as resolving symbols at runtime is
 > expensive. This is to minimise the impact of austinp on the tracee, increase
 > accuracy and maximise the sampling rate.
+
+The [where](#where) option is also available for the `austinp` variant and will
+show both native and Python frames. Highlighting helps tell frames apart. The
+`-k` options outputs Linux kernel frames too, as shown in this example
+
+<p align="center">
+  <img src="art/austin-where-kernel.png"
+       alt="Austin where mode example"
+       style="box-shadow: #111 0px 0px 16px;" />
+</p>
 
 
 ## Logging
@@ -540,8 +560,10 @@ Python process.
 Capitan, Austin cannot profile Python processes that use an executable located
 in the `/bin` folder, even with `sudo`. Hence, either run the interpreter from a
 virtual environment or use a Python interpreter that is installed in, e.g.,
-`/Applications` or via `brew` with the default prefix (`/usr/local`). Even in
-these cases, though, the use of `sudo` is required.
+`/Applications` or via alternative methods, like `brew` with the default prefix
+(`/usr/local`), or [pyenv][pyenv]. Even in these cases, though, the use of
+`sudo` is required. Austin is unlikely to work with interpreters installed using
+the official installers from [python.org](https://python.org).
 
 > **NOTE** Austin *might* work with other versions of Python on all the
 > platforms and architectures above. So it is worth giving it a try even if
@@ -785,6 +807,8 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 [Homebrew]: https://formulae.brew.sh/formula/austin
 [latest release]: https://github.com/P403n1x87/austin/releases/latest
 [pprof]: https://github.com/google/pprof
+[pyenv]: https://github.com/pyenv/pyenv
+[releases]: https://github.com/P403n1x87/austin/releases
 [Scoop]: https://scoop.sh/
 [Speedscope]: https://speedscope.app
 [Visual Studio Code]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode
