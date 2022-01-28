@@ -50,7 +50,7 @@ def test_fork_wall_time(austin, py, heap):
     result = austin("-i", "2ms", *heap, *python(py), target("target34.py"))
     assert py in (result.stderr or result.stdout), result.stderr or result.stdout
 
-    assert len(processes(result.stdout)) == 1
+    assert len(processes(result.stdout)) == 1, compress(result.stdout)
     ts = threads(result.stdout)
     assert len(ts) == 2, compress(result.stdout)
 
@@ -177,6 +177,7 @@ def test_fork_multiprocess(py):
     assert has_pattern(result.stdout, "target_mp.py:fact:"), result.stdout
 
 
+@flaky
 @allpythons()
 def test_fork_full_metrics(py):
     result = austin("-i", "10ms", "-f", *python(py), target("target34.py"))

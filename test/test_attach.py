@@ -137,7 +137,7 @@ def test_where_multiprocess(py):
         assert lines[join_line] == 1, result.stdout
 
 
-@flaky
+@flaky(max_runs=3)
 @requires_sudo
 @allpythons()
 def test_where_kernel(py):
@@ -146,10 +146,10 @@ def test_where_kernel(py):
         result = austinp("-kw", str(p.pid))
         assert result.returncode == 0
 
-        assert "Process" in result.stdout
-        assert "Thread" in result.stdout
-        assert "sleepy.py" in result.stdout
-        assert "<module>" in result.stdout
-        assert "__select" in result.stdout
-        assert "libc" in result.stdout
-        assert "do_syscall" in result.stdout
+        assert "Process" in result.stdout, result.stdout
+        assert "Thread" in result.stdout, result.stdout
+        assert "sleepy.py" in result.stdout, result.stdout
+        assert "<module>" in result.stdout, result.stdout
+        assert "__select" in result.stdout, result.stdout
+        assert "libc" in result.stdout, result.stdout
+        assert "do_syscall" in result.stdout, result.stdout
