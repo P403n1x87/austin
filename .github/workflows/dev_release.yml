@@ -2,7 +2,7 @@ name: Development release
 on:
   push:
     tags:
-      - 'dev'
+      - '*dev*'
 jobs:
   release-linux:
     runs-on: ubuntu-latest
@@ -43,7 +43,7 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: src/austin*xz
+          file: src/austin*.tar.xz
           tag: ${{ github.ref }}
           overwrite: true
           prerelease: true
