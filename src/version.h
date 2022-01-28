@@ -34,7 +34,9 @@
 #include <stdlib.h>
 #include <sys/types.h>
 
-#include "python.h"
+#include "logging.h"
+#include "platform.h"
+#include "python/abi.h"
 
 
 #define PYVERSION(major, minor, patch)  ((major << 16) | (minor << 8) | patch)
@@ -42,12 +44,18 @@
 #define MINOR(x)                        ((x >> 8) & 0xFF)
 #define PATCH(x)                        (x & 0xFF)
 
+#define PYVER_ATMOST(maj, min) \
+  (py_v->major < maj || (py_v->major == maj && py_v->minor <= min))
+
 
 /**
  * Get the value of a field of a versioned structure.
  *
  * It works by retrieving the field offset from the offset table set at
- * runtime, depending on the detected version of Python.
+ * runtime, depending on the detected version of Python. The scope in which
+ * these macros are used must have a local variable py_v of type python_v *
+ * declared (and initialised to a valid value). The V_DESC macro can be used to
+ * ensure this.
  *
  * @param  ctype   the C type of the field to retrieve, e.g. void *.
  * @param  py_obj  the address of the beginning of the actual Python structure.
@@ -57,8 +65,13 @@
  * @return         the value of of the field of py_obj at the offset specified
  *                 by the field argument.
  */
-#define V_FIELD(ctype, py_obj, py_type, field) (*((ctype*) (((void *) &py_obj) + py_v->py_type.field)))
-#define V_FIELD_PTR(ctype, py_obj_ptr, py_type, field) (*((ctype*) (((void *) py_obj_ptr) + py_v->py_type.field)))
+#define V_FIELD(ctype, py_obj, py_type, field)                                 \
+  (*((ctype*) (((void *) &py_obj) + py_v->py_type.field)))
+
+#define V_FIELD_PTR(ctype, py_obj_ptr, py_type, field)                         \
+  (*((ctype*) (((void *) py_obj_ptr) + py_v->py_type.field)))
+
+#define V_DESC(desc) python_v * py_v = (desc)
 
 
 typedef unsigned long offset_t;
@@ -138,18 +151,233 @@ typedef struct {
 
   int          major;
   int          minor;
+  int          patch;
 } python_v;
 
 
-void
-set_version(int);
+#ifdef PY_PROC_C
+
+#define UNSUPPORTED_VERSION                                                    \
+  log_w("Unsupported Python version detected. Austin might not work as expected.")
+
+#define LATEST_VERSION                  (&python_v3_10)
+
+#define PY_CODE(s) {                    \
+  sizeof(s),                            \
+  offsetof(s, co_filename),             \
+  offsetof(s, co_name),                 \
+  offsetof(s, co_lnotab),               \
+  offsetof(s, co_firstlineno)           \
+}
+
+#define PY_FRAME(s) {                   \
+  sizeof(s),                            \
+  offsetof(s, f_back),                  \
+  offsetof(s, f_code),                  \
+  offsetof(s, f_lasti),                 \
+  offsetof(s, f_lineno),                \
+}
+
+/* Hack. Python 3.3 and below don't have the prev field */
+#define PY_THREAD_2(s) {                \
+  sizeof(s),                            \
+  offsetof(s, next),                    \
+  offsetof(s, next),                    \
+  offsetof(s, interp),                  \
+  offsetof(s, frame),                   \
+  offsetof(s, thread_id)                \
+}
+
+#define PY_THREAD(s) {                  \
+  sizeof(s),                            \
+  offsetof(s, prev),                    \
+  offsetof(s, next),                    \
+  offsetof(s, interp),                  \
+  offsetof(s, frame),                   \
+  offsetof(s, thread_id)                \
+}
+
+#define PY_UNICODE(n) {                 \
+  n                                     \
+}
+
+#define PY_BYTES(n) {                   \
+  n                                     \
+}
+
+#define PY_RUNTIME(s) {                 \
+  sizeof(s),                            \
+  offsetof(s, interpreters.head),       \
+  offsetof(s, gc),                      \
+}
+
+#define PY_IS(s) {                      \
+  sizeof(s),                            \
+  offsetof(s, next),                    \
+  offsetof(s, tstate_head),             \
+  offsetof(s, gc),                      \
+}
 
 
-#ifndef VERSION_C
-extern python_v * py_v;
-#else
-python_v * py_v;
-#endif
+#define PY_GC(s) {                      \
+  sizeof(s),                            \
+  offsetof(s, collecting),              \
+}
 
+// ---- Python 2 --------------------------------------------------------------
+
+python_v python_v2 = {
+  PY_CODE     (PyCodeObject2),
+  PY_FRAME    (PyFrameObject2),
+  PY_THREAD_2 (PyThreadState2),
+  PY_IS       (PyInterpreterState2),
+};
+
+// ---- Python 3.3 ------------------------------------------------------------
+
+python_v python_v3_3 = {
+  PY_CODE     (PyCodeObject3_3),
+  PY_FRAME    (PyFrameObject2),
+  PY_THREAD_2 (PyThreadState2),
+  PY_IS       (PyInterpreterState2),
+};
+
+// ---- Python 3.4 ------------------------------------------------------------
+
+python_v python_v3_4 = {
+  PY_CODE     (PyCodeObject3_3),
+  PY_FRAME    (PyFrameObject2),
+  PY_THREAD   (PyThreadState3_4),
+  PY_IS       (PyInterpreterState2),
+};
+
+// ---- Python 3.6 ------------------------------------------------------------
+
+python_v python_v3_6 = {
+  PY_CODE     (PyCodeObject3_6),
+  PY_FRAME    (PyFrameObject2),
+  PY_THREAD   (PyThreadState3_4),
+  PY_IS       (PyInterpreterState2),
+};
+
+// ---- Python 3.7 ------------------------------------------------------------
+
+python_v python_v3_7 = {
+  PY_CODE     (PyCodeObject3_6),
+  PY_FRAME    (PyFrameObject3_7),
+  PY_THREAD   (PyThreadState3_7),
+  PY_IS       (PyInterpreterState2),
+  PY_RUNTIME  (_PyRuntimeState3_7),
+  PY_GC       (struct _gc_runtime_state3_7),
+};
+
+// ---- Python 3.8 ------------------------------------------------------------
+
+python_v python_v3_8 = {
+  PY_CODE     (PyCodeObject3_8),
+  PY_FRAME    (PyFrameObject3_7),
+  PY_THREAD   (PyThreadState3_8),
+  PY_IS       (PyInterpreterState2),
+  PY_RUNTIME  (_PyRuntimeState3_8),
+  PY_GC       (struct _gc_runtime_state3_8),
+};
+
+// ---- Python 3.9 ------------------------------------------------------------
+
+python_v python_v3_9 = {
+  PY_CODE     (PyCodeObject3_8),
+  PY_FRAME    (PyFrameObject3_7),
+  PY_THREAD   (PyThreadState3_8),
+  PY_IS       (PyInterpreterState3_9),
+  PY_RUNTIME  (_PyRuntimeState3_8),
+  PY_GC       (struct _gc_runtime_state3_8),
+};
+
+
+// ---- Python 3.10 -----------------------------------------------------------
+
+python_v python_v3_10 = {
+  PY_CODE     (PyCodeObject3_8),
+  PY_FRAME    (PyFrameObject3_10),
+  PY_THREAD   (PyThreadState3_8),
+  PY_IS       (PyInterpreterState3_9),
+  PY_RUNTIME  (_PyRuntimeState3_8),
+  PY_GC       (struct _gc_runtime_state3_8),
+};
+
+// ----------------------------------------------------------------------------
+static inline python_v *
+get_version_descriptor(int major, int minor, int patch) {
+  if (major == 0 && minor == 0)
+    return NULL;
+
+  python_v * py_v = NULL;
+
+  switch (major) {
+
+  // ---- Python 2 ------------------------------------------------------------
+  case 2:
+    switch (minor) {
+    case 0:
+    case 1:
+    case 2:
+      UNSUPPORTED_VERSION;  // NOTE: These versions haven't been tested.
+
+    // 2.3, 2.4, 2.5, 2.6, 2.7
+    case 3:
+    case 4:
+    case 5:
+    case 6:
+    case 7: py_v = &python_v2;
+      break;
+
+    default: py_v = &python_v2;
+      UNSUPPORTED_VERSION;
+    }
+    break;
+
+  // ---- Python 3 ------------------------------------------------------------
+  case 3:
+    switch (minor) {
+    case 0:
+    case 1:
+    case 2:
+      UNSUPPORTED_VERSION;  // NOTE: These versions haven't been tested.
+
+    // 3.3
+    case 3: py_v = &python_v3_3; break;
+
+    // 3.4, 3.5
+    case 4:
+    case 5: py_v = &python_v3_4; break;
+
+    // 3.6
+    case 6: py_v = &python_v3_6; break;
+
+    // 3.7
+    case 7: py_v = &python_v3_7; break;
+
+    // 3.8
+    case 8: py_v = &python_v3_8; break;
+    
+    //, 3.9
+    case 9: py_v = &python_v3_9; break;
+
+    // 3.10
+    case 10: py_v = &python_v3_10; break;
+
+    default: py_v = LATEST_VERSION;
+      UNSUPPORTED_VERSION;
+    }
+  }
+
+  py_v->major = major;
+  py_v->minor = minor;
+  py_v->patch = patch;
+
+  return py_v;
+}
+
+#endif  // PY_PROC_C
 
 #endif

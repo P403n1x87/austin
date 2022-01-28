@@ -1,4 +1,24 @@
-2021-xx-xx v3.2.0
+2022-01-28 v3.3.0
+
+  Added the new Where mode.
+
+  Overall performance and accuracy improvements.
+
+  The heap allocation has been turned off by default.
+
+  Added support for profiling child processes that might have a different Python
+  runtime version than the parent process.
+
+  Bugfix: fixed heap size handling.
+
+  Bugfix: fixed a potential segmentation fault issue in the austinp variant.
+
+  Bugfix: fixed a potential deadlock scenario in austinp.
+
+  Bugfix: fixed support for the py.exe launcher on Windows.
+
+
+2021-12-16 v3.2.0
 
   Improved detection of invalid samples
 

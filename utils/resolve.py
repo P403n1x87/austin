@@ -17,9 +17,6 @@ def demangle_cython(function: str) -> str:
     else:
         raise ValueError(f"Invalid Cython mangled name: {function}")
 
-    if function.startswith("__pyx_pf_"):
-        function = function[: function.rindex(".isra.")]
-
     n = 0
     while i < len(function):
         c = function[i]
@@ -83,15 +80,17 @@ class Maps:
         parts = []
         frames, _, metrics = line.strip().rpartition(" ")
         for part in frames.split(";"):
-            if part.startswith("native@"):
+            try:
                 head, function, lineno = part.split(":")
-                if function.startswith("__pyx_pw_"):
-                    # skip Cython wrappers (cpdef)
-                    continue
-                if function.startswith("__pyx_"):
-                    function = demangle_cython(function)
-                elif function.startswith("_Z"):
-                    function = demangle_cpp(function)
+            except ValueError:
+                parts.append(part)
+                continue
+            if function.startswith("__pyx_pw_") or function.startswith("__pyx_pf_"):
+                # skip Cython wrappers (cpdef)
+                continue
+            if function.startswith("__pyx_"):
+                function = demangle_cython(function)
+            if head.startswith("native@"):
                 _, _, address = head.partition("@")
                 resolved = self.addr2line(address)
                 if resolved is None:
@@ -100,7 +99,7 @@ class Maps:
                     source, native_lineno = resolved
                     parts.append(f"{source}:{function}:{native_lineno or lineno}")
             else:
-                parts.append(part)
+                parts.append(":".join((head, function, lineno)))
 
         return " ".join((";".join(parts), metrics))
 

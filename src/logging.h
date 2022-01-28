@@ -40,6 +40,15 @@
   fprintf(pargs.output_file, __VA_ARGS__); \
   NL;
 
+#ifdef NATIVE
+#define log_header() {                   \
+  log_m("\033[1m              _   _      \033[0m");    \
+  log_m("\033[1m __ _ _  _ __| |_(_)_ _  \033[0m");    \
+  log_m("\033[1m/ _` | || (_-<  _| | ' \\ \033[0m");   \
+  log_m("\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m\033[31;1mp\033[0m \033[36;1m%s\033[0m", VERSION); \
+  log_i("====[ AUSTINP ]===="); \
+}
+#else
 #define log_header() {                   \
   log_m("\033[1m              _   _      \033[0m");    \
   log_m("\033[1m __ _ _  _ __| |_(_)_ _  \033[0m");    \
@@ -47,6 +56,7 @@
   log_m("\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m \033[36;1m%s\033[0m", VERSION); \
   log_i("====[ AUSTIN ]===="); \
 }
+#endif
 #define log_footer() {}
 
 /**

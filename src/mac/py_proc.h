@@ -36,6 +36,7 @@
 #include <sys/proc.h>
 #include <unistd.h>
 
+#include "../hints.h"
 
 #define CHECK_HEAP
 #define DEREF_SYM
@@ -416,13 +417,15 @@ _py_proc__get_maps(py_proc_t * self) {
   if (!isvalid(path))
     FAIL;
 
+  with_resources;
+
   // NOTE: Mac OS X kernel bug. This also gives time to the VM maps to
   // stabilise.
   usleep(50000);
 
   self->extra->task_id = pid_to_task(self->pid);
   if (self->extra->task_id == 0)
-    FAIL;
+    NOK;
 
   self->min_raddr = (void *) -1;
   self->max_raddr = NULL;
@@ -490,9 +493,12 @@ _py_proc__get_maps(py_proc_t * self) {
   log_d("BSS bounds  [%p - %p]", self->map.bss.base, self->map.bss.base + self->map.bss.size);
   log_d("HEAP bounds [%p - %p]", self->map.heap.base, self->map.heap.base + self->map.heap.size);
 
+  retval = !self->sym_loaded;
+
+release:
   free(path);
 
-  return !self->sym_loaded;
+  released;
 } // _py_proc__get_maps
 
 

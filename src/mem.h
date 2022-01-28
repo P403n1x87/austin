@@ -103,7 +103,7 @@ typedef struct {
  */
 static inline int
 copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
-  ssize_t result;
+  ssize_t result = -1;
 
   #if defined(PL_LINUX)                                              /* LINUX */
   struct iovec local[1];

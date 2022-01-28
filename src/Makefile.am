@@ -20,19 +20,47 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http:#www.gnu.org/licenses/>.
 
-AM_CFLAGS =-I$(top_srcdir)/src -Wall -O3 -Os -s -pthread
+AM_CFLAGS = -I$(srcdir) -Wall -pthread
+OPT_FLAGS = -O3
+STRIP_FLAGS = -Os -s
+
+if DEBUG_SYMBOLS
+DEBUG_OPTS = -g
+undefine STRIP_FLAGS
+endif
+
+if COVERAGE
+COVERAGE_FLAGS = -g -fprofile-arcs -ftest-coverage
+undefine OPT_FLAGS
+undefine STRIP_FLAGS
+endif
 
 man_MANS = austin.1
+
 bin_PROGRAMS = austin
+
+# ---- Austin ----
+
+austin_CFLAGS = $(AM_CFLAGS) $(OPT_FLAGS) $(STRIP_FLAGS) $(COVERAGE_FLAGS) $(DEBUG_OPTS)
 austin_SOURCES = \
   argparse.c     \
   austin.c       \
-  dict.c         \
+  cache.c        \
   error.c        \
   logging.c      \
-  version.c      \
   stats.c        \
   platform.c     \
   py_proc_list.c \
   py_proc.c      \
   py_thread.c
+
+
+# ---- Austin P ----
+
+if BUILD_AUSTINP
+bin_PROGRAMS += austinp
+
+austinp_SOURCES = $(austin_SOURCES)
+austinp_CFLAGS = $(austin_CFLAGS) @AUSTINP_CFLAGS@
+austinp_LDADD = @AUSTINP_LDADD@
+endif

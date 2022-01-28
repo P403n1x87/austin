@@ -1,5 +1,5 @@
 name: austin
-version: '3.2.0+git'
+version: '3.3.0+git'
 summary: A Python frame stack sampler for CPython
 description: |
   Austin is a Python frame stack sampler for CPython written in pure C. It
@@ -20,7 +20,10 @@ parts:
     plugin: autotools
     source: git://github.com/P403n1x87/austin
     source-depth: 1
+    build-packages: [libunwind-dev, binutils-dev, libiberty-dev]
 
 apps:
   austin:
     command: bin/austin
+  austinp:
+    command: bin/austinp

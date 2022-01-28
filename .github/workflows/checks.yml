@@ -1,0 +1,106 @@
+name: Checks
+on: push
+jobs:
+  check-manpage:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    name: Check manpage
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install build dependencies
+        run: sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev help2man
+
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure
+          make
+
+      - name: Generate manpage
+        run: bash doc/genman.sh
+
+      - name: Check manpage
+        run: git diff --exit-code src/austin.1
+
+  cppcheck:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    name: Static code analysis
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install cppcheck
+        run: sudo apt-get -y install cppcheck
+
+      - name: Check soure code
+        run: cppcheck -q -f --error-exitcode=1 src
+
+  codespell:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    name: Codespell
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: "actions/setup-python@v2"
+        with:
+          python-version: "3.9"
+
+      - name: Install codespell
+        run: pip install codespell
+
+      - name: Check source code spelling
+        run: codespell src
+
+  coverage:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    name: Code coverage
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev gcovr
+
+      - name: Install test dependencies
+        run: |
+          sudo add-apt-repository -y ppa:deadsnakes/ppa
+          sudo apt-get -y install \
+            valgrind \
+            python2.7 \
+            python3.{5..10} \
+            python3.10-full
+
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure --enable-coverage
+          make
+
+      - name: Run tests
+        run: |
+          ulimit -c unlimited
+          python3.10 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r test/requirements.txt
+          .venv/bin/pytest --pastebin=failed -svvr fE || true
+          sudo .venv/bin/pytest --pastebin=failed -svvr fE || true
+          deactivate
+
+      - name: Generate Cobertura report
+        run: gcovr --xml ./cobertura.xml -r src/
+
+      - name: Upload report to Codecov
+        uses: codecov/codecov-action@v2
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./cobertura.xml
+          verbose: true

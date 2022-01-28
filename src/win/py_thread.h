@@ -43,7 +43,12 @@ _py_thread__is_idle(py_thread_t * self) {
   if (status == STATUS_INFO_LENGTH_MISMATCH) {
     // Buffer was too small so we reallocate a larger one and try again.
     _pi_buffer_size = n;
-    _pi_buffer      = realloc(_pi_buffer, n);
+    PVOID _new_buffer = realloc(_pi_buffer, n);
+    if (!isvalid(_new_buffer)) {
+      log_d("cannot reallocate process info buffer");
+      return -1;
+    }
+    _pi_buffer = _new_buffer;
     return _py_thread__is_idle(self);
   }
   if (status != STATUS_SUCCESS) {

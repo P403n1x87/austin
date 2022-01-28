@@ -27,12 +27,15 @@
 #include <sys/types.h>
 
 #ifdef NATIVE
-#include <sys/ptrace.h>
 #include <libunwind-ptrace.h>
+#include "linux/vm-range-tree.h"
+#include "cache.h"
 #endif
 
+#include "cache.h"
 #include "heap.h"
 #include "stats.h"
+#include "version.h"
 
 
 typedef struct {
@@ -53,6 +56,7 @@ typedef struct _proc_extra_info proc_extra_info;  // Forward declaration.
 
 typedef struct {
   pid_t           pid;
+  int             child;
 
   char          * bin_path;
   char          * lib_path;
@@ -64,7 +68,7 @@ typedef struct {
   void          * bss;  // local copy of the remote bss section
 
   int             sym_loaded;
-  int             version;
+  python_v      * py_v;
 
   // Symbols from .dynsym
   void          * tstate_curr_raddr;
@@ -73,6 +77,8 @@ typedef struct {
   void          * gc_state_raddr;
 
   void          * is_raddr;
+
+  lru_cache_t   * frame_cache;
 
   // Temporal profiling support
   ctime_t         timestamp;
@@ -89,8 +95,10 @@ typedef struct {
 
   #ifdef NATIVE
   struct _puw {
-    unw_addr_space_t   as;
-  } unwind;
+    unw_addr_space_t as;
+  }                 unwind;
+  vm_range_tree_t * maps_tree;
+  hash_table_t    * base_table;
   #endif
 
   // Platform-dependent fields
@@ -101,11 +109,13 @@ typedef struct {
 /**
  * Create a new process object. Use it to start the process that needs to be
  * sampled from austin.
+ * 
+ * @param child  whether this is a child process.
  *
- * @return  a pointer to the newly created py_proc_t object.
+ * @return a pointer to the newly created py_proc_t object.
  */
 py_proc_t *
-py_proc_new(void);
+py_proc_new(int child);
 
 
 /**
@@ -126,12 +136,11 @@ py_proc__start(py_proc_t *, const char *, char **);
  *
  * @param py_proc_t *  the process object.
  * @param pid_t        the PID of the process to attach.
- * @param int          TRUE if this is a child process, FALSE otherwise.
  *
  * @return 0 on success.
  */
 int
-py_proc__attach(py_proc_t *, pid_t, int);
+py_proc__attach(py_proc_t *, pid_t);
 
 
 /**
@@ -184,7 +193,7 @@ py_proc__is_gc_collecting(py_proc_t *);
  *
  * @param  py_proc_t *  self.
 
- * @return 0 if the sampling succeded; 1 otherwise.
+ * @return 0 if the sampling succeeded; 1 otherwise.
  */
 int
 py_proc__sample(py_proc_t *);

@@ -1,0 +1,143 @@
+name: Pre-release
+on:
+  push:
+    tags:
+      - 'v*-*'
+jobs:
+  release-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    name: Release (Linux)
+    steps:
+      - uses: actions/checkout@v2
+        name: Checkout Austin
+
+      - name: Generate artifacts
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools
+
+          # Build austin
+          autoreconf --install
+          ./configure
+          make
+
+          # Compute dev version
+          export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          export VERSION=${{ github.ref_name }}
+          sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
+
+          pushd src
+          tar -Jcf austin-$VERSION-gnu-linux-amd64.tar.xz austin
+          tar -Jcf austinp-$VERSION-gnu-linux-amd64.tar.xz austinp
+          popd
+
+          # Build with musl
+          musl-gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austin -D__MUSL__
+          pushd src
+          tar -Jcf austin-$VERSION-musl-linux-amd64.tar.xz austin
+          popd
+
+      - name: Upload artifacts to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: src/austin*.tar.xz
+          tag: ${{ github.ref }}
+          overwrite: true
+          prerelease: true
+          release_name: ${{ github.ref_name }}
+          file_glob: true
+
+  release-win:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+    name: Release (Windows)
+    steps:
+      - uses: actions/checkout@v2
+        name: Checkout Austin
+        with:
+          fetch-depth: 0
+
+      - name: Generate artifacts
+        shell: bash
+        run: |
+          echo "C:\Program Files (x86)\WiX Toolset v3.11\bin" >> $GITHUB_PATH
+          export PATH="/c/Program Files (x86)/`ls /c/Program\ Files\ \(x86\) | grep \"[wW]i[xX] [tT]oolset\"`/bin:$PATH"
+
+          # Compute dev version
+          export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          export VERSION_DEV=${{ github.ref_name }}
+          export VERSION=$(echo $PREV_VERSION | sed -r -n "s/([0-9]+\.[0-9]+\.[0-9]+).*/\1/p")
+          sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
+
+          gcc -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll
+
+          git checkout HEAD -- src/austin.h 
+
+          git checkout "packaging/msi"
+          git checkout master
+          git checkout "packaging/msi" -- wix
+
+          export WIN_MSI="austin-$VERSION_DEV-win64.msi"
+
+          sed -i "s/%VERSION%/$VERSION/g" wix/Austin.wxs
+          pushd wix
+          candle Austin.wxs -out Austin.wixobj
+          light -ext WixUIExtension Austin.wixobj -out $WIN_MSI
+          popd
+          
+          mv wix/$WIN_MSI src/$WIN_MSI;
+          test -f src/$WIN_MSI && echo ">> Windows MSI installer at src/$WIN_MSI" || echo ">> ERROR No Windows MSI installer generated."
+
+          pushd src
+          7z a -tzip austin-${VERSION_DEV}-win64.zip austin.exe
+          popd
+
+      - name: Upload artifacts to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: src/austin-*
+          tag: ${{ github.ref }}
+          overwrite: true
+          prerelease: true
+          release_name: ${{ github.ref_name }}
+          file_glob: true
+
+  release-osx:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+    name: Release (macOS)
+    steps:
+      - uses: actions/checkout@v2
+        name: Checkout Austin
+
+      - name: Generate artifacts
+        run: |
+          # Compute dev version
+          export PREV_VERSION=$(cat src/austin.h | sed -n -E "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          export VERSION=${{ github.ref_name }}
+          sed -i "" "s/$PREV_VERSION/$VERSION/g" src/austin.h
+          echo "::set-output name=version::$VERSION"
+
+          gcc -Wall -O3 -Os -o src/austin src/*.c
+
+          pushd src
+          zip -r austin-${VERSION}-mac64.zip austin
+          popd
+
+      - name: Upload artifacts to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: src/austin-*
+          tag: ${{ github.ref }}
+          overwrite: true
+          prerelease: true
+          release_name: ${{ github.ref_name }}
+          body: See the changelog for details.
+          file_glob: true

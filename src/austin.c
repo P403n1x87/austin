@@ -38,7 +38,7 @@
 #include "mem.h"
 #include "msg.h"
 #include "platform.h"
-#include "python.h"
+#include "python/abi.h"
 #include "stats.h"
 #include "timing.h"
 #include "version.h"
@@ -65,9 +65,12 @@ signal_callback_handler(int signum)
 // ----------------------------------------------------------------------------
 void
 do_single_process(py_proc_t * py_proc) {
-  log_meta_header();
+  if (!pargs.where)
+    log_meta_header();
+
   py_proc__log_version(py_proc, TRUE);
-  NL;
+  if (!pargs.where) 
+    NL;
 
   if (pargs.exposure == 0) {
     while(interrupt == FALSE) {
@@ -84,7 +87,8 @@ do_single_process(py_proc_t * py_proc) {
     }
   }
   else {
-    log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
+    if (!pargs.where && !pargs.pipe)
+      log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
     ctime_t end_time = gettime() + pargs.exposure * 1000000;
     while(interrupt == FALSE) {
       stopwatch_start();
@@ -98,7 +102,7 @@ do_single_process(py_proc_t * py_proc) {
       stopwatch_pause(stopwatch_duration());
       #endif
 
-      if (end_time < gettime())
+      if (end_time < gettime() || pargs.where)
         interrupt++;
     }
   }
@@ -158,7 +162,10 @@ do_child_processes(py_proc_t * py_proc) {
     }
   }
 
-  log_meta_header();NL;
+  if (!pargs.where) {
+    log_meta_header();
+    NL;
+  }
 
   if (pargs.exposure == 0) {
     while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
@@ -175,7 +182,8 @@ do_child_processes(py_proc_t * py_proc) {
     }
   }
   else {
-    log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
+    if (!pargs.pipe && !pargs.where)
+      log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
     ctime_t end_time = gettime() + pargs.exposure * 1000000;
     while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
       #ifndef NATIVE
@@ -189,7 +197,8 @@ do_child_processes(py_proc_t * py_proc) {
       stopwatch_pause(gettime() - start_time);
       #endif
 
-      if (end_time < gettime()) interrupt++;
+      if (end_time < gettime() || pargs.where)
+        interrupt++;
     }
   }
 
@@ -226,7 +235,7 @@ int main(int argc, char ** argv) {
     goto finally;
   }
 
-  py_proc = py_proc_new();
+  py_proc = py_proc_new(FALSE);
   if (!isvalid(py_proc)) {
     log_ie("Cannot create process");
     goto finally;
@@ -252,7 +261,7 @@ int main(int argc, char ** argv) {
     }
   } else {
     if (
-      fail(py_proc__attach(py_proc, pargs.attach_pid, FALSE))
+      fail(py_proc__attach(py_proc, pargs.attach_pid))
       && !pargs.children
     ) {
       log_ie("Cannot attach the process");
@@ -267,13 +276,23 @@ int main(int argc, char ** argv) {
   if (pargs.output_file != stdout)
     log_i("Output file: %s", pargs.output_filename);
 
-  log_i("Sampling interval: %lu μs", pargs.t_sampling_interval);
+  if (pargs.where) {
+    log_i("Where mode on process %d", pargs.attach_pid);
+    pargs.t_sampling_interval = 1;
+    // We use the exposure branch to emulate sampling once
+    pargs.exposure = 1;
+  }
+  else
+    log_i("Sampling interval: %lu μs", pargs.t_sampling_interval);
+
+  if (pargs.heap)
+    log_i("Maximum frame heap size: %d MB", pargs.heap >> 20);
 
   if (pargs.full) {
     if (pargs.memory)
       log_w("The memory switch is redundant in full mode");
     if (pargs.sleepless)
-      log_w("The sleepless switch is reduntant in full mode");
+      log_w("The sleepless switch is redundant in full mode");
     log_i("Producing full set of metrics (time +mem -mem)");
     pargs.memory = TRUE;
   }
@@ -305,6 +324,9 @@ int main(int argc, char ** argv) {
 
   if (austin_errno == EPROCNPID)
     austin_errno = EOK;
+
+  if (pargs.where)
+    goto finally;
 
   // Log sampling metrics
   NL;

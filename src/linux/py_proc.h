@@ -35,12 +35,16 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "common.h"
+
 #ifdef NATIVE
 #include "../argparse.h"
+#include "../cache.h"
 #endif
-#include "../dict.h"
+#include "../py_string.h"
 #include "../hints.h"
 #include "../py_proc.h"
+#include "../version.h"
 
 
 #define CHECK_HEAP
@@ -62,11 +66,6 @@
 #define ELF_SH_OFF(ehdr, i) /* as */ (ehdr->e_shoff + i * ehdr->e_shentsize)
 
 
-struct _proc_extra_info {
-  unsigned int page_size;
-  char         statm_file[24];
-  pthread_t    wait_thread_id;
-};
 
 
 union {
@@ -479,24 +478,43 @@ _py_proc__get_resident_memory(py_proc_t * self) {
     return -1;
   }
 
+  int ret = 0;
+
   ssize_t size, resident;
   if (fscanf(statm, "%ld %ld", &size, &resident) != 2)
-    return -1;
+    ret = -1;
 
   fclose(statm);
 
-  return resident * self->extra->page_size;
+  return ret ? ret : resident * self->extra->page_size;
 } /* _py_proc__get_resident_memory */
 
 
 #ifdef NATIVE
 // ----------------------------------------------------------------------------
+char         pathname[1024];
+char         prevpathname[1024];
+vm_range_t * ranges[256];
+
 static int
-_py_proc__dump_maps(py_proc_t * self) {
-  char      file_name[32];
-  FILE    * fp        = NULL;
-  char    * line      = NULL;
-  size_t    len       = 0;
+_py_proc__get_vm_maps(py_proc_t * self) {
+  FILE            * fp    = NULL;
+  char            * line  = NULL;
+  size_t            len   = 0;
+  vm_range_tree_t * tree  = NULL;
+  hash_table_t    * table = NULL;
+  char              file_name[32];
+  
+  if (pargs.where) {
+    tree  = vm_range_tree_new();
+    table = hash_table_new(256);
+    
+    vm_range_tree__destroy(self->maps_tree);
+    hash_table__destroy(self->base_table);
+    
+    self->maps_tree = tree; 
+    self->base_table = table;
+  }
 
   sprintf(file_name, "/proc/%d/maps", self->pid);
   fp = fopen(file_name, "r");
@@ -514,23 +532,41 @@ _py_proc__dump_maps(py_proc_t * self) {
     FAIL;
   }
 
-  while (getline(&line, &len, fp) != -1) {
+  log_d("Rebuilding vm ranges tree");
+
+  int    nrange  = 0;
+  while (getline(&line, &len, fp) != -1 && nrange < 256) {
     ssize_t lower, upper;
-    char    pathname[1024];
 
     if (sscanf(line, "%lx-%lx %*s %*x %*x:%*x %*x %s\n",
       &lower, &upper, // Map bounds
       pathname        // Binary path
     ) == 3 && pathname[0] != '[') {
-      fprintf(pargs.output_file, "# map: %lx-%lx %s\n", lower, upper, pathname);
+      if (pargs.where) {
+        if (strcmp(pathname, prevpathname)) {
+          ranges[nrange++] = vm_range_new(lower, upper, strdup(pathname));
+          key_dt key = string__hash(pathname);
+          if (!isvalid(hash_table__get(table, key)))
+            hash_table__set(table, key, (value_t) lower);
+          strcpy(prevpathname, pathname);
+        } else
+          ranges[nrange-1]->hi = upper;
+      }
+      else
+        // We print the maps instead so that we can resolve them later and use
+        // the CPU more efficiently to collect samples.
+        fprintf(pargs.output_file, "# map: %lx-%lx %s\n", lower, upper, pathname);
     }
   }
+
+  for (int i = 0; i < nrange; i++)
+    vm_range_tree__add(tree, (vm_range_t *) ranges[i]); 
 
   sfree(line);
   fclose(fp);
 
   SUCCESS;
-} /* _py_proc__dump_maps */
+} /* _py_proc__get_vm_maps */
 #endif
 
 
@@ -550,11 +586,46 @@ _py_proc__init(py_proc_t * self) {
   self->last_resident_memory = _py_proc__get_resident_memory(self);
 
   #ifdef NATIVE
-  _py_proc__dump_maps(self);
+  _py_proc__get_vm_maps(self);
   #endif
 
   SUCCESS;
 } /* _py_proc__init */
 
+
+// Support for CPU time on Linux. We need to retrieve the TID from the struct
+// pthread pointed to by the native thread ID stored by Python. We do not have
+// the definition of the structure, so we need to "guess" the offset of the tid
+// field within struct pthread.
+
+// ----------------------------------------------------------------------------
+static int
+_infer_tid_field_offset(py_thread_t * py_thread) {
+  if (fail(read_pthread_t(py_thread->raddr.pid, (void *) py_thread->tid))) {
+    log_d("Cannot copy pthread_t structure");
+    FAIL;
+  }
+
+  log_d("pthread_t at %p", py_thread->tid);
+
+  for (register int i = 0; i < PTHREAD_BUFFER_ITEMS; i++) {
+    if (py_thread->raddr.pid == _pthread_buffer[i]) {
+      log_d("TID field offset: %d", i);
+      py_thread->proc->extra->pthread_tid_offset = i;
+      SUCCESS;
+    }
+  }
+
+  // Fall-back to smaller steps if we failed
+  for (register int i = 0; i < PTHREAD_BUFFER_ITEMS * (sizeof(uintptr_t) / sizeof(pid_t)); i++) {
+    if (py_thread->raddr.pid == (pid_t) ((pid_t *) _pthread_buffer)[i]) {
+      log_d("TID field offset (from fall-back): %d", i);
+      py_thread->proc->extra->pthread_tid_offset = -i;
+      SUCCESS;
+    }
+  }
+
+  FAIL;
+}
 
 #endif

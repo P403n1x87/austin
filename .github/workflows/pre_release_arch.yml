@@ -1,0 +1,69 @@
+name: Pre-release (Linux archs)
+on:
+  push:
+    tags:
+      - 'v*-*'
+jobs:
+  release-linux-archs:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: ["armv7", "aarch64", "ppc64le"]
+      fail-fast: false
+    name: Build on ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v2
+        name: Checkout sources
+      - uses: uraimo/run-on-arch-action@v2.0.5
+        name: Generate artifacts on ${{ matrix.arch }}
+        id: run-tests-on-arch
+        with:
+          arch: ${{ matrix.arch }}
+          distro: ubuntu20.04
+          githubToken: ${{ github.token }}
+          dockerRunArgs: --volume "${GITHUB_WORKSPACE}/artifacts:/artifacts"
+          setup: |
+            mkdir -p ./artifacts
+
+            # Compute dev version
+            export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+            export VERSION=${{ github.ref_name }}
+            sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
+          run: |
+            apt-get update
+            apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools
+
+            # Build austin
+            autoreconf --install
+            ./configure
+            make
+
+            export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+
+            pushd src
+            tar -Jcf austin-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz austin
+            tar -Jcf austinp-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz austinp
+
+            musl-gcc -O3 -Os -s -Wall -pthread *.c -o austin -D__MUSL__
+            tar -Jcf austin-$VERSION-musl-linux-${{ matrix.arch }}.tar.xz austin
+
+            mv austin-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz /artifacts
+            mv austinp-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz /artifacts
+            mv austin-$VERSION-musl-linux-${{ matrix.arch }}.tar.xz /artifacts
+            popd
+
+      - name: Show artifacts
+        run: |
+          ls -al ./artifacts
+
+      - name: Upload binaries to release
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: artifacts/austin*.tar.xz
+          tag: ${{ github.ref }}
+          overwrite: true
+          prerelease: true
+          release_name: ${{ github.ref_name }}
+          body: See the changelog for details.
+          file_glob: true

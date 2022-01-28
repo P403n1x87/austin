@@ -47,7 +47,7 @@
 
 #define with_resources                  int retval = 0;
 #define OK                              goto release;
-#define NOK                             retval = 1; goto release;
+#define NOK                             {retval = 1; goto release;}
 #define released                        return retval;
 
 #endif

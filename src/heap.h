@@ -38,4 +38,6 @@ typedef struct {
     size_t   size;
 } _heap_t;
 
+#define NULL_MEM_BLOCK ((_mem_block_t) {(void *) -1, NULL, (void *) -1, NULL})
+
 #endif

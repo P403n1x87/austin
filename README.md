@@ -18,6 +18,14 @@
     <img src="https://github.com/P403n1x87/austin/workflows/Tests/badge.svg"
          alt="GitHub Action Status: Tests" />
   </a>
+  <a href="https://github.com/P403n1x87/austin/actions?query=workflow%3AChecks">
+    <img src="https://github.com/P403n1x87/austin/workflows/Checks/badge.svg"
+         alt="GitHub Action Status: Checks" />
+  </a>
+  <a href="https://codecov.io/gh/P403n1x87/austin">
+    <img src="https://codecov.io/gh/P403n1x87/austin/branch/master/graph/badge.svg?token=OEDWB2IYBR"
+         alt="Code coverage"/>
+  </a>
   <a href="https://github.com/P403n1x87/austin/releases/latest">
     <img src="http://img.shields.io/github/v/release/p403n1x87/austin"
          alt="latest release" />
@@ -135,6 +143,15 @@ by Peter Norton for a general overview of Austin.
 
 Keep reading for more tool ideas and examples!
 
+---
+
+<p align="center">💜</br><i>Austin is a free and open-source project. A lot of
+effort goes into its development to ensure the best performance and that it
+stays up-to-date with the latest Python releases. If you find it useful,
+consider <a href="https://github.com/sponsors/P403n1x87">sponsoring</a> this
+project.</i></br>🙏</p>
+
+---
 
 # Installation
 
@@ -156,7 +173,8 @@ On macOS, Austin can be easily installed from the command line using [Homebrew].
 Anaconda users can install Austin from [Conda Forge].
 
 For any other platform, compiling Austin from sources is as easy as cloning the
-repository and running the C compiler.
+repository and running the C compiler. The [Releases][releases] page has many
+pre-compiled binaries that are ready to be uncompressed and used.
 
 ## With `autotools`
 
@@ -282,7 +300,9 @@ bug with Austin and you want to report it here.
 
 ~~~
 Usage: austin [OPTION...] command [ARG...]
-Austin -- A frame stack sampler for Python.
+Austin is a frame stack sampler for CPython that is used to extract profiling
+data out of a running Python process (and all its children, if required) that
+requires no instrumentation and has practically no impact on the tracee.
 
   -a, --alt-format           Alternative collapsed stack sample format.
   -C, --children             Attach to child processes.
@@ -291,17 +311,18 @@ Austin -- A frame stack sampler for Python.
   -f, --full                 Produce the full set of metrics (time +mem -mem).
   -g, --gc                   Sample the garbage collector state.
   -h, --heap=n_mb            Maximum heap size to allocate to increase sampling
-                             accuracy, in MB (default is 256).
+                             accuracy, in MB (default is 0).
   -i, --interval=n_us        Sampling interval in microseconds (default is
                              100). Accepted units: s, ms, us.
   -m, --memory               Profile memory usage.
   -o, --output=FILE          Specify an output file for the collected samples.
-  -p, --pid=PID              The the ID of the process to which Austin should
-                             attach.
+  -p, --pid=PID              Attach to the process with the given PID.
   -P, --pipe                 Pipe mode. Use when piping Austin output.
   -s, --sleepless            Suppress idle samples to estimate CPU time.
   -t, --timeout=n_ms         Start up wait time in milliseconds (default is
                              100). Accepted units: s, ms.
+  -w, --where=PID            Dump the stacks of all the threads within the
+                             process with the given PID.
   -x, --exposure=n_sec       Sample for n_sec seconds only.
   -?, --help                 Give this help list
       --usage                Give a short usage message
@@ -384,19 +405,47 @@ garbage collector is in the collecting state. This gives you a measure of how
 *Since Austin 3.1.0*.
 
 
+## Where?
+
+If you are only interested in what is currently happening inside a Python
+process, you can have a quick overview printed on the terminal with the
+`-w/--where` option. This takes the PID of the process whose threads you want to
+inspect, e.g.
+
+~~~ console
+sudo austin -w `pgrep -f my-running-python-app`
+~~~
+
+Below is an example of what the output looks like
+
+<p align="center">
+  <img src="art/austin-where.png"
+       alt="Austin where mode example"
+       style="box-shadow: #111 0px 0px 16px;" />
+</p>
+
+This works with the `-C/--children` option too. The emojis to the left indicate
+whether the thread is active or sleeping and whether the process is a child or
+not.
+
+*Since Austin 3.3.0*.
+
+
 ## Sampling Accuracy
 
 Austin tries to keep perturbations to the tracee at a minimum. In order to do
-so, the tracee is never halted. To improve sampling accuracy, Austin allocates a
-heap that is used to get large snapshots of the private VM of the tracee that is
-likely to contain frame information in a single attempt. The larger the heap is
-allowed the grow, the more accurate the results. The maximum size of the heap
-that Austin is allowed to allocate can be controlled with the `-h/--heap`
-option, followed by the maximum size in bytes. By default Austin allocates a
-maximum of 256 MB. On systems with low resource limits, it is advisable to
-reduce this value.
+so, the tracee is never halted. To improve sampling accuracy, Austin can
+allocate a heap that is used to get large snapshots of the private VM of the
+tracee that is likely to contain frame information in a single attempt. The
+larger the heap is allowed the grow, the more accurate the results. The maximum
+size of the heap that Austin is allowed to allocate can be controlled with the
+`-h/--heap` option, followed by the maximum size in bytes. By default Austin
+does not allocate a heap, which is ideal on systems with limited resources. If
+you think your results are not accurate, try setting this parameter.
 
 *Since Austin 3.2.0*.
+
+*Changed in Austin 3.3.0*: the default heap size is 0.
 
 
 ## Native Frame Stack
@@ -411,13 +460,13 @@ sources make sure that you have the development version of the `libunwind`
 library available on your system, for example on Ubuntu,
 
 ~~~ console
-sudo apt install libunwind-dev
+sudo apt install libunwind-dev binutils-dev
 ~~~
 
 and compile with
 
 ~~~ console
-gcc -O3 -Os -Wall -pthread src/*.c -DAUSTINP -lunwind-ptrace -lunwind-generic -o src/austinp
+gcc -O3 -Os -Wall -pthread src/*.c -DAUSTINP -lunwind-ptrace -lunwind-generic -lbfd -o src/austinp
 ~~~
 
 then use as per normal. The extra `-k/--kernel` option is available with
@@ -440,6 +489,21 @@ python3 utils/resolve.py mysamples.austin > mysamples_resolved.austin
 Internally, the script uses `addr2line(1)` to determine source and line number
 given an address, when possible.
 
+> Whilst `austinp` comes with a stripped-down implementation of `addr2line`, it
+> is only used for the "where" option, as resolving symbols at runtime is
+> expensive. This is to minimise the impact of austinp on the tracee, increase
+> accuracy and maximise the sampling rate.
+
+The [where](#where) option is also available for the `austinp` variant and will
+show both native and Python frames. Highlighting helps tell frames apart. The
+`-k` options outputs Linux kernel frames too, as shown in this example
+
+<p align="center">
+  <img src="art/austin-where-kernel.png"
+       alt="Austin where mode example"
+       style="box-shadow: #111 0px 0px 16px;" />
+</p>
+
 
 ## Logging
 
@@ -453,11 +517,11 @@ error rates below 1% on average.
 ## Cheat sheet
 
 All the above Austin options and arguments are summarised in a cheat sheet that
-you can find in the [art](https://github.com/P403n1x87/austin/blob/master/art/)
+you can find in the [doc](https://github.com/P403n1x87/austin/blob/master/doc/)
 folder in either the SVG, PDF or PNG format
 
 <p align="center">
-  <img src="art/cheatsheet.png"
+  <img src="doc/cheatsheet.png"
        style="box-shadow: #111 0px 0px 16px;" />
 </p>
 
@@ -466,12 +530,12 @@ folder in either the SVG, PDF or PNG format
 Austin supports Python 2.3-2.7 and 3.3-3.10 and has been tested on the
 following platforms and architectures
 
-|| <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" />* | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/>** | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />*** |
-|---          |---|---|---|
-| **x86_64**  | ✓ | ✓ | ✓ |
-| **i686**    | ✓ |   | ✓ |
-| **arm64**   | ✓ |   |   |
-| **ppc64le** | ✓ |   |   |
+|             | <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" />* | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/>** | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />*** |
+| ----------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| **x86_64**  | ✓                                                                                                               | ✓                                                                                                            | ✓                                                                                                       |
+| **i686**    | ✓                                                                                                               |                                                                                                              | ✓                                                                                                       |
+| **arm64**   | ✓                                                                                                               |                                                                                                              |                                                                                                         |
+| **ppc64le** | ✓                                                                                                               |                                                                                                              |                                                                                                         |
 
 \* In order to attach to an external process, Austin requires the CAP_SYS_PTRACE
 capability. This means that you will have to either use ``sudo`` when attaching
@@ -496,8 +560,10 @@ Python process.
 Capitan, Austin cannot profile Python processes that use an executable located
 in the `/bin` folder, even with `sudo`. Hence, either run the interpreter from a
 virtual environment or use a Python interpreter that is installed in, e.g.,
-`/Applications` or via `brew` with the default prefix (`/usr/local`). Even in
-these cases, though, the use of `sudo` is required.
+`/Applications` or via alternative methods, like `brew` with the default prefix
+(`/usr/local`), or [pyenv][pyenv]. Even in these cases, though, the use of
+`sudo` is required. Austin is unlikely to work with interpreters installed using
+the official installers from [python.org](https://python.org).
 
 > **NOTE** Austin *might* work with other versions of Python on all the
 > platforms and architectures above. So it is worth giving it a try even if
@@ -608,7 +674,7 @@ TUI to work.
 
 > The TUI is based on `python-curses`. The version included with the standard
 > Windows installations of Python is broken so it won't work out of the box. A
-> solution is to install the the wheel of the port to Windows from
+> solution is to install the wheel of the port to Windows from
 > [this](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses) page. Wheel files
 > can be installed directly with `pip`, as described in the
 > [linked](https://pip.pypa.io/en/latest/user_guide/#installing-from-wheels)
@@ -741,6 +807,8 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 [Homebrew]: https://formulae.brew.sh/formula/austin
 [latest release]: https://github.com/P403n1x87/austin/releases/latest
 [pprof]: https://github.com/google/pprof
+[pyenv]: https://github.com/pyenv/pyenv
+[releases]: https://github.com/P403n1x87/austin/releases
 [Scoop]: https://scoop.sh/
 [Speedscope]: https://speedscope.app
 [Visual Studio Code]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode

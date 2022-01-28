@@ -110,7 +110,7 @@ _py_proc_list__remove(py_proc_list_t * self, py_proc_item_t * item) {
 py_proc_list_t *
 py_proc_list_new(py_proc_t * parent_py_proc) {
   py_proc_list_t * list = (py_proc_list_t *) calloc(1, sizeof(py_proc_list_t));
-  if (list == NULL)
+  if (!isvalid(list))
     return NULL;
 
   list->pids = pid_max();
@@ -119,18 +119,22 @@ py_proc_list_new(py_proc_t * parent_py_proc) {
 
   list->index = (py_proc_t **) calloc(list->pids, sizeof(py_proc_t *));
   if (list->index == NULL)
-    return NULL;
+    goto release;
 
   list->pid_table = (pid_t *) calloc(list->pids, sizeof(pid_t));
   if (list->pid_table == NULL) {
     free(list->index);
-    return NULL;
+    goto release;
   }
 
   // Add the parent process to the list.
   _py_proc_list__add(list, parent_py_proc);
 
   return list;
+
+release:
+  py_proc_list__destroy(list);
+  return NULL;
 } /* py_proc_list_new */
 
 
@@ -139,11 +143,11 @@ void
 py_proc_list__add_proc_children(py_proc_list_t * self, pid_t ppid) {
   for (register pid_t pid = 0; pid <= self->max_pid; pid++) {
     if (self->pid_table[pid] == ppid && !_py_proc_list__has_pid(self, pid)) {
-      py_proc_t * child_proc = py_proc_new();
+      py_proc_t * child_proc = py_proc_new(TRUE);
       if (child_proc == NULL)
         continue;
 
-      if (py_proc__attach(child_proc, pid, TRUE)) {
+      if (py_proc__attach(child_proc, pid)) {
         py_proc__destroy(child_proc);
         continue;
       }
@@ -168,10 +172,17 @@ void
 py_proc_list__sample(py_proc_list_t * self) {
   log_t("Sampling from process list");
 
-  for (py_proc_item_t * item = self->first; item != NULL; item = item->next) {
+  for (py_proc_item_t * item = self->first; item != NULL; /* item = item->next */) {
     log_t("Sampling process with PID %d", item->py_proc->pid);
     stopwatch_start();
-    py_proc__sample(item->py_proc);  // Fail silently
+    if (fail(py_proc__sample(item->py_proc))) {
+      py_proc__wait(item->py_proc);
+      py_proc_item_t * next = item->next;
+      _py_proc_list__remove(self, item);
+      item = next;
+    }
+    else
+      item = item->next;
     stopwatch_duration();
   }
 } /* py_proc_list__sample */

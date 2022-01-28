@@ -34,9 +34,15 @@ typedef struct {
   ctime_t   t_sampling_interval;
   ctime_t   timeout;
   pid_t     attach_pid;
+  int       where;
   int       exclude_empty;
   int       sleepless;
   char    * format;
+  #ifdef NATIVE
+  char    * native_format;
+  char    * kernel_format;
+  #endif
+  char    * head_format;
   int       full;
   int       memory;
   FILE    * output_file;

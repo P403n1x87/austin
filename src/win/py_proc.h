@@ -99,7 +99,7 @@ _py_proc__analyze_pe(py_proc_t * self, char * path) {
       DWORD * addrs   = (DWORD *) map_addr_from_rva(pMapping, e_dir->AddressOfFunctions);
       for (
         register int i = 0;
-        self->sym_loaded < SYMBOLS && i < e_dir->NumberOfFunctions;
+        self->sym_loaded < SYMBOLS && i < e_dir->NumberOfNames;
         i++
       ) {
         char * sym_name = (char *) map_addr_from_rva(pMapping, names[i]);
@@ -130,6 +130,9 @@ _py_proc__get_modules(py_proc_t * self) {
   self->min_raddr = (void *) -1;
   self->max_raddr = NULL;
 
+  sfree(self->bin_path);
+  sfree(self->lib_path);
+
   BOOL success = Module32First(mod_hdl, &module);
   while (success) {
     if ((void *) module.modBaseAddr < self->min_raddr)
@@ -143,7 +146,11 @@ _py_proc__get_modules(py_proc_t * self) {
       module.modBaseAddr, module.modBaseAddr + module.modBaseSize,
       module.szModule
     );
-    if (self->bin_path == NULL && strstr(module.szModule, ".exe")) {
+    if (
+      self->bin_path == NULL \
+      && strcmp(module.szModule, "py.exe") \
+      && strstr(module.szModule, ".exe") \
+    ) {
       log_d("Candidate binary: %s (size %d KB)", module.szModule, module.modBaseSize >> 10);
       self->bin_path = strdup(module.szExePath);
     }
@@ -204,7 +211,7 @@ reader_thread(LPVOID lpParam) {
 // ----------------------------------------------------------------------------
 // Forward declaration.
 static int
-_py_proc__run(py_proc_t *, int);
+_py_proc__run(py_proc_t *);
 
 
 // On Windows, if we fail with the parent process we look if it has a single
@@ -255,12 +262,12 @@ with_resources;
         log_e("Cannot open child process handle");
         NOK;
       }
-      if (success(_py_proc__run(self, FALSE))) {
+      if (success(_py_proc__run(self))) {
         log_d("Process has a single Python child with PID %d. We will attach to that", child_pid);
         OK;
       }
       else {
-        log_d("Process had a single non-Python child with PID %d. Taking it as new parent", child_pid);
+        log_d("Process has a single non-Python child with PID %d. Taking it as new parent", child_pid);
         CloseHandle(self->extra->h_proc);
       }
     }

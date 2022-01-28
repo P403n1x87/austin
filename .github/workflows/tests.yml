@@ -1,5 +1,8 @@
 name: Tests
 on: push
+concurrency: 
+  group: ${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 jobs:
   tests-linux:
     runs-on: ubuntu-latest
@@ -8,26 +11,37 @@ jobs:
     name: Tests on Linux
     steps:
       - uses: actions/checkout@v2
-      - name: Compile Austin
+
+      - name: Install build dependencies
         run: |
-          autoreconf --install
-          ./configure
-          make
+          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
 
       - name: Install test dependencies
         run: |
           sudo add-apt-repository -y ppa:deadsnakes/ppa
-          sudo apt-get -y install valgrind python2.{3..7} python3.{3..10}
-          npm install bats
+          sudo apt-get -y install \
+            valgrind \
+            gdb \
+            python2.7 \
+            python3.{5..10} \
+            python3.10-full
+
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure --enable-debug-symbols true
+          make
 
       - name: Run tests
-        run: sudo node_modules/.bin/bats test/test.bats
-
-      - name: Show test logs
         run: |
-          test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log || true
-          test -f ./test-suite.log && cat ./test-suite.log || true
-        if: always()
+          ulimit -c unlimited
+          python3.10 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r test/requirements.txt
+          .venv/bin/pytest --pastebin=failed -svvr a
+          sudo .venv/bin/pytest --pastebin=failed -svvr a
+          deactivate
 
   tests-osx:
     runs-on: macos-latest
@@ -37,24 +51,24 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Compile Austin
-        run: gcc -Wall -O3 -Os src/*.c -o src/austin -DDEBUG
+        run: gcc -Wall -O3 -g src/*.c -o src/austin
 
       - name: Install test dependencies
         run: |
           brew update
-          brew install python || brew upgrade python
-          brew install python@3.8 || true
-          brew install python@3.9 || true
-          brew install python@3.10 || true
-          brew install bats-core || true
-          brew install --cask anaconda || true
+          brew install python@3.7
+          brew install python@3.8
+          brew install python@3.9
+          brew install python@3.10
 
       - name: Run tests
-        run: sudo bats test/macos/test.bats
-
-      - name: Show test logs
-        run: test -f /tmp/austin_tests.log && cat /tmp/austin_tests.log
-        if: always()
+        run: |
+          $(brew --prefix)/opt/python@3.10/bin/python3 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r test/requirements.txt
+          sudo .venv/bin/pytest --pastebin=failed -svvr a
+          deactivate
 
   tests-win:
     runs-on: windows-latest
@@ -63,19 +77,32 @@ jobs:
     name: Tests on Windows
     steps:
       - uses: actions/checkout@v2
+
       - name: Compile Austin
         run: |
-          gcc.exe -O3 -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Os -s -DDEBUG
-          src\austin.exe --usage
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall
+          src\austin.exe --help
+
+      - uses: actions/setup-python@v2
+        name: Setup Python
+        with:
+          python-version: '3.10'
 
       - name: Install test dependencies
         run: |
-          git clone --depth=1 https://github.com/bats-core/bats-core.git
+          choco install python --version=2.7.11 --no-progress
+          choco install python --version=3.5.4 --no-progress
+          choco install python --version=3.6.8 --no-progress
+          choco install python --version=3.7.9 --no-progress
+          choco install python --version=3.8.10 --no-progress
+          choco install python --version=3.9.10 --no-progress
+          refreshenv
 
       - name: Run tests
         run: |
-          bats-core/bin/bats test/win/test.bats
-      
-      - name: Show austin logs
-        run: test -f /tmp/austin.log && cat /tmp/austin.log || true
-        if: always()
+          py -3.10 -m venv venv
+          venv\Scripts\Activate.ps1
+          python -m pip install --upgrade pip
+          python -m pip install -r test/requirements.txt
+          python -m pytest --pastebin=failed -svvr a
+          deactivate
