@@ -84,18 +84,24 @@ _string_from_raddr(pid_t pid, void * raddr, python_v * py_v) {
       log_ie("Cannot read remote PyUnicodeObject3");
       goto failed;
     }
-    if (unicode._base._base.state.kind != 1) {
+
+    PyASCIIObject ascii = unicode._base._base;
+
+    if (ascii.state.kind != 1) {
       set_error(ECODEFMT);
       goto failed;
     }
 
-    void * data = unicode._base._base.state.compact
-                ? p_ascii_data(raddr)
-                : unicode._base.utf8;
-    len         = unicode._base._base.state.compact
-                ? unicode._base._base.length
-                : unicode._base.utf8_length;
-    buffer      = (char *) malloc(len + 1);
+    void * data = ascii.state.compact ? p_ascii_data(raddr) : unicode._base.utf8;
+    len = ascii.state.compact ? ascii.length : unicode._base.utf8_length;
+
+    if (len < 0 || len > 4096) {
+      log_e("Invalid string length");
+      goto failed;
+    }
+    
+    buffer = (char *) malloc(len + 1);
+    
     if (!isvalid(data) || fail(copy_memory(pid, data, len, buffer))) {
       log_ie("Cannot read remote value of PyUnicodeObject3");
       goto failed;
