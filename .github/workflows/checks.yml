@@ -56,6 +56,24 @@ jobs:
       - name: Check source code spelling
         run: codespell src
 
+  formatting-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    name: Formatting (tests)
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: "actions/setup-python@v2"
+        with:
+          python-version: "3.10"
+
+      - name: Install black
+        run: pip install black
+
+      - name: Check source code spelling
+        run: black --check test/
+
   coverage:
     runs-on: ubuntu-latest
     strategy:

@@ -1,2 +1,5 @@
 pytest
 flaky
+
+# C unit tests
+pycparser
