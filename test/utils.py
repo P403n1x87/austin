@@ -76,7 +76,9 @@ def python(version: str) -> list[str]:
 
 def gdb(cmds: list[str], *args: tuple[str]) -> str:
     return check_output(
-        ["gdb"] + [_ for cs in (("-ex", _) for _ in cmds) for _ in cs] + list(args),
+        ["gdb", "-q", "-batch"]
+        + [_ for cs in (("-ex", _) for _ in cmds) for _ in cs]
+        + list(args),
         stderr=STDOUT,
     ).decode()
 
@@ -88,6 +90,7 @@ def bt(binary: Path) -> str:
 
 
 EXEEXT = ".exe" if platform.system() == "Windows" else ""
+
 
 class Variant(str):
 
@@ -143,6 +146,7 @@ def samples(data: str) -> Iterator[bytes]:
 
 T = TypeVar("T")
 
+
 def denoise(data: Iterator[T], threshold: float = 0.1) -> set[T]:
     c = Counter(data)
     try:
@@ -172,7 +176,11 @@ def metadata(data: str) -> dict[str, str]:
 
 def maps(data: str) -> defaultdict[str, list[str]]:
     maps = defaultdict(list)
-    for r, f in (_[7:].split(" ", maxsplit=1) for _ in data.splitlines() if _.startswith("# map:")):
+    for r, f in (
+        _[7:].split(" ", maxsplit=1)
+        for _ in data.splitlines()
+        if _.startswith("# map:")
+    ):
         maps[f].append(r)
     return maps
 
@@ -227,7 +235,7 @@ match platform.system():
     case _:
         requires_sudo = pytest.mark.skipif(
             os.geteuid() != 0, reason="Requires superuser privileges"
-)
+        )
         no_sudo = pytest.mark.skipif(
             os.geteuid() == 0, reason="Must not have superuser privileges"
         )

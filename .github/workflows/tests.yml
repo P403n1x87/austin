@@ -67,7 +67,7 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r test/requirements.txt
-          sudo .venv/bin/pytest --pastebin=failed -svvr a
+          sudo .venv/bin/pytest --ignore=test/cunit --pastebin=failed -svvr a
           deactivate
 
   tests-win:
@@ -104,5 +104,5 @@ jobs:
           venv\Scripts\Activate.ps1
           python -m pip install --upgrade pip
           python -m pip install -r test/requirements.txt
-          python -m pytest --pastebin=failed -svvr a
+          python -m pytest --ignore=test\cunit --pastebin=failed -svvr a
           deactivate

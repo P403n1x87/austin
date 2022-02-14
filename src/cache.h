@@ -24,6 +24,7 @@
 #define CACHE_H
 
 #include <stdint.h>
+#include <stdlib.h>
 
 #include "hints.h"
 

@@ -24,7 +24,6 @@
 #include <math.h>
 #endif
 #include <stdio.h>
-#include <stdlib.h>
 
 #include "cache.h"
 #include "logging.h"

@@ -57,7 +57,7 @@ def test_attach_wall_time(py, mode, mode_meta, heap):
     with run_python(py, target("sleepy.py")) as p:
         sleep(0.5)
 
-        result = austin(mode, f"10ms", *heap, "-p", str(p.pid))
+        result = austin(mode, "10ms", *heap, "-p", str(p.pid))
         assert result.returncode == 0
 
         ts = threads(result.stdout)
@@ -92,7 +92,6 @@ def test_attach_exposure(py, exposure):
 
         meta = metadata(result.stdout)
 
-        a = sum_metric(result.stdout)
         d = int(meta["duration"])
 
         assert exposure * 800000 <= d < exposure * 1200000
