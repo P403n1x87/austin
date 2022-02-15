@@ -34,6 +34,7 @@ from test.utils import (
     sum_metric,
     target,
     threads,
+    variants,
 )
 from time import sleep
 
@@ -53,7 +54,8 @@ def allpythons():
     "mode,mode_meta", [("-i", "wall"), ("-si", "cpu"), ("-Ci", "wall"), ("-Csi", "cpu")]
 )
 @allpythons()
-def test_attach_wall_time(py, mode, mode_meta, heap):
+@variants
+def test_attach_wall_time(austin, py, mode, mode_meta, heap):
     with run_python(py, target("sleepy.py")) as p:
         sleep(0.5)
 
