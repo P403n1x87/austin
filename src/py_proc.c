@@ -1007,6 +1007,14 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
     #endif
   }
 
+  #ifdef NATIVE
+  // austinp seems to interfer with the Python module loading mechanism at
+  // startup, causing what looks like a deadlock, so we add a delay to try and
+  // skip profiling the initial phase.
+  usleep(500000);
+  self->timestamp = gettime();
+  #endif
+
   SUCCESS;
 }
 
