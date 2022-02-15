@@ -332,6 +332,9 @@ py_thread__set_idle(py_thread_t * self) {
   unsigned char bit   = 1 << (self->tid & 7);
   size_t        index = self->tid >> 3;
 
+  if (index > (max_pid >> 3))
+    FAIL;
+
   if (_py_thread__is_idle(self)) {
     _tids_idle[index] |= bit;
   } else {
@@ -445,8 +448,15 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
   void        * context = _tids[self->tid];
 
   if (!isvalid(context)) {
-    log_e("libunwind: unexpected invalid context");
-    FAIL;
+    _tids[self->tid] = _UPT_create(self->tid);
+    if (!isvalid(_tids[self->tid])) {
+      log_e("libunwind: failed to re-create context for thread %d", self->tid);
+      FAIL;
+    }
+    if (!isvalid(context)) {
+      log_e("libunwind: unexpected invalid context");
+      FAIL;
+    }
   }
 
   if (fail(wait_unw_init_remote(&cursor, self->proc->unwind.as, context)))
@@ -559,8 +569,8 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   if (self->tid == 0) {
     // If we fail to get a valid Thread ID, we resort to the PyThreadState
     // remote address
-    log_t("Thread ID fallback to remote address");
-    self->tid = (uintptr_t) raddr->addr;
+    log_e("Failed to retrieve OS thread information");
+    FAIL;
   }
   #if defined PL_LINUX
   else {
@@ -572,6 +582,7 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
       self->tid = o > 0 ? _pthread_buffer[o] : (pid_t) ((pid_t *) _pthread_buffer)[-o];
       if (self->tid >= max_pid || self->tid == 0) {
         log_e("Invalid TID detected");
+        self->tid = 0;
         FAIL;
       }
       #ifdef NATIVE

@@ -1156,14 +1156,14 @@ _py_proc__interrupt_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
   }
 
   do {
-    if (fail(py_thread__set_idle(&py_thread)))
-      FAIL;
     if (pargs.kernel && fail(py_thread__save_kernel_stack(&py_thread)))
       FAIL;
     if (fail(wait_ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0))) {
       log_e("ptrace: failed to interrupt thread %d", py_thread.tid);
       FAIL;
     }
+    if (fail(py_thread__set_idle(&py_thread)))
+      FAIL;
     if (fail(py_thread__set_interrupted(&py_thread, TRUE))) {
       if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
         log_d("ptrace: failed to resume interrupted thread %d (errno: %d)", py_thread.tid, errno);

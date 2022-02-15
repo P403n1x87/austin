@@ -99,10 +99,9 @@ class Variant(str):
     def __init__(self, name: str) -> None:
         super().__init__()
 
-        austin_exe = f"{name}{EXEEXT}"
-        path = Path("src") / austin_exe
+        path = (Path("src") / name).with_suffix(EXEEXT)
         if not path.is_file():
-            path = Path(austin_exe)
+            path = Path(name).with_suffix(EXEEXT)
 
         self.path = path
 
