@@ -3,13 +3,12 @@
 <h3 align="center">A Frame Stack Sampler for CPython</h3>
 
 <p align="center">
-  <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg"
+  <img src="art/tux.svg"
        height="24px" />
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg"
-       height="24px" />
+  <img src="art/apple.svg" />
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg"
+  <img src="art/win.svg"
        height="24px" />
 </p>
 
@@ -530,12 +529,12 @@ folder in either the SVG, PDF or PNG format
 Austin supports Python 2.3-2.7 and 3.3-3.10 and has been tested on the
 following platforms and architectures
 
-|             | <img src="https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux_Mono.svg" height="24px" style="margin:px" />* | <img src="https://upload.wikimedia.org/wikipedia/commons/2/2b/Windows_logo_2012-Black.svg" height="24px"/>** | <img src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg" height="24px" />*** |
-| ----------- | --------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
-| **x86_64**  | ✓                                                                                                               | ✓                                                                                                            | ✓                                                                                                       |
-| **i686**    | ✓                                                                                                               |                                                                                                              | ✓                                                                                                       |
-| **arm64**   | ✓                                                                                                               |                                                                                                              |                                                                                                         |
-| **ppc64le** | ✓                                                                                                               |                                                                                                              |                                                                                                         |
+|             | <img src="art/tux.svg" />* | <img src="art/win.svg"/>** | <img src="art/apple.svg"/>*** |
+| ----------- | -------------------------- | -------------------------- | ----------------------------- |
+| **x86_64**  | ✓                          | ✓                          | ✓                             |
+| **i686**    | ✓                          |                            | ✓                             |
+| **arm64**   | ✓                          |                            | ✓                             |
+| **ppc64le** | ✓                          |                            |                               |
 
 \* In order to attach to an external process, Austin requires the CAP_SYS_PTRACE
 capability. This means that you will have to either use ``sudo`` when attaching
@@ -570,7 +569,7 @@ the official installers from [python.org](https://python.org).
 > your system is not listed below.
 
 
-# Why <img src="art/austin_logo_black.svg" height="32px" /> Austin
+# Why Austin
 
 When there already are similar tools out there, it's normal to wonder why one
 should be interested in yet another one. So here is a list of features that
