@@ -503,6 +503,9 @@ show both native and Python frames. Highlighting helps tell frames apart. The
        style="box-shadow: #111 0px 0px 16px;" />
 </p>
 
+> **NOTE** If you have installed Austin from the Snap Store, the `austinp`
+> executable will be available as `austin.p` from the command line.
+
 
 ## Logging
 
