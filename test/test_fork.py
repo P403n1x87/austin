@@ -77,7 +77,8 @@ def test_fork_wall_time(austin, py, heap):
 @flaky
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @allpythons()
-def test_fork_cpu_time_cpu_bound(py, heap):
+@variants
+def test_fork_cpu_time_cpu_bound(py, heap, austin):
     result = austin("-si", "1ms", *heap, *python(py), target("target34.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
@@ -98,7 +99,8 @@ def test_fork_cpu_time_cpu_bound(py, heap):
 
 @flaky
 @allpythons()
-def test_fork_cpu_time_idle(py):
+@variants
+def test_fork_cpu_time_idle(py, austin):
     result = austin("-si", "1ms", *python(py), target("sleepy.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
@@ -202,6 +204,7 @@ def test_fork_full_metrics(py):
     assert alloc * dealloc
 
 
+@flaky
 @pytest.mark.parametrize("exposure", [1, 2])
 @allpythons()
 def test_fork_exposure(py, exposure):
