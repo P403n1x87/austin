@@ -5,6 +5,9 @@
 
   Fixed a bug in austinp that could have caused segmentation faults.
 
+  Fixed a regression in austinp that caused most of the samples to be wrongly
+  reported as idle
+
 
 2022-01-28 v3.3.0
 
