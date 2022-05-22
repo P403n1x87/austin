@@ -93,24 +93,6 @@ static int _py_proc__check_sym(py_proc_t *, char *, void *);
 // ----------------------------------------------------------------------------
 
 
-// ---- Exported symbols ----
-#define DYNSYM_COUNT                   3
-
-#ifdef PL_MACOS
-  #define SYM_PREFIX "__"
-#else
-  #define SYM_PREFIX "_"
-#endif
-
-static const char * _dynsym_array[DYNSYM_COUNT] = {
-  SYM_PREFIX "PyThreadState_Current",
-  SYM_PREFIX "PyRuntime",
-  "interp_head"
-};
-
-static long _dynsym_hash_array[DYNSYM_COUNT] = {0};
-
-
 #ifdef DEREF_SYM
 static int
 _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
@@ -118,16 +100,13 @@ _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
     return 0;
 
   for (register int i = 0; i < DYNSYM_COUNT; i++) {
-    if (
-      string__hash(name) == _dynsym_hash_array[i]
-    &&strcmp(name, _dynsym_array[i]) == 0
-    ) {
-      *(&(self->tstate_curr_raddr) + i) = value;
+    if (success(symcmp(name, i))) {
+      self->symbols[i] = value;
       log_d("Symbol %s found @ %p", name, value);
-      return 1;
+      return TRUE;
     }
   }
-  return 0;
+  return FALSE;
 }
 #endif
 
@@ -507,26 +486,26 @@ _py_proc__deref_interp_head(py_proc_t * self) {
   
   void * interp_head_raddr;
 
-  if (self->py_runtime_raddr != NULL) {
+  if (self->symbols[DYNSYM_RUNTIME] != NULL) {
     _PyRuntimeState py_runtime;
-    if (py_proc__get_type(self, self->py_runtime_raddr, py_runtime)) {
+    if (py_proc__get_type(self, self->symbols[DYNSYM_RUNTIME], py_runtime)) {
       log_d(
         "Cannot copy _PyRuntimeState structure from remote address %p",
-        self->py_runtime_raddr
+        self->symbols[DYNSYM_RUNTIME]
       );
       FAIL;
     }
     interp_head_raddr = V_FIELD(void *, py_runtime, py_runtime, o_interp_head);
     if (py_v->major == 3 && py_v->minor < 9) {
-      self->gc_state_raddr = self->py_runtime_raddr + py_v->py_runtime.o_gc;
+      self->gc_state_raddr = self->symbols[DYNSYM_RUNTIME] + py_v->py_runtime.o_gc;
       log_d("GC runtime state @ %p", self->gc_state_raddr);
     }
   }
-  else if (self->interp_head_raddr != NULL) {
-    if (py_proc__get_type(self, self->interp_head_raddr, interp_head_raddr)) {
+  else if (self->symbols[DYNSYM_INTERP_HEAD] != NULL) {
+    if (py_proc__get_type(self, self->symbols[DYNSYM_INTERP_HEAD], interp_head_raddr)) {
       log_d(
         "Cannot copy PyInterpreterState structure from remote address %p",
-        self->interp_head_raddr
+        self->symbols[DYNSYM_INTERP_HEAD]
       );
       FAIL;
     }
@@ -547,16 +526,16 @@ static inline void *
 _py_proc__get_current_thread_state_raddr(py_proc_t * self) {
   void * p_tstate_current;
 
-  if (self->py_runtime_raddr != NULL) {
+  if (self->symbols[DYNSYM_RUNTIME] != NULL) {
     if (self->tstate_current_offset == 0 || py_proc__get_type(
       self,
-      self->py_runtime_raddr + self->tstate_current_offset,
+      self->symbols[DYNSYM_RUNTIME] + self->tstate_current_offset,
       p_tstate_current
     )) return (void *) -1;
   }
 
-  else if (self->tstate_curr_raddr != NULL) {
-    if (py_proc__get_type(self, self->tstate_curr_raddr, p_tstate_current))
+  else if (self->symbols[DYNSYM_THREADSTATE_CURRENT] != NULL) {
+    if (py_proc__get_type(self, self->symbols[DYNSYM_THREADSTATE_CURRENT], p_tstate_current))
       return (void *) -1;
   }
 
@@ -608,7 +587,7 @@ _py_proc__find_interpreter_state(py_proc_t * self) {
       V_FIELD(void*, tstate_current, py_thread, o_thread_id) == 0 && \
       V_FIELD(void*, tstate_current, py_thread, o_prev)      != 0
     ) {
-      self->tstate_curr_raddr = V_FIELD(void*, tstate_current, py_thread, o_prev);
+      self->symbols[DYNSYM_THREADSTATE_CURRENT] = V_FIELD(void*, tstate_current, py_thread, o_prev);
       return 1;
     } */
 }
@@ -765,10 +744,10 @@ _py_proc__run(py_proc_t * self) {
 
   #ifdef DEREF_SYM
   if (
-    self->tstate_curr_raddr == NULL &&
-    self->py_runtime_raddr  == NULL &&
-    self->interp_head_raddr == NULL &&
-    self->gc_state_raddr    == NULL
+    self->symbols[DYNSYM_THREADSTATE_CURRENT] == NULL &&
+    self->symbols[DYNSYM_RUNTIME]             == NULL &&
+    self->symbols[DYNSYM_INTERP_HEAD]         == NULL &&
+    self->gc_state_raddr                      == NULL
   )
     log_w("No remote symbol references have been set.");
   #endif
@@ -810,12 +789,7 @@ py_proc_new(int child) {
   py_proc->min_raddr = (void *) -1;
   py_proc->gc_state_raddr = NULL;
 
-  // Pre-hash symbol names
-  if (_dynsym_hash_array[0] == 0) {
-    for (register int i = 0; i < DYNSYM_COUNT; i++) {
-      _dynsym_hash_array[i] = string__hash((char *) _dynsym_array[i]);
-    }
-  }
+  _prehash_symbols();
 
   py_proc->frames_heap = py_proc->frames = NULL_MEM_BLOCK;
 
@@ -1052,7 +1026,7 @@ py_proc__wait(py_proc_t * self) {
 
 static inline int
 _py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
-  if (self->py_runtime_raddr == NULL)
+  if (self->symbols[DYNSYM_RUNTIME] == NULL)
     FAIL;
 
   V_DESC(self->py_v);
@@ -1060,7 +1034,7 @@ _py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
   void            * interp_head_raddr;
   _PyRuntimeState   py_runtime;
 
-  if (py_proc__get_type(self, self->py_runtime_raddr, py_runtime))
+  if (py_proc__get_type(self, self->symbols[DYNSYM_RUNTIME], py_runtime))
     FAIL;
 
   interp_head_raddr = V_FIELD(void *, py_runtime, py_runtime, o_interp_head);
@@ -1072,14 +1046,14 @@ _py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
 
   register int hit_count = 0;
   for (
-    register void ** raddr = (void **) self->py_runtime_raddr;
-    (void *) raddr < self->py_runtime_raddr + PYRUNTIMESTATE_SIZE;
+    register void ** raddr = (void **) self->symbols[DYNSYM_RUNTIME];
+    (void *) raddr < self->symbols[DYNSYM_RUNTIME] + PYRUNTIMESTATE_SIZE;
     raddr++
   ) {
     py_proc__get_type(self, raddr, current_thread_raddr);
     if (current_thread_raddr == thread_raddr) {
       if (++hit_count == 2) {
-        self->tstate_current_offset = (void *) raddr - self->py_runtime_raddr;
+        self->tstate_current_offset = (void *) raddr - self->symbols[DYNSYM_RUNTIME];
         log_d(
           "Offset of _PyRuntime.gilstate.tstate_current found at %x",
           self->tstate_current_offset
@@ -1252,7 +1226,7 @@ py_proc__sample(py_proc_t * self) {
     do {
       if (pargs.memory) {
         mem_delta = 0;
-        if (self->py_runtime_raddr != NULL && current_thread == (void *) -1) {
+        if (self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void *) -1) {
           if (_py_proc__find_current_thread_offset(self, py_thread.raddr.addr))
             continue;
           else

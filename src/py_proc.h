@@ -32,6 +32,7 @@
 #include "cache.h"
 #endif
 
+#include "python/symbols.h"
 #include "cache.h"
 #include "heap.h"
 #include "stats.h"
@@ -70,10 +71,8 @@ typedef struct {
   int             sym_loaded;
   python_v      * py_v;
 
-  // Symbols from .dynsym
-  void          * tstate_curr_raddr;
-  void          * py_runtime_raddr;
-  void          * interp_head_raddr;
+  void          * symbols[DYNSYM_COUNT];  // Binary symbols
+
   void          * gc_state_raddr;
 
   void          * is_raddr;
