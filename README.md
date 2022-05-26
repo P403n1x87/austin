@@ -214,6 +214,9 @@ sudo snap install austin --classic
 On March 30 2019 Austin was accepted into the official Debian repositories and
 can therefore be installed with the `apt` utility.
 
+~~~ console
+sudo apt-get update -y && sudo apt-get install austin -y
+~~~
 
 ## On macOS
 
