@@ -210,6 +210,26 @@ _py_proc__infer_python_version(py_proc_t * self) {
 
   int major = 0, minor = 0, patch = 0;
 
+  // Starting with Python 3.11 we can rely on the Py_Version symbol
+  if (isvalid(self->symbols[DYNSYM_HEX_VERSION])) {
+    unsigned long py_version = 0;
+    
+    if (fail(py_proc__memcpy(self, self->symbols[DYNSYM_HEX_VERSION], sizeof(py_version), &py_version))) {
+      log_e("Failed to dereference remote Py_Version symbol");
+      return NOVERSION;
+    }
+    
+    major = (py_version>>24) & 0xFF;
+    minor = (py_version>>16) & 0xFF;
+    patch = (py_version>>8)  & 0xFF;
+
+    log_d("Python version (from symbol): %d.%d.%d", major, minor, patch);
+
+    self->py_v = get_version_descriptor(major, minor, patch);
+    
+    SUCCESS;
+  }
+
   // On Linux, the actual executable is sometimes picked as a library. Hence we
   // try to execute the library first and see if we get a version from it. If
   // not, we fall back to the actual binary, if any.

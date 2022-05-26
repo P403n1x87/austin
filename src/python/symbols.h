@@ -31,6 +31,7 @@ enum {
   DYNSYM_THREADSTATE_CURRENT,
   DYNSYM_RUNTIME,
   DYNSYM_INTERP_HEAD,
+  DYNSYM_HEX_VERSION,
   DYNSYM_COUNT
 };
 
@@ -47,7 +48,8 @@ enum {
 static const char * _dynsym_array[] = {
   SYM_PREFIX "PyThreadState_Current",
   SYM_PREFIX "PyRuntime",
-  "interp_head"
+  "interp_head",
+  "Py_Version",
 };
 
 static long _dynsym_hash_array[DYNSYM_COUNT] = {0};

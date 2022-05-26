@@ -57,7 +57,7 @@
 #define HEAP_MAP                 (1 << 3)
 #define BSS_MAP                  (1 << 4)
 
-#define SYMBOLS                        2
+#define SYMBOLS                        3
 
 #define PROC_REF                        (self->pid)
 
