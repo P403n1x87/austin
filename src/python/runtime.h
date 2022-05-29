@@ -28,7 +28,10 @@
 #ifndef PYTHON_RUNTIME_H
 #define PYTHON_RUNTIME_H
 
+#include "ceval.h"
+#include "gil.h"
 #include "interp.h"
+#include "misc.h"
 #include "thread.h"
 
 // ---- internal/pystate.h ----------------------------------------------------
@@ -70,7 +73,7 @@ typedef struct pyruntimestate3_8 {
         int64_t next_id;
     } interpreters;
     // XXX Remove this field once we have a tp_* slot.
-    struct _xidregistry {
+    struct _xidregistry3_8 {
         PyThread_type_lock mutex;
         struct _xidregitem *head;
     } xidregistry;
@@ -87,9 +90,44 @@ typedef struct pyruntimestate3_8 {
 } _PyRuntimeState3_8;
 
 
+// ---- internal/pycore_runtime.h ---------------------------------------------
+
+
+typedef struct pyruntimestate3_11 {
+    int _initialized;
+    int preinitializing;
+    int preinitialized;
+    int core_initialized;
+    int initialized;
+    _Py_atomic_address _finalizing;
+
+    struct pyinterpreters3_11 {
+        PyThread_type_lock mutex;
+        PyInterpreterState *head;
+        PyInterpreterState *main;
+        int64_t next_id;
+    } interpreters;
+
+    struct _xidregistry3_11 {
+        PyThread_type_lock mutex;
+        struct _xidregitem *head;
+    } xidregistry;
+
+    unsigned long main_thread;
+
+#define NEXITFUNCS 32
+    void (*exitfuncs[NEXITFUNCS])(void);
+    int nexitfuncs;
+
+    struct _ceval_runtime_state3_11 ceval;
+    struct _gilstate_runtime_state3_11 gilstate;
+} _PyRuntimeState3_11;
+
+
 typedef union {
-  _PyRuntimeState3_7 v3_7;
-  _PyRuntimeState3_8 v3_8;
+  _PyRuntimeState3_7  v3_7;
+  _PyRuntimeState3_8  v3_8;
+  _PyRuntimeState3_11 v3_11;
 } _PyRuntimeState;
 
 #endif

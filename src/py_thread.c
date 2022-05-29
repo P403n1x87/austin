@@ -530,8 +530,33 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
   } while (!stack_native_full() && unw_step(&cursor) > 0);
   
   SUCCESS;
+} /* wait_unw_init_remote */
+
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__seize(py_thread_t * self) {
+  // TODO: If a TID is reused we will never seize it!
+  if (!isvalid(_tids[self->tid])) {
+    if (fail(wait_ptrace(PTRACE_SEIZE, self->tid, 0, 0))) {
+      log_e("ptrace: cannot seize thread %d: %d\n", self->tid, errno);
+      FAIL;
+    }
+    else {
+      log_d("ptrace: thread %d seized", self->tid);
+    }
+    _tids[self->tid] = _UPT_create(self->tid);
+    if (!isvalid(_tids[self->tid])) {
+      log_e("libunwind: failed to create context for thread %d", self->tid);
+      FAIL;
+    }
+  }
+  SUCCESS;
 }
-#endif
+
+#endif /* NATIVE */
+
+
 
 // ---- PUBLIC ----------------------------------------------------------------
 
@@ -574,7 +599,15 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   }
   #if defined PL_LINUX
   else {
-    if (
+    if (py_v->major == 3 && py_v->minor >= 11) {
+      // We already have the native thread id
+      #ifdef NATIVE
+      if (fail(_py_thread__seize(self))) {
+        FAIL;
+      }
+      #endif
+    }
+    else if (
       likely(proc->extra->pthread_tid_offset)
       && success(read_pthread_t(self->raddr.pid, (void *) self->tid
     ))) {
@@ -586,20 +619,8 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
         FAIL;
       }
       #ifdef NATIVE
-      // TODO: If a TID is reused we will never seize it!
-      if (!isvalid(_tids[self->tid])) {
-        if (fail(wait_ptrace(PTRACE_SEIZE, self->tid, 0, 0))) {
-          log_e("ptrace: cannot seize thread %d: %d\n", self->tid, errno);
-          FAIL;
-        }
-        else {
-          log_d("ptrace: thread %d seized", self->tid);
-        }
-        _tids[self->tid] = _UPT_create(self->tid);
-        if (!isvalid(_tids[self->tid])) {
-          log_e("libunwind: failed to create context for thread %d", self->tid);
-          FAIL;
-        }
+      if (fail(_py_thread__seize(self))) {
+        FAIL;
       }
       #endif
     }

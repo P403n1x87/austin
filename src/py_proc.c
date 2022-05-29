@@ -385,6 +385,12 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     log_d("GC runtime state @ %p", self->gc_state_raddr);
   }
 
+  if (py_v->major == 3 && py_v->minor >= 11) {
+    // In Python 3.11 we can make use of the native_thread_id field on Linux
+    // to get the thread id.
+    SUCCESS;
+  }
+
   // Try to determine the TID by reading the remote struct pthread structure.
   // We can then use this information to parse the appropriate procfs file and
   // determine the native thread's running state.

@@ -160,7 +160,7 @@ typedef struct {
 #define UNSUPPORTED_VERSION                                                    \
   log_w("Unsupported Python version detected. Austin might not work as expected.")
 
-#define LATEST_VERSION                  (&python_v3_10)
+#define LATEST_VERSION                  (&python_v3_11)
 
 #define PY_CODE(s) {                    \
   sizeof(s),                            \
@@ -197,6 +197,15 @@ typedef struct {
   offsetof(s, thread_id)                \
 }
 
+#define PY_THREAD_311(s) {              \
+  sizeof(s),                            \
+  offsetof(s, prev),                    \
+  offsetof(s, next),                    \
+  offsetof(s, interp),                  \
+  offsetof(s, cframe),                  \
+  offsetof(s, native_thread_id)         \
+}
+
 #define PY_UNICODE(n) {                 \
   n                                     \
 }
@@ -211,10 +220,23 @@ typedef struct {
   offsetof(s, gc),                      \
 }
 
+#define PY_RUNTIME_311(s) {             \
+  sizeof(s),                            \
+  offsetof(s, interpreters.head),       \
+}
+
+
 #define PY_IS(s) {                      \
   sizeof(s),                            \
   offsetof(s, next),                    \
   offsetof(s, tstate_head),             \
+  offsetof(s, gc),                      \
+}
+
+#define PY_IS_311(s) {                  \
+  sizeof(s),                            \
+  offsetof(s, next),                    \
+  offsetof(s, threads.head),            \
   offsetof(s, gc),                      \
 }
 
@@ -305,6 +327,17 @@ python_v python_v3_10 = {
   PY_GC       (struct _gc_runtime_state3_8),
 };
 
+// ---- Python 3.11 -----------------------------------------------------------
+
+python_v python_v3_11 = {
+  PY_CODE         (PyCodeObject3_8),
+  PY_FRAME        (PyFrameObject3_10),
+  PY_THREAD_311   (PyThreadState3_11),
+  PY_IS_311       (PyInterpreterState3_11),
+  PY_RUNTIME_311  (_PyRuntimeState3_11),
+  PY_GC           (struct _gc_runtime_state3_8),
+};
+
 // ----------------------------------------------------------------------------
 static inline python_v *
 get_version_descriptor(int major, int minor, int patch) {
@@ -365,6 +398,9 @@ get_version_descriptor(int major, int minor, int patch) {
 
     // 3.10
     case 10: py_v = &python_v3_10; break;
+
+    // 3.11
+    case 11: py_v = &python_v3_11; break;
 
     default: py_v = LATEST_VERSION;
       UNSUPPORTED_VERSION;
