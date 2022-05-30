@@ -325,6 +325,84 @@ _py_thread__unwind_frame_stack(py_thread_t * self) {
 }
 
 
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__unwind_iframe_stack(py_thread_t * self, void * iframe_raddr) {
+  int invalid = FALSE;
+
+  V_DESC(self->proc->py_v);
+  
+  void * curr = iframe_raddr;
+  
+  while (isvalid(curr)) {
+    PyInterpreterFrame iframe;
+
+    if (fail(copy_py(self->raddr.pid, curr, py_iframe, iframe))) {
+      log_ie("Cannot read remote PyInterpreterFrame");
+      FAIL;
+    }
+    void * code_raddr = V_FIELD(void *, iframe, py_iframe, o_code);
+
+    // TODO: With this we can determine where the CFrames are for austinp.
+    // int is_entry = V_FIELD(int, iframe, py_iframe, o_is_entry);
+
+    stack_py_push(
+      curr,
+      code_raddr,
+      ((int)(V_FIELD(void *, iframe, py_iframe, o_prev_instr) - code_raddr)) - py_v->py_code.o_code
+    );
+
+    if (stack_full()) {
+      log_w("Invalid frame stack: too tall");
+      invalid = TRUE;
+      break;
+    }
+
+    if (stack_has_cycle()) {
+      log_d("Circular frame reference detected");
+      invalid = TRUE;
+      break;
+    }
+
+    curr = V_FIELD(void *, iframe, py_iframe, o_previous);
+  }
+  
+  invalid = fail(_py_thread__resolve_py_stack(self)) || invalid;
+
+  return invalid;
+}
+
+
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__unwind_cframe_stack(py_thread_t * self) {
+  PyCFrame cframe;
+
+  int invalid = FALSE;
+
+  // TODO: We probably need to read the datastack instead.
+  // _py_thread__read_frames(self);
+  
+  stack_reset();
+
+  V_DESC(self->proc->py_v);
+
+  if (fail(copy_py(self->raddr.pid, self->top_frame, py_cframe, cframe))) {
+    log_ie("Cannot read remote PyCFrame");
+    FAIL;
+  }
+
+  invalid = fail(_py_thread__unwind_iframe_stack(self, V_FIELD(void *, cframe, py_cframe, o_current_frame)));
+  if (invalid)
+    return invalid;
+  
+  invalid = fail(_py_thread__resolve_py_stack(self)) || invalid;
+
+  return invalid;
+}
+
+
 #ifdef NATIVE
 // ----------------------------------------------------------------------------
 int
@@ -714,9 +792,18 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   );
 
   if (isvalid(self->top_frame)) {
-    if (fail(_py_thread__unwind_frame_stack(self))) {
-      fprintf(pargs.output_file, ";:INVALID:");
-      stats_count_error();
+    V_DESC(self->proc->py_v);
+    if (py_v->major == 3 && py_v->minor >= 11) {
+      if (fail(_py_thread__unwind_cframe_stack(self))) {
+        fprintf(pargs.output_file, ";:INVALID:");
+        stats_count_error();
+      }
+    }
+    else {
+      if (fail(_py_thread__unwind_frame_stack(self))) {
+        fprintf(pargs.output_file, ";:INVALID:");
+        stats_count_error();
+      }
     }
   }
 
