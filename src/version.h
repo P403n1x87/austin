@@ -73,6 +73,16 @@
 
 #define V_DESC(desc) python_v * py_v = (desc)
 
+/**
+ * Ensure the current version of Python is at least the request version.
+ * 
+ * @param  M  requested major version
+ * @param  m  requested minor version
+ * 
+ * @return    TRUE if the current version is at least the requested one, FALSE
+ *            otherwise.
+ */
+#define V_MIN(M, m) (py_v->major > M || (py_v->major == M && py_v->minor >= m))
 
 typedef unsigned long offset_t;
 
@@ -123,6 +133,7 @@ typedef struct {
   offset_t o_interp;
   offset_t o_frame;
   offset_t o_thread_id;
+  offset_t o_stack;
 } py_thread_v;
 
 
@@ -248,7 +259,8 @@ typedef struct {
   offsetof(s, next),                    \
   offsetof(s, interp),                  \
   offsetof(s, cframe),                  \
-  offsetof(s, native_thread_id)         \
+  offsetof(s, native_thread_id),        \
+  offsetof(s, datastack_chunk),         \
 }
 
 #define PY_UNICODE(n) {                 \

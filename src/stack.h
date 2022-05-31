@@ -224,7 +224,7 @@ _frame_from_code_raddr(raddr_t * raddr, int lasti, python_v * py_v) {
   ssize_t len = 0;
   int lineno = V_FIELD(unsigned int, code, py_code, o_firstlineno);
 
-  if (py_v->major == 3 && py_v->minor >= 11) { // Python >=3.11
+  if (V_MIN(3, 11)) {
     lnotab = _code__get_lnotab(&code, raddr->pid, &len, py_v);
     if (!isvalid(lnotab) || len == 0) {
       log_ie("Cannot get line information from PyCodeObject");

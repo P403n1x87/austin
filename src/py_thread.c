@@ -135,6 +135,28 @@ _py_thread__read_frames(py_thread_t * self) {
 
     }
   }
+} /* _py_thread__read_frames */
+
+
+// ----------------------------------------------------------------------------
+static inline void
+_py_thread__read_stack(py_thread_t * self) {
+  if (!pargs.heap || !isvalid(self->stack))
+    return;
+
+  // For now we read a single datastack chunk up to the requested heap size.
+
+  size_t maxsize = pargs.heap < self->stack_size ? pargs.heap : self->stack_size;
+
+  if (maxsize > _frames.size) {
+    _frames.content = realloc(_frames.content, maxsize);
+  }
+
+  if (fail(copy_memory(self->raddr.pid, self->stack, maxsize, _frames.content))) {
+    log_d("Failed to read remote thread stack data");
+    sfree(_frames.content);
+    _frames = NULL_HEAP;
+  }
 }
 
 
@@ -283,7 +305,72 @@ _py_thread__push_frame(py_thread_t * self, void ** prev) {
   }
 
   return _py_thread__push_frame_from_raddr(self, prev);
+} /* _py_thread__push_frame */
+
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__push_iframe_from_addr(py_thread_t * self, PyInterpreterFrame * iframe, void ** prev) {
+  V_DESC(self->proc->py_v);
+  
+  void * origin     = *prev;
+  void * code_raddr = V_FIELD_PTR(void *, iframe, py_iframe, o_code);
+
+  // TODO: With this we can determine where the CFrames are for austinp.
+  // int is_entry = V_FIELD(int, iframe, py_iframe, o_is_entry);
+
+  *prev = V_FIELD_PTR(void *, iframe, py_iframe, o_previous);
+  if (unlikely(origin == *prev)) {
+    log_d("Interpreter frame points to itself!");
+    FAIL;
+  }
+
+  stack_py_push(
+    origin,
+    code_raddr,
+    ((int)(V_FIELD_PTR(void *, iframe, py_iframe, o_prev_instr) - code_raddr)) - py_v->py_code.o_code
+  );
+
+  SUCCESS;
 }
+
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__push_iframe_from_raddr(py_thread_t * self, void ** prev) {
+  PyInterpreterFrame iframe;
+
+  V_DESC(self->proc->py_v);
+
+  if (fail(copy_py(self->raddr.pid, *prev, py_iframe, iframe))) {
+    log_ie("Cannot read remote PyInterpreterFrame");
+    FAIL;
+  }
+
+  return _py_thread__push_iframe_from_addr(self, &iframe, prev);
+}
+
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__push_iframe(py_thread_t * self, void ** prev) {
+  void * raddr = *prev;
+  if (_use_heaps) {
+    #ifdef DEBUG
+    _frames_total++;
+    #endif
+
+    if (isvalid(_frames.content) && (raddr >= self->stack && raddr < self->stack + self->stack_size)) {
+      return _py_thread__push_iframe_from_addr(self, raddr - self->stack + _frames.content, prev);
+    }
+
+    #ifdef DEBUG
+    _frames_miss++;
+    #endif
+  }
+
+  return _py_thread__push_iframe_from_raddr(self, prev);
+} /* _py_thread__push_iframe */
 
 
 // ----------------------------------------------------------------------------
@@ -328,29 +415,15 @@ _py_thread__unwind_frame_stack(py_thread_t * self) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_iframe_stack(py_thread_t * self, void * iframe_raddr) {
-  int invalid = FALSE;
-
-  V_DESC(self->proc->py_v);
-  
+  int invalid = FALSE; 
   void * curr = iframe_raddr;
   
   while (isvalid(curr)) {
-    PyInterpreterFrame iframe;
-
-    if (fail(copy_py(self->raddr.pid, curr, py_iframe, iframe))) {
-      log_ie("Cannot read remote PyInterpreterFrame");
-      FAIL;
+    if (fail(_py_thread__push_iframe(self, &curr))) {
+      log_d("Failed to retrieve iframe #%d", stack_pointer());
+      invalid = TRUE;
+      break;
     }
-    void * code_raddr = V_FIELD(void *, iframe, py_iframe, o_code);
-
-    // TODO: With this we can determine where the CFrames are for austinp.
-    // int is_entry = V_FIELD(int, iframe, py_iframe, o_is_entry);
-
-    stack_py_push(
-      curr,
-      code_raddr,
-      ((int)(V_FIELD(void *, iframe, py_iframe, o_prev_instr) - code_raddr)) - py_v->py_code.o_code
-    );
 
     if (stack_full()) {
       log_w("Invalid frame stack: too tall");
@@ -363,8 +436,6 @@ _py_thread__unwind_iframe_stack(py_thread_t * self, void * iframe_raddr) {
       invalid = TRUE;
       break;
     }
-
-    curr = V_FIELD(void *, iframe, py_iframe, o_previous);
   }
   
   invalid = fail(_py_thread__resolve_py_stack(self)) || invalid;
@@ -381,9 +452,8 @@ _py_thread__unwind_cframe_stack(py_thread_t * self) {
 
   int invalid = FALSE;
 
-  // TODO: We probably need to read the datastack instead.
-  // _py_thread__read_frames(self);
-  
+  _py_thread__read_stack(self);
+
   stack_reset();
 
   V_DESC(self->proc->py_v);
@@ -647,6 +717,7 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   V_DESC(proc->py_v);
 
   PyThreadState ts;
+  _PyStackChunk chunk;
 
   self->invalid = TRUE;
 
@@ -654,7 +725,23 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
     log_ie("Cannot read remote PyThreadState");
     FAIL;
   }
+  
+  self->stack = NULL;
 
+  if (pargs.heap && V_MIN(3, 11)) {
+    // Get the thread stack information.
+    void * stack_raddr = V_FIELD(void *, ts, py_thread, o_stack);
+    
+    if (fail(copy_datatype(self->raddr.pid, stack_raddr, chunk))) {
+      // Best effort
+      log_d("Cannot read thread data stack");
+    }
+    else {
+      self->stack = stack_raddr;
+      self->stack_size = chunk.size;
+    }
+  }
+  
   self->proc = proc;
 
   self->raddr = *raddr;
@@ -677,7 +764,7 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   }
   #if defined PL_LINUX
   else {
-    if (py_v->major == 3 && py_v->minor >= 11) {
+    if (V_MIN(3, 11)) {
       // We already have the native thread id
       #ifdef NATIVE
       if (fail(_py_thread__seize(self))) {
@@ -793,7 +880,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
 
   if (isvalid(self->top_frame)) {
     V_DESC(self->proc->py_v);
-    if (py_v->major == 3 && py_v->minor >= 11) {
+    if (V_MIN(3, 11)) {
       if (fail(_py_thread__unwind_cframe_stack(self))) {
         fprintf(pargs.output_file, ";:INVALID:");
         stats_count_error();
