@@ -95,6 +95,7 @@ typedef struct {
   offset_t o_lnotab;
   offset_t o_firstlineno;
   offset_t o_code;
+  offset_t o_qualname;
 } py_code_v;
 
 
@@ -208,6 +209,7 @@ typedef struct {
   offsetof(s, co_linetable),            \
   offsetof(s, co_firstlineno),          \
   offsetof(s, co_code_adaptive),        \
+  offsetof(s, co_qualname),             \
 }
 
 

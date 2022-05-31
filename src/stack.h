@@ -172,6 +172,11 @@ stack_py_push(void * origin, void * code, int lasti) {
     pid, *((void **) ((void *) self + py_v->py_code.o_name)), py_v             \
   )
 
+#define _code__get_qualname(self, pid, py_v)                                   \
+  _string_from_raddr(                                                          \
+    pid, *((void **) ((void *) self + py_v->py_code.o_qualname)), py_v         \
+  )
+
 #define _code__get_lnotab(self, pid, len, py_v)                                \
   _bytes_from_raddr(                                                           \
     pid, *((void **) ((void *) self + py_v->py_code.o_lnotab)), len, py_v      \
@@ -215,7 +220,9 @@ _frame_from_code_raddr(raddr_t * raddr, int lasti, python_v * py_v) {
     return NULL;
   }
 
-  char * scope = _code__get_name(&code, raddr->pid, py_v);
+  char * scope = V_MIN(3, 11)
+    ? _code__get_qualname(&code, raddr->pid, py_v)
+    : _code__get_name(&code, raddr->pid, py_v);
   if (!isvalid(scope)) {
     log_ie("Cannot get scope name from PyCodeObject");
     goto failed;
