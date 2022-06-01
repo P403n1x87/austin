@@ -109,6 +109,10 @@ stack_deallocate(void) {
   free(_stack);
 }
 
+#ifdef NATIVE
+#define CFRAME_MAGIC             ((void*) 0xCF)
+#endif
+
 static inline int
 stack_has_cycle(void) {
   if (_stack->pointer < 2)
@@ -119,7 +123,11 @@ stack_has_cycle(void) {
   // overhead introduced by looking up from a set-like data structure.
   py_frame_t top = _stack->py_base[_stack->pointer-1];
   for (ssize_t i = _stack->pointer - 2; i >= 0; i--) {
+    #ifdef NATIVE
+    if (top.origin == _stack->py_base[i].origin && top.origin != CFRAME_MAGIC)
+    #else
     if (top.origin == _stack->py_base[i].origin)
+    #endif
       return TRUE;
   }
   return FALSE;
@@ -147,6 +155,8 @@ stack_py_push(void * origin, void * code, int lasti) {
 #define stack_full()            (_stack->pointer >= _stack->size)
 
 #ifdef NATIVE
+#define stack_py_push_cframe()   (stack_py_push(CFRAME_MAGIC, NULL, 0))
+
 #define stack_native_push(frame) {_stack->native_base[_stack->native_pointer++] = frame;}
 #define stack_native_pop()       (_stack->native_base[--_stack->native_pointer])
 #define stack_native_is_empty()  (_stack->native_pointer == 0)

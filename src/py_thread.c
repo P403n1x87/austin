@@ -173,6 +173,12 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
   for (int i = 0; i < stack_pointer(); i++) {
     py_frame_t py_frame = stack_py_get(i);
 
+    #ifdef NATIVE
+    if (py_frame.origin == CFRAME_MAGIC) {
+      stack_set(i, CFRAME_MAGIC);
+      continue;
+    }
+    #endif
     int       lasti     = py_frame.lasti;
     key_dt    frame_key = ((key_dt) py_frame.code << 16) | lasti;
     frame_t * frame     = lru_cache__maybe_hit(cache, frame_key);
@@ -316,9 +322,6 @@ _py_thread__push_iframe_from_addr(py_thread_t * self, PyInterpreterFrame * ifram
   void * origin     = *prev;
   void * code_raddr = V_FIELD_PTR(void *, iframe, py_iframe, o_code);
 
-  // TODO: With this we can determine where the CFrames are for austinp.
-  // int is_entry = V_FIELD(int, iframe, py_iframe, o_is_entry);
-
   *prev = V_FIELD_PTR(void *, iframe, py_iframe, o_previous);
   if (unlikely(origin == *prev)) {
     log_d("Interpreter frame points to itself!");
@@ -330,6 +333,13 @@ _py_thread__push_iframe_from_addr(py_thread_t * self, PyInterpreterFrame * ifram
     code_raddr,
     ((int)(V_FIELD_PTR(void *, iframe, py_iframe, o_prev_instr) - code_raddr)) - py_v->py_code.o_code
   );
+
+  #ifdef NATIVE
+  if (V_MIN(3, 11) && V_FIELD_PTR(int, iframe, py_iframe, o_is_entry)) {
+    // This marks the end of a CFrame
+    stack_py_push_cframe();
+  }
+  #endif
 
   SUCCESS;
 }
@@ -878,8 +888,9 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     self->proc->child ? "🧒" : ""
   );
 
+  V_DESC(self->proc->py_v);
+
   if (isvalid(self->top_frame)) {
-    V_DESC(self->proc->py_v);
     if (V_MIN(3, 11)) {
       if (fail(_py_thread__unwind_cframe_stack(self))) {
         fprintf(pargs.output_file, ";:INVALID:");
@@ -896,6 +907,12 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
 
   #ifdef NATIVE
 
+  if (V_MIN(3, 11)) {
+    // We expect a CFrame to sit at the top of the stack
+    if (stack_pop() != CFRAME_MAGIC) {
+      log_e("Invalid resolved Python stack");
+    }
+  }
   while (!stack_native_is_empty()) {
     frame_t * native_frame = stack_native_pop();
     if (!isvalid(native_frame)) {
@@ -912,7 +929,19 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     if (!stack_is_empty() && is_frame_eval) {
       // TODO: if the py stack is empty we have a mismatch.
       frame_t * frame = stack_pop();
-      fprintf(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
+      if (V_MIN(3, 11)) {
+        while (frame != CFRAME_MAGIC) {
+          fprintf(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
+
+          if (stack_is_empty())
+            break;
+
+          frame = stack_pop();
+        }
+      }
+      else {
+        fprintf(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
+      }
     }
     else {
       fprintf(pargs.output_file, pargs.native_format, native_frame->filename, native_frame->scope, native_frame->line);
