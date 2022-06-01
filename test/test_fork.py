@@ -42,7 +42,7 @@ import pytest
 from flaky import flaky
 
 
-@flaky(max_runs=3)
+@flaky(max_runs=10)
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @allpythons()
 @variants
@@ -97,7 +97,7 @@ def test_fork_cpu_time_cpu_bound(py, heap, austin):
     assert 0 < a < 2.1 * d
 
 
-@flaky
+@flaky(max_runs=6)
 @allpythons()
 @variants
 def test_fork_cpu_time_idle(py, austin):
@@ -175,8 +175,8 @@ def test_fork_multiprocess(py):
     assert meta["multiprocess"] == "on", meta
     assert meta["mode"] == "wall", meta
 
-    assert has_pattern(result.stdout, "target_mp.py:do:"), result.stdout
-    assert has_pattern(result.stdout, "target_mp.py:fact:"), result.stdout
+    assert has_pattern(result.stdout, "target_mp.py:do:"), compress(result.stdout)
+    assert has_pattern(result.stdout, "target_mp.py:fact:"), compress(result.stdout)
 
 
 @flaky
@@ -221,3 +221,17 @@ def test_fork_exposure(py, exposure):
 
     d = int(meta["duration"])
     assert 900000 * exposure < d < 1100000 * exposure
+
+
+@variants
+@allpythons(min=(3, 11))
+def test_qualnames(py, austin):
+    result = austin("-i", "1ms", *python(py), target("qualnames.py"))
+    assert py in (result.stderr or result.stdout), result.stderr or result.stdout
+
+    assert len(processes(result.stdout)) == 1, compress(result.stdout)
+    ts = threads(result.stdout)
+    assert len(ts) == 1, compress(result.stdout)
+
+    assert has_pattern(result.stdout, "qualnames.py:Foo.run"), compress(result.stdout)
+    assert has_pattern(result.stdout, "qualnames.py:Bar.run"), compress(result.stdout)

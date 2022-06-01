@@ -1,6 +1,6 @@
 import platform
 
-PY3_LATEST = 10
+PY3_LATEST = 11
 
 match platform.system():
     case "Darwin":

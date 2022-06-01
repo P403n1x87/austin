@@ -166,11 +166,17 @@ def threads(data: str, threshold: float = 0.1) -> set[tuple[str, str]]:
 
 
 def metadata(data: str) -> dict[str, str]:
-    return dict(
+    meta = dict(
         _[1:].strip().split(": ", maxsplit=1)
         for _ in data.splitlines()
-        if _ and _[0] == "#"
+        if _ and _[0] == "#" and not _.startswith("# map:")
     )
+
+    for v in ("austin", "python"):
+        if v in meta:
+            meta[v] = tuple(int(_) for _ in meta[v].split("."))
+
+    return meta
 
 
 def maps(data: str) -> defaultdict[str, list[str]]:
@@ -215,17 +221,23 @@ def sum_metrics(data: str) -> tuple[int, int, int, int]:
 
 
 def compress(data: str) -> str:
-    output: list[str] = []
     stacks: dict[str, int] = {}
-    for _ in (_.strip() for _ in data.splitlines()):
-        if not _ or _[0] == "#":
-            output.append(_)
-            continue
 
+    for _ in (_.strip() for _ in data.splitlines() if _ and _[0] == "P"):
         stack, _, metric = _.rpartition(" ")
         stacks[stack] = stacks.setdefault(stack, 0) + int(metric)
 
-    return "\n".join(output) + "\n".join((f"{k} {v}" for k, v in stacks.items()))
+    compressed_stacks = "\n".join((f"{k} {v}" for k, v in stacks.items()))
+
+    output = (
+        f"# Metadata\n{metadata(data)}\n\n# Stacks\n{compressed_stacks or '<no data>'}"
+    )
+
+    ms = maps(data)
+    if ms:
+        output = f"# Maps\n{list(ms.keys())}\n\n" + output
+
+    return output
 
 
 match platform.system():

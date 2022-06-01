@@ -229,8 +229,8 @@ py_proc_list__update(py_proc_list_t * self) {
       continue;
 
     char * line = NULL;
-    size_t n;
-    if (getline(&line, &n, stat_file) == 0) {
+    size_t n = 0;
+    if (getline(&line, &n, stat_file) < 0) {
       log_w("Failed to read stat file for process %d", pid);
       goto release;
     }

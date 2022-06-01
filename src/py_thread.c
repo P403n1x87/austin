@@ -909,7 +909,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
 
   if (V_MIN(3, 11)) {
     // We expect a CFrame to sit at the top of the stack
-    if (stack_pop() != CFRAME_MAGIC) {
+    if (!stack_is_empty() && stack_pop() != CFRAME_MAGIC) {
       log_e("Invalid resolved Python stack");
     }
   }

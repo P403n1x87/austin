@@ -1,5 +1,6 @@
-pytest
 flaky
+pytest
+pytest-xdist
 
 # C unit tests
 pycparser

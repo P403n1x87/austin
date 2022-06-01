@@ -22,7 +22,7 @@ _header_head = r"""
 #define __extension__
 #define __inline inline
 #define __asm__(x)
-#define __const=const
+#define __const const
 #define __inline__ inline
 #define __inline inline
 #define __restrict

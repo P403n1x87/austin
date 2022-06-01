@@ -66,7 +66,7 @@ def test_gc_disabled(py, monkeypatch):
     assert result.returncode == 0
 
     meta = metadata(result.stdout)
-    assert int(meta["gc"]) < int(meta["duration"]) / 20
+    assert int(meta["gc"]) * 0.8 < int(meta["duration"]) / 20
 
     gcs = [_ for _ in samples(result.stdout) if ":GC:" in _]
     assert len(gcs) < 5
