@@ -1,4 +1,8 @@
-2022-xx-xx v3.3.1
+2022-xx-xx v3.4.0
+
+  Added support for Python 3.11.
+
+  Improved austinp support on fork.
 
   Renamed the austinp binary installed from the Snap Store from austin.austinp
   to austin.p.
