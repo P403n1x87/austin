@@ -86,12 +86,12 @@
 
 
 /**
- * Same as copy_from_raddr, but with explicit arguments instead of a pointer to
- * a remote address structure
- * @param  pid  the process ID
- * @param  addr the remote address
- * @param  dt   the data structure as a local variable.
- * @return      zero on success, otherwise non-zero.
+ * Same as copy_from_raddr, but for versioned Python data structures.
+ * @param  pid      the process ID
+ * @param  addr     the remote address
+ * @param  py_type  the versioned Python type (e.g. py_runtime).
+ * @param  dest     the destination variable.
+ * @return          zero on success, otherwise non-zero.
  */
 #define copy_py(pid, addr, py_type, dest) copy_memory(pid, addr, py_v->py_type.size, &dest)
 
