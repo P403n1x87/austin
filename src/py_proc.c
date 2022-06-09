@@ -210,6 +210,26 @@ _py_proc__infer_python_version(py_proc_t * self) {
 
   int major = 0, minor = 0, patch = 0;
 
+  // Starting with Python 3.11 we can rely on the Py_Version symbol
+  if (isvalid(self->symbols[DYNSYM_HEX_VERSION])) {
+    unsigned long py_version = 0;
+    
+    if (fail(py_proc__memcpy(self, self->symbols[DYNSYM_HEX_VERSION], sizeof(py_version), &py_version))) {
+      log_e("Failed to dereference remote Py_Version symbol");
+      return NOVERSION;
+    }
+    
+    major = (py_version>>24) & 0xFF;
+    minor = (py_version>>16) & 0xFF;
+    patch = (py_version>>8)  & 0xFF;
+
+    log_d("Python version (from symbol): %d.%d.%d", major, minor, patch);
+
+    self->py_v = get_version_descriptor(major, minor, patch);
+    
+    SUCCESS;
+  }
+
   // On Linux, the actual executable is sometimes picked as a library. Hence we
   // try to execute the library first and see if we get a version from it. If
   // not, we fall back to the actual binary, if any.
@@ -363,6 +383,12 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   if (py_v->major == 3 && py_v->minor >= 9) {
     self->gc_state_raddr = (void *) (((char *) raddr) + py_v->py_is.o_gc);
     log_d("GC runtime state @ %p", self->gc_state_raddr);
+  }
+
+  if (V_MIN(3, 11)) {
+    // In Python 3.11 we can make use of the native_thread_id field on Linux
+    // to get the thread id.
+    SUCCESS;
   }
 
   // Try to determine the TID by reading the remote struct pthread structure.
@@ -982,10 +1008,6 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   }
 
   #ifdef NATIVE
-  // austinp seems to interfer with the Python module loading mechanism at
-  // startup, causing what looks like a deadlock, so we add a delay to try and
-  // skip profiling the initial phase.
-  usleep(500000);
   self->timestamp = gettime();
   #endif
 
@@ -1195,8 +1217,10 @@ py_proc__sample(py_proc_t * self) {
   V_DESC(self->py_v);
 
   PyInterpreterState is;
-  if (fail(py_proc__get_type(self, self->is_raddr, is)))
+  if (fail(py_proc__get_type(self, self->is_raddr, is))) {
+    log_ie("Failed to get interpreter state while sampling");
     FAIL;
+  }
 
   void * tstate_head = V_FIELD(void *, is, py_is, o_tstate_head);
   if (isvalid(tstate_head)) {
@@ -1212,6 +1236,7 @@ py_proc__sample(py_proc_t * self) {
     #endif
 
     if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self))) {
+      log_ie("Failed to fill thread from raddr while sampling");
       if (is_fatal(austin_errno)) {
         FAIL;
       }

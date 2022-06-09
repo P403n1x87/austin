@@ -46,7 +46,7 @@ def test_pipe_wall_time(py):
 
     meta = metadata(result.stdout)
 
-    assert meta["python"].startswith(py), meta
+    assert ".".join((str(_) for _ in meta["python"])).startswith(py), meta
     assert meta["mode"] == "wall", meta
     assert int(meta["duration"]) > 100000, meta
     assert meta["interval"] == str(interval * 1000), meta
@@ -71,7 +71,7 @@ def test_pipe_cpu_time(py):
 
     meta = metadata(result.stdout)
 
-    assert meta["python"].startswith(py), meta
+    assert ".".join((str(_) for _ in meta["python"])).startswith(py), meta
     assert meta["mode"] == "cpu", meta
     assert int(meta["duration"]) > 100000, meta
     assert meta["interval"] == "1000", meta
@@ -89,7 +89,7 @@ def test_pipe_wall_time_multiprocess(py):
     assert int(meta["duration"]) > 100000, meta
     assert meta["interval"] == "1000", meta
     assert meta["multiprocess"] == "on", meta
-    assert meta["python"].startswith(py), meta
+    assert ".".join((str(_) for _ in meta["python"])).startswith(py), meta
 
 
 @flaky
@@ -109,7 +109,7 @@ def test_pipe_wall_time_multiprocess_output(py, tmp_path):
         assert int(meta["duration"]) > 100000, meta
         assert meta["interval"] == "1000", meta
         assert meta["multiprocess"] == "on", meta
-        assert meta["python"].startswith(py), meta
+        assert ".".join((str(_) for _ in meta["python"])).startswith(py), meta
 
         assert has_pattern(data, "target34.py:keep_cpu_busy:32"), compress(data)
 

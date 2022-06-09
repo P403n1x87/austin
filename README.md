@@ -529,7 +529,7 @@ folder in either the SVG, PDF or PNG format
 
 # Compatibility
 
-Austin supports Python 2.3-2.7 and 3.3-3.10 and has been tested on the
+Austin supports Python 2.3-2.7 and 3.3-3.11 and has been tested on the
 following platforms and architectures
 
 |             | <img src="art/tux.svg" />* | <img src="art/win.svg"/>** | <img src="art/apple.svg"/>*** |

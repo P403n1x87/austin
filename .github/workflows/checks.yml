@@ -93,7 +93,7 @@ jobs:
           sudo apt-get -y install \
             valgrind \
             python2.7 \
-            python3.{5..10} \
+            python3.{5..11} \
             python3.10-full
 
       - name: Compile Austin
@@ -109,8 +109,8 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r test/requirements.txt
-          .venv/bin/pytest --pastebin=failed -svvr fE || true
-          sudo .venv/bin/pytest --pastebin=failed -svvr fE || true
+          .venv/bin/pytest --pastebin=failed --no-flaky-report -sr fE || true
+          sudo .venv/bin/pytest --pastebin=failed --no-flaky-report -sr fE || true
           deactivate
 
       - name: Generate Cobertura report

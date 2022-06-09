@@ -51,9 +51,17 @@ struct _proc_extra_info {
 static inline int
 wait_ptrace(enum __ptrace_request request, pid_t pid, void * addr, void * data) {
   int outcome = 0;
-  ctime_t end = gettime() + 1000;
+  ctime_t end = gettime() + 100000;  // Wait for 100ms
+  
   while (gettime() < end && (outcome = ptrace(request, pid, addr, data)) && errno == 3)
     sched_yield();
+
+  #ifdef DEBUG
+  ctime_t wait = gettime() - end + 100000;
+  if (wait > 1000)
+    log_d("ptrace long wait for request %d: %ld microseconds", request, wait);
+  #endif
+  
   return outcome;
 }
 

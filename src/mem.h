@@ -85,6 +85,17 @@
 #define copy_datatype(pid, addr, dt) copy_memory(pid, addr, sizeof(dt), &dt)
 
 
+/**
+ * Same as copy_from_raddr, but for versioned Python data structures.
+ * @param  pid      the process ID
+ * @param  addr     the remote address
+ * @param  py_type  the versioned Python type (e.g. py_runtime).
+ * @param  dest     the destination variable.
+ * @return          zero on success, otherwise non-zero.
+ */
+#define copy_py(pid, addr, py_type, dest) copy_memory(pid, addr, py_v->py_type.size, &dest)
+
+
 typedef struct {
   pid_t  pid;
   void * addr;

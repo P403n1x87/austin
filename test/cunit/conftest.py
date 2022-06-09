@@ -42,7 +42,12 @@ def cunit(
         env = os.environ.copy()
         env["PYTEST_CUNIT"] = full_name
 
-        result = run([sys.argv[0], "-svv", test], stdout=PIPE, stderr=PIPE, env=env)
+        result = run(
+            [sys.executable, "-m", "pytest", "-svv", test],
+            stdout=PIPE,
+            stderr=PIPE,
+            env=env,
+        )
 
         if result.returncode == exit_code:
             return

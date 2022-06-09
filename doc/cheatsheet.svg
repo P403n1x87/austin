@@ -760,12 +760,12 @@
      inkscape:cx="195.32501"
      inkscape:cy="503.18102"
      inkscape:document-units="mm"
-     inkscape:current-layer="layer3"
+     inkscape:current-layer="layer1"
      showgrid="false"
      inkscape:window-width="2560"
      inkscape:window-height="1413"
      inkscape:window-x="0"
-     inkscape:window-y="305"
+     inkscape:window-y="328"
      inkscape:window-maximized="1" />
   <metadata
      id="metadata5">
@@ -775,7 +775,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title />
+        <dc:title></dc:title>
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -6525,7 +6525,7 @@
          y="293.48233"
          x="49.886612"
          id="tspan9522"
-         sodipodi:role="line">2.3 thru 2.7 and 3.3 thru 3.10</tspan></text>
+         sodipodi:role="line">2.3 thru 2.7 and 3.3 thru 3.11</tspan></text>
     <text
        id="text9528"
        y="34.646587"

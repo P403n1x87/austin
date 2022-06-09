@@ -47,6 +47,10 @@ typedef struct thread {
   void          * top_frame;
 
   int             invalid;
+
+  /* The per-thread datastack was introduced in Python 3.11 */
+  void           * stack;
+  size_t           stack_size;
 } py_thread_t;
 
 

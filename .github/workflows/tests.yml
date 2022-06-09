@@ -23,7 +23,7 @@ jobs:
             valgrind \
             gdb \
             python2.7 \
-            python3.{5..10} \
+            python3.{5..11} \
             python3.10-full
 
       - name: Compile Austin
@@ -39,8 +39,8 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r test/requirements.txt
-          .venv/bin/pytest --pastebin=failed -svvr a
-          sudo .venv/bin/pytest --pastebin=failed -svvr a
+          .venv/bin/pytest --pastebin=failed --no-flaky-report -sr a -n auto
+          sudo .venv/bin/pytest --pastebin=failed --no-flaky-report -sr a -n auto
           deactivate
 
   tests-osx:
@@ -67,7 +67,7 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r test/requirements.txt
-          sudo .venv/bin/pytest --ignore=test/cunit --pastebin=failed -svvr a
+          sudo .venv/bin/pytest --ignore=test/cunit --pastebin=failed --no-flaky-report -sr a -n auto
           deactivate
 
   tests-win:
@@ -90,12 +90,13 @@ jobs:
 
       - name: Install test dependencies
         run: |
-          choco install python --version=2.7.11 --no-progress
-          choco install python --version=3.5.4 --no-progress
-          choco install python --version=3.6.8 --no-progress
-          choco install python --version=3.7.9 --no-progress
-          choco install python --version=3.8.10 --no-progress
-          choco install python --version=3.9.10 --no-progress
+          choco install python --no-progress -y --version=2.7.11
+          choco install python --no-progress -y --version=3.5.4
+          choco install python --no-progress -y --version=3.6.8
+          choco install python --no-progress -y --version=3.7.9
+          choco install python --no-progress -y --version=3.8.10
+          choco install python --no-progress -y --version=3.9.10
+          choco install python --no-progress -y --version=3.11.0-b3 --pre 
           refreshenv
 
       - name: Run tests
@@ -104,5 +105,5 @@ jobs:
           venv\Scripts\Activate.ps1
           python -m pip install --upgrade pip
           python -m pip install -r test/requirements.txt
-          python -m pytest --ignore=test\cunit --pastebin=failed -svvr a
+          python -m pytest --ignore=test\cunit --pastebin=failed --no-flaky-report -sr a -n auto
           deactivate

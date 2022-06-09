@@ -109,6 +109,10 @@ stack_deallocate(void) {
   free(_stack);
 }
 
+#ifdef NATIVE
+#define CFRAME_MAGIC             ((void*) 0xCF)
+#endif
+
 static inline int
 stack_has_cycle(void) {
   if (_stack->pointer < 2)
@@ -119,7 +123,11 @@ stack_has_cycle(void) {
   // overhead introduced by looking up from a set-like data structure.
   py_frame_t top = _stack->py_base[_stack->pointer-1];
   for (ssize_t i = _stack->pointer - 2; i >= 0; i--) {
+    #ifdef NATIVE
+    if (top.origin == _stack->py_base[i].origin && top.origin != CFRAME_MAGIC)
+    #else
     if (top.origin == _stack->py_base[i].origin)
+    #endif
       return TRUE;
   }
   return FALSE;
@@ -147,6 +155,8 @@ stack_py_push(void * origin, void * code, int lasti) {
 #define stack_full()            (_stack->pointer >= _stack->size)
 
 #ifdef NATIVE
+#define stack_py_push_cframe()   (stack_py_push(CFRAME_MAGIC, NULL, 0))
+
 #define stack_native_push(frame) {_stack->native_base[_stack->native_pointer++] = frame;}
 #define stack_native_pop()       (_stack->native_base[--_stack->native_pointer])
 #define stack_native_is_empty()  (_stack->native_pointer == 0)
@@ -172,11 +182,36 @@ stack_py_push(void * origin, void * code, int lasti) {
     pid, *((void **) ((void *) self + py_v->py_code.o_name)), py_v             \
   )
 
+#define _code__get_qualname(self, pid, py_v)                                   \
+  _string_from_raddr(                                                          \
+    pid, *((void **) ((void *) self + py_v->py_code.o_qualname)), py_v         \
+  )
+
 #define _code__get_lnotab(self, pid, len, py_v)                                \
   _bytes_from_raddr(                                                           \
     pid, *((void **) ((void *) self + py_v->py_code.o_lnotab)), len, py_v      \
   )
 
+
+// ----------------------------------------------------------------------------
+static inline int
+_read_varint(unsigned char * lnotab, size_t * i) {
+  int val = lnotab[++*i] & 63;
+  int shift = 0;
+  while (lnotab[*i] & 64) {
+    shift += 6;
+    val |= (lnotab[++*i] & 63) << shift;
+  }
+  return val;
+}
+
+
+// ----------------------------------------------------------------------------
+static inline int
+_read_signed_varint(unsigned char * lnotab, size_t * i) {
+  int val = _read_varint(lnotab, i);
+  return (val & 1) ? -(val >> 1) : (val >> 1);
+}
 
 // ----------------------------------------------------------------------------
 static inline frame_t *
@@ -195,51 +230,97 @@ _frame_from_code_raddr(raddr_t * raddr, int lasti, python_v * py_v) {
     return NULL;
   }
 
-  char * scope = _code__get_name(&code, raddr->pid, py_v);
+  char * scope = V_MIN(3, 11)
+    ? _code__get_qualname(&code, raddr->pid, py_v)
+    : _code__get_name(&code, raddr->pid, py_v);
   if (!isvalid(scope)) {
     log_ie("Cannot get scope name from PyCodeObject");
     goto failed;
   }
 
   ssize_t len = 0;
-  lnotab = _code__get_lnotab(&code, raddr->pid, &len, py_v);
-  if (!isvalid(lnotab) || len % 2) {
-    log_ie("Cannot get line number from PyCodeObject");
-    goto failed;
-  }
-
   int lineno = V_FIELD(unsigned int, code, py_code, o_firstlineno);
 
-  if (py_v->major == 3 && py_v->minor >= 10) { // Python >=3.10
-    lasti <<= 1;
-    for (register int i = 0, bc = 0; i < len; i++) {
-      int sdelta = lnotab[i++];
-      if (sdelta == 0xff)
-        break;
+  if (V_MIN(3, 11)) {
+    lnotab = _code__get_lnotab(&code, raddr->pid, &len, py_v);
+    if (!isvalid(lnotab) || len == 0) {
+      log_ie("Cannot get line information from PyCodeObject");
+      goto failed;
+    }
 
-      bc += sdelta;
+    lasti >>= 1;
 
-      int ldelta = lnotab[i];
-      if (ldelta == 0x80)
-        ldelta = 0;
-      else if (ldelta > 0x80)
-        lineno -= 0x100;
+    for (size_t i = 0, bc = 0; i < len; i++) {
+      bc += (lnotab[i] & 7) + 1;
+      int code = (lnotab[i] >> 3) & 15;
+      switch (code) {
+        case 15:
+          break;
 
-      lineno += ldelta;
+        case 14: // Long form
+          lineno += _read_signed_varint(lnotab, &i);
+          _read_varint(lnotab, &i); // end line
+          _read_varint(lnotab, &i); // column
+          _read_varint(lnotab, &i); // end column
+          break;
+
+        case 13: // No column data
+          lineno += _read_signed_varint(lnotab, &i);
+          break;
+
+        case 12: // New lineno
+        case 11:
+        case 10:
+          lineno += code - 10;
+          i += 2; // skip column + end column
+          break;
+
+        default:
+          i++; // skip column
+      }
+      
       if (bc > lasti)
         break;
     }
   }
-  else { // Python < 3.10
-    for (register int i = 0, bc = 0; i < len; i++) {
-      bc += lnotab[i++];
-      if (bc > lasti)
-        break;
+  else {
+    lnotab = _code__get_lnotab(&code, raddr->pid, &len, py_v);
+    if (!isvalid(lnotab) || len % 2) {
+      log_ie("Cannot get line information from PyCodeObject");
+      goto failed;
+    }
 
-      if (lnotab[i] >= 0x80)
-        lineno -= 0x100;
+    if (py_v->major == 3 && py_v->minor >= 10) { // Python >=3.10
+      lasti <<= 1;
+      for (register int i = 0, bc = 0; i < len; i++) {
+        int sdelta = lnotab[i++];
+        if (sdelta == 0xff)
+          break;
 
-      lineno += lnotab[i];
+        bc += sdelta;
+
+        int ldelta = lnotab[i];
+        if (ldelta == 0x80)
+          ldelta = 0;
+        else if (ldelta > 0x80)
+          lineno -= 0x100;
+
+        lineno += ldelta;
+        if (bc > lasti)
+          break;
+      }
+    }
+    else { // Python < 3.10
+      for (register int i = 0, bc = 0; i < len; i++) {
+        bc += lnotab[i++];
+        if (bc > lasti)
+          break;
+
+        if (lnotab[i] >= 0x80)
+          lineno -= 0x100;
+
+        lineno += lnotab[i];
+      }
     }
   }
 

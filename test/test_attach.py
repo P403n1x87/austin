@@ -47,7 +47,7 @@ def allpythons():
     return _allpythons(min=(3, 7) if platform.system() == "Windows" else None)
 
 
-@flaky(max_runs=3)
+@flaky(max_runs=6)
 @requires_sudo
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @pytest.mark.parametrize(
@@ -57,9 +57,9 @@ def allpythons():
 @variants
 def test_attach_wall_time(austin, py, mode, mode_meta, heap):
     with run_python(py, target("sleepy.py")) as p:
-        sleep(0.5)
+        sleep(0.4)
 
-        result = austin(mode, "10ms", *heap, "-p", str(p.pid))
+        result = austin(mode, "2ms", *heap, "-p", str(p.pid))
         assert result.returncode == 0
 
         ts = threads(result.stdout)
@@ -131,11 +131,13 @@ def test_where_multiprocess(py):
             if sum(c for line, c in lines.items() if "Process" in line) >= 3:
                 break
         else:
-            assert False, result.stdout
+            assert False, compress(result.stdout)
 
-        assert sum(c for line, c in lines.items() if "fact" in line) == 2, result.stdout
+        assert sum(c for line, c in lines.items() if "fact" in line) == 2, compress(
+            result.stdout
+        )
         (join_line,) = (line for line in lines if "join" in line)
-        assert lines[join_line] == 1, result.stdout
+        assert lines[join_line] == 1, compress(result.stdout)
 
 
 @flaky(max_runs=3)
@@ -147,10 +149,9 @@ def test_where_kernel(py):
         result = austinp("-kw", str(p.pid))
         assert result.returncode == 0
 
-        assert "Process" in result.stdout, result.stdout
-        assert "Thread" in result.stdout, result.stdout
-        assert "sleepy.py" in result.stdout, result.stdout
-        assert "<module>" in result.stdout, result.stdout
-        assert "__select" in result.stdout, result.stdout
-        assert "libc" in result.stdout, result.stdout
-        assert "do_syscall" in result.stdout, result.stdout
+        assert "Process" in result.stdout, compress(result.stdout)
+        assert "Thread" in result.stdout, compress(result.stdout)
+        assert "sleepy.py" in result.stdout, compress(result.stdout)
+        assert "<module>" in result.stdout, compress(result.stdout)
+        assert "libc" in result.stdout, compress(result.stdout)
+        assert "do_syscall" in result.stdout, compress(result.stdout)

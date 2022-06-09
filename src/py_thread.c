@@ -135,6 +135,28 @@ _py_thread__read_frames(py_thread_t * self) {
 
     }
   }
+} /* _py_thread__read_frames */
+
+
+// ----------------------------------------------------------------------------
+static inline void
+_py_thread__read_stack(py_thread_t * self) {
+  if (!pargs.heap || !isvalid(self->stack))
+    return;
+
+  // For now we read a single datastack chunk up to the requested heap size.
+
+  size_t maxsize = pargs.heap < self->stack_size ? pargs.heap : self->stack_size;
+
+  if (maxsize > _frames.size) {
+    _frames.content = realloc(_frames.content, maxsize);
+  }
+
+  if (fail(copy_memory(self->raddr.pid, self->stack, maxsize, _frames.content))) {
+    log_d("Failed to read remote thread stack data");
+    sfree(_frames.content);
+    _frames = NULL_HEAP;
+  }
 }
 
 
@@ -151,6 +173,12 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
   for (int i = 0; i < stack_pointer(); i++) {
     py_frame_t py_frame = stack_py_get(i);
 
+    #ifdef NATIVE
+    if (py_frame.origin == CFRAME_MAGIC) {
+      stack_set(i, CFRAME_MAGIC);
+      continue;
+    }
+    #endif
     int       lasti     = py_frame.lasti;
     key_dt    frame_key = ((key_dt) py_frame.code << 16) | lasti;
     frame_t * frame     = lru_cache__maybe_hit(cache, frame_key);
@@ -283,7 +311,76 @@ _py_thread__push_frame(py_thread_t * self, void ** prev) {
   }
 
   return _py_thread__push_frame_from_raddr(self, prev);
+} /* _py_thread__push_frame */
+
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__push_iframe_from_addr(py_thread_t * self, PyInterpreterFrame * iframe, void ** prev) {
+  V_DESC(self->proc->py_v);
+  
+  void * origin     = *prev;
+  void * code_raddr = V_FIELD_PTR(void *, iframe, py_iframe, o_code);
+
+  *prev = V_FIELD_PTR(void *, iframe, py_iframe, o_previous);
+  if (unlikely(origin == *prev)) {
+    log_d("Interpreter frame points to itself!");
+    FAIL;
+  }
+
+  stack_py_push(
+    origin,
+    code_raddr,
+    ((int)(V_FIELD_PTR(void *, iframe, py_iframe, o_prev_instr) - code_raddr)) - py_v->py_code.o_code
+  );
+
+  #ifdef NATIVE
+  if (V_MIN(3, 11) && V_FIELD_PTR(int, iframe, py_iframe, o_is_entry)) {
+    // This marks the end of a CFrame
+    stack_py_push_cframe();
+  }
+  #endif
+
+  SUCCESS;
 }
+
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__push_iframe_from_raddr(py_thread_t * self, void ** prev) {
+  PyInterpreterFrame iframe;
+
+  V_DESC(self->proc->py_v);
+
+  if (fail(copy_py(self->raddr.pid, *prev, py_iframe, iframe))) {
+    log_ie("Cannot read remote PyInterpreterFrame");
+    FAIL;
+  }
+
+  return _py_thread__push_iframe_from_addr(self, &iframe, prev);
+}
+
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__push_iframe(py_thread_t * self, void ** prev) {
+  void * raddr = *prev;
+  if (_use_heaps) {
+    #ifdef DEBUG
+    _frames_total++;
+    #endif
+
+    if (isvalid(_frames.content) && (raddr >= self->stack && raddr < self->stack + self->stack_size)) {
+      return _py_thread__push_iframe_from_addr(self, raddr - self->stack + _frames.content, prev);
+    }
+
+    #ifdef DEBUG
+    _frames_miss++;
+    #endif
+  }
+
+  return _py_thread__push_iframe_from_raddr(self, prev);
+} /* _py_thread__push_iframe */
 
 
 // ----------------------------------------------------------------------------
@@ -318,6 +415,67 @@ _py_thread__unwind_frame_stack(py_thread_t * self) {
       break;
     }
   }
+  
+  invalid = fail(_py_thread__resolve_py_stack(self)) || invalid;
+
+  return invalid;
+}
+
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__unwind_iframe_stack(py_thread_t * self, void * iframe_raddr) {
+  int invalid = FALSE; 
+  void * curr = iframe_raddr;
+  
+  while (isvalid(curr)) {
+    if (fail(_py_thread__push_iframe(self, &curr))) {
+      log_d("Failed to retrieve iframe #%d", stack_pointer());
+      invalid = TRUE;
+      break;
+    }
+
+    if (stack_full()) {
+      log_w("Invalid frame stack: too tall");
+      invalid = TRUE;
+      break;
+    }
+
+    if (stack_has_cycle()) {
+      log_d("Circular frame reference detected");
+      invalid = TRUE;
+      break;
+    }
+  }
+  
+  invalid = fail(_py_thread__resolve_py_stack(self)) || invalid;
+
+  return invalid;
+}
+
+
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__unwind_cframe_stack(py_thread_t * self) {
+  PyCFrame cframe;
+
+  int invalid = FALSE;
+
+  _py_thread__read_stack(self);
+
+  stack_reset();
+
+  V_DESC(self->proc->py_v);
+
+  if (fail(copy_py(self->raddr.pid, self->top_frame, py_cframe, cframe))) {
+    log_ie("Cannot read remote PyCFrame");
+    FAIL;
+  }
+
+  invalid = fail(_py_thread__unwind_iframe_stack(self, V_FIELD(void *, cframe, py_cframe, o_current_frame)));
+  if (invalid)
+    return invalid;
   
   invalid = fail(_py_thread__resolve_py_stack(self)) || invalid;
 
@@ -530,8 +688,33 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
   } while (!stack_native_full() && unw_step(&cursor) > 0);
   
   SUCCESS;
+} /* wait_unw_init_remote */
+
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__seize(py_thread_t * self) {
+  // TODO: If a TID is reused we will never seize it!
+  if (!isvalid(_tids[self->tid])) {
+    if (fail(wait_ptrace(PTRACE_SEIZE, self->tid, 0, 0))) {
+      log_e("ptrace: cannot seize thread %d: %d\n", self->tid, errno);
+      FAIL;
+    }
+    else {
+      log_d("ptrace: thread %d seized", self->tid);
+    }
+    _tids[self->tid] = _UPT_create(self->tid);
+    if (!isvalid(_tids[self->tid])) {
+      log_e("libunwind: failed to create context for thread %d", self->tid);
+      FAIL;
+    }
+  }
+  SUCCESS;
 }
-#endif
+
+#endif /* NATIVE */
+
+
 
 // ---- PUBLIC ----------------------------------------------------------------
 
@@ -544,6 +727,7 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   V_DESC(proc->py_v);
 
   PyThreadState ts;
+  _PyStackChunk chunk;
 
   self->invalid = TRUE;
 
@@ -551,7 +735,23 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
     log_ie("Cannot read remote PyThreadState");
     FAIL;
   }
+  
+  self->stack = NULL;
 
+  if (pargs.heap && V_MIN(3, 11)) {
+    // Get the thread stack information.
+    void * stack_raddr = V_FIELD(void *, ts, py_thread, o_stack);
+    
+    if (fail(copy_datatype(self->raddr.pid, stack_raddr, chunk))) {
+      // Best effort
+      log_d("Cannot read thread data stack");
+    }
+    else {
+      self->stack = stack_raddr;
+      self->stack_size = chunk.size;
+    }
+  }
+  
   self->proc = proc;
 
   self->raddr = *raddr;
@@ -574,7 +774,15 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   }
   #if defined PL_LINUX
   else {
-    if (
+    if (V_MIN(3, 11)) {
+      // We already have the native thread id
+      #ifdef NATIVE
+      if (fail(_py_thread__seize(self))) {
+        FAIL;
+      }
+      #endif
+    }
+    else if (
       likely(proc->extra->pthread_tid_offset)
       && success(read_pthread_t(self->raddr.pid, (void *) self->tid
     ))) {
@@ -586,20 +794,8 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
         FAIL;
       }
       #ifdef NATIVE
-      // TODO: If a TID is reused we will never seize it!
-      if (!isvalid(_tids[self->tid])) {
-        if (fail(wait_ptrace(PTRACE_SEIZE, self->tid, 0, 0))) {
-          log_e("ptrace: cannot seize thread %d: %d\n", self->tid, errno);
-          FAIL;
-        }
-        else {
-          log_d("ptrace: thread %d seized", self->tid);
-        }
-        _tids[self->tid] = _UPT_create(self->tid);
-        if (!isvalid(_tids[self->tid])) {
-          log_e("libunwind: failed to create context for thread %d", self->tid);
-          FAIL;
-        }
+      if (fail(_py_thread__seize(self))) {
+        FAIL;
       }
       #endif
     }
@@ -692,15 +888,31 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     self->proc->child ? "🧒" : ""
   );
 
+  V_DESC(self->proc->py_v);
+
   if (isvalid(self->top_frame)) {
-    if (fail(_py_thread__unwind_frame_stack(self))) {
-      fprintf(pargs.output_file, ";:INVALID:");
-      stats_count_error();
+    if (V_MIN(3, 11)) {
+      if (fail(_py_thread__unwind_cframe_stack(self))) {
+        fprintf(pargs.output_file, ";:INVALID:");
+        stats_count_error();
+      }
+    }
+    else {
+      if (fail(_py_thread__unwind_frame_stack(self))) {
+        fprintf(pargs.output_file, ";:INVALID:");
+        stats_count_error();
+      }
     }
   }
 
   #ifdef NATIVE
 
+  if (V_MIN(3, 11)) {
+    // We expect a CFrame to sit at the top of the stack
+    if (!stack_is_empty() && stack_pop() != CFRAME_MAGIC) {
+      log_e("Invalid resolved Python stack");
+    }
+  }
   while (!stack_native_is_empty()) {
     frame_t * native_frame = stack_native_pop();
     if (!isvalid(native_frame)) {
@@ -717,7 +929,19 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     if (!stack_is_empty() && is_frame_eval) {
       // TODO: if the py stack is empty we have a mismatch.
       frame_t * frame = stack_pop();
-      fprintf(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
+      if (V_MIN(3, 11)) {
+        while (frame != CFRAME_MAGIC) {
+          fprintf(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
+
+          if (stack_is_empty())
+            break;
+
+          frame = stack_pop();
+        }
+      }
+      else {
+        fprintf(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
+      }
     }
     else {
       fprintf(pargs.output_file, pargs.native_format, native_frame->filename, native_frame->scope, native_frame->line);

@@ -22,7 +22,7 @@ _header_head = r"""
 #define __extension__
 #define __inline inline
 #define __asm__(x)
-#define __const=const
+#define __const const
 #define __inline__ inline
 #define __inline inline
 #define __restrict
@@ -278,7 +278,17 @@ class DeclCollector(c_ast.NodeVisitor):
 class CModule(ModuleType):
     def __init__(self, source: Path) -> None:
         super().__init__(source.name, f"Generated from {source.with_suffix('.c')}")
-        self.__binary__ = CDLL(source.with_suffix(".so"))
+
+        so_file = source.with_suffix(".so")
+        while True:
+            try:
+                self.__binary__ = CDLL(so_file)
+                break
+            except OSError:
+                # On parallel runs we might still be compiling the source file
+                # so we try until we succeed.
+                if not so_file.exists():
+                    raise
 
         collector = DeclCollector()
 
