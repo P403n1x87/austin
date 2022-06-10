@@ -55,7 +55,7 @@ const char * MPERM =
 "Integrity Protection prevents Austin from working with Python binaries\n"
 "installed in certain areas of the file system. See\n"
 #endif
-URL("https://github.com/P403n1x87/austin#compatibility")
+URL("https://github.com/P403n1x87/austin#on-macos")
 "for more details";
 #endif // PL_UNIX
 

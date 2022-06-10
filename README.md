@@ -109,11 +109,11 @@ height="18px" alt="Twitter" /></a>
 # Synopsis
 
 Austin is a Python frame stack sampler for CPython written in pure C. Samples
-are collected by reading the CPython interpreter virtual memory space in
-order to retrieve information about the currently running threads along with
-the stack of the frames that are being executed. Hence, one can use Austin to
-easily make powerful statistical profilers that have minimal impact on the
-target application and that don't require any instrumentation.
+are collected by reading the CPython interpreter virtual memory space to
+retrieve information about the currently running threads along with the stack of
+the frames that are being executed. Hence, one can use Austin to easily make
+powerful statistical profilers that have minimal impact on the target
+application and that don't require any instrumentation.
 
 
 The key features of Austin are:
@@ -179,7 +179,7 @@ pre-compiled binaries that are ready to be uncompressed and used.
 
 Installing Austin using `autotools` amounts to the usual `./configure`, `make`
 and `make install` finger gymnastic. The only dependency is the standard C
-library. Before proceding with the steps below, make sure that the `autotools`
+library. Before proceeding with the steps below, make sure that the `autotools`
 are installed on your system. Refer to your distro's documentation for details
 on how to do so.
 
@@ -242,13 +242,13 @@ choco upgrade austin
 ## From Scoop
 
 To install Austin using Scoop, run the following command from the command line
-or from PowerShell
+or PowerShell
 
 ~~~ console
 scoop install austin
 ~~~
 
-To upgrade run the following command from the command line or from PowerShell:
+To upgrade run the following command from the command line or PowerShell:
 
 ~~~ console
 scoop update
@@ -273,7 +273,7 @@ clone the repository with
 git clone --depth=1 https://github.com/P403n1x87/austin.git
 ~~~
 
-On Linux one can then use the command
+On Linux, one can then use the command
 
 ~~~ console
 gcc -O3 -Os -Wall -pthread src/*.c -o src/austin
@@ -395,11 +395,11 @@ process.
 
 ## Garbage Collector Sampling
 
-Austin can sample the Python garbage collector state for application running
+Austin can sample the Python garbage collector state for applications running
 with Python 3.7 and later versions. If the `-g`/`--gc` option is passed, Austin
-will append `:GC:` at the end of each collected frame stack whenver the
-garbage collector is in the collecting state. This gives you a measure of how
-*busy* the Python GC is during a run.
+will append `:GC:` at the end of each collected frame stack whenever the garbage
+collector is collecting. This gives you a measure of how *busy* the Python GC is
+during a run.
 
 *Since Austin 3.1.0*.
 
@@ -432,15 +432,15 @@ not.
 
 ## Sampling Accuracy
 
-Austin tries to keep perturbations to the tracee at a minimum. In order to do
-so, the tracee is never halted. To improve sampling accuracy, Austin can
-allocate a heap that is used to get large snapshots of the private VM of the
-tracee that is likely to contain frame information in a single attempt. The
-larger the heap is allowed the grow, the more accurate the results. The maximum
-size of the heap that Austin is allowed to allocate can be controlled with the
-`-h/--heap` option, followed by the maximum size in bytes. By default Austin
-does not allocate a heap, which is ideal on systems with limited resources. If
-you think your results are not accurate, try setting this parameter.
+Austin tries to keep perturbations to the tracee at a minimum. To do so, the
+tracee is never halted. To improve sampling accuracy, Austin can allocate a heap
+that is used to get large snapshots of the private VM of the tracee that is
+likely to contain frame information in a single attempt. The larger the heap is
+allowed the grow, the more accurate the results. The maximum size of the heap
+that Austin is allowed to allocate can be controlled with the `-h/--heap`
+option, followed by the maximum size in bytes. By default, Austin does not
+allocate a heap, which is ideal for systems with limited resources. If you think
+your results are not accurate, try setting this parameter.
 
 *Since Austin 3.2.0*.
 
@@ -485,8 +485,8 @@ the samples in `mysamples.austin`, do
 python3 utils/resolve.py mysamples.austin > mysamples_resolved.austin
 ~~~
 
-Internally, the script uses `addr2line(1)` to determine source and line number
-given an address, when possible.
+Internally, the script uses `addr2line(1)` to determine the source name and line
+number given an address, when possible.
 
 > Whilst `austinp` comes with a stripped-down implementation of `addr2line`, it
 > is only used for the "where" option, as resolving symbols at runtime is
@@ -495,7 +495,7 @@ given an address, when possible.
 
 The [where](#where) option is also available for the `austinp` variant and will
 show both native and Python frames. Highlighting helps tell frames apart. The
-`-k` options outputs Linux kernel frames too, as shown in this example
+`-k` option outputs Linux kernel frames too, as shown in this example
 
 <p align="center">
   <img src="art/austin-where-kernel.png"
@@ -532,44 +532,55 @@ folder in either the SVG, PDF or PNG format
 Austin supports Python 2.3-2.7 and 3.3-3.11 and has been tested on the
 following platforms and architectures
 
-|             | <img src="art/tux.svg" />* | <img src="art/win.svg"/>** | <img src="art/apple.svg"/>*** |
-| ----------- | -------------------------- | -------------------------- | ----------------------------- |
-| **x86_64**  | ✓                          | ✓                          | ✓                             |
-| **i686**    | ✓                          |                            | ✓                             |
-| **arm64**   | ✓                          |                            | ✓                             |
-| **ppc64le** | ✓                          |                            |                               |
+|             | <img src="art/tux.svg" /> | <img src="art/win.svg"/> | <img src="art/apple.svg"/> |
+| ----------- | ------------------------- | ------------------------ | -------------------------- |
+| **x86_64**  | ✓                         | ✓                        | ✓                          |
+| **i686**    | ✓                         |                          | ✓                          |
+| **arm64**   | ✓                         |                          | ✓                          |
+| **ppc64le** | ✓                         |                          |                            |
 
-\* In order to attach to an external process, Austin requires the CAP_SYS_PTRACE
-capability. This means that you will have to either use ``sudo`` when attaching
-to a running Python process or grant the CAP_SYS_PTRACE capability to the Austin
+> **NOTE** Austin *might* work with other versions of Python on all the
+> platforms and architectures above. So it is worth giving it a try even if
+> your system is not listed below.
+
+Because of platform-specific details, Austin usage may vary slightly. Below are
+further compatibility details to be aware of.
+
+
+## On Linux
+
+Austin requires the `CAP_SYS_PTRACE` capability to attach to an external
+process. This means that you will have to either use ``sudo`` when attaching to
+a running Python process or grant the CAP_SYS_PTRACE capability to the Austin
 binary with, e.g.
 
 ~~~ console
 sudo setcap cap_sys_ptrace+ep `which austin`
 ~~~
 
-In order for Austin to work with Docker, the `--cap-add SYS_PTRACE` option needs
-to be passed when starting a container.
+To use Austin with Docker, the `--cap-add SYS_PTRACE` option needs to be passed
+when starting a container.
 
-\** Depending on how Python is installed on Windows, the invocation of the
-`python` binary might actually happen via a proxy script or launcher (e.g.
-`py`). Since these are not actual Python processes, Austin will fail to profile
-them. To work around this, either use a path to the actual Python executable or
-add the `-C` option to allow Austin to automatically discore the actual child
-Python process.
 
-\*** Due to the **System Integrity Protection** introduced in **MacOS** with El
+## On MacOS
+
+Due to the **System Integrity Protection** introduced in **MacOS** with El
 Capitan, Austin cannot profile Python processes that use an executable located
-in the `/bin` folder, even with `sudo`. Hence, either run the interpreter from a
-virtual environment or use a Python interpreter that is installed in, e.g.,
-`/Applications` or via alternative methods, like `brew` with the default prefix
-(`/usr/local`), or [pyenv][pyenv]. Even in these cases, though, the use of
-`sudo` is required. Austin is unlikely to work with interpreters installed using
-the official installers from [python.org](https://python.org).
+in the `/bin` folder, even with `sudo`. This is the case for the system-provided
+version of Python, or the one installed with the official installers from
+[python.org](https://python.org). Creating a virtual environment with the
+`--copies` flag to `venv` might not solve the issue as the binary might link to
+a shared library that still resides in a protected area of the file system.
+Other installation methods, like [pyenv][pyenv] or [Anaconda][anaconda] or
+[Homebrew](https://formulae.brew.sh/formula/austin) are known to work with
+Austin.
 
-> **NOTE** Austin *might* work with other versions of Python on all the
-> platforms and architectures above. So it is worth giving it a try even if
-> your system is not listed below.
+> Austin requires the use of `sudo` to work on MacOS. To avoid having to type
+> the password every time you use Austin, consider adding a rule to the
+> `sudoers` file, e.g.
+> ~~~
+> yourusername  ALL = (root) NOPASSWD: /usr/local/bin/austin
+> ~~~
 
 
 # Why Austin
@@ -579,14 +590,14 @@ should be interested in yet another one. So here is a list of features that
 currently distinguish Austin.
 
 - **Written in pure C** Austin is written in pure C code. There are no
-  dependencies on third-party libraries with the exception of the standard C
-  library and the API provided by the Operating System.
+  dependencies on third-party libraries except for the standard C library and
+  the API provided by the Operating System.
 
 - **Just a sampler** Austin is just a frame stack sampler. It looks into a
   running Python application at regular intervals of time and dumps whatever
   frame stack it finds. The samples can then be analysed at a later time so that
-  Austin can sample at rates higher than other non-C alternative that also
-  analyse the samples as they run.
+  Austin can sample at rates higher than other non-C alternatives that perform
+  some aggregations at run-time.
 
 - **Simple output, powerful tools** Austin uses the collapsed stack format of
   FlameGraph that is easy to parse. You can then go and build your own tool to
@@ -724,7 +735,7 @@ environment variable in order for Austin Web to work.
 ## Speedscope
 
 Austin output is now supported by [Speedscope]. However, the [`austin-python`]
-library comes with format conversion tools that allow to convert the output from
+library comes with format conversion tools that allow converting the output from
 Austin to the Speedscope JSON format.
 
 If you want to give it a go you can install it using `pip` with
