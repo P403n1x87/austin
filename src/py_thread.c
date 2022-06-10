@@ -924,7 +924,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     if (isvalid(eval_frame_fn)) {
       char c = *(eval_frame_fn+16);
       V_DESC(self->proc->py_v);
-      is_frame_eval = (c == 'D') || (PYVER_ATMOST(3, 5) && c == 'E');
+      is_frame_eval = (c == 'D') || (V_MAX(3, 5) && c == 'E');
     }
     if (!stack_is_empty() && is_frame_eval) {
       // TODO: if the py stack is empty we have a mismatch.

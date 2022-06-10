@@ -380,7 +380,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   log_d("Stack trace constructed from possible interpreter state");
 
-  if (py_v->major == 3 && py_v->minor >= 9) {
+  if (V_MIN(3, 9)) {
     self->gc_state_raddr = (void *) (((char *) raddr) + py_v->py_is.o_gc);
     log_d("GC runtime state @ %p", self->gc_state_raddr);
   }
@@ -522,7 +522,7 @@ _py_proc__deref_interp_head(py_proc_t * self) {
       FAIL;
     }
     interp_head_raddr = V_FIELD(void *, py_runtime, py_runtime, o_interp_head);
-    if (py_v->major == 3 && py_v->minor < 9) {
+    if (V_MAX(3, 8)) {
       self->gc_state_raddr = self->symbols[DYNSYM_RUNTIME] + py_v->py_runtime.o_gc;
       log_d("GC runtime state @ %p", self->gc_state_raddr);
     }

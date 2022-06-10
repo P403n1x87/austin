@@ -290,7 +290,7 @@ _frame_from_code_raddr(raddr_t * raddr, int lasti, python_v * py_v) {
       goto failed;
     }
 
-    if (py_v->major == 3 && py_v->minor >= 10) { // Python >=3.10
+    if (V_MIN(3, 10)) {
       lasti <<= 1;
       for (register int i = 0, bc = 0; i < len; i++) {
         int sdelta = lnotab[i++];

@@ -44,9 +44,6 @@
 #define MINOR(x)                        ((x >> 8) & 0xFF)
 #define PATCH(x)                        (x & 0xFF)
 
-#define PYVER_ATMOST(maj, min) \
-  (py_v->major < maj || (py_v->major == maj && py_v->minor <= min))
-
 
 /**
  * Get the value of a field of a versioned structure.
@@ -74,15 +71,16 @@
 #define V_DESC(desc) python_v * py_v = (desc)
 
 /**
- * Ensure the current version of Python is at least the request version.
+ * Ensure the current version of Python is at least/at most the request version.
  * 
  * @param  M  requested major version
  * @param  m  requested minor version
  * 
- * @return    TRUE if the current version is at least the requested one, FALSE
- *            otherwise.
+ * @return    TRUE if the current version is at least/at most the requested one,
+ *            FALSE otherwise.
  */
 #define V_MIN(M, m) (py_v->major > M || (py_v->major == M && py_v->minor >= m))
+#define V_MAX(M, m) (py_v->major < M || (py_v->major == M && py_v->minor <= m))
 
 typedef unsigned long offset_t;
 
