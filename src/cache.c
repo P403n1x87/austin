@@ -27,6 +27,7 @@
 
 #include "cache.h"
 #include "logging.h"
+#include "math.h"
 
 // -- Queue -------------------------------------------------------------------
 
