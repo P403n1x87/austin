@@ -547,6 +547,12 @@ _handle_opts(arg_option * opts, arg_callback cb, int * argi, int argc, char ** a
 
 
 static const char * help_msg = \
+/*[[[cog
+from subprocess import check_output
+for line in check_output(["src/austin", "--help"]).decode().splitlines():
+  print(f'"{line}\\n"')
+print(";")
+]]]*/
 "Usage: austin [OPTION...] command [ARG...]\n"
 "Austin is a frame stack sampler for CPython that is used to extract profiling\n"
 "data out of a running Python process (and all its children, if required) that\n"
@@ -579,14 +585,25 @@ static const char * help_msg = \
 "Mandatory or optional arguments to long options are also mandatory or optional\n"
 "for any corresponding short options.\n"
 "\n"
-"Report bugs to <https://github.com/P403n1x87/austin/issues>.\n";
+"Report bugs to <https://github.com/P403n1x87/austin/issues>.\n"
+;
+/*[[[end]]]*/
 
 static const char * usage_msg = \
+/*[[[cog
+from subprocess import check_output
+for line in check_output(["src/austin", "--usage"]).decode().splitlines():
+  print(f'"{line}\\n"')
+print(";")
+]]]*/
 "Usage: austin [-aCefgmPs?V] [-h n_mb] [-i n_us] [-o FILE] [-p PID] [-t n_ms]\n"
-"            [-x n_sec] [--alt-format] [--children] [--exclude-empty] [--full]\n"
-"            [--gc] [--heap=n_mb] [--interval=n_us] [--memory] [--output=FILE]\n"
-"            [--pid=PID] [--pipe] [--sleepless] [--timeout=n_ms]\n"
-"            [--exposure=n_sec] [--help] [--usage] [--version] command [ARG...]\n";
+"            [-w PID] [-x n_sec] [--alt-format] [--children] [--exclude-empty]\n"
+"            [--full] [--gc] [--heap=n_mb] [--interval=n_us] [--memory]\n"
+"            [--output=FILE] [--pid=PID] [--pipe] [--sleepless] [--timeout=n_ms]\n"
+"            [--where=PID] [--exposure=n_sec] [--help] [--usage] [--version]\n"
+"            command [ARG...]\n"
+;
+/*[[[end]]]*/
 
 
 static void

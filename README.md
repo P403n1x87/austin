@@ -297,6 +297,12 @@ bug with Austin and you want to report it here.
 
 # Usage
 
+<!-- [[[cog
+from subprocess import check_output
+print("~~~")
+print(check_output(["src/austin", "--help"]).decode().strip())
+print("~~~")
+]]] -->
 ~~~
 Usage: austin [OPTION...] command [ARG...]
 Austin is a frame stack sampler for CPython that is used to extract profiling
@@ -332,6 +338,7 @@ for any corresponding short options.
 
 Report bugs to <https://github.com/P403n1x87/austin/issues>.
 ~~~
+<!-- [[[end]]] -->
 
 The output is a sequence of frame stack samples, one on each line. The format is
 the collapsed one that is recognised by [FlameGraph] so that it can be piped

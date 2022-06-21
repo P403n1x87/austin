@@ -122,3 +122,23 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./cobertura.xml
           verbose: true
+
+  check-cog:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    name: Check cog output
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install cog
+        run: pip install cogapp
+
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure
+          make
+
+      - name: Run cog check
+        run: bash scripts/cog.sh --check
