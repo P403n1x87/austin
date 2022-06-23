@@ -416,8 +416,6 @@ _py_thread__unwind_frame_stack(py_thread_t * self) {
     }
   }
   
-  invalid = fail(_py_thread__resolve_py_stack(self)) || invalid;
-
   return invalid;
 }
 
@@ -477,8 +475,6 @@ _py_thread__unwind_cframe_stack(py_thread_t * self) {
   if (invalid)
     return invalid;
   
-  invalid = fail(_py_thread__resolve_py_stack(self)) || invalid;
-
   return invalid;
 }
 
@@ -902,6 +898,11 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
         fprintf(pargs.output_file, ";:INVALID:");
         stats_count_error();
       }
+    }
+    
+    if (fail(_py_thread__resolve_py_stack(self))) {
+      fprintf(pargs.output_file, ";:INVALID:");
+      stats_count_error();
     }
   }
 
