@@ -849,10 +849,6 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
     is_idle = _py_thread__is_idle(self);
     #endif
     if (!pargs.full && is_idle && pargs.sleepless) {
-      #ifdef NATIVE
-      // If we don't sample the threads stall :(
-      _py_thread__unwind_native_frame_stack(self);
-      #endif
       return;
     }
   }
