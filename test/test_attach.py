@@ -43,8 +43,13 @@ from flaky import flaky
 
 
 def allpythons():
-    # Attach tests fail on Windows for Python < 3.7
-    return _allpythons(min=(3, 7) if platform.system() == "Windows" else None)
+    # Attach tests fail on Windows for Python < 3.7 and on MacOS for Python < 3
+    match platform.system():
+        case "Windows":
+            return _allpythons(min=(3, 7))
+        case "Darwin":
+            return _allpythons(min=(3,))
+    return _allpythons()
 
 
 @flaky(max_runs=6)
