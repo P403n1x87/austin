@@ -257,42 +257,47 @@ _py_proc__analyze_fat(py_proc_t * self, void * base, void * map) {
 
   void * vm_map = malloc(sizeof(struct mach_header_64));
   if (!isvalid(vm_map))
-    FAIL;
+    goto release;
 
-  if (success(copy_memory(self->pid, base, sizeof(struct mach_header_64), vm_map))) {
-    // Determine CPU type from process in memory
-    struct mach_header_64 * hdr = (struct mach_header_64 *) vm_map;
-    int ms = hdr->magic == MH_CIGAM || hdr->magic == MH_CIGAM_64;  // This is probably useless
-    cpu_type_t cpu = hdr->cputype;
+  if (fail(copy_memory(self->pid, base, sizeof(struct mach_header_64), vm_map))) {
+    set_error(EPROCPERM);
+    log_ie("Unable to copy universal binary remote memory\n");
+    goto release;
+  }
 
-    // Look up corresponding part from universal binary
-    struct fat_header * fat_hdr = (struct fat_header *) map;
 
-    int fs = fat_hdr->magic == FAT_CIGAM;
-    struct fat_arch * arch = (struct fat_arch *) (map + sizeof(struct fat_header));
+  // Determine CPU type from process in memory
+  struct mach_header_64 * hdr = (struct mach_header_64 *) vm_map;
+  int ms = hdr->magic == MH_CIGAM || hdr->magic == MH_CIGAM_64;  // This is probably useless
+  cpu_type_t cpu = hdr->cputype;
 
-    uint32_t narchs = sw32(fs, fat_hdr->nfat_arch);
-    for (register int i = 0; i < narchs; i++) {
-      if (sw32(fs, arch[i].cputype) == sw32(ms, cpu)) {
-        hdr = (struct mach_header_64 *) (map + sw32(fs, arch[i].offset));
-        switch (hdr->magic) {
-        case MH_MAGIC:
-        case MH_CIGAM:
-          bin_attrs = _py_proc__analyze_macho32(self, base, (void *) hdr);
-          break;
+  // Look up corresponding part from universal binary
+  struct fat_header * fat_hdr = (struct fat_header *) map;
 
-        case MH_MAGIC_64:
-        case MH_CIGAM_64:
-          bin_attrs = _py_proc__analyze_macho64(self, base, (void *) hdr);
-          break;
-        }
+  int fs = fat_hdr->magic == FAT_CIGAM;
+  struct fat_arch * arch = (struct fat_arch *) (map + sizeof(struct fat_header));
+
+  uint32_t narchs = sw32(fs, fat_hdr->nfat_arch);
+  for (register int i = 0; i < narchs; i++) {
+    if (sw32(fs, arch[i].cputype) == sw32(ms, cpu)) {
+      hdr = (struct mach_header_64 *) (map + sw32(fs, arch[i].offset));
+      switch (hdr->magic) {
+      case MH_MAGIC:
+      case MH_CIGAM:
+        bin_attrs = _py_proc__analyze_macho32(self, base, (void *) hdr);
+        break;
+
+      case MH_MAGIC_64:
+      case MH_CIGAM_64:
+        bin_attrs = _py_proc__analyze_macho64(self, base, (void *) hdr);
         break;
       }
+      break;
     }
   }
-  else log_e("Unable to copy memory from universal binary\n");
 
-  free(vm_map);
+release:
+  sfree(vm_map);
 
   return bin_attrs;
 }

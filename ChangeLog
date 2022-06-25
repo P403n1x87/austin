@@ -2,6 +2,8 @@
 
   Added support for Python 3.11.
 
+  Improved permission error reporting on MacOS.
+
   Improved austinp support on fork.
 
   Renamed the austinp binary installed from the Snap Store from austin.austinp
