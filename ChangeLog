@@ -4,6 +4,8 @@
 
   Improved permission error reporting on MacOS.
 
+  Improved MacOS support.
+
   Improved austinp support on fork.
 
   Renamed the austinp binary installed from the Snap Store from austin.austinp

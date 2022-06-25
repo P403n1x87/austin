@@ -271,9 +271,10 @@ _py_proc__infer_python_version(py_proc_t * self) {
     minor = self->lib_path[n - 5] - '0';
 
     #elif defined PL_MACOS                                             /* MAC */
-    char * ver_needle = strstr(self->lib_path, "/3.");
-    if (ver_needle == NULL) ver_needle = strstr(self->lib_path, "/2.");
-    if (ver_needle == NULL || sscanf(ver_needle, "/%d.%d", &major, &minor) == 2) {
+    char * ver_needle = strstr(self->lib_path, "3.");
+    if (ver_needle == NULL) ver_needle = strstr(self->lib_path, "2.");
+    if (ver_needle != NULL && sscanf(ver_needle, "%d.%d", &major, &minor) == 2) {
+      log_d("Python version (from library name): %d.%d.%d", major, minor, patch);
       self->py_v = get_version_descriptor(major, minor, patch);
       SUCCESS;
     }
@@ -281,6 +282,7 @@ _py_proc__infer_python_version(py_proc_t * self) {
     // Still no version detected so we look into the binary content
     int version = NOVERSION;
     if (isvalid(self->lib_path) && (version = _find_version_in_binary(self->lib_path))) {
+      log_d("Python version (from library content): %d.%d.%d", major, minor, patch);
       self->py_v = get_version_descriptor(MAJOR(version), MINOR(version), PATCH(version));
       SUCCESS;
     }
@@ -293,6 +295,7 @@ _py_proc__infer_python_version(py_proc_t * self) {
     // content for clues
     int version = NOVERSION;
     if (isvalid(self->bin_path) && (version = _find_version_in_binary(self->bin_path))) {
+      log_d("Python version (from binary content): %d.%d.%d", major, minor, patch);
       self->py_v = get_version_descriptor(MAJOR(version), MINOR(version), PATCH(version));
       SUCCESS;
     }
@@ -303,6 +306,8 @@ _py_proc__infer_python_version(py_proc_t * self) {
   FAIL;
 
 from_exe:
+  log_d("Python version (from executable): %d.%d.%d", major, minor, patch);
+
   self->py_v = get_version_descriptor(major, minor, patch);
   SUCCESS;
 
