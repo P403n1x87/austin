@@ -132,6 +132,7 @@ typedef struct {
   offset_t o_interp;
   offset_t o_frame;
   offset_t o_thread_id;
+  offset_t o_native_thread_id;
   offset_t o_stack;
 } py_thread_v;
 
@@ -259,6 +260,7 @@ typedef struct {
   offsetof(s, next),                    \
   offsetof(s, interp),                  \
   offsetof(s, cframe),                  \
+  offsetof(s, thread_id),               \
   offsetof(s, native_thread_id),        \
   offsetof(s, datastack_chunk),         \
 }

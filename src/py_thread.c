@@ -761,7 +761,16 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
       : V_FIELD(void*, ts, py_thread, o_next)
   };
 
+  #if defined PL_MACOS
   self->tid = V_FIELD(long, ts, py_thread, o_thread_id);
+  #else
+  if (V_MIN(3, 11)) {
+    self->tid = V_FIELD(long, ts, py_thread, o_native_thread_id);
+  }
+  else {
+    self->tid = V_FIELD(long, ts, py_thread, o_thread_id);
+  }
+  #endif
   if (self->tid == 0) {
     // If we fail to get a valid Thread ID, we resort to the PyThreadState
     // remote address
