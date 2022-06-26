@@ -180,7 +180,7 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
     }
     #endif
     int       lasti     = py_frame.lasti;
-    key_dt    frame_key = ((key_dt) py_frame.code << 16) | lasti;
+    key_dt    frame_key = py_frame_key(py_frame.code, lasti);
     frame_t * frame     = lru_cache__maybe_hit(cache, frame_key);
     
     #ifdef DEBUG
@@ -415,7 +415,7 @@ _py_thread__unwind_frame_stack(py_thread_t * self) {
       break;
     }
   }
-  
+
   return invalid;
 }
 
@@ -474,7 +474,7 @@ _py_thread__unwind_cframe_stack(py_thread_t * self) {
   invalid = fail(_py_thread__unwind_iframe_stack(self, V_FIELD(void *, cframe, py_cframe, o_current_frame)));
   if (invalid)
     return invalid;
-  
+
   return invalid;
 }
 
@@ -628,7 +628,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
     _frame_cache_total++;
     #endif
 
-    frame_t * frame = lru_cache__maybe_hit(cache, pc);
+    key_dt frame_key = (key_dt) pc;
+
+    frame_t * frame = lru_cache__maybe_hit(cache, frame_key);
     if (!isvalid(frame)) {
       #ifdef DEBUG
       _frame_cache_miss++;
@@ -649,7 +651,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
             self->proc->base_table, string__hash(range->name)
           );
           if (base > 0)
-            frame = get_native_frame(range->name, pc - base);
+            frame = get_native_frame(range->name, pc - base, frame_key);
         }
         #endif
       }
@@ -668,7 +670,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
           filename = strdup(_native_buf);
         }
 
-        frame = frame_new(filename, scope, offset);
+        frame = frame_new(frame_key, filename, scope, offset);
         if (!isvalid(frame)) {
           log_ie("Failed to make native frame");
           sfree(filename);
@@ -677,7 +679,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
         }
       }
 
-      lru_cache__store(cache, (key_dt) pc, (value_t) frame);
+      lru_cache__store(cache, frame_key, (value_t) frame);
     }
 
     stack_native_push(frame);

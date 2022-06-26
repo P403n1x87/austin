@@ -26,15 +26,19 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "cache.h"
 #include "hints.h"
 #include "py_string.h"
 #include "version.h"
 
 typedef struct {
+  key_dt         key;
   char         * filename;
   char         * scope;
   unsigned int   line;
 } frame_t;
+
+#define py_frame_key(code, lasti) (((key_dt) code << 16) | lasti)
 
 #ifdef PY_THREAD_C
 
@@ -61,12 +65,13 @@ typedef struct {
 static stack_dt * _stack;
 
 static inline frame_t *
-frame_new(char * filename, char * scope, unsigned int line) {
+frame_new(key_dt key, char * filename, char * scope, unsigned int line) {
   frame_t * frame = (frame_t *) malloc(sizeof(frame_t));
   if (!isvalid(frame)) {
     return NULL;
   }
 
+  frame->key      = key;
   frame->filename = filename;
   frame->scope    = scope;
   frame->line     = line;
@@ -326,7 +331,7 @@ _frame_from_code_raddr(raddr_t * raddr, int lasti, python_v * py_v) {
 
   free(lnotab);
 
-  frame_t * frame = frame_new(filename, scope, lineno);
+  frame_t * frame = frame_new(py_frame_key(raddr->addr, lasti), filename, scope, lineno);
   if (!isvalid(frame)) {
     log_e("Failed to create frame object");
     goto failed;
