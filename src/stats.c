@@ -36,6 +36,7 @@
 
 #include "argparse.h"
 #include "error.h"
+#include "events.h"
 #include "logging.h"
 #include "stats.h"
 
@@ -154,15 +155,15 @@ stats_log_metrics() {
       goto release;
     }
 
-    meta("sampling: %lu,%lu,%lu",
+    emit_metadata("sampling", "%lu,%lu,%lu",
       stats_get_min_sampling_time(),
       stats_get_avg_sampling_time(),
       stats_get_max_sampling_time()
     );
 
-    meta("saturation: %ld/%ld", _long_cnt, _sample_cnt);
+    emit_metadata("saturation", "%ld/%ld", _long_cnt, _sample_cnt);
 
-    meta("errors: %ld/%ld", _error_cnt, _sample_cnt);
+    emit_metadata("errors", "%ld/%ld", _error_cnt, _sample_cnt);
   }
   else {
     ctime_t duration = stats_duration();

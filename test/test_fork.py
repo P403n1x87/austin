@@ -21,13 +21,16 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import platform
+from pathlib import Path
 from test.utils import (
     allpythons,
     austin,
     compress,
+    demojo,
     has_pattern,
     maps,
     metadata,
+    mojo,
     processes,
     python,
     samples,
@@ -46,8 +49,9 @@ from flaky import flaky
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @allpythons()
 @variants
-def test_fork_wall_time(austin, py, heap):
-    result = austin("-i", "2ms", *heap, *python(py), target("target34.py"))
+@mojo
+def test_fork_wall_time(austin, py, heap, mojo):
+    result = austin("-i", "2ms", *heap, *python(py), target("target34.py"), mojo=mojo)
     assert py in (result.stderr or result.stdout), result.stderr or result.stdout
 
     assert len(processes(result.stdout)) == 1, compress(result.stdout)
@@ -78,8 +82,9 @@ def test_fork_wall_time(austin, py, heap):
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @allpythons()
 @variants
-def test_fork_cpu_time_cpu_bound(py, heap, austin):
-    result = austin("-si", "1ms", *heap, *python(py), target("target34.py"))
+@mojo
+def test_fork_cpu_time_cpu_bound(py, heap, austin, mojo):
+    result = austin("-si", "1ms", *heap, *python(py), target("target34.py"), mojo=mojo)
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_pattern(result.stdout, "target34.py:keep_cpu_busy:3"), compress(
@@ -116,8 +121,9 @@ def test_fork_cpu_time_idle(py, austin):
 
 @flaky
 @allpythons()
-def test_fork_memory(py):
-    result = austin("-mi", "1ms", *python(py), target("target34.py"))
+@mojo
+def test_fork_memory(py, mojo):
+    result = austin("-mi", "1ms", *python(py), target("target34.py"), mojo=mojo)
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_pattern(result.stdout, "target34.py:keep_cpu_busy:32")
@@ -137,26 +143,29 @@ def test_fork_memory(py):
 
 
 @allpythons()
-def test_fork_output(py, tmp_path):
+@mojo
+def test_fork_output(py, tmp_path: Path, mojo):
     datafile = tmp_path / "test_fork_output.austin"
 
-    result = austin("-i", "1ms", "-o", datafile, *python(py), target("target34.py"))
+    result = austin(
+        "-i", "1ms", "-o", datafile, *python(py), target("target34.py"), mojo=mojo
+    )
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert "Unwanted" in result.stdout
 
-    with datafile.open() as f:
-        data = f.read()
-        assert has_pattern(data, "target34.py:keep_cpu_busy:32")
+    data = demojo(datafile.read_bytes()) if mojo else datafile.read_text()
 
-        meta = metadata(data)
+    assert has_pattern(data, "target34.py:keep_cpu_busy:32")
 
-        assert meta["mode"] == "wall"
+    meta = metadata(data)
 
-        a = sum(int(_.rpartition(" ")[-1]) for _ in samples(data))
-        d = int(meta["duration"])
+    assert meta["mode"] == "wall"
 
-        assert 0 < 0.9 * d < a < 2.1 * d
+    a = sum(int(_.rpartition(" ")[-1]) for _ in samples(data))
+    d = int(meta["duration"])
+
+    assert 0 < 0.9 * d < a < 2.1 * d
 
 
 # Support for multiprocess is attach-like and seems to suffer from the same
@@ -181,8 +190,9 @@ def test_fork_multiprocess(py):
 
 @flaky
 @allpythons()
-def test_fork_full_metrics(py):
-    result = austin("-i", "10ms", "-f", *python(py), target("target34.py"))
+@mojo
+def test_fork_full_metrics(py, mojo):
+    result = austin("-i", "10ms", "-f", *python(py), target("target34.py"), mojo=mojo)
     assert py in (result.stderr or result.stdout), result.stderr or result.stdout
 
     assert len(processes(result.stdout)) == 1

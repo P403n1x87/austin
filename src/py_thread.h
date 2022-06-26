@@ -84,7 +84,7 @@ py_thread__next(py_thread_t *);
  * @param  ssize_t      the memory delta.
  */
 void
-py_thread__print_collapsed_stack(py_thread_t *, ctime_t, ssize_t);
+py_thread__emit_collapsed_stack(py_thread_t *, ctime_t, ssize_t);
 
 
 /**

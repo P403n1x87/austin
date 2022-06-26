@@ -22,6 +22,7 @@
 
 #define _DEFAULT_SOURCE
 
+#include "events.h"
 #include "mem.h"
 #include "platform.h"
 
@@ -179,14 +180,14 @@ logger_close(void) {
 
 void
 log_meta_header(void) {
-  meta("austin: " VERSION);
-  meta("interval: %lu", pargs.t_sampling_interval);
+  emit_metadata("austin", VERSION);
+  emit_metadata("interval", "%lu", pargs.t_sampling_interval);
 
-  if (pargs.full)           { meta("mode: full"); }
-  else if (pargs.memory)    { meta("mode: memory"); }
-  else if (pargs.sleepless) { meta("mode: cpu"); }
-  else                      { meta("mode: wall"); }
+  if (pargs.full)           { emit_metadata("mode", "full"); }
+  else if (pargs.memory)    { emit_metadata("mode", "memory"); }
+  else if (pargs.sleepless) { emit_metadata("mode", "cpu"); }
+  else                      { emit_metadata("mode", "wall"); }
 
-  if (pargs.memory || pargs.full) { meta("memory: " MEM_VALUE, get_total_memory()); }
-  if (pargs.children) { meta("multiprocess: on"); }
+  if (pargs.memory || pargs.full) { emit_metadata("memory", MEM_VALUE, get_total_memory()); }
+  if (pargs.children) { emit_metadata("multiprocess", "on"); }
 }

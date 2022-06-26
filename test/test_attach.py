@@ -29,6 +29,7 @@ from test.utils import (
     compress,
     has_pattern,
     metadata,
+    mojo,
     requires_sudo,
     run_python,
     sum_metric,
@@ -108,10 +109,10 @@ def test_attach_exposure(py, exposure):
 
 @requires_sudo
 @allpythons()
-def test_where(py):
-    with run_python(py, target("sleepy.py")) as p:
-        sleep(1)
-        result = austin("-w", str(p.pid))
+@mojo
+def test_where(py, mojo):
+    with run_python(py, target("sleepy.py"), sleep_after=1) as p:
+        result = austin("-w", str(p.pid), mojo=mojo)
         assert result.returncode == 0
 
         assert "Process" in result.stdout
@@ -149,8 +150,7 @@ def test_where_multiprocess(py):
 @requires_sudo
 @allpythons()
 def test_where_kernel(py):
-    with run_python(py, target("sleepy.py")) as p:
-        sleep(1)
+    with run_python(py, target("sleepy.py"), sleep_after=1) as p:
         result = austinp("-kw", str(p.pid))
         assert result.returncode == 0
 

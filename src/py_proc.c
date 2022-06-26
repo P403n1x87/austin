@@ -40,6 +40,7 @@
 
 #include "argparse.h"
 #include "bin.h"
+#include "events.h"
 #include "py_string.h"
 #include "error.h"
 #include "hints.h"
@@ -1268,7 +1269,7 @@ py_proc__sample(py_proc_t * self) {
         }
       }
 
-      py_thread__print_collapsed_stack(
+      py_thread__emit_collapsed_stack(
         &py_thread,
         time_delta,
         mem_delta
@@ -1302,14 +1303,14 @@ py_proc__log_version(py_proc_t * self, int parent) {
   if (pargs.pipe) {
     if (patch == 0xFF) {
       if (parent) {
-        meta("python: %d.%d.?", major, minor);
+        emit_metadata("python", "%d.%d.?", major, minor);
       }
       else
         log_m("# python: %d.%d.?", major, minor);
     }
     else {
       if (parent) {
-        meta("python: %d.%d.%d", major, minor, patch);
+        emit_metadata("python", "%d.%d.%d", major, minor, patch);
       }
       else
         log_m("# python: %d.%d.%d", major, minor, patch);

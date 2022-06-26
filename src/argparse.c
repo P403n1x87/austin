@@ -74,6 +74,7 @@ parsed_args_t pargs = {
   /* head_format         */ (char *) HEAD_FORMAT_DEFAULT,
   /* full                */ 0,
   /* memory              */ 0,
+  /* binary              */ 0,
   /* output_file         */ NULL,
   /* output_filename     */ NULL,
   /* children            */ 0,
@@ -265,6 +266,10 @@ static struct argp_option options[] = {
     "Maximum heap size to allocate to increase sampling accuracy, in MB "
     "(default is 0)."
   },
+  {
+    "binary",       'b', NULL,          0,
+    "Emit data in the MOJO binary format."
+  },
 
   #ifdef NATIVE
   {
@@ -332,6 +337,10 @@ parse_opt (int key, char *arg, struct argp_state *state)
     #ifdef NATIVE
     pargs.native_format = pargs.format;
     #endif
+    break;
+
+  case 'b':
+    pargs.binary = 1;
     break;
 
   case 'e':
@@ -559,6 +568,7 @@ print(";")
 "requires no instrumentation and has practically no impact on the tracee.\n"
 "\n"
 "  -a, --alt-format           Alternative collapsed stack sample format.\n"
+"  -b, --binary               Emit data in the MOJO binary format.\n"
 "  -C, --children             Attach to child processes.\n"
 "  -e, --exclude-empty        Do not output samples of threads with no frame\n"
 "                             stacks.\n"
@@ -596,12 +606,12 @@ for line in check_output(["src/austin", "--usage"]).decode().splitlines():
   print(f'"{line}\\n"')
 print(";")
 ]]]*/
-"Usage: austin [-aCefgmPs?V] [-h n_mb] [-i n_us] [-o FILE] [-p PID] [-t n_ms]\n"
-"            [-w PID] [-x n_sec] [--alt-format] [--children] [--exclude-empty]\n"
-"            [--full] [--gc] [--heap=n_mb] [--interval=n_us] [--memory]\n"
-"            [--output=FILE] [--pid=PID] [--pipe] [--sleepless] [--timeout=n_ms]\n"
-"            [--where=PID] [--exposure=n_sec] [--help] [--usage] [--version]\n"
-"            command [ARG...]\n"
+"Usage: austin [-abCefgmPs?V] [-h n_mb] [-i n_us] [-o FILE] [-p PID] [-t n_ms]\n"
+"            [-w PID] [-x n_sec] [--alt-format] [--binary] [--children]\n"
+"            [--exclude-empty] [--full] [--gc] [--heap=n_mb] [--interval=n_us]\n"
+"            [--memory] [--output=FILE] [--pid=PID] [--pipe] [--sleepless]\n"
+"            [--timeout=n_ms] [--where=PID] [--exposure=n_sec] [--help]\n"
+"            [--usage] [--version] command [ARG...]\n"
 ;
 /*[[[end]]]*/
 
@@ -678,6 +688,10 @@ cb(const char opt, const char * arg) {
 
   case 'a':
     pargs.format = (char *) SAMPLE_FORMAT_ALTERNATIVE;
+    break;
+  
+  case 'b':
+    pargs.binary = 1;
     break;
 
   case 'e':
@@ -797,6 +811,12 @@ parse_args(int argc, char ** argv) {
   #else
   exec_arg = arg_parse(options, cb, argc, argv) - 1;
   #endif
+
+  // Validation
+  if (pargs.binary && pargs.where) {
+    // silently ignore the binary option
+    pargs.binary = 0;
+  }
 
   return exec_arg;
 }
