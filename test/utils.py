@@ -60,9 +60,7 @@ def python(version: str) -> list[str]:
     match platform.system():
         case "Windows":
             py = ["py", f"-{version}"]
-        case "Darwin":
-            py = [f"{BREW_PREFIX}/opt/python@{version}/bin/python3"]
-        case "Linux":
+        case "Darwin" | "Linux":
             py = [f"python{version}"]
         case _:
             raise RuntimeError(f"Unsupported platform: {platform.system()}")
@@ -83,9 +81,34 @@ def gdb(cmds: list[str], *args: tuple[str]) -> str:
     ).decode()
 
 
+def apport_unpack(report: Path, target_dir: Path):
+    return check_output(
+        ["apport-unpack", str(report), str(target_dir)],
+        stderr=STDOUT,
+    ).decode()
+
+
 def bt(binary: Path) -> str:
     if Path("core").is_file():
         return gdb(["bt full", "q"], str(binary), "core")
+
+    # On Ubuntu, apport puts crashes in /var/crash
+    crash_dir = Path("/var/crash")
+    if crash_dir.is_dir():
+        crashes = list(crash_dir.glob("*.crash"))
+        if crashes:
+            # Take the last one
+            crash = crashes[-1]
+            target_dir = Path(crash.stem)
+            apport_unpack(crash, target_dir)
+
+            result = gdb(["bt full", "q"], str(binary), target_dir / "CoreDump")
+
+            crash.unlink()
+            target_dir.rmdir()
+
+            return result
+
     return "No core dump available."
 
 
