@@ -163,7 +163,7 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
     (mach_vm_address_t) buf,
     (mach_vm_size_t *) &result
   );
-  if (kr != KERN_SUCCESS) {
+  if (unlikely(kr != KERN_SUCCESS)) {
     // If we got to the point of calling this function on macOS then we must
     // have permissions to call task_for_pid successfully. This also means that
     // the PID that was used must have been valid. Therefore this call can only
