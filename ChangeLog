@@ -2,6 +2,9 @@
 
   Added support for Python 3.11.
 
+  Allowed disabling logging by setting the environment variable
+  AUSTIN_NO_LOGGING.
+
   Improved permission error reporting on MacOS.
 
   Improved MacOS support.

@@ -50,9 +50,11 @@ FILE * logfile = NULL;
 #include "austin.h"
 #include "logging.h"
 
+int logging = 1;
 
 void
 _log_writer(int prio, const char * fmt, va_list ap) {
+  if (!logging) return;
   #ifdef PL_UNIX
   vsyslog(prio, fmt, ap);
 
@@ -69,9 +71,16 @@ _log_writer(int prio, const char * fmt, va_list ap) {
   #endif
 }
 
+static int
+has_nonempty_env(const char * s) {
+  const char * v = getenv(s);
+  return v != NULL && *v != '\0';
+}
 
 void
 logger_init(void) {
+  if (has_nonempty_env("AUSTIN_NO_LOGGING")) logging = 0;
+  if (!logging) return;
   #ifdef PL_UNIX
   setlogmask (LOG_UPTO (LOG_DEBUG));
   openlog ("austin", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
@@ -162,6 +171,7 @@ log_t(const char * fmt, ...) {
 
 void
 logger_close(void) {
+  if (!logging) return;
   #ifdef PL_UNIX
   closelog();
 

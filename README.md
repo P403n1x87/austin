@@ -355,6 +355,15 @@ where the structure of `[frame]` and the number and type of metrics on each line
 depend on the mode.
 
 
+## Environment variables
+
+Some behaviour of Austin can be configured via environment variables.
+
+| Variable            | Effect |
+| ------------------- | ------ |
+| `AUSTIN_NO_LOGGING` | Disables all [log messages](#logging) (since Austin 3.4.0). |
+
+
 ## Normal Mode
 
 In normal mode, the `[frame]` part of each emitted sample has the structure
@@ -521,6 +530,8 @@ for log messages, so make sure to watch these to get execution details and
 statistics. _Bad_ frames are output together with the other frames. In general,
 entries for bad frames will not be visible in a flame graph as all tests show
 error rates below 1% on average.
+
+Logging can be disabled using [environment variables](#environment-variables).
 
 
 ## Cheat sheet
