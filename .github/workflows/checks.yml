@@ -1,5 +1,11 @@
 name: Checks
-on: push
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
 jobs:
   check-manpage:
     runs-on: ubuntu-latest
