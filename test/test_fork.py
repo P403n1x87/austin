@@ -235,3 +235,13 @@ def test_qualnames(py, austin):
 
     assert has_pattern(result.stdout, "qualnames.py:Foo.run"), compress(result.stdout)
     assert has_pattern(result.stdout, "qualnames.py:Bar.run"), compress(result.stdout)
+
+
+@allpythons()
+def test_no_logging(py, monkeypatch):
+    monkeypatch.setenv("AUSTIN_NO_LOGGING", "1")
+    result = austin("-i", "1ms", *python(py), target("target34.py"))
+    assert has_pattern(result.stdout, "target34.py:keep_cpu_busy:3"), compress(
+        result.stdout
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
