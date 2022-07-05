@@ -173,7 +173,7 @@ logger_close(void) {
 }
 
 #if defined PL_WIN
-#define MEM_VALUE "%I64d"
+#define MEM_VALUE "%llu"
 #else
 #define MEM_VALUE "%lu"
 #endif

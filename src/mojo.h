@@ -27,6 +27,7 @@
 
 #include "argparse.h"
 #include "cache.h"
+#include "platform.h"
 
 #define MOJO_VERSION 1
 
@@ -45,6 +46,12 @@ enum {
   MOJO_MAX,
 };
 
+#ifdef PL_WIN
+#define FORMAT_TID "%llx"
+#else
+#define FORMAT_TID "%lx"
+#endif
+
 // Primitives
 
 #define mojo_event(event) \
@@ -58,7 +65,7 @@ enum {
   fprintf(pargs.output_file, __VA_ARGS__); \
   fputc('\0', pargs.output_file);
 
-static inline void mojo_integer(unsigned long integer, int sign) {
+static inline void mojo_integer(unsigned long long integer, int sign) {
   unsigned char byte = integer & 0x3f;
   if (sign) {
     byte |= 0x40;
@@ -98,7 +105,7 @@ static inline void mojo_integer(unsigned long integer, int sign) {
 #define mojo_stack(pid, tid) \
   mojo_event(MOJO_STACK);    \
   mojo_integer(pid, 0);      \
-  mojo_fstring("%lx", tid);
+  mojo_fstring(FORMAT_TID, tid);
 
 #define mojo_frame(frame)       \
   mojo_event(MOJO_FRAME);       \

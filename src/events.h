@@ -37,7 +37,7 @@
 #endif
 
 #if defined PL_WIN
-#define MEM_METRIC "%I64d"
+#define MEM_METRIC "%lld"
 #else
 #define MEM_METRIC "%ld"
 #endif

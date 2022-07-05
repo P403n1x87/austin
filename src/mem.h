@@ -39,7 +39,7 @@
 
 #elif defined(PL_WIN)
   #include <windows.h>
-  extern BOOL GetPhysicallyInstalledSystemMemory(PULONGLONG);
+  __declspec( dllimport ) extern BOOL GetPhysicallyInstalledSystemMemory(PULONGLONG);
 
 #elif defined(PL_MACOS)
   #include <mach/mach.h>
