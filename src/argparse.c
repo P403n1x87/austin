@@ -22,6 +22,13 @@
 
 #define ARGPARSE_C
 
+#include "platform.h"
+
+#ifdef PL_WIN
+#include <fcntl.h>
+#include <io.h>
+#endif
+
 #include <limits.h>
 
 #include "argparse.h"
@@ -366,10 +373,6 @@ parse_opt (int key, char *arg, struct argp_state *state)
     break;
 
   case 'o':
-    pargs.output_file = fopen(arg, "w");
-    if (pargs.output_file == NULL) {
-      argp_error(state, "Unable to create the given output file");
-    }
     pargs.output_filename = arg;
     break;
 
@@ -440,6 +443,8 @@ parse_opt (int key, char *arg, struct argp_state *state)
 #include <stdio.h>
 #include <string.h>
 
+
+#define argp_error(state, msg) {puts(msg);}
 
 // Argument callback. Called on every argument parser event.
 //
@@ -733,11 +738,6 @@ cb(const char opt, const char * arg) {
     break;
 
   case 'o':
-    pargs.output_file = fopen(arg, "w");
-    if (pargs.output_file == NULL) {
-      puts("Unable to create the given output file.");
-      return ARG_INVALID_VALUE;
-    }
     pargs.output_filename = (char *) arg;
     break;
 
@@ -812,11 +812,25 @@ parse_args(int argc, char ** argv) {
   exec_arg = arg_parse(options, cb, argc, argv) - 1;
   #endif
 
-  // Validation
+  // ---- Validation ----
+
   if (pargs.binary && pargs.where) {
     // silently ignore the binary option
     pargs.binary = 0;
   }
+
+  if (isvalid(pargs.output_filename)) {
+    pargs.output_file = fopen(pargs.output_filename, pargs.binary ? "wb" : "w");
+    if (pargs.output_file == NULL) {
+      puts("Unable to create the given output file");
+      exit(-1);
+    }
+  }
+  #ifdef PL_WIN
+  else if (pargs.binary) {
+    setmode(fileno(pargs.output_file), O_BINARY);
+  }
+  #endif
 
   return exec_arg;
 }

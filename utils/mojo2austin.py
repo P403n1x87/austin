@@ -130,19 +130,26 @@ class MojoFile:
         self._metrics = []
         self._full_mode = False
         self._frame_map = {}
+        self._offset = 0
+        self._last_read = 0
 
-        assert self.mojo.read(3) == b"MOJ"
+        assert self.read(3) == b"MOJ"
 
         self.mojo_version = self.read_int()
+
+    def read(self, n):
+        self._offset += self._last_read
+        self._last_read = n
+        return self.mojo.read(n)
 
     def read_int(self):
         n = 0
         s = 6
-        (b,) = self.mojo.read(1)
+        (b,) = self.read(1)
         n |= b & 0x3F
         sign = b & 0x40
         while b & 0x80:
-            (b,) = self.mojo.read(1)
+            (b,) = self.read(1)
             n |= (b & 0x7F) << s
             s += 7
         return -n if sign else n
@@ -150,7 +157,7 @@ class MojoFile:
     def read_until(self, until=b"\0"):
         buffer = bytearray()
         while True:
-            b = self.mojo.read(1)
+            b = self.read(1)
             if not b or b == until:
                 return bytes(buffer)
             buffer += b
@@ -236,7 +243,7 @@ class MojoFile:
 
     def parse_event(self):
         try:
-            (event,) = self.mojo.read(1)
+            (event,) = self.read(1)
         except ValueError:
             yield None
             return
@@ -244,7 +251,9 @@ class MojoFile:
         try:
             yield from self.__handlers__[event](self)
         except KeyError:
-            raise ValueError(f"Unhandled event: {event}")
+            raise ValueError(
+                f"Unhandled event: {event} (offset: {self._offset}, last read: {self._last_read})"
+            )
 
     def parse(self):
         while True:
