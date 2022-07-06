@@ -45,6 +45,7 @@ typedef struct {
   char    * head_format;
   int       full;
   int       memory;
+  int       binary;
   FILE    * output_file;
   char    * output_filename;
   int       children;

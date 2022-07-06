@@ -555,7 +555,7 @@ _py_proc__get_vm_maps(py_proc_t * self) {
       else
         // We print the maps instead so that we can resolve them later and use
         // the CPU more efficiently to collect samples.
-        fprintf(pargs.output_file, "# map: %lx-%lx %s\n", lower, upper, pathname);
+        emit_metadata("map", "%lx-%lx %s", lower, upper, pathname);
     }
   }
 

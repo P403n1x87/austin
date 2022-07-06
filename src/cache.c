@@ -315,7 +315,9 @@ hash_table__destroy(hash_table_t *self) {
     return;
 
   if (isvalid(self->chains)) {
-    for (int i = 0; i < self->capacity; chain__destroy(self->chains[i++]));
+    for (int i = 0; i < self->capacity; i++) {
+      chain__destroy(self->chains[i]);
+    }
     sfree(self->chains);
   }
 

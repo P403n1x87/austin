@@ -164,7 +164,7 @@ find_address_in_section(bfd *abfd, asection *section, void *data ATTRIBUTE_UNUSE
 }
 
 static inline frame_t *
-get_native_frame(const char *file_name, bfd_vma addr)
+get_native_frame(const char *file_name, bfd_vma addr, key_dt frame_key)
 {
     bfd *abfd;
     char **matching;
@@ -221,7 +221,7 @@ get_native_frame(const char *file_name, bfd_vma addr)
     syms = NULL;
 
     frame_t *frame = isvalid(filename) && isvalid(name)
-                         ? frame_new(strdup(filename), strdup(name), line)
+                         ? frame_new(frame_key, strdup(filename), strdup(name), line)
                          : NULL;
 
     bfd_close(abfd);

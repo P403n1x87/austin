@@ -25,7 +25,6 @@ from test.utils import (
     austin,
     compress,
     has_pattern,
-    metadata,
     python,
     samples,
     target,

@@ -22,6 +22,13 @@
 
 #define ARGPARSE_C
 
+#include "platform.h"
+
+#ifdef PL_WIN
+#include <fcntl.h>
+#include <io.h>
+#endif
+
 #include <limits.h>
 
 #include "argparse.h"
@@ -74,6 +81,7 @@ parsed_args_t pargs = {
   /* head_format         */ (char *) HEAD_FORMAT_DEFAULT,
   /* full                */ 0,
   /* memory              */ 0,
+  /* binary              */ 0,
   /* output_file         */ NULL,
   /* output_filename     */ NULL,
   /* children            */ 0,
@@ -265,6 +273,11 @@ static struct argp_option options[] = {
     "Maximum heap size to allocate to increase sampling accuracy, in MB "
     "(default is 0)."
   },
+  {
+    "binary",       'b', NULL,          0,
+    "Emit data in the MOJO binary format. "
+    "See https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format for more details.",
+  },
 
   #ifdef NATIVE
   {
@@ -334,6 +347,10 @@ parse_opt (int key, char *arg, struct argp_state *state)
     #endif
     break;
 
+  case 'b':
+    pargs.binary = 1;
+    break;
+
   case 'e':
     pargs.exclude_empty = 1;
     break;
@@ -357,10 +374,6 @@ parse_opt (int key, char *arg, struct argp_state *state)
     break;
 
   case 'o':
-    pargs.output_file = fopen(arg, "w");
-    if (pargs.output_file == NULL) {
-      argp_error(state, "Unable to create the given output file");
-    }
     pargs.output_filename = arg;
     break;
 
@@ -431,6 +444,8 @@ parse_opt (int key, char *arg, struct argp_state *state)
 #include <stdio.h>
 #include <string.h>
 
+
+#define argp_error(state, msg) {puts(msg);}
 
 // Argument callback. Called on every argument parser event.
 //
@@ -559,6 +574,9 @@ print(";")
 "requires no instrumentation and has practically no impact on the tracee.\n"
 "\n"
 "  -a, --alt-format           Alternative collapsed stack sample format.\n"
+"  -b, --binary               Emit data in the MOJO binary format. See\n"
+"                             https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format\n"
+"                             for more details.\n"
 "  -C, --children             Attach to child processes.\n"
 "  -e, --exclude-empty        Do not output samples of threads with no frame\n"
 "                             stacks.\n"
@@ -596,12 +614,12 @@ for line in check_output(["src/austin", "--usage"]).decode().splitlines():
   print(f'"{line}\\n"')
 print(";")
 ]]]*/
-"Usage: austin [-aCefgmPs?V] [-h n_mb] [-i n_us] [-o FILE] [-p PID] [-t n_ms]\n"
-"            [-w PID] [-x n_sec] [--alt-format] [--children] [--exclude-empty]\n"
-"            [--full] [--gc] [--heap=n_mb] [--interval=n_us] [--memory]\n"
-"            [--output=FILE] [--pid=PID] [--pipe] [--sleepless] [--timeout=n_ms]\n"
-"            [--where=PID] [--exposure=n_sec] [--help] [--usage] [--version]\n"
-"            command [ARG...]\n"
+"Usage: austin [-abCefgmPs?V] [-h n_mb] [-i n_us] [-o FILE] [-p PID] [-t n_ms]\n"
+"            [-w PID] [-x n_sec] [--alt-format] [--binary] [--children]\n"
+"            [--exclude-empty] [--full] [--gc] [--heap=n_mb] [--interval=n_us]\n"
+"            [--memory] [--output=FILE] [--pid=PID] [--pipe] [--sleepless]\n"
+"            [--timeout=n_ms] [--where=PID] [--exposure=n_sec] [--help]\n"
+"            [--usage] [--version] command [ARG...]\n"
 ;
 /*[[[end]]]*/
 
@@ -679,6 +697,10 @@ cb(const char opt, const char * arg) {
   case 'a':
     pargs.format = (char *) SAMPLE_FORMAT_ALTERNATIVE;
     break;
+  
+  case 'b':
+    pargs.binary = 1;
+    break;
 
   case 'e':
     pargs.exclude_empty = 1;
@@ -719,11 +741,6 @@ cb(const char opt, const char * arg) {
     break;
 
   case 'o':
-    pargs.output_file = fopen(arg, "w");
-    if (pargs.output_file == NULL) {
-      puts("Unable to create the given output file.");
-      return ARG_INVALID_VALUE;
-    }
     pargs.output_filename = (char *) arg;
     break;
 
@@ -796,6 +813,26 @@ parse_args(int argc, char ** argv) {
 
   #else
   exec_arg = arg_parse(options, cb, argc, argv) - 1;
+  #endif
+
+  // ---- Validation ----
+
+  if (pargs.binary && pargs.where) {
+    // silently ignore the binary option
+    pargs.binary = 0;
+  }
+
+  if (isvalid(pargs.output_filename)) {
+    pargs.output_file = fopen(pargs.output_filename, pargs.binary ? "wb" : "w");
+    if (pargs.output_file == NULL) {
+      puts("Unable to create the given output file");
+      exit(-1);
+    }
+  }
+  #ifdef PL_WIN
+  else if (pargs.binary) {
+    setmode(fileno(pargs.output_file), O_BINARY);
+  }
   #endif
 
   return exec_arg;

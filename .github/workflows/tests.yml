@@ -123,6 +123,7 @@ jobs:
 
       - name: Compile Austin
         run: |
+          gcc.exe --version
           gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall
           src\austin.exe --help
 

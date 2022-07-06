@@ -31,6 +31,7 @@
 #include "argparse.h"
 #include "cache.h"
 #include "error.h"
+#include "events.h"
 #include "hints.h"
 #include "logging.h"
 #include "mem.h"
@@ -78,13 +79,6 @@ static unsigned char *  _tids_idle = NULL;
 static unsigned char *  _tids_int  = NULL;
 static char          ** _kstacks   = NULL;
 #endif
-
-#if defined PL_WIN
-#define fprintfp _fprintf_p
-#else
-#define fprintfp fprintf
-#endif
-
 
 // ----------------------------------------------------------------------------
 #define _use_heaps (pargs.heap > 0)
@@ -180,7 +174,7 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
     }
     #endif
     int       lasti     = py_frame.lasti;
-    key_dt    frame_key = ((key_dt) py_frame.code << 16) | lasti;
+    key_dt    frame_key = py_frame_key(py_frame.code, lasti);
     frame_t * frame     = lru_cache__maybe_hit(cache, frame_key);
     
     #ifdef DEBUG
@@ -201,6 +195,9 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
         FAIL;
       }
       lru_cache__store(cache, frame_key, frame);
+      if (pargs.binary) {
+        mojo_frame(frame);
+      }
     }
 
     stack_set(i, frame);
@@ -415,7 +412,7 @@ _py_thread__unwind_frame_stack(py_thread_t * self) {
       break;
     }
   }
-  
+
   return invalid;
 }
 
@@ -474,7 +471,7 @@ _py_thread__unwind_cframe_stack(py_thread_t * self) {
   invalid = fail(_py_thread__unwind_iframe_stack(self, V_FIELD(void *, cframe, py_cframe, o_current_frame)));
   if (invalid)
     return invalid;
-  
+
   return invalid;
 }
 
@@ -628,7 +625,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
     _frame_cache_total++;
     #endif
 
-    frame_t * frame = lru_cache__maybe_hit(cache, pc);
+    key_dt frame_key = (key_dt) pc;
+
+    frame_t * frame = lru_cache__maybe_hit(cache, frame_key);
     if (!isvalid(frame)) {
       #ifdef DEBUG
       _frame_cache_miss++;
@@ -649,7 +648,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
             self->proc->base_table, string__hash(range->name)
           );
           if (base > 0)
-            frame = get_native_frame(range->name, pc - base);
+            frame = get_native_frame(range->name, pc - base, frame_key);
         }
         #endif
       }
@@ -668,7 +667,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
           filename = strdup(_native_buf);
         }
 
-        frame = frame_new(filename, scope, offset);
+        frame = frame_new(frame_key, filename, scope, offset);
         if (!isvalid(frame)) {
           log_ie("Failed to make native frame");
           sfree(filename);
@@ -677,7 +676,10 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
         }
       }
 
-      lru_cache__store(cache, (key_dt) pc, (value_t) frame);
+      lru_cache__store(cache, frame_key, (value_t) frame);
+      if (pargs.binary) {
+        mojo_frame(frame);
+      }
     }
 
     stack_native_push(frame);
@@ -823,17 +825,8 @@ py_thread__next(py_thread_t * self) {
 
 
 // ----------------------------------------------------------------------------
-#if defined PL_WIN
-  #define MEM_METRIC "%I64d"
-#else
-  #define MEM_METRIC "%ld"
-#endif
-#define TIME_METRIC "%lu"
-#define IDLE_METRIC "%d"
-#define METRIC_SEP  ","
-
 void
-py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t mem_delta) {
+py_thread__emit_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t mem_delta) {
   if (!pargs.full && pargs.memory && mem_delta == 0)
     return;
 
@@ -882,8 +875,8 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   #endif
 
   // Group entries by thread.
-  fprintfp(
-    pargs.output_file, pargs.head_format, self->proc->pid, self->tid,
+  emit_stack(
+    pargs.head_format, self->proc->pid, self->tid,
     // These are relevant only in `where` mode
     is_idle           ? "💤" : "🚀",
     self->proc->child ? "🧒" : ""
@@ -894,19 +887,19 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
   if (isvalid(self->top_frame)) {
     if (V_MIN(3, 11)) {
       if (fail(_py_thread__unwind_cframe_stack(self))) {
-        fprintf(pargs.output_file, ";:INVALID:");
+        emit_invalid_frame();
         stats_count_error();
       }
     }
     else {
       if (fail(_py_thread__unwind_frame_stack(self))) {
-        fprintf(pargs.output_file, ";:INVALID:");
+        emit_invalid_frame();
         stats_count_error();
       }
     }
     
     if (fail(_py_thread__resolve_py_stack(self))) {
-      fprintf(pargs.output_file, ";:INVALID:");
+      emit_invalid_frame();
       stats_count_error();
     }
   }
@@ -937,7 +930,7 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
       frame_t * frame = stack_pop();
       if (V_MIN(3, 11)) {
         while (frame != CFRAME_MAGIC) {
-          fprintf(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
+          emit_frame_ref(pargs.format, frame);
 
           if (stack_is_empty())
             break;
@@ -946,36 +939,35 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
         }
       }
       else {
-        fprintf(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
+        emit_frame_ref(pargs.format, frame);
       }
     }
     else {
-      fprintf(pargs.output_file, pargs.native_format, native_frame->filename, native_frame->scope, native_frame->line);
+      emit_frame_ref(pargs.native_format, native_frame);
     }
   }
   if (!stack_is_empty()) {
     log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
     austin_errno = ETHREADINV;
     #ifdef DEBUG
-    fprintf(pargs.output_file, ";:%ld FRAMES LEFT:", stack_pointer());
+    emit_frames_left(stack_pointer());
     #endif
   }
   while (!stack_kernel_is_empty()) {
     char * scope = stack_kernel_pop();
-    fprintf(pargs.output_file, pargs.kernel_format, scope);
+    emit_kernel_frame(pargs.kernel_format, scope);
     free(scope);
   }
 
   #else
   while (!stack_is_empty()) {
     frame_t * frame = stack_pop();
-    fprintfp(pargs.output_file, pargs.format, frame->filename, frame->scope, frame->line);
+    emit_frame_ref(pargs.format, frame);
   }
   #endif
 
-
   if (pargs.gc && py_proc__is_gc_collecting(self->proc) == TRUE) {
-    fprintf(pargs.output_file, ";:GC:");
+    emit_gc();
     stats_gc_time(time_delta);
   }
 
@@ -984,15 +976,14 @@ py_thread__print_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t
 
   // Finish off sample with the metric(s)
   if (pargs.full) {
-    fprintf(pargs.output_file, " " TIME_METRIC METRIC_SEP IDLE_METRIC METRIC_SEP MEM_METRIC "\n",
-      time_delta, !!is_idle, mem_delta
-    );
+    emit_full_metrics(time_delta, !!is_idle, mem_delta);
   }
   else {
-    if (pargs.memory)
-      fprintf(pargs.output_file, " " MEM_METRIC "\n", mem_delta);
-    else
-      fprintf(pargs.output_file, " " TIME_METRIC "\n", time_delta);
+    if (pargs.memory) {
+      emit_memory_metric(mem_delta);
+    } else {
+      emit_time_metric(time_delta);
+    }
   }
 
   // Update sampling stats

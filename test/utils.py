@@ -20,13 +20,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import importlib
 import os
 import platform
 from asyncio.subprocess import STDOUT
 from collections import Counter, defaultdict
+from io import BytesIO, StringIO
 from pathlib import Path
 from subprocess import PIPE, CompletedProcess, Popen, check_output, run
 from test import PYTHON_VERSIONS
+from time import sleep
+from types import ModuleType
 from typing import Iterator, TypeVar
 
 import pytest
@@ -130,20 +134,30 @@ class Variant(str):
 
         self.ALL.append(self)
 
-    def __call__(self, *args: tuple[str], timeout: int = 60) -> CompletedProcess:
+    def __call__(
+        self, *args: tuple[str], timeout: int = 60, mojo: bool = False
+    ) -> CompletedProcess:
         if not self.path.is_file():
             pytest.skip(f"Variant '{self}' not available")
 
+        mojo_args = ["-b"] if mojo else []
+
         result = run(
-            [str(self.path)] + list(args),
+            [str(self.path)] + mojo_args + list(args),
             capture_output=True,
             timeout=timeout,
-            text=True,
-            errors="ignore",
         )
 
         if result.returncode in (-11, 139):  # SIGSEGV
             print(bt(self.path))
+
+        if mojo and not ({"-o", "-w", "--output", "--where"} & set(args)):
+            # We produce MOJO binary data only if we are not writing to file
+            # or using the "where" option.
+            result.stdout = demojo(result.stdout)
+        else:
+            result.stdout = result.stdout.decode()
+        result.stderr = result.stderr.decode()
 
         return result
 
@@ -158,8 +172,13 @@ def run_async(command: list[str], *args: tuple[str]) -> Popen:
     return Popen(command + list(args), stdout=PIPE, stderr=PIPE)
 
 
-def run_python(version, *args: tuple[str]) -> Popen:
-    return run_async(python(version), *args)
+def run_python(version, *args: tuple[str], sleep_after: int | None = None) -> Popen:
+    result = run_async(python(version), *args)
+
+    if sleep_after is not None:
+        sleep(sleep_after)
+
+    return result
 
 
 def samples(data: str) -> Iterator[bytes]:
@@ -273,3 +292,27 @@ match platform.system():
         no_sudo = pytest.mark.skipif(
             os.geteuid() == 0, reason="Must not have superuser privileges"
         )
+
+
+# Load from the utils scripts
+def load_util(name: str) -> ModuleType:
+    module_path = (Path(__file__).parent.parent / "utils" / name).with_suffix(".py")
+    spec = importlib.util.spec_from_file_location(name, str(module_path))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+mojo2austin = load_util("mojo2austin")
+
+
+def demojo(data: bytes) -> str:
+    result = StringIO()
+
+    for e in mojo2austin.MojoFile(BytesIO(data)).parse():
+        result.write(str(e))
+
+    return result.getvalue()
+
+
+mojo = pytest.mark.parametrize("mojo", [False, True])
