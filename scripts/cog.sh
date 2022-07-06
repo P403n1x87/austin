@@ -7,5 +7,7 @@ else
 fi
 
 cog -P $args \
+    configure.ac \
     README.md \
+    src/austin.h \
     src/argparse.c 

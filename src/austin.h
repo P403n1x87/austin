@@ -24,6 +24,11 @@
 #define AUSTIN_H
 
 #define PROGRAM_NAME                    "austin"
-#define VERSION                         "3.3.0"
+/* [[[cog
+from scripts.utils import get_current_version_from_changelog as version
+print(f'#define VERSION                         "{version()}"')
+]]] */
+#define VERSION                         "3.4.0"
+// [[[end]]]
 
 #endif
