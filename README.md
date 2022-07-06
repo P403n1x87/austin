@@ -310,7 +310,9 @@ data out of a running Python process (and all its children, if required) that
 requires no instrumentation and has practically no impact on the tracee.
 
   -a, --alt-format           Alternative collapsed stack sample format.
-  -b, --binary               Emit data in the MOJO binary format.
+  -b, --binary               Emit data in the MOJO binary format. See
+                             https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format
+                             for more details.
   -C, --children             Attach to child processes.
   -e, --exclude-empty        Do not output samples of threads with no frame
                              stacks.

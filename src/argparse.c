@@ -275,7 +275,8 @@ static struct argp_option options[] = {
   },
   {
     "binary",       'b', NULL,          0,
-    "Emit data in the MOJO binary format."
+    "Emit data in the MOJO binary format. "
+    "See https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format for more details.",
   },
 
   #ifdef NATIVE
@@ -573,7 +574,9 @@ print(";")
 "requires no instrumentation and has practically no impact on the tracee.\n"
 "\n"
 "  -a, --alt-format           Alternative collapsed stack sample format.\n"
-"  -b, --binary               Emit data in the MOJO binary format.\n"
+"  -b, --binary               Emit data in the MOJO binary format. See\n"
+"                             https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format\n"
+"                             for more details.\n"
 "  -C, --children             Attach to child processes.\n"
 "  -e, --exclude-empty        Do not output samples of threads with no frame\n"
 "                             stacks.\n"
