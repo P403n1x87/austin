@@ -800,6 +800,27 @@ cb(const char opt, const char * arg) {
 #endif
 
 
+static inline void validate() {
+  if (pargs.binary && pargs.where) {
+    // silently ignore the binary option
+    pargs.binary = 0;
+  }
+
+  if (isvalid(pargs.output_filename)) {
+    pargs.output_file = fopen(pargs.output_filename, pargs.binary ? "wb" : "w");
+    if (pargs.output_file == NULL) {
+      puts("Unable to create the given output file");
+      exit(-1);
+    }
+  }
+  #ifdef PL_WIN
+  else if (pargs.binary) {
+    // Set binary mode to prevent CR/LF conversion
+    setmode(fileno(pargs.output_file), O_BINARY);
+  }
+  #endif
+}
+
 // ---- PUBLIC ----------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
@@ -815,25 +836,7 @@ parse_args(int argc, char ** argv) {
   exec_arg = arg_parse(options, cb, argc, argv) - 1;
   #endif
 
-  // ---- Validation ----
-
-  if (pargs.binary && pargs.where) {
-    // silently ignore the binary option
-    pargs.binary = 0;
-  }
-
-  if (isvalid(pargs.output_filename)) {
-    pargs.output_file = fopen(pargs.output_filename, pargs.binary ? "wb" : "w");
-    if (pargs.output_file == NULL) {
-      puts("Unable to create the given output file");
-      exit(-1);
-    }
-  }
-  #ifdef PL_WIN
-  else if (pargs.binary) {
-    setmode(fileno(pargs.output_file), O_BINARY);
-  }
-  #endif
+  validate();
 
   return exec_arg;
 }
