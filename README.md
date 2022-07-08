@@ -362,8 +362,8 @@ depend on the mode.
 
 Some behaviour of Austin can be configured via environment variables.
 
-| Variable            | Effect |
-| ------------------- | ------ |
+| Variable            | Effect                                                      |
+| ------------------- | ----------------------------------------------------------- |
 | `AUSTIN_NO_LOGGING` | Disables all [log messages](#logging) (since Austin 3.4.0). |
 
 
@@ -398,6 +398,11 @@ existing tools without further processing. However, this comes at the cost of
 potentially big raw output files. The binary mode can be used to produce a more
 compact binary representation of the collected data, and more efficiently, by
 exploiting the performance enhancement of internal caching of frame data.
+
+The script `mojo2austin.py` in the [`utils`] folder of this repository can be
+used to convert a MOJO file back to the standard Austin output. Be aware that
+the resulting file might be quite large, well over 4 times the size of the MOJO
+file itself. Please note that the script requires at least Python 3.9.
 
 More details about the [MOJO] binary format can be found in the [Wiki].
 
@@ -860,5 +865,6 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 [releases]: https://github.com/P403n1x87/austin/releases
 [Scoop]: https://scoop.sh/
 [Speedscope]: https://speedscope.app
+[`utils`]: https://github.com/P403n1x87/austin/tree/master/utils
 [Visual Studio Code]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode
 [Wiki]: https://github.com/P403n1x87/austin/wiki
