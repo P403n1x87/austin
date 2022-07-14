@@ -27,6 +27,7 @@ from asyncio.subprocess import STDOUT
 from collections import Counter, defaultdict
 from io import BytesIO, StringIO
 from pathlib import Path
+from shutil import rmtree
 from subprocess import PIPE, CompletedProcess, Popen, check_output, run
 from test import PYTHON_VERSIONS
 from time import sleep
@@ -109,7 +110,7 @@ def bt(binary: Path) -> str:
             result = gdb(["bt full", "q"], str(binary), target_dir / "CoreDump")
 
             crash.unlink()
-            target_dir.rmdir()
+            rmtree(str(target_dir))
 
             return result
 

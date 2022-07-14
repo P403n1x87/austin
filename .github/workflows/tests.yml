@@ -32,26 +32,29 @@ jobs:
 
       - name: Install test dependencies
         run: |
-          sudo add-apt-repository -y ppa:deadsnakes/ppa
           sudo apt-get -y install \
             valgrind \
-            gdb \
-            python${{ matrix.python-version }} \
-            python3.10{,-full}
+            gdb
 
-      # Using these actions lead to Python binaries that cause SIGSEGV during
-      # C unit tests. See
-      # https://github.com/actions/setup-python/issues/442.
+      # See (https://github.com/actions/setup-python/issues/442#issuecomment-1167837162)
+      - name: Temprorary setup-python workaround
+        run: |
+          curl -LO http://archive.ubuntu.com/ubuntu/pool/main/libf/libffi/libffi6_3.2.1-8_amd64.deb
+          curl -LO http://archive.ubuntu.com/ubuntu/pool/main/libf/libffi/libffi7_3.3-4_amd64.deb
+          sudo dpkg -i libffi6_3.2.1-8_amd64.deb
+          sudo ln -sf libffi.so.6.0.4 /usr/lib/x86_64-linux-gnu/libffi.so
+          sudo dpkg -i libffi7_3.3-4_amd64.deb
+          sudo ln -sf libffi.so.7.1.0 /lib/x86_64-linux-gnu/libffi.so.7
 
-      # - name: Install Python
-      #   uses: actions/setup-python@v4
-      #   with:
-      #     python-version: ${{ matrix.python-version }}
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
 
-      # - name: Install Python 3.10
-      #   uses: actions/setup-python@v4
-      #   with:
-      #     python-version: "3.10"
+      - name: Install Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
 
       - name: Compile Austin
         run: |
