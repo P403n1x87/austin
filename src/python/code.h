@@ -119,7 +119,8 @@ typedef struct {
     PyObject *co_exceptiontable;   /* Byte string encoding exception handling  \
                                       table */                                 \
     int co_flags;                  /* CO_..., see below */                     \
-    int co_warmup;                 /* Warmup counter for quickening */         \
+    short co_warmup;                 /* Warmup counter for quickening */       \
+    short _co_linearray_entry_size;  /* Size of each entry in _co_linearray */ \
                                                                                \
     /* The rest are not so impactful on performance. */                        \
     int co_argcount;              /* #arguments, except *args */               \
@@ -140,6 +141,9 @@ typedef struct {
     PyObject *co_qualname;        /* unicode (qualname, for reference) */      \
     PyObject *co_linetable;       /* bytes object that holds location info */  \
     PyObject *co_weakreflist;     /* to support weakrefs to code objects */    \
+    PyObject *_co_code;           /* cached co_code object/attribute */        \
+    char *_co_linearray;          /* array of line offsets */                  \
+    int _co_firsttraceable;       /* index of first traceable instruction */   \
     void *co_extra;                                                            \
     char co_code_adaptive[(SIZE)];                                             \
 }
