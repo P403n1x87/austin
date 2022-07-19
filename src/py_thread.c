@@ -155,11 +155,6 @@ _py_thread__read_stack(py_thread_t * self) {
 
 
 // ----------------------------------------------------------------------------
-#ifdef DEBUG
-static unsigned int _frame_cache_miss = 0;
-static unsigned int _frame_cache_total = 0;
-#endif
-
 static inline int
 _py_thread__resolve_py_stack(py_thread_t * self) {
   lru_cache_t * cache = self->proc->frame_cache;
@@ -176,18 +171,9 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
     int       lasti     = py_frame.lasti;
     key_dt    frame_key = py_frame_key(py_frame.code, lasti);
     frame_t * frame     = lru_cache__maybe_hit(cache, frame_key);
-    
-    #ifdef DEBUG
-    _frame_cache_total++;
-    #endif
 
     if (!isvalid(frame)) {
-      #ifdef DEBUG
-      _frame_cache_miss++;
-      #endif
-      frame = _frame_from_code_raddr(
-        &(raddr_t) {self->raddr.pid, py_frame.code}, lasti, self->proc->py_v
-      );
+      frame = _frame_from_code_raddr(self, py_frame.code, lasti, self->proc->py_v);
       if (!isvalid(frame)) {
         log_ie("Failed to get frame from code object");
         // Truncate the stack to the point where we have successfully resolved.
@@ -621,17 +607,10 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
       FAIL;
     }
 
-    #ifdef DEBUG
-    _frame_cache_total++;
-    #endif
-
     key_dt frame_key = (key_dt) pc;
 
     frame_t * frame = lru_cache__maybe_hit(cache, frame_key);
     if (!isvalid(frame)) {
-      #ifdef DEBUG
-      _frame_cache_miss++;
-      #endif
       char * scope, * filename;
       vm_range_t * range = NULL;
       if (pargs.where) {
@@ -1055,13 +1034,6 @@ py_thread_free(void) {
   #if defined PL_WIN
   sfree(_pi_buffer);
   #endif
-
-  log_d(
-    "Frame cache hit ratio: %d/%d (%0.2f%%)\n",
-    _frame_cache_total - _frame_cache_miss,
-    _frame_cache_total,
-    (_frame_cache_total - _frame_cache_miss) * 100.0 / _frame_cache_total
-  );
 
   #ifdef DEBUG
   if (_frames_total) {

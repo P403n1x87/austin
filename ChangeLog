@@ -11,6 +11,8 @@
 
   Improved austinp support on fork.
 
+  Small performance improvements.
+
   Renamed the austinp binary installed from the Snap Store from austin.austinp
   to austin.p.
   

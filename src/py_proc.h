@@ -78,6 +78,7 @@ typedef struct {
   void          * is_raddr;
 
   lru_cache_t   * frame_cache;
+  lru_cache_t   * string_cache;
 
   // Temporal profiling support
   ctime_t         timestamp;

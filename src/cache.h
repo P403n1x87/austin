@@ -160,6 +160,11 @@ typedef struct hash_table_t {
     size_t capacity;
     size_t size;
     chain_t **chains;
+
+    #ifdef DEBUG
+    size_t set_total;
+    size_t set_empty;
+    #endif
 } hash_table_t;
 
 
@@ -344,6 +349,12 @@ typedef struct {
     int capacity;
     queue_t *queue;
     hash_table_t *hash;
+
+    #ifdef DEBUG
+    const char * name;
+    size_t hits;
+    size_t misses;
+    #endif
 } lru_cache_t;
 
 

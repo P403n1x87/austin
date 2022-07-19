@@ -314,7 +314,6 @@ int main(int argc, char ** argv) {
 
   stats_start();
 
-
   // Start sampling
   if (pargs.children) {
     do_child_processes(py_proc);

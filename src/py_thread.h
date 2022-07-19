@@ -33,6 +33,7 @@
 
 #define MAXLEN                      1024
 #define MAX_STACK_SIZE              2048
+#define MAX_STRING_CACHE_SIZE       1024
 
 
 typedef struct thread {
