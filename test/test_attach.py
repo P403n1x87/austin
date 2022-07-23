@@ -51,7 +51,7 @@ def allpythons():
     return _allpythons()
 
 
-@flaky(max_runs=6)
+@flaky(max_runs=5)
 @requires_sudo
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @pytest.mark.parametrize(
@@ -80,7 +80,7 @@ def test_attach_wall_time(austin, py, mode, mode_meta, heap):
         a = sum_metric(result.stdout)
         d = int(meta["duration"])
 
-        assert a <= d
+        assert 0 < a <= d * 1.1
 
 
 @flaky
@@ -105,6 +105,7 @@ def test_attach_exposure(py, exposure):
         p.kill()
 
 
+@flaky
 @requires_sudo
 @allpythons()
 @mojo

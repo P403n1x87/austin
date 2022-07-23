@@ -62,6 +62,7 @@ def test_pipe_wall_time(py):
     assert 0 < 0.8 * d < a < 2.2 * d
 
 
+@flaky
 @allpythons()
 def test_pipe_cpu_time(py):
     result = austin("-sPi", "1ms", *python(py), target())
@@ -90,7 +91,7 @@ def test_pipe_wall_time_multiprocess(py):
     assert ".".join((str(_) for _ in meta["python"])).startswith(py), meta
 
 
-@flaky
+@flaky(max_runs=6)
 @allpythons()
 def test_pipe_wall_time_multiprocess_output(py, tmp_path):
     datafile = tmp_path / "test_pipe.austin"

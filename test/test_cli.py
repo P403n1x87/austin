@@ -27,6 +27,7 @@ from test.utils import run_python
 from test.utils import target
 
 import pytest
+from flaky import flaky
 
 
 def test_cli_no_arguments():
@@ -36,6 +37,7 @@ def test_cli_no_arguments():
     assert not result.stderr
 
 
+@flaky(max_runs=6)
 def test_cli_no_python():
     result = austin(
         "-C",
@@ -53,6 +55,7 @@ def test_cli_no_python():
         assert "not a Python" in result.stderr or "Cannot launch" in result.stderr
 
 
+@flaky
 def test_cli_invalid_command():
     result = austin("snafubar")
     assert result.returncode == 33

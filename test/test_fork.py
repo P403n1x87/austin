@@ -117,7 +117,7 @@ def test_fork_cpu_time_idle(py, austin):
     assert a < 1.1 * d
 
 
-@flaky
+@flaky(max_runs=6)
 @allpythons()
 @mojo
 def test_fork_memory(py, mojo):
@@ -140,6 +140,7 @@ def test_fork_memory(py, mojo):
     assert alloc * dealloc
 
 
+@flaky
 @allpythons()
 @mojo
 def test_fork_output(py, tmp_path: Path, mojo):
@@ -187,7 +188,7 @@ def test_fork_multiprocess(py, mojo):
     assert has_pattern(result.stdout, "target_mp.py:fact:31 "), compress(result.stdout)
 
 
-@flaky
+@flaky(max_runs=6)
 @allpythons()
 @mojo
 def test_fork_full_metrics(py, mojo):
@@ -213,7 +214,7 @@ def test_fork_full_metrics(py, mojo):
     assert alloc * dealloc
 
 
-@flaky
+@flaky(max_runs=5)
 @pytest.mark.parametrize("exposure", [1, 2])
 @allpythons()
 def test_fork_exposure(py, exposure):
@@ -246,6 +247,7 @@ def test_qualnames(py, austin):
     assert has_pattern(result.stdout, "qualnames.py:Bar.run"), compress(result.stdout)
 
 
+@flaky
 @allpythons()
 def test_no_logging(py, monkeypatch):
     monkeypatch.setenv("AUSTIN_NO_LOGGING", "1")

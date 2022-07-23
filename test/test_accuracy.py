@@ -32,7 +32,7 @@ import pytest
 from flaky import flaky
 
 
-@flaky
+@flaky(max_runs=5)
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @allpythons()
 def test_accuracy_fast_recursive(py, heap):
