@@ -36,20 +36,10 @@ jobs:
             valgrind \
             gdb
 
-      # See (https://github.com/actions/setup-python/issues/442#issuecomment-1167837162)
-      - name: Temprorary setup-python workaround
-        run: |
-          curl -LO http://archive.ubuntu.com/ubuntu/pool/main/libf/libffi/libffi6_3.2.1-8_amd64.deb
-          curl -LO http://archive.ubuntu.com/ubuntu/pool/main/libf/libffi/libffi7_3.3-4_amd64.deb
-          sudo dpkg -i libffi6_3.2.1-8_amd64.deb
-          sudo ln -sf libffi.so.6.0.4 /usr/lib/x86_64-linux-gnu/libffi.so
-          sudo dpkg -i libffi7_3.3-4_amd64.deb
-          sudo ln -sf libffi.so.7.1.0 /lib/x86_64-linux-gnu/libffi.so.7
-
       - name: Install Python
         uses: actions/setup-python@v4
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: ${{ matrix.python-version }}-dev
 
       - name: Install Python 3.10
         uses: actions/setup-python@v4

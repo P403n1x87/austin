@@ -1,6 +1,6 @@
 import ctypes
 import re
-from ctypes import CDLL, POINTER, Structure, c_char_p, cast
+from ctypes import CDLL, POINTER, Structure, c_char_p, c_void_p, cast
 from pathlib import Path
 from subprocess import PIPE, STDOUT, run
 from types import ModuleType
@@ -87,6 +87,10 @@ def compile(
 
 
 C = CDLL("libc.so.6")
+
+# https://github.com/actions/setup-python/issues/442#issuecomment-1193140956
+C.malloc.restype = ctypes.c_void_p
+C.free.argtypes = [ctypes.c_void_p]
 
 
 class CFunctionDef:
@@ -231,6 +235,8 @@ class DeclCollector(c_ast.NodeVisitor):
             if isinstance(ret_type, c_ast.PtrDecl):
                 if "".join(ret_type.type.type.names) == "char":
                     rtype = c_char_p
+                else:
+                    rtype = c_void_p
             args = (
                 [_.name if hasattr(_, "name") else None for _ in node.type.args.params]
                 if node.type.args is not None
