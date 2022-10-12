@@ -132,17 +132,73 @@ _get_version_from_executable(char * binary, int * major, int * minor, int * patc
 
   fp = _popen(cmd, "r");
   if (!isvalid(fp)) {
-    return NOVERSION;
+    FAIL;
   }
+
+  with_resources;
 
   while (fgets(version, sizeof(version) - 1, fp) != NULL) {
     if (sscanf(version, "Python %d.%d.%d", major, minor, patch) == 3)
-      break;
+      OK;
   }
 
+  NOK;
+
+release:
   _pclose(fp);
-  return (*major << 16) | (*minor << 8) | *patch;
-}
+
+  released;
+} /* _get_version_from_executable */
+
+static int
+_get_version_from_filename(char * filename, int * major, int * minor, int * patch) {
+  #if defined PL_LINUX                                               /* LINUX */
+  char         * base       = filename;
+  char         * end        = base + strlen(base);
+  const char   * needle     = "python";
+  const size_t   needle_len = strlen(needle);
+
+  while (base < end) {
+    base = strstr(base, needle);
+    if (!isvalid(base)) {
+      break;
+    }
+    base += needle_len;
+    if (sscanf(base,"%d.%d", major, minor) == 2) {
+      SUCCESS;
+    }
+  }
+
+  #elif defined PL_WIN                                                 /* WIN */
+  // Assume the library path is of the form *.python[23][0-9]+[.]dll
+  int n = strlen(filename);
+  if (n < 10) {
+    FAIL;
+  }
+
+  char * p = filename + n - 1;
+  while (*(p--) != 'n' && p > filename);
+  p++;
+  *major = *(p++) - '0';
+  if (*major != 2 && *major != 3) {
+    FAIL;
+  }
+
+  if (sscanf(p,"%d.dll", minor) == 1) {
+    SUCCESS;
+  }
+
+  #elif defined PL_MACOS                                               /* MAC */
+  char * ver_needle = strstr(filename, "3.");
+  if (ver_needle == NULL) ver_needle = strstr(filename, "2.");
+  if (ver_needle != NULL && sscanf(ver_needle, "%d.%d", major, minor) == 2) {
+    SUCCESS;
+  }  
+
+  #endif
+
+  FAIL;
+} /* _get_version_from_filename */
 
 #if defined PL_MACOS
 static int
@@ -200,7 +256,7 @@ release:
   if (fd != -1) close(fd);
 
   released;
-}
+} /* _find_version_in_binary */
 #endif
 
 
@@ -231,64 +287,26 @@ _py_proc__infer_python_version(py_proc_t * self) {
     SUCCESS;
   }
 
+  // Try to infer the Python version from the library file name.
+  if (
+    isvalid(self->lib_path)
+  &&success(_get_version_from_filename(self->lib_path, &major, &minor, &patch))
+  ) goto from_filename;
+
   // On Linux, the actual executable is sometimes picked as a library. Hence we
   // try to execute the library first and see if we get a version from it. If
   // not, we fall back to the actual binary, if any.
   #if defined PL_UNIX
   if (
     isvalid(self->lib_path)
-  &&(_get_version_from_executable(self->lib_path, &major, &minor, &patch) != NOVERSION)
+  &&(success(_get_version_from_executable(self->lib_path, &major, &minor, &patch)))
   ) goto from_exe;
   #endif
 
   if (
     isvalid(self->bin_path)
-  &&(_get_version_from_executable(self->bin_path, &major, &minor, &patch) != NOVERSION)
+  &&(success(_get_version_from_executable(self->bin_path, &major, &minor, &patch)))
   ) goto from_exe;
-
-  if (isvalid(self->lib_path)) {
-    #if defined PL_LINUX                                             /* LINUX */
-    char         * base       = self->lib_path;
-    char         * end        = base + strlen(self->lib_path);
-    const char   * needle     = "python";
-    const size_t   needle_len = strlen(needle);
-
-    while (base < end) {
-      base = strstr(base, needle);
-      if (!isvalid(base)) {
-        break;
-      }
-      base += needle_len;
-      if (sscanf(base,"%d.%d", &major, &minor) == 2) {
-        self->py_v = get_version_descriptor(major, minor, patch);
-        SUCCESS;
-      }
-    }
-
-    #elif defined PL_WIN                                               /* WIN */
-    // Assume the library path is of the form *pythonMm.dll
-    int n = strlen(self->lib_path);
-    major = self->lib_path[n - 6] - '0';
-    minor = self->lib_path[n - 5] - '0';
-
-    #elif defined PL_MACOS                                             /* MAC */
-    char * ver_needle = strstr(self->lib_path, "3.");
-    if (ver_needle == NULL) ver_needle = strstr(self->lib_path, "2.");
-    if (ver_needle != NULL && sscanf(ver_needle, "%d.%d", &major, &minor) == 2) {
-      log_d("Python version (from library name): %d.%d.%d", major, minor, patch);
-      self->py_v = get_version_descriptor(major, minor, patch);
-      SUCCESS;
-    }
-
-    // Still no version detected so we look into the binary content
-    int version = NOVERSION;
-    if (isvalid(self->lib_path) && (version = _find_version_in_binary(self->lib_path))) {
-      log_d("Python version (from library content): %d.%d.%d", major, minor, patch);
-      self->py_v = get_version_descriptor(MAJOR(version), MINOR(version), PATCH(version));
-      SUCCESS;
-    }
-    #endif
-  }
 
   #if defined PL_MACOS
   if (major == 0) {
@@ -308,7 +326,13 @@ _py_proc__infer_python_version(py_proc_t * self) {
 
 from_exe:
   log_d("Python version (from executable): %d.%d.%d", major, minor, patch);
+  goto set_version;
 
+from_filename:
+  log_d("Python version (from file name): %d.%d.%d", major, minor, patch);
+  goto set_version;
+
+set_version:
   self->py_v = get_version_descriptor(major, minor, patch);
   SUCCESS;
 
