@@ -61,7 +61,7 @@ jobs:
         run: pip install codespell
 
       - name: Check source code spelling
-        run: codespell src
+        run: codespell -I .github/workflows/wordlist.txt -S "src/python/*" src
 
   formatting-tests:
     runs-on: ubuntu-latest
