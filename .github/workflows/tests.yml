@@ -76,7 +76,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["2.7", "3.5", "3.6", "3.7", "3.8", "3.9", "3.10"]
+        python-version: ["2.7", "3.5", "3.6", "3.7", "3.8", "3.9", "3.10", "3.11"]
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
@@ -98,47 +98,9 @@ jobs:
           python-version: "3.10"
 
       - name: Remove signature from the Python binary
-        run: sudo codesign --remove-signature `which python${{ matrix.python-version }}` || true
-
-      - name: Run tests
         run: |
-          python3.10 -m pip install --upgrade pip
-          python3.10 -m pip install -r test/requirements.txt
-          python${{ matrix.python-version }} -m venv .venv \
-            || (python${{ matrix.python-version }} -m pip install virtualenv && python${{ matrix.python-version }} -m virtualenv .venv)
-          source .venv/bin/activate
-          sudo -E pytest --ignore=test/cunit --pastebin=failed --no-flaky-report -sr a
-          deactivate
-
-  tests-osx-pyenv:
-    runs-on: macos-latest
-
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11"]
-
-    env:
-      AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
-
-    name: Tests on macOS with Python ${{ matrix.python-version }}
-    steps:
-      - uses: actions/checkout@v2
-      - name: Compile Austin
-        run: gcc -Wall -O3 -g src/*.c -o src/austin
-
-      - name: Install Python
-        uses: gabrielfalcao/pyenv-action@v9
-        with:
-          default: "${{ matrix.python-version }}:latest"
-
-      - name: Install Python 3.10
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.10"
-
-      - name: Remove signature from the Python binary
-        run: sudo codesign --remove-signature `which python${{ matrix.python-version }}` || true
+          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/bin/python3 || true
+          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/Resources/Python.app/Contents/MacOS/Python || true
 
       - name: Run tests
         run: |
