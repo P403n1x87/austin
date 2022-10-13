@@ -604,16 +604,25 @@ when starting a container.
 
 ## On MacOS
 
-Due to the **System Integrity Protection** introduced in **MacOS** with El
-Capitan, Austin cannot profile Python processes that use an executable located
-in the `/bin` folder, even with `sudo`. This is the case for the system-provided
-version of Python, or the one installed with the official installers from
-[python.org](https://python.org). Creating a virtual environment with the
-`--copies` flag to `venv` might not solve the issue as the binary might link to
-a shared library that still resides in a protected area of the file system.
-Other installation methods, like [pyenv][pyenv] or [Anaconda][anaconda] or
+Due to the **System Integrity Protection**, introduced in **MacOS** with El
+Capitan, and the [Hardened Runtime][hardened runtime], introduced in Mojave,
+Austin cannot profile Python processes that use an executable located in the
+`/bin` folder, even with `sudo`. This is the case for the system-provided
+version of Python, and the one installed with the official installers from
+[python.org](https://python.org). Other installation methods, like
+[pyenv][pyenv] or [Anaconda][anaconda] or
 [Homebrew](https://formulae.brew.sh/formula/austin) are known to work with
-Austin.
+Austin, out of the box.
+
+To use Austin with Python from the official installer, you could remove the
+signature from the binaries with
+~~~ console
+codesign --remove-signature /Library/Frameworks/Python.framework/Versions/<M.m>/bin/python3
+codesign --remove-signature /Library/Frameworks/Python.framework/Versions/<M.m>/Resources/Python.app/Contents/MacOS/Python
+~~~
+Alternatively, you could self-sign the Austin binary with the [Debugging Tool
+Entitlement][dte], as done for debugging tools like GDB. However, this method
+has not been tested.
 
 > Austin requires the use of `sudo` to work on MacOS. To avoid having to type
 > the password every time you use Austin, consider adding a rule to the
@@ -856,7 +865,9 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 [Chocolatey]: https://chocolatey.org/
 [Conda Forge]: https://anaconda.org/conda-forge/austin
 [d3-flame-graph]: https://github.com/spiermar/d3-flame-graph
+[dte]: https://developer.apple.com/documentation/bundleresources/entitlements/com_apple_security_cs_debugger
 [FlameGraph]: https://github.com/brendangregg/FlameGraph
+[hardened runtime]: https://developer.apple.com/documentation/security/hardened_runtime
 [Homebrew]: https://formulae.brew.sh/formula/austin
 [latest release]: https://github.com/P403n1x87/austin/releases/latest
 [MOJO]: https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format
