@@ -1,9 +1,12 @@
+from ctypes import c_void_p
 from test.cunit import C
 from test.cunit.cache import Chain, HashTable, LruCache, Queue, QueueItem
 
 import pytest
 
 NULL = 0
+C.free.argtypes = [c_void_p]
+C.malloc.restype = c_void_p
 
 
 def test_queue_item():
@@ -31,7 +34,7 @@ def test_queue(qsize):
 
     assert qsize == 0 or not q.is_empty()
     assert q.is_full()
-    assert q.enqueue(42, 42) is NULL
+    assert q.enqueue(42, 42) is None
 
     assert values == [q.dequeue() for _ in range(qsize)]
 

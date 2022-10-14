@@ -1,10 +1,10 @@
 import ctypes
 import re
-from ctypes import CDLL, POINTER, Structure, c_char_p, c_void_p, cast
+from ctypes import CDLL, POINTER, Structure, c_char_p, c_long, c_void_p, cast
 from pathlib import Path
 from subprocess import PIPE, STDOUT, run
 from types import ModuleType
-from typing import Any, Callable, Optional, Type
+from typing import Any, Callable, Optional, Type, Union
 
 from pycparser import c_ast, c_parser
 from pycparser.plyparser import ParseError
@@ -88,13 +88,11 @@ def compile(
 
 C = CDLL("libc.so.6")
 
-# https://github.com/actions/setup-python/issues/442#issuecomment-1193140956
-C.malloc.restype = ctypes.c_void_p
-C.free.argtypes = [ctypes.c_void_p]
-
 
 class CFunctionDef:
-    def __init__(self, name: str, args: list[str], rtype: Any) -> None:
+    def __init__(
+        self, name: str, args: list[tuple[str, Type[ctypes._SimpleCData]]], rtype: Any
+    ) -> None:
         self.name = name
         self.args = args
         self.rtype = rtype
@@ -105,7 +103,7 @@ class CTypeDef:
         self.name = name
         self.fields = fields
         self.methods = []
-        self.constructor = False
+        self.constructor = None
 
 
 class CType(Structure):
@@ -117,16 +115,20 @@ class CType(Structure):
             self.destroy()
 
     def __repr__(self) -> str:
-        return f"<{self.name} CObject at {self.__cself__}>"
+        return f"<{self.__class__.__name__} CObject at {self.__cself__}>"
 
 
 class CFunction:
     def __init__(self, cfuncdef: CFunctionDef, cfunc: Callable[..., Any]) -> None:
         self.__name__ = cfuncdef.name
-        self.__args__ = cfuncdef.args
+        self.__args__ = [_[0] for _ in cfuncdef.args]
         self.__cfunc__ = cfunc
-        if cfuncdef.rtype is not None:
-            self.__cfunc__.restype = cfuncdef.rtype
+
+        # Prevent argument values from being truncated/mangled
+        self.__cfunc__.argtypes = [_[1] for _ in cfuncdef.args]
+        self.__cfunc__.restype = (
+            cfuncdef.rtype if cfuncdef.rtype is not None else c_long
+        )
 
         self._posonly = all(_ is None for _ in self.__args__)
 
@@ -211,7 +213,6 @@ class DeclCollector(c_ast.NodeVisitor):
         self.functions = []
 
     def _get_type(self, node: c_ast.Node) -> None:
-        print(node)
         return self.types[" ".join(node.type.type.names)]
 
     def visit_Typedef(self, node: c_ast.Node) -> None:
@@ -237,8 +238,14 @@ class DeclCollector(c_ast.NodeVisitor):
                     rtype = c_char_p
                 else:
                     rtype = c_void_p
+
             args = (
-                [_.name if hasattr(_, "name") else None for _ in node.type.args.params]
+                [
+                    (_.name, c_void_p if isinstance(_.type, c_ast.PtrDecl) else c_long)
+                    if hasattr(_, "name")
+                    else None
+                    for _ in node.type.args.params
+                ]
                 if node.type.args is not None
                 else []
             )
@@ -277,7 +284,7 @@ class DeclCollector(c_ast.NodeVisitor):
         return {
             k: v
             for k, v in self.types.items()
-            if isinstance(v, CTypeDef) and v.constructor
+            if isinstance(v, CTypeDef) and v.constructor is not None
         }
 
 
