@@ -136,7 +136,7 @@ class Variant(str):
         self.ALL.append(self)
 
     def __call__(
-        self, *args: tuple[str], timeout: int = 60, mojo: bool = False
+        self, *args: str, timeout: int = 60, mojo: bool = False
     ) -> CompletedProcess:
         if not self.path.is_file():
             pytest.skip(f"Variant '{self}' not available")

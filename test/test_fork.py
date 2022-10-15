@@ -148,7 +148,7 @@ def test_fork_output(py, tmp_path: Path, mojo):
     datafile = tmp_path / "test_fork_output.austin"
 
     result = austin(
-        "-i", "1ms", "-o", datafile, *python(py), target("target34.py"), mojo=mojo
+        "-i", "1ms", "-o", str(datafile), *python(py), target("target34.py"), mojo=mojo
     )
     assert result.returncode == 0, result.stderr or result.stdout
 
