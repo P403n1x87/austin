@@ -26,6 +26,7 @@
 #include <stdio.h>
 
 #include "argparse.h"
+#include "hints.h"
 #include "logging.h"
 #include "mojo.h"
 #include "platform.h"
@@ -81,13 +82,15 @@
     }                                                             \
   }
 
-#define emit_frame_ref(format, frame)                                                  \
-  {                                                                                    \
-    if (pargs.binary) {                                                                \
-      mojo_frame_ref(frame);                                                           \
-    } else {                                                                           \
-      fprintfp(pargs.output_file, format, frame->filename, frame->scope, frame->line); \
-    }                                                                                  \
+#define emit_frame_ref(format, frame)                                      \
+  {                                                                        \
+    if (pargs.binary) {                                                    \
+      mojo_frame_ref(frame);                                               \
+    } else {                                                               \
+      fprintfp(pargs.output_file, format, frame->filename,                 \
+               frame->scope == UNKNOWN_SCOPE ? "<unknown>" : frame->scope, \
+               frame->line);                                               \
+    }                                                                      \
   }
 
 #define emit_time_metric(value)                                \

@@ -40,7 +40,8 @@ typedef struct {
   unsigned int   line;
 } frame_t;
 
-#define py_frame_key(code, lasti) (((key_dt) code << 16) | lasti)
+#define py_frame_key(code, lasti)  (((key_dt) code << 16) | lasti)
+#define py_string_key(code, field) ((key_dt) *((void **) ((void *) &code + py_v->py_code.field)))
 
 #ifdef PY_THREAD_C
 
@@ -233,7 +234,7 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
     return NULL;
   }
 
-  key_dt string_key = ((key_dt) *((void **) ((void *) &code + py_v->py_code.o_filename)));
+  key_dt string_key = py_string_key(code, o_filename);
   char * filename = lru_cache__maybe_hit(py_proc->string_cache, string_key);
   if (!isvalid(filename)) {
     filename = _code__get_filename(&code, pid, py_v);
@@ -242,11 +243,12 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
       return NULL;
     }
     lru_cache__store(py_proc->string_cache, string_key, filename);
+    if (pargs.binary) {
+      mojo_string_event(filename, filename);
+    }
   }
 
-  string_key = V_MIN(3, 11)
-    ? ((key_dt) *((void **) ((void *) &code + py_v->py_code.o_qualname)))
-    : ((key_dt) *((void **) ((void *) &code + py_v->py_code.o_name)));
+  string_key = V_MIN(3, 11) ? py_string_key(code, o_qualname) : py_string_key(code, o_name);
   char * scope = lru_cache__maybe_hit(py_proc->string_cache, string_key);
   if (!isvalid(scope)) {
     scope = V_MIN(3, 11)
@@ -257,6 +259,9 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
       return NULL;
     }
     lru_cache__store(py_proc->string_cache, string_key, scope);
+    if (pargs.binary) {
+      mojo_string_event(scope, scope);
+    }
   }
 
   ssize_t len = 0;
@@ -368,10 +373,7 @@ failed:
 // ----------------------------------------------------------------------------
 static inline void
 frame__destroy(frame_t * self) {
-  if (!isvalid(self))
-    return;
-
-  free(self);
+  sfree(self);
 }
 
 #endif // STACK_H
