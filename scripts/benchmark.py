@@ -3,6 +3,7 @@
 import re
 import sys
 from argparse import ArgumentParser
+from itertools import product
 from math import floor, log
 from pathlib import Path
 
@@ -18,6 +19,7 @@ VERSIONS = ("3.0.0", "3.1.0", "3.2.0", "3.3.0", "dev")
 SCENARIOS = [
     *[
         (
+            "austin",
             f"Wall time [sampling interval: {i}]",
             ["-Pi", str(i), sys.executable, target("target34.py")],
         )
@@ -25,6 +27,7 @@ SCENARIOS = [
     ],
     *[
         (
+            "austin",
             f"CPU time [sampling interval: {i}]",
             ["-Psi", str(i), sys.executable, target("target34.py")],
         )
@@ -32,6 +35,15 @@ SCENARIOS = [
     ],
     *[
         (
+            "austin",
+            f"RSA keygen [sampling interval: {i}]",
+            ["-Psi", str(i), sys.executable, "-m", "test.bm.rsa_key_generator"],
+        )
+        for i in (1, 10, 100, 1000)
+    ],
+    *[
+        (
+            "austin",
             f"Full metrics [sampling interval: {i}]",
             ["-Pfi", str(i), sys.executable, target("target34.py")],
         )
@@ -59,24 +71,24 @@ def get_stats(output: str) -> dict:
     }
 
 
-def download_release(version: str, dest: Path) -> Variant:
+def download_release(version: str, dest: Path, variant_name: str = "austin") -> Variant:
     if version == "dev":
-        return Variant("src/austin")
+        return Variant(f"src/{variant_name}")
 
     binary_dest = dest / version
-    binary = binary_dest / "austin"
+    binary = binary_dest / variant_name
 
     if not binary.exists():
         prefix = "https://github.com/p403n1x87/austin/releases/download/"
-        for variant in {"-gnu", ""}:
+        for flavour, v in product({"-gnu", ""}, {"", "v"}):
             try:
                 with urlopen(
-                    f"{prefix}v{version}/austin-{version}{variant}-linux-amd64.tar.xz"
+                    f"{prefix}v{version}/{variant_name}-{v}{version}{flavour}-linux-amd64.tar.xz"
                 ) as stream:
                     buffer = BytesIO(stream.read())
                     binary_dest.mkdir(parents=True, exist_ok=True)
                     tar = tarfile.open(fileobj=buffer, mode="r:xz")
-                    tar.extract("austin", str(binary_dest))
+                    tar.extract(variant_name, str(binary_dest))
             except HTTPError:
                 continue
             break
@@ -85,7 +97,8 @@ def download_release(version: str, dest: Path) -> Variant:
 
     variant = Variant(str(binary))
 
-    assert f"austin {version}" in variant("-V").stdout
+    out = variant("-V").stdout
+    assert f"{variant_name} {version}" in out, (f"{variant_name} {version}", out)
 
     return variant
 
@@ -152,7 +165,7 @@ def main():
         end="\n\n",
     )
 
-    for title, args in SCENARIOS:
+    for variant, title, args in SCENARIOS:
         if opts.k is not None and not opts.k.match(title):
             continue
 
@@ -161,7 +174,11 @@ def main():
         table = []
         for version in VERSIONS:
             print(f"> Running with Austin {version} ...    ", end="\r")
-            austin = download_release(version, Path("/tmp"))
+            try:
+                austin = download_release(version, Path("/tmp"), variant_name=variant)
+            except RuntimeError:
+                print(f"WARNING: Could not download {variant} {version}")
+                continue
 
             stats = [get_stats(austin(*args).stdout) for _ in range(10)]
             table.append(
