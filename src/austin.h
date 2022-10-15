@@ -23,7 +23,11 @@
 #ifndef AUSTIN_H
 #define AUSTIN_H
 
+#ifdef NATIVE
+#define PROGRAM_NAME                    "austinp"
+#else
 #define PROGRAM_NAME                    "austin"
+#endif
 /* [[[cog
 from scripts.utils import get_current_version_from_changelog as version
 print(f'#define VERSION                         "{version()}"')
