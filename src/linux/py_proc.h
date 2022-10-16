@@ -329,12 +329,16 @@ release:
 // ----------------------------------------------------------------------------
 static int
 _elf_is_executable(char * object_file) {
-  int fd   = open(object_file, O_RDONLY);
+  int fd = open(object_file, O_RDONLY);
   if (fd == -1)
     return FALSE;
 
   Elf64_Ehdr * ehdr = (Elf64_Ehdr *) mmap(NULL, sizeof(Elf64_Ehdr), PROT_READ, MAP_SHARED, fd, 0);
-
+  if (ehdr == MAP_FAILED) {
+    close(fd);
+    return FALSE;
+  }
+  
   int is_exec = ehdr->e_type == ET_EXEC;
 
   munmap(ehdr, sizeof(Elf64_Ehdr));
