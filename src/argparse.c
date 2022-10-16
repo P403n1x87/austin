@@ -544,7 +544,7 @@ _handle_opts(arg_option * opts, arg_callback cb, int * argi, int argc, char ** a
   for (register int i = 0; i < n_opts; i++) {
     if (opt_str[i] == '=')
       break;
-    curr_opt  = _find_opt(opts, opt_str[i]);
+    curr_opt = _find_opt(opts, opt_str[i]);
     if (curr_opt == NULL)
       return ARG_UNRECOGNISED_OPT;
 
@@ -555,7 +555,8 @@ _handle_opts(arg_option * opts, arg_callback cb, int * argi, int argc, char ** a
       return cb_res;
   }
 
-  *argi += curr_opt->has_arg && equal == NULL ? 2 : 1;
+  if (isvalid(curr_opt))
+    *argi += curr_opt->has_arg && equal == NULL ? 2 : 1;
 
   return 0;
 }

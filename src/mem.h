@@ -201,6 +201,8 @@ get_total_memory(void) {
   return GetPhysicallyInstalledSystemMemory(&size) == TRUE ? size : 0;
 
   #endif
+
+  return 0;
 }
 
 #endif // MEM_H
