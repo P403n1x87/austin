@@ -46,7 +46,6 @@
 #include "hints.h"
 #include "logging.h"
 #include "mem.h"
-#include "stack.h"
 #include "stats.h"
 
 #include "py_proc.h"
@@ -1422,3 +1421,118 @@ py_proc__destroy(py_proc_t * self) {
 
   free(self);
 }
+
+
+#ifdef LIBAUSTIN
+int
+py_proc__sample_cb(py_proc_t * self, void (*cb)(pid_t, pid_t)) {
+  V_DESC(self->py_v);
+
+  PyInterpreterState is;
+  if (fail(py_proc__get_type(self, self->is_raddr, is))) {
+    FAIL;
+  }
+
+  void * tstate_head = V_FIELD(void *, is, py_is, o_tstate_head);
+  if (isvalid(tstate_head)) {
+    raddr_t raddr = { .pref = self->proc_ref, .addr = tstate_head };
+    py_thread_t py_thread;
+
+    if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self))) {
+      if (is_fatal(austin_errno)) {
+        FAIL;
+      }
+      SUCCESS;
+    }
+
+    do {
+      py_thread__unwind_stack(&py_thread);
+      cb(self->pid, py_thread.tid);
+    } while (success(py_thread__next(&py_thread)));
+  }
+
+  SUCCESS;
+}
+
+int
+py_proc__sample_thread(py_proc_t * self, pid_t tid) {
+  V_DESC(self->py_v);
+
+  PyInterpreterState is;
+  if (fail(py_proc__get_type(self, self->is_raddr, is))) {
+    FAIL;
+  }
+
+  void * tstate_head = V_FIELD(void *, is, py_is, o_tstate_head);
+  if (isvalid(tstate_head)) {
+    raddr_t raddr = { .pref = self->proc_ref, .addr = tstate_head };
+    py_thread_t py_thread;
+
+    if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self))) {
+      if (is_fatal(austin_errno)) {
+        FAIL;
+      }
+      SUCCESS;
+    }
+
+    do {
+      if (py_thread.tid == tid) {
+        py_thread__unwind_stack(&py_thread);
+        SUCCESS;
+      }
+    } while (success(py_thread__next(&py_thread)));
+  }
+
+  FAIL;
+}
+
+
+// ----------------------------------------------------------------------------
+frame_t *
+py_proc__read_frame(py_proc_t * proc, void * remote_address) {
+  V_DESC(proc->py_v);
+  
+  lru_cache_t * cache = proc->frame_cache;
+  
+  void * code  = NULL;
+  int    lasti = 0;
+  
+  if (V_MIN(3, 11)) {
+    PyInterpreterFrame iframe;
+
+    if (fail(copy_py(proc->proc_ref, remote_address, py_iframe, iframe))) {
+      log_ie("Cannot read remote PyInterpreterFrame");
+      return NULL;
+    }
+
+    code  = V_FIELD(void *, iframe, py_iframe, o_code);
+    lasti = ((int)(V_FIELD(void *, iframe, py_iframe, o_prev_instr) - code)) - py_v->py_code.o_code;
+  }
+  else {
+    PyFrameObject frame_obj;
+
+    if (fail(copy_py(proc->proc_ref, remote_address, py_frame, frame_obj))) {
+      log_ie("Cannot read remote PyFrameObject");
+      return NULL;
+    }
+
+    code  = V_FIELD(void *, frame_obj, py_frame, o_code);
+    lasti = V_FIELD(int   , frame_obj, py_frame, o_lasti);
+  }
+
+  key_dt    frame_key = py_frame_key(code, lasti);
+  frame_t * frame     = lru_cache__maybe_hit(cache, frame_key);  
+  if (!isvalid(frame)) {
+    frame = _frame_from_code_raddr(proc, code, lasti, py_v);
+    if (!isvalid(frame)) {
+      log_ie("Failed to get frame from code object");
+      return NULL;
+    }
+    lru_cache__store(cache, frame_key, frame);
+  }
+
+  return frame;
+}
+
+
+#endif /* LIBAUSTIN */

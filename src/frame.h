@@ -24,18 +24,8 @@
 
 
 #include "cache.h"
+#include "libaustin.h"
 #include "resources.h"
-
-
-typedef struct {
-  key_dt         key;
-  char         * filename;
-  char         * scope;
-  unsigned int   line;
-  unsigned int   line_end;
-  unsigned int   column;
-  unsigned int   column_end;
-} frame_t;
 
 
 typedef struct {
@@ -43,6 +33,9 @@ typedef struct {
   void * code;
   int    lasti;
 } py_frame_t;
+
+
+typedef austin_frame_t frame_t;
 
 
 // ----------------------------------------------------------------------------

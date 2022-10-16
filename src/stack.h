@@ -78,14 +78,14 @@ stack_deallocate(void) {
   if (!isvalid(_stack))
     return;
 
-  free(_stack->base);
-  free(_stack->py_base);
+  sfree(_stack->base);
+  sfree(_stack->py_base);
   #ifdef NATIVE
   free(_stack->native_base);
   free(_stack->kernel_base);
   #endif
 
-  free(_stack);
+  sfree(_stack);
 }
 
 

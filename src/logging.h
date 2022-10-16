@@ -29,6 +29,7 @@
 
 #include "argparse.h"
 #include "austin.h"
+#include "error.h"
 
 
 #define META_HEAD "# "
@@ -125,5 +126,13 @@ logger_close(void);
 
 void
 log_meta_header(void);
+
+/**
+ * Log the last error
+ */
+#define log_error() { \
+  ( is_fatal(austin_errno) ? log_f(get_last_error()) : log_e(get_last_error()) ); \
+}
+
 
 #endif // LOGGING_H

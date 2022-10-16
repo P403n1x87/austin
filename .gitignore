@@ -39,6 +39,7 @@ src/austin
 src/austinp
 src/austin.exe
 
+.libs/
 
 # -----------------------------------------------------------------------------
 # --  PYTHON SOURCES

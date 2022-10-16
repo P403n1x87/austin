@@ -22,7 +22,7 @@ jobs:
       - name: Compile Austin
         run: |
           autoreconf --install
-          ./configure --enable-debug-symbols true
+          ./configure --enable-debug-symbols=yes
           make
 
       - name: Install runtime dependencies

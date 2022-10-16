@@ -56,7 +56,7 @@ typedef struct {
 
 typedef struct _proc_extra_info proc_extra_info;  // Forward declaration.
 
-typedef struct {
+typedef struct _py_proc_t {
   pid_t           pid;
   proc_ref_t      proc_ref;
   int             child;
@@ -232,5 +232,30 @@ py_proc__terminate(py_proc_t *);
 
 void
 py_proc__destroy(py_proc_t *);
+
+#ifdef LIBAUSTIN
+#include "frame.h"
+
+/**
+ * Sample the frame stack of each thread of the given Python process.
+ *
+ * @param  py_proc_t *                        self.
+ * @param  (void*) (*callback)(pid_t, pid_t)  the callback function to cal
+ *                                            when a thread stack is available.
+
+ * @return 0 if the sampling succeeded; 1 otherwise.
+ */
+int
+py_proc__sample_cb(py_proc_t *, void (*)(pid_t, pid_t));
+
+
+int
+py_proc__sample_thread(py_proc_t *, pid_t);
+
+
+frame_t *
+py_proc__read_frame(py_proc_t *, void *);
+
+#endif
 
 #endif // PY_PROC_H

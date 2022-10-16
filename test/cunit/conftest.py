@@ -11,6 +11,9 @@ from types import FunctionType
 import pytest
 
 
+LIBS = SRC / ".libs"
+
+
 class SegmentationFault(Exception):
     pass
 
@@ -55,12 +58,18 @@ def cunit(
 
         if result.returncode == -11:
             binary_name = Path(module).stem.replace("test_", "")
-            raise SegmentationFault(bt((SRC / binary_name).with_suffix(".so")))
+            for prefix in (SRC, LIBS):
+                binary_path = (prefix / binary_name).with_suffix(".so")
+                if binary_path.exists():
+                    raise SegmentationFault(bt(binary_path))
+
+            print("No binary found for segfault analysis")
 
         raise CUnitTestFailure(
             f"\n{result.stdout.decode()}\n"
+            f"\n{result.stderr.decode()}\n"
             f"Process terminated with exit code {result.returncode} "
-            "(expected {exit_code})"
+            f"(expected {exit_code})"
         )
 
     return _

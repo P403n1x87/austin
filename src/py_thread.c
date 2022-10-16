@@ -1116,3 +1116,34 @@ py_thread_free(void) {
   sfree(_kstacks);
   #endif
 }
+
+
+#ifdef LIBAUSTIN
+void
+py_thread__unwind_stack(py_thread_t * self) {
+
+  V_DESC(self->proc->py_v);
+
+  if (isvalid(self->top_frame)) {
+    if (V_MIN(3, 11)) {
+      if (fail(_py_thread__unwind_cframe_stack(self))) {
+      }
+    }
+    else {
+      if (fail(_py_thread__unwind_frame_stack(self))) {
+      }
+    }
+    
+    if (fail(_py_thread__resolve_py_stack(self))) {
+    }
+  }
+} /* py_thread__unwind_stack */
+
+
+frame_t *
+py_thread_pop_frame() {
+  return stack_is_empty() ? NULL : stack_pop();
+} /* py_thread_pop_frame */
+
+
+#endif /* LIBAUSTIN */
