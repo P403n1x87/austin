@@ -96,6 +96,7 @@ gettime() {
   #endif
 }
 
+#if !defined LIBAUSTIN
 
 void
 stats_reset() {
@@ -210,3 +211,5 @@ release:
   #endif
   return;
 }
+
+#endif // !defined LIBAUSTIN

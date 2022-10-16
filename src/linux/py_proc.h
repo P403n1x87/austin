@@ -686,6 +686,7 @@ _get_nspid(pid_t pid) {
   return nspid;
 }
 
+#if !defined LIBAUSTIN
 
 // Support for CPU time on Linux. We need to retrieve the TID from the struct
 // pthread pointed to by the native thread ID stored by Python. We do not have
@@ -732,5 +733,7 @@ _infer_tid_field_offset(py_thread_t * py_thread) {
 
   FAIL;
 }
+
+#endif  // !LIBAUSTIN
 
 #endif

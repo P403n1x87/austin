@@ -27,6 +27,7 @@
 #include <sys/types.h>
 
 #include "cache.h"
+#include "frame.h"
 #include "mem.h"
 #include "py_proc.h"
 #include "stats.h"
@@ -126,5 +127,13 @@ int
 py_thread__save_kernel_stack(py_thread_t *);
 #endif
 
+#ifdef LIBAUSTIN
+void
+py_thread__unwind_stack(py_thread_t *);
+
+frame_t *
+py_thread_pop_frame();
+
+#endif // LIBAUSTIN
 
 #endif // PY_THREAD_H
