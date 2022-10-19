@@ -155,11 +155,6 @@ _py_thread__read_stack(py_thread_t * self) {
 
 
 // ----------------------------------------------------------------------------
-#ifdef DEBUG
-static unsigned int _frame_cache_miss = 0;
-static unsigned int _frame_cache_total = 0;
-#endif
-
 static inline int
 _py_thread__resolve_py_stack(py_thread_t * self) {
   lru_cache_t * cache = self->proc->frame_cache;
@@ -176,18 +171,9 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
     int       lasti     = py_frame.lasti;
     key_dt    frame_key = py_frame_key(py_frame.code, lasti);
     frame_t * frame     = lru_cache__maybe_hit(cache, frame_key);
-    
-    #ifdef DEBUG
-    _frame_cache_total++;
-    #endif
 
     if (!isvalid(frame)) {
-      #ifdef DEBUG
-      _frame_cache_miss++;
-      #endif
-      frame = _frame_from_code_raddr(
-        &(raddr_t) {self->raddr.pid, py_frame.code}, lasti, self->proc->py_v
-      );
+      frame = _frame_from_code_raddr(self, py_frame.code, lasti, self->proc->py_v);
       if (!isvalid(frame)) {
         log_ie("Failed to get frame from code object");
         // Truncate the stack to the point where we have successfully resolved.
@@ -595,8 +581,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
   unw_cursor_t cursor;
   unw_word_t   offset, pc;
 
-  lru_cache_t * cache   = self->proc->frame_cache;
-  void        * context = _tids[self->tid];
+  lru_cache_t * cache        = self->proc->frame_cache;
+  lru_cache_t * string_cache = self->proc->string_cache;
+  void        * context      = _tids[self->tid];
 
   if (!isvalid(context)) {
     _tids[self->tid] = _UPT_create(self->tid);
@@ -621,19 +608,13 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
       FAIL;
     }
 
-    #ifdef DEBUG
-    _frame_cache_total++;
-    #endif
-
     key_dt frame_key = (key_dt) pc;
 
     frame_t * frame = lru_cache__maybe_hit(cache, frame_key);
     if (!isvalid(frame)) {
-      #ifdef DEBUG
-      _frame_cache_miss++;
-      #endif
-      char * scope, * filename;
-      vm_range_t * range = NULL;
+      char       * scope    = NULL;
+      char       * filename = NULL;
+      vm_range_t * range    = NULL;
       if (pargs.where) {
         range = vm_range_tree__find(self->proc->maps_tree, pc);
         // TODO: A failed attempt to find a range is an indication that we need
@@ -653,25 +634,42 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
         #endif
       }
       if (!isvalid(frame)) {
-        if (unw_get_proc_name(&cursor, _native_buf, MAXLEN, &offset) == 0) {
-          scope = strdup(_native_buf);
+        unw_proc_info_t pi;
+        if (success(unw_get_proc_info(&cursor, &pi))) {
+          key_dt scope_key = (key_dt) pi.start_ip;
+
+          scope = lru_cache__maybe_hit(string_cache, scope_key);
+          if (!isvalid(scope)) {
+            if (unw_get_proc_name(&cursor, _native_buf, MAXLEN, &offset) == 0) {
+              scope = strdup(_native_buf);
+              lru_cache__store(string_cache, scope_key, scope);
+              if (pargs.binary) {
+                mojo_string_event(scope, scope);
+              }
+            }
+          }
         }
-        else {
-          scope = strdup("<unnamed>");
+        if (!isvalid(scope)) {
+          scope = UNKNOWN_SCOPE;
           offset = 0;
         }
-        if (isvalid(range))
+        if (isvalid(range))  // For now this is only relevant in `where` mode
           filename = strdup(range->name);
         else {
-          sprintf(_native_buf, "native@%lx", pc);
-          filename = strdup(_native_buf);
+          filename = lru_cache__maybe_hit(string_cache, (key_dt) pc);
+          if (!isvalid(filename)) {
+            sprintf(_native_buf, "native@%lx", pc);
+            filename = strdup(_native_buf);
+            lru_cache__store(string_cache, (key_dt) pc, filename);
+            if (pargs.binary) {
+              mojo_string_event(filename, filename);
+            }
+          }
         }
 
         frame = frame_new(frame_key, filename, scope, offset);
         if (!isvalid(frame)) {
           log_ie("Failed to make native frame");
-          sfree(filename);
-          sfree(scope);
           FAIL;
         }
       }
@@ -918,7 +916,9 @@ py_thread__emit_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t 
       log_e("Invalid native frame");
       break;
     }
-    char * eval_frame_fn = strstr(native_frame->scope, "PyEval_EvalFrame");
+    char * eval_frame_fn = native_frame->scope == UNKNOWN_SCOPE
+      ? NULL
+      : strstr(native_frame->scope, "PyEval_EvalFrame");
     int is_frame_eval = FALSE;
     if (isvalid(eval_frame_fn)) {
       char c = *(eval_frame_fn+16);
@@ -1055,13 +1055,6 @@ py_thread_free(void) {
   #if defined PL_WIN
   sfree(_pi_buffer);
   #endif
-
-  log_d(
-    "Frame cache hit ratio: %d/%d (%0.2f%%)\n",
-    _frame_cache_total - _frame_cache_miss,
-    _frame_cache_total,
-    (_frame_cache_total - _frame_cache_miss) * 100.0 / _frame_cache_total
-  );
 
   #ifdef DEBUG
   if (_frames_total) {

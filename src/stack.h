@@ -28,7 +28,9 @@
 
 #include "cache.h"
 #include "hints.h"
+#include "py_proc.h"
 #include "py_string.h"
+#include "py_thread.h"
 #include "version.h"
 
 typedef struct {
@@ -38,7 +40,8 @@ typedef struct {
   unsigned int   line;
 } frame_t;
 
-#define py_frame_key(code, lasti) (((key_dt) code << 16) | lasti)
+#define py_frame_key(code, lasti)  (((key_dt) code << 16) | lasti)
+#define py_string_key(code, field) ((key_dt) *((void **) ((void *) &code + py_v->py_code.field)))
 
 #ifdef PY_THREAD_C
 
@@ -220,34 +223,52 @@ _read_signed_varint(unsigned char * lnotab, size_t * i) {
 
 // ----------------------------------------------------------------------------
 static inline frame_t *
-_frame_from_code_raddr(raddr_t * raddr, int lasti, python_v * py_v) {
+_frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, python_v * py_v) {
   PyCodeObject    code;
   unsigned char * lnotab = NULL;
+  py_proc_t     * py_proc = py_thread->proc;
+  pid_t           pid = py_thread->raddr.pid;
 
-  if (fail(copy_from_raddr_v(raddr, code, py_v->py_code.size))) {
+  if (fail(copy_py(pid, code_raddr, py_code, code))) {
     log_ie("Cannot read remote PyCodeObject");
     return NULL;
   }
 
-  char * filename = _code__get_filename(&code, raddr->pid, py_v);
+  key_dt string_key = py_string_key(code, o_filename);
+  char * filename = lru_cache__maybe_hit(py_proc->string_cache, string_key);
   if (!isvalid(filename)) {
-    log_ie("Cannot get file name from PyCodeObject");
-    return NULL;
+    filename = _code__get_filename(&code, pid, py_v);
+    if (!isvalid(filename)) {
+      log_ie("Cannot get file name from PyCodeObject");
+      return NULL;
+    }
+    lru_cache__store(py_proc->string_cache, string_key, filename);
+    if (pargs.binary) {
+      mojo_string_event(filename, filename);
+    }
   }
 
-  char * scope = V_MIN(3, 11)
-    ? _code__get_qualname(&code, raddr->pid, py_v)
-    : _code__get_name(&code, raddr->pid, py_v);
+  string_key = V_MIN(3, 11) ? py_string_key(code, o_qualname) : py_string_key(code, o_name);
+  char * scope = lru_cache__maybe_hit(py_proc->string_cache, string_key);
   if (!isvalid(scope)) {
-    log_ie("Cannot get scope name from PyCodeObject");
-    goto failed;
+    scope = V_MIN(3, 11)
+      ? _code__get_qualname(&code, pid, py_v)
+      : _code__get_name(&code, pid, py_v);
+    if (!isvalid(scope)) {
+      log_ie("Cannot get scope name from PyCodeObject");
+      return NULL;
+    }
+    lru_cache__store(py_proc->string_cache, string_key, scope);
+    if (pargs.binary) {
+      mojo_string_event(scope, scope);
+    }
   }
 
   ssize_t len = 0;
   int lineno = V_FIELD(unsigned int, code, py_code, o_firstlineno);
 
   if (V_MIN(3, 11)) {
-    lnotab = _code__get_lnotab(&code, raddr->pid, &len, py_v);
+    lnotab = _code__get_lnotab(&code, pid, &len, py_v);
     if (!isvalid(lnotab) || len == 0) {
       log_ie("Cannot get line information from PyCodeObject");
       goto failed;
@@ -289,7 +310,7 @@ _frame_from_code_raddr(raddr_t * raddr, int lasti, python_v * py_v) {
     }
   }
   else {
-    lnotab = _code__get_lnotab(&code, raddr->pid, &len, py_v);
+    lnotab = _code__get_lnotab(&code, pid, &len, py_v);
     if (!isvalid(lnotab) || len % 2) {
       log_ie("Cannot get line information from PyCodeObject");
       goto failed;
@@ -331,7 +352,7 @@ _frame_from_code_raddr(raddr_t * raddr, int lasti, python_v * py_v) {
 
   free(lnotab);
 
-  frame_t * frame = frame_new(py_frame_key(raddr->addr, lasti), filename, scope, lineno);
+  frame_t * frame = frame_new(py_frame_key(code_raddr, lasti), filename, scope, lineno);
   if (!isvalid(frame)) {
     log_e("Failed to create frame object");
     goto failed;
@@ -341,8 +362,6 @@ _frame_from_code_raddr(raddr_t * raddr, int lasti, python_v * py_v) {
 
 failed:
   sfree(lnotab);
-  sfree(filename);
-  sfree(scope);
   
   return NULL;
 }
@@ -354,13 +373,7 @@ failed:
 // ----------------------------------------------------------------------------
 static inline void
 frame__destroy(frame_t * self) {
-  if (!isvalid(self))
-    return;
-
-  sfree(self->filename);
-  sfree(self->scope);
-
-  free(self);
+  sfree(self);
 }
 
 #endif // STACK_H

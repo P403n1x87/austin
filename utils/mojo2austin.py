@@ -15,6 +15,8 @@ class MojoEvents:
     IDLE = 8
     METRIC_TIME = 9
     METRIC_MEMORY = 10
+    STRING = 11
+    STRING_REF = 12
 
 
 def handles(e):
@@ -35,6 +37,20 @@ class MojoEvent:
 
     def __str__(self):
         return ""
+
+
+@dataclass
+class MojoString(MojoEvent):
+    key: bytes
+    value: str
+
+
+@dataclass
+class MojoStringReference(MojoEvent):
+    string: MojoString
+
+    def __str__(self):
+        return self.string.value
 
 
 class MojoIdle(MojoEvent):
@@ -62,8 +78,8 @@ class MojoStack(MojoEvent):
 @dataclass
 class MojoFrame(MojoEvent):
     key: bytes
-    filename: str
-    scope: str
+    filename: MojoStringReference
+    scope: MojoStringReference
     line: int
 
 
@@ -132,6 +148,7 @@ class MojoFile:
         self._frame_map = {}
         self._offset = 0
         self._last_read = 0
+        self._string_map = {1: MojoString(bytes([1]), "<unknown>")}
 
         assert self.read(3) == b"MOJ"
 
@@ -190,8 +207,8 @@ class MojoFile:
     @handles(MojoEvents.FRAME)
     def parse_frame(self):
         frame_key = self.read_int()
-        filename = self.read_string()
-        scope = self.read_string()
+        filename = MojoStringReference(self._string_map[self.read_int()])
+        scope = MojoStringReference(self._string_map[self.read_int()])
         line = self.read_int()
 
         frame = MojoFrame(frame_key, filename, scope, line)
@@ -240,6 +257,21 @@ class MojoFile:
     @handles(MojoEvents.GC)
     def parse_gc(self):
         yield MojoSpecialFrame("GC")
+
+    @handles(MojoEvents.STRING)
+    def parse_string(self):
+        key = self.read_int()
+        value = self.read_string()
+
+        string = MojoString(key, value)
+
+        self._string_map[key] = string
+
+        yield string
+
+    @handles(MojoEvents.STRING_REF)
+    def parse_string_ref(self):
+        yield MojoStringReference(self._string_map[self.read_int()])
 
     def parse_event(self):
         try:

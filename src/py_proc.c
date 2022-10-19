@@ -850,11 +850,22 @@ py_proc_new(int child) {
   py_proc->frames_heap = py_proc->frames = NULL_MEM_BLOCK;
 
   py_proc->frame_cache = lru_cache_new(MAX_STACK_SIZE, (void (*)(value_t)) frame__destroy);
-
   if (!isvalid(py_proc->frame_cache)) {
-    log_e("Failed to allocate code object cache");
+    log_e("Failed to allocate frame cache");
     goto error;
   }
+  #ifdef DEBUG
+  py_proc->frame_cache->name = "frame cache";
+  #endif
+
+  py_proc->string_cache = lru_cache_new(MAX_STRING_CACHE_SIZE, (void (*)(value_t)) free);
+  if (!isvalid(py_proc->string_cache)) {
+    log_e("Failed to allocate string cache");
+    goto error;
+  }
+  #ifdef DEBUG
+  py_proc->string_cache->name = "string cache";
+  #endif
 
   py_proc->extra = (proc_extra_info *) calloc(1, sizeof(proc_extra_info));
   if (!isvalid(py_proc->extra))
@@ -1380,6 +1391,7 @@ py_proc__destroy(py_proc_t * self) {
   sfree(self->bss);
   sfree(self->extra);
 
+  lru_cache__destroy(self->string_cache);
   lru_cache__destroy(self->frame_cache);
 
   free(self);

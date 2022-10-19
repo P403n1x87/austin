@@ -50,4 +50,6 @@
 #define NOK                             {retval = 1; goto release;}
 #define released                        return retval;
 
+#define UNKNOWN_SCOPE                   ((char *) 1)
+
 #endif

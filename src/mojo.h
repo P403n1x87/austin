@@ -43,6 +43,8 @@ enum {
   MOJO_IDLE,
   MOJO_METRIC_TIME,
   MOJO_METRIC_MEMORY,
+  MOJO_STRING,
+  MOJO_STRING_REF,
   MOJO_MAX,
 };
 
@@ -51,6 +53,9 @@ enum {
 #else
 #define FORMAT_TID "%lx"
 #endif
+
+// Bitmask to ensure that we encode at most 4 bytes for an integer.
+#define MOJO_INT32 ((unsigned long long)(1 << (6 + 7 * 3)) - 1)
 
 // Primitives
 
@@ -88,6 +93,10 @@ static inline void mojo_integer(unsigned long long integer, int sign) {
   }
 }
 
+// We expect the least significant bits to be varied enough to provide a valid
+// key. This way we can keep the size of references to a maximum of 4 bytes.
+#define mojo_ref(integer) (mojo_integer(MOJO_INT32 & ((unsigned long long)integer), 0))
+
 // Mojo events
 
 #define mojo_header()                \
@@ -107,16 +116,16 @@ static inline void mojo_integer(unsigned long long integer, int sign) {
   mojo_integer(pid, 0);      \
   mojo_fstring(FORMAT_TID, tid);
 
-#define mojo_frame(frame)       \
-  mojo_event(MOJO_FRAME);       \
-  mojo_integer(frame->key, 0);  \
-  mojo_string(frame->filename); \
-  mojo_string(frame->scope);    \
+#define mojo_frame(frame)    \
+  mojo_event(MOJO_FRAME);    \
+  mojo_ref(frame->key);      \
+  mojo_ref(frame->filename); \
+  mojo_ref(frame->scope);    \
   mojo_integer(frame->line, 0);
 
 #define mojo_frame_ref(frame) \
   mojo_event(MOJO_FRAME_REF); \
-  mojo_integer(frame->key, 0);
+  mojo_ref(frame->key);
 
 #define mojo_frame_kernel(scope) \
   mojo_event(MOJO_FRAME_KERNEL); \
@@ -129,5 +138,14 @@ static inline void mojo_integer(unsigned long long integer, int sign) {
 #define mojo_metric_memory(value) \
   mojo_event(MOJO_METRIC_MEMORY); \
   mojo_integer(value < 0 ? -value : value, value < 0);
+
+#define mojo_string_event(key, string) \
+  mojo_event(MOJO_STRING);             \
+  mojo_ref(key);                       \
+  mojo_string(string);
+
+#define mojo_string_ref(key)   \
+  mojo_event(MOJO_STRING_REF); \
+  mojo_ref(key);
 
 #endif
