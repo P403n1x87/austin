@@ -35,11 +35,8 @@
 #define MODULE_CNT                     2
 #define SYMBOLS                        2
 
-#define PROC_REF                        ((long long int) self->extra->h_proc)
-
 
 struct _proc_extra_info {
-  HANDLE h_proc;
   HANDLE h_reader_thread;
 };
 
@@ -179,7 +176,7 @@ _py_proc__get_modules(py_proc_t * self) {
 static ssize_t _py_proc__get_resident_memory(py_proc_t * self) {
   PROCESS_MEMORY_COUNTERS mem_info;
 
-  return GetProcessMemoryInfo(self->extra->h_proc, &mem_info, sizeof(mem_info))
+  return GetProcessMemoryInfo(self->proc_ref, &mem_info, sizeof(mem_info))
     ? mem_info.WorkingSetSize
     : -1;
 }
@@ -229,7 +226,7 @@ _py_proc__try_child_proc(py_proc_t * self) {
 
 with_resources;
 
-  HANDLE orig_hproc = self->extra->h_proc;
+  HANDLE orig_hproc = self->proc_ref;
   pid_t  orig_pid   = self->pid;
   while (TRUE) {
     pid_t parent_pid = self->pid;
@@ -255,10 +252,10 @@ with_resources;
       }
 
       self->pid = child_pid;
-      self->extra->h_proc = OpenProcess(
+      self->proc_ref = OpenProcess(
         PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, child_pid
       );
-      if (self->extra->h_proc == INVALID_HANDLE_VALUE) {
+      if (self->proc_ref == INVALID_HANDLE_VALUE) {
         log_e("Cannot open child process handle");
         NOK;
       }
@@ -268,7 +265,7 @@ with_resources;
       }
       else {
         log_d("Process has a single non-Python child with PID %d. Taking it as new parent", child_pid);
-        CloseHandle(self->extra->h_proc);
+        CloseHandle(self->proc_ref);
       }
     }
   }
@@ -277,7 +274,7 @@ release:
   CloseHandle(h);
   if (retval) {
     self->pid = orig_pid;
-    self->extra->h_proc = orig_hproc;
+    self->proc_ref = orig_hproc;
   }
   
   released;

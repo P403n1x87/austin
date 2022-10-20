@@ -59,8 +59,6 @@
 
 #define SYMBOLS                        3
 
-#define PROC_REF                        (self->pid)
-
 
 // Get the offset of the ith section header
 #define ELF_SH_OFF(ehdr, i) /* as */ (ehdr->e_shoff + i * ehdr->e_shentsize)
@@ -605,7 +603,7 @@ _py_proc__init(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _infer_tid_field_offset(py_thread_t * py_thread) {
-  if (fail(read_pthread_t(py_thread->raddr.pid, (void *) py_thread->tid))) {
+  if (fail(read_pthread_t(py_thread->raddr.pref, (void *) py_thread->tid))) {
     log_d("Cannot copy pthread_t structure");
     FAIL;
   }
@@ -613,7 +611,7 @@ _infer_tid_field_offset(py_thread_t * py_thread) {
   log_d("pthread_t at %p", py_thread->tid);
 
   for (register int i = 0; i < PTHREAD_BUFFER_ITEMS; i++) {
-    if (py_thread->raddr.pid == _pthread_buffer[i]) {
+    if (py_thread->raddr.pref == _pthread_buffer[i]) {
       log_d("TID field offset: %d", i);
       py_thread->proc->extra->pthread_tid_offset = i;
       SUCCESS;
@@ -622,7 +620,7 @@ _infer_tid_field_offset(py_thread_t * py_thread) {
 
   // Fall-back to smaller steps if we failed
   for (register int i = 0; i < PTHREAD_BUFFER_ITEMS * (sizeof(uintptr_t) / sizeof(pid_t)); i++) {
-    if (py_thread->raddr.pid == (pid_t) ((pid_t *) _pthread_buffer)[i]) {
+    if (py_thread->raddr.pref == (pid_t) ((pid_t *) _pthread_buffer)[i]) {
       log_d("TID field offset (from fall-back): %d", i);
       py_thread->proc->extra->pthread_tid_offset = -i;
       SUCCESS;

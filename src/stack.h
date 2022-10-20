@@ -227,7 +227,7 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
   PyCodeObject    code;
   unsigned char * lnotab = NULL;
   py_proc_t     * py_proc = py_thread->proc;
-  pid_t           pid = py_thread->raddr.pid;
+  pid_t           pid = py_thread->raddr.pref;
 
   if (fail(copy_py(pid, code_raddr, py_code, code))) {
     log_ie("Cannot read remote PyCodeObject");

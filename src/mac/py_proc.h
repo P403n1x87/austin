@@ -47,8 +47,6 @@
 
 #define SYMBOLS                        2
 
-#define PROC_REF                        (self->extra->task_id)
-
 
 #define next_lc(cmd)    (cmd = (struct segment_command *)    ((void *) cmd + cmd->cmdsize));
 #define next_lc_64(cmd) (cmd = (struct segment_command_64 *) ((void *) cmd + cmd->cmdsize));
@@ -67,7 +65,7 @@
 
 
 struct _proc_extra_info {
-  mach_port_t task_id;
+  // void
 };
 
 
@@ -435,8 +433,8 @@ _py_proc__get_maps(py_proc_t * self) {
   // stabilise.
   usleep(50000);
 
-  self->extra->task_id = pid_to_task(self->pid);
-  if (self->extra->task_id == 0)
+  self->proc_ref = pid_to_task(self->pid);
+  if (self->proc_ref == 0)
     NOK;
 
   self->min_raddr = (void *) -1;
@@ -449,7 +447,7 @@ _py_proc__get_maps(py_proc_t * self) {
   self->lib_path = NULL;
 
   while (mach_vm_region(
-    self->extra->task_id,
+    self->proc_ref,
     &address,
     &size,
     VM_REGION_BASIC_INFO_64,
@@ -521,7 +519,7 @@ _py_proc__get_resident_memory(py_proc_t * self) {
 	mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
 
   return task_info(
-    self->extra->task_id, MACH_TASK_BASIC_INFO, (task_info_t) &info, &count
+    self->proc_ref, MACH_TASK_BASIC_INFO, (task_info_t) &info, &count
   ) == KERN_SUCCESS
     ? info.resident_size
     : -1;

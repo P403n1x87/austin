@@ -102,7 +102,7 @@ _py_thread__read_frames(py_thread_t * self) {
       self->proc->frames.hi = self->proc->frames.newhi;
       self->proc->frames.lo = self->proc->frames.newlo;
     }
-    if (fail(copy_memory(self->raddr.pid, self->proc->frames.lo, newsize, _frames.content))) {
+    if (fail(copy_memory(self->raddr.pref, self->proc->frames.lo, newsize, _frames.content))) {
       log_d("Failed to read remote frame area; will reset");
       sfree(_frames.content);
       _frames = NULL_HEAP;
@@ -121,7 +121,7 @@ _py_thread__read_frames(py_thread_t * self) {
       self->proc->frames_heap.hi = self->proc->frames_heap.newhi;
       self->proc->frames_heap.lo = self->proc->frames_heap.newlo;
     }
-    if (fail(copy_memory(self->raddr.pid, self->proc->frames_heap.lo, newsize, _frames_heap.content))) {
+    if (fail(copy_memory(self->raddr.pref, self->proc->frames_heap.lo, newsize, _frames_heap.content))) {
       log_d("Failed to read remote frame area near heap; will reset");
       sfree(_frames_heap.content);
       _frames_heap = NULL_HEAP;
@@ -146,7 +146,7 @@ _py_thread__read_stack(py_thread_t * self) {
     _frames.content = realloc(_frames.content, maxsize);
   }
 
-  if (fail(copy_memory(self->raddr.pid, self->stack, maxsize, _frames.content))) {
+  if (fail(copy_memory(self->raddr.pref, self->stack, maxsize, _frames.content))) {
     log_d("Failed to read remote thread stack data");
     sfree(_frames.content);
     _frames = NULL_HEAP;
@@ -224,7 +224,7 @@ static inline int
 _py_thread__push_frame_from_raddr(py_thread_t * self, void ** prev) {
   PyFrameObject frame;
 
-  raddr_t raddr = {self->raddr.pid, *prev};
+  raddr_t raddr = {self->raddr.pref, *prev};
   if (fail(copy_from_raddr_v((&raddr), frame, self->proc->py_v->py_frame.size))) {
     log_ie("Cannot read remote PyFrameObject");
     FAIL;
@@ -335,7 +335,7 @@ _py_thread__push_iframe_from_raddr(py_thread_t * self, void ** prev) {
 
   V_DESC(self->proc->py_v);
 
-  if (fail(copy_py(self->raddr.pid, *prev, py_iframe, iframe))) {
+  if (fail(copy_py(self->raddr.pref, *prev, py_iframe, iframe))) {
     log_ie("Cannot read remote PyInterpreterFrame");
     FAIL;
   }
@@ -449,7 +449,7 @@ _py_thread__unwind_cframe_stack(py_thread_t * self) {
 
   V_DESC(self->proc->py_v);
 
-  if (fail(copy_py(self->raddr.pid, self->top_frame, py_cframe, cframe))) {
+  if (fail(copy_py(self->raddr.pref, self->top_frame, py_cframe, cframe))) {
     log_ie("Cannot read remote PyCFrame");
     FAIL;
   }
@@ -738,7 +738,7 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
     // Get the thread stack information.
     void * stack_raddr = V_FIELD(void *, ts, py_thread, o_stack);
     
-    if (fail(copy_datatype(self->raddr.pid, stack_raddr, chunk))) {
+    if (fail(copy_datatype(self->raddr.pref, stack_raddr, chunk))) {
       // Best effort
       log_d("Cannot read thread data stack");
     }
@@ -755,7 +755,7 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   self->top_frame = V_FIELD(void*, ts, py_thread, o_frame);
    
   self->next_raddr = (raddr_t) {
-    raddr->pid,
+    raddr->pref,
     V_FIELD(void*, ts, py_thread, o_next) == raddr->addr \
       ? NULL \
       : V_FIELD(void*, ts, py_thread, o_next)
@@ -789,7 +789,7 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
     }
     else if (
       likely(proc->extra->pthread_tid_offset)
-      && success(read_pthread_t(self->raddr.pid, (void *) self->tid
+      && success(read_pthread_t(self->raddr.pref, (void *) self->tid
     ))) {
       int o = proc->extra->pthread_tid_offset;
       self->tid = o > 0 ? _pthread_buffer[o] : (pid_t) ((pid_t *) _pthread_buffer)[-o];

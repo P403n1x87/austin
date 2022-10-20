@@ -30,13 +30,25 @@
   #define PL_LINUX
   #define _GNU_SOURCE
 
+  #include <sys/types.h>
+
+  typedef pid_t proc_ref_t;
+
 #elif defined(__APPLE__) && defined(__MACH__)
   #define PL_MACOS
+
+  #include <mach/mach_port.h>
+
+  typedef mach_port_t proc_ref_t;
 
 #elif defined(_WIN32) || defined(_WIN64)
   #define PL_WIN
 
+  #include <windows.h>
+
   #define NULL_DEVICE "NUL:"
+
+  typedef HANDLE proc_ref_t;
 
 #endif
 
