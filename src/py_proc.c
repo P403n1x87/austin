@@ -68,7 +68,7 @@
 static ctime_t _end_time;
 
 
-#define py_proc__memcpy(self, raddr, size, dest)  copy_memory(PROC_REF, raddr, size, dest)
+#define py_proc__memcpy(self, raddr, size, dest)  copy_memory(self->proc_ref, raddr, size, dest)
 
 
 // ----------------------------------------------------------------------------
@@ -400,7 +400,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   );
 
   #if defined PL_LINUX
-  raddr_t thread_raddr = {PROC_REF, V_FIELD(void *, is, py_is, o_tstate_head)};
+  raddr_t thread_raddr = {self->proc_ref, V_FIELD(void *, is, py_is, o_tstate_head)};
   py_thread_t thread;
 
   if (fail(py_thread__fill_from_raddr(&thread, &thread_raddr, self))) {
@@ -885,16 +885,20 @@ py_proc__attach(py_proc_t * self, pid_t pid) {
   log_d("Attaching to process with PID %d", pid);
 
   #if defined PL_WIN                                                   /* WIN */
-  self->extra->h_proc = OpenProcess(
+  self->proc_ref = OpenProcess(
     PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid
   );
-  if (self->extra->h_proc == INVALID_HANDLE_VALUE) {
+  if (self->proc_ref == INVALID_HANDLE_VALUE) {
     set_error(EPROCATTACH);
     FAIL;
   }
   #endif                                                               /* ANY */
 
   self->pid = pid;
+
+  #if defined PL_LINUX                                               /* LINUX */
+  self->proc_ref = pid;
+  #endif
 
   if (fail(_py_proc__run(self))) {
     #if defined PL_WIN
@@ -1003,7 +1007,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
     set_error(EPROCFORK);
     FAIL;
   }
-  self->extra->h_proc = piProcInfo.hProcess;
+  self->proc_ref = piProcInfo.hProcess;
   self->pid = (pid_t) piProcInfo.dwProcessId;
 
   CloseHandle(hChildStdInRd);
@@ -1027,6 +1031,8 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   #endif                                                               /* ANY */
 
   #if defined PL_LINUX
+  self->proc_ref = self->pid;
+
   // On Linux we need to wait for the forked process or otherwise it will
   // become a zombie and we cannot tell with kill if it has terminated.
   pthread_create(&(self->extra->wait_thread_id), NULL, wait_thread, (void *) self);
@@ -1072,8 +1078,8 @@ py_proc__wait(py_proc_t * self) {
     WaitForSingleObject(self->extra->h_reader_thread, INFINITE);
     CloseHandle(self->extra->h_reader_thread);
   }
-  WaitForSingleObject(self->extra->h_proc, INFINITE);
-  CloseHandle(self->extra->h_proc);
+  WaitForSingleObject(self->proc_ref, INFINITE);
+  CloseHandle(self->proc_ref);
   #else                                                               /* UNIX */
   #ifdef NATIVE
   wait(NULL);
@@ -1135,7 +1141,7 @@ int
 py_proc__is_running(py_proc_t * self) {
   #if defined PL_WIN                                                   /* WIN */
   DWORD ec = 0;
-  return GetExitCodeProcess(self->extra->h_proc, &ec) ? ec == STILL_ACTIVE : 0;
+  return GetExitCodeProcess(self->proc_ref, &ec) ? ec == STILL_ACTIVE : 0;
 
   #elif defined PL_MACOS                                             /* MACOS */
   return success(check_pid(self->pid));
@@ -1265,7 +1271,7 @@ py_proc__sample(py_proc_t * self) {
 
   void * tstate_head = V_FIELD(void *, is, py_is, o_tstate_head);
   if (isvalid(tstate_head)) {
-    raddr_t raddr = { .pid = PROC_REF, .addr = tstate_head };
+    raddr_t raddr = { .pref = self->proc_ref, .addr = tstate_head };
     py_thread_t py_thread;
 
     #ifdef NATIVE
@@ -1368,7 +1374,7 @@ py_proc__terminate(py_proc_t * self) {
     #if defined PL_UNIX
     kill(self->pid, SIGTERM);
     #else
-    TerminateProcess(self->extra->h_proc, 42);
+    TerminateProcess(self->proc_ref, 42);
     #endif
   }
 }

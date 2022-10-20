@@ -35,6 +35,7 @@
 #include "python/symbols.h"
 #include "cache.h"
 #include "heap.h"
+#include "platform.h"
 #include "stats.h"
 #include "version.h"
 
@@ -57,6 +58,7 @@ typedef struct _proc_extra_info proc_extra_info;  // Forward declaration.
 
 typedef struct {
   pid_t           pid;
+  proc_ref_t      proc_ref;
   int             child;
 
   char          * bin_path;
