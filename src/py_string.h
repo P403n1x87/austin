@@ -29,6 +29,7 @@
 #include "hints.h"
 #include "logging.h"
 #include "mem.h"
+#include "platform.h"
 #include "python/string.h"
 #include "version.h"
 
@@ -55,7 +56,7 @@ string__hash(char * string) {
 
 // ----------------------------------------------------------------------------
 static inline char *
-_string_from_raddr(pid_t pid, void * raddr, python_v * py_v) {
+_string_from_raddr(proc_ref_t pref, void * raddr, python_v * py_v) {
   PyStringObject     string;
   PyUnicodeObject3   unicode;
   char             * buffer = NULL;
@@ -65,14 +66,14 @@ _string_from_raddr(pid_t pid, void * raddr, python_v * py_v) {
   // introduced in Python 3.
   switch (py_v->major) {
   case 2:
-    if (fail(copy_datatype(pid, raddr, string))) {
+    if (fail(copy_datatype(pref, raddr, string))) {
       log_ie("Cannot read remote PyStringObject");
       goto failed;
     }
 
     len    = string.ob_base.ob_size;
     buffer = (char *) malloc(len + 1);
-    if (fail(copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, buffer))) {
+    if (fail(copy_memory(pref, raddr + offsetof(PyStringObject, ob_sval), len, buffer))) {
       log_ie("Cannot read remote value of PyStringObject");
       goto failed;
     }
@@ -80,7 +81,7 @@ _string_from_raddr(pid_t pid, void * raddr, python_v * py_v) {
     break;
 
   case 3:
-    if (fail(copy_datatype(pid, raddr, unicode))) {
+    if (fail(copy_datatype(pref, raddr, unicode))) {
       log_ie("Cannot read remote PyUnicodeObject3");
       goto failed;
     }
@@ -102,7 +103,7 @@ _string_from_raddr(pid_t pid, void * raddr, python_v * py_v) {
     
     buffer = (char *) malloc(len + 1);
     
-    if (!isvalid(data) || fail(copy_memory(pid, data, len, buffer))) {
+    if (!isvalid(data) || fail(copy_memory(pref, data, len, buffer))) {
       log_ie("Cannot read remote value of PyUnicodeObject3");
       goto failed;
     }
@@ -119,7 +120,7 @@ failed:
 
 // ----------------------------------------------------------------------------
 static inline unsigned char *
-_bytes_from_raddr(pid_t pid, void * raddr, ssize_t * size, python_v * py_v) {
+_bytes_from_raddr(proc_ref_t pref, void * raddr, ssize_t * size, python_v * py_v) {
   PyStringObject  string;
   PyBytesObject   bytes;
   ssize_t         len = 0;
@@ -127,7 +128,7 @@ _bytes_from_raddr(pid_t pid, void * raddr, ssize_t * size, python_v * py_v) {
 
   switch (py_v->major) {
   case 2:  // Python 2
-    if (fail(copy_datatype(pid, raddr, string))) {
+    if (fail(copy_datatype(pref, raddr, string))) {
       log_ie("Cannot read remote PyStringObject");
       goto error;
     }
@@ -142,14 +143,14 @@ _bytes_from_raddr(pid_t pid, void * raddr, ssize_t * size, python_v * py_v) {
     }
 
     array = (unsigned char *) malloc((len + 1) * sizeof(unsigned char *));
-    if (fail(copy_memory(pid, raddr + offsetof(PyStringObject, ob_sval), len, array))) {
+    if (fail(copy_memory(pref, raddr + offsetof(PyStringObject, ob_sval), len, array))) {
       log_ie("Cannot read remote value of PyStringObject");
       goto error;
     }
     break;
 
   case 3:  // Python 3
-    if (fail(copy_datatype(pid, raddr, bytes))) {
+    if (fail(copy_datatype(pref, raddr, bytes))) {
       log_ie("Cannot read remote PyBytesObject");
       goto error;
     }
@@ -161,7 +162,7 @@ _bytes_from_raddr(pid_t pid, void * raddr, ssize_t * size, python_v * py_v) {
     }
 
     array = (unsigned char *) malloc((len + 1) * sizeof(unsigned char *));
-    if (fail(copy_memory(pid, raddr + offsetof(PyBytesObject, ob_sval), len, array))) {
+    if (fail(copy_memory(pref, raddr + offsetof(PyBytesObject, ob_sval), len, array))) {
       log_ie("Cannot read remote value of PyBytesObject");
       goto error;
     }

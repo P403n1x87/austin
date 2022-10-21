@@ -28,6 +28,7 @@
 
 #include "cache.h"
 #include "hints.h"
+#include "platform.h"
 #include "py_proc.h"
 #include "py_string.h"
 #include "py_thread.h"
@@ -180,24 +181,24 @@ stack_py_push(void * origin, void * code, int lasti) {
 
 
 // ----------------------------------------------------------------------------
-#define _code__get_filename(self, pid, py_v)                                   \
+#define _code__get_filename(self, pref, py_v)                                   \
   _string_from_raddr(                                                          \
-    pid, *((void **) ((void *) self + py_v->py_code.o_filename)), py_v         \
+    pref, *((void **) ((void *) self + py_v->py_code.o_filename)), py_v         \
   )
 
-#define _code__get_name(self, pid, py_v)                                       \
+#define _code__get_name(self, pref, py_v)                                       \
   _string_from_raddr(                                                          \
-    pid, *((void **) ((void *) self + py_v->py_code.o_name)), py_v             \
+    pref, *((void **) ((void *) self + py_v->py_code.o_name)), py_v             \
   )
 
-#define _code__get_qualname(self, pid, py_v)                                   \
+#define _code__get_qualname(self, pref, py_v)                                   \
   _string_from_raddr(                                                          \
-    pid, *((void **) ((void *) self + py_v->py_code.o_qualname)), py_v         \
+    pref, *((void **) ((void *) self + py_v->py_code.o_qualname)), py_v         \
   )
 
-#define _code__get_lnotab(self, pid, len, py_v)                                \
+#define _code__get_lnotab(self, pref, len, py_v)                                \
   _bytes_from_raddr(                                                           \
-    pid, *((void **) ((void *) self + py_v->py_code.o_lnotab)), len, py_v      \
+    pref, *((void **) ((void *) self + py_v->py_code.o_lnotab)), len, py_v      \
   )
 
 
@@ -227,9 +228,9 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
   PyCodeObject    code;
   unsigned char * lnotab = NULL;
   py_proc_t     * py_proc = py_thread->proc;
-  pid_t           pid = py_thread->raddr.pref;
+  proc_ref_t      pref = py_thread->raddr.pref;
 
-  if (fail(copy_py(pid, code_raddr, py_code, code))) {
+  if (fail(copy_py(pref, code_raddr, py_code, code))) {
     log_ie("Cannot read remote PyCodeObject");
     return NULL;
   }
@@ -237,7 +238,7 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
   key_dt string_key = py_string_key(code, o_filename);
   char * filename = lru_cache__maybe_hit(py_proc->string_cache, string_key);
   if (!isvalid(filename)) {
-    filename = _code__get_filename(&code, pid, py_v);
+    filename = _code__get_filename(&code, pref, py_v);
     if (!isvalid(filename)) {
       log_ie("Cannot get file name from PyCodeObject");
       return NULL;
@@ -252,8 +253,8 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
   char * scope = lru_cache__maybe_hit(py_proc->string_cache, string_key);
   if (!isvalid(scope)) {
     scope = V_MIN(3, 11)
-      ? _code__get_qualname(&code, pid, py_v)
-      : _code__get_name(&code, pid, py_v);
+      ? _code__get_qualname(&code, pref, py_v)
+      : _code__get_name(&code, pref, py_v);
     if (!isvalid(scope)) {
       log_ie("Cannot get scope name from PyCodeObject");
       return NULL;
@@ -268,7 +269,7 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
   int lineno = V_FIELD(unsigned int, code, py_code, o_firstlineno);
 
   if (V_MIN(3, 11)) {
-    lnotab = _code__get_lnotab(&code, pid, &len, py_v);
+    lnotab = _code__get_lnotab(&code, pref, &len, py_v);
     if (!isvalid(lnotab) || len == 0) {
       log_ie("Cannot get line information from PyCodeObject");
       goto failed;
@@ -310,7 +311,7 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
     }
   }
   else {
-    lnotab = _code__get_lnotab(&code, pid, &len, py_v);
+    lnotab = _code__get_lnotab(&code, pref, &len, py_v);
     if (!isvalid(lnotab) || len % 2) {
       log_ie("Cannot get line information from PyCodeObject");
       goto failed;
