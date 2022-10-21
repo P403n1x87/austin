@@ -78,7 +78,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - name: Compile Austin
-        run: gcc -Wall -O3 -g src/*.c -o src/austin
+        run: gcc -Wall -Werror -O3 -g src/*.c -o src/austin
 
       - name: Install Python
         uses: actions/setup-python@v4
@@ -123,7 +123,7 @@ jobs:
       - name: Compile Austin
         run: |
           gcc.exe --version
-          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Werror
           src\austin.exe --help
 
       - name: Install Python

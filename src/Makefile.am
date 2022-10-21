@@ -20,7 +20,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http:#www.gnu.org/licenses/>.
 
-AM_CFLAGS = -I$(srcdir) -Wall -pthread
+AM_CFLAGS = -I$(srcdir) -Wall -Werror -pthread
 OPT_FLAGS = -O3
 STRIP_FLAGS = -Os -s
 
