@@ -10,4 +10,5 @@ cog -P $args \
     configure.ac \
     README.md \
     src/austin.h \
-    src/argparse.c 
+    src/argparse.c \
+    snap/snapcraft.yaml

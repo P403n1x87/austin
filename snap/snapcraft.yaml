@@ -1,6 +1,11 @@
 name: austin
 base: core20
-version: '3.3.0+git'
+# [[[cog
+# from scripts.utils import get_current_version_from_changelog as version
+# print(f"version: '{version()}+git'")
+# ]]]
+version: '3.4.0+git'
+# [[[end]]]
 summary: A Python frame stack sampler for CPython
 description: |
   Austin is a Python frame stack sampler for CPython written in pure C. It
