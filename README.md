@@ -399,10 +399,10 @@ potentially big raw output files. The binary mode can be used to produce a more
 compact binary representation of the collected data, and more efficiently, by
 exploiting the performance enhancement of internal caching of frame data.
 
-The script `mojo2austin.py` in the [`utils`] folder of this repository can be
-used to convert a MOJO file back to the standard Austin output. Be aware that
-the resulting file might be quite large, well over 4 times the size of the MOJO
-file itself. Please note that the script requires at least Python 3.9.
+The `mojo2austin` CLI tool that comes with the [`austin-python`] Python package
+can be used to convert a MOJO file back to the standard Austin output. Be aware
+that the resulting file might be quite large, well over 4 times the size of the
+MOJO file itself.
 
 More details about the [MOJO] binary format can be found in the [Wiki].
 
@@ -514,17 +514,11 @@ then use as per normal. The extra `-k/--kernel` option is available with
 > the use of `austinp` is not recommended in production environments. For this
 > reason, the default sampling interval for `austinp` is 10 milliseconds.
 
-The `utils` folder has the script `resolve.py` that can be used to resolve the
-VM addresses to source and line numbers, provided that the referenced binaries
-have DWARF debug symbols. To resolve the references, assuming you have collected
-the samples in `mysamples.austin`, do
-
-~~~
-python3 utils/resolve.py mysamples.austin > mysamples_resolved.austin
-~~~
-
-Internally, the script uses `addr2line(1)` to determine the source name and line
-number given an address, when possible.
+The `austinp-resolve` tool from the [`austin-python`] Python package can be used
+to resolve the VM addresses to source and line numbers, provided that the
+referenced binaries have DWARF debug symbols. Internally, the tool uses
+`addr2line(1)` to determine the source name and line number given an address,
+when possible.
 
 > Whilst `austinp` comes with a stripped-down implementation of `addr2line`, it
 > is only used for the "where" option, as resolving symbols at runtime is
@@ -876,6 +870,5 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 [releases]: https://github.com/P403n1x87/austin/releases
 [Scoop]: https://scoop.sh/
 [Speedscope]: https://speedscope.app
-[`utils`]: https://github.com/P403n1x87/austin/tree/master/utils
 [Visual Studio Code]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode
 [Wiki]: https://github.com/P403n1x87/austin/wiki
