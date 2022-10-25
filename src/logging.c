@@ -185,6 +185,9 @@ logger_close(void) {
 #if defined PL_WIN
 #define MEM_VALUE "%llu"
 #else
+#if defined __arm__
+#define MEM_VALUE "%u"
+#else
 #define MEM_VALUE "%lu"
 #endif
 

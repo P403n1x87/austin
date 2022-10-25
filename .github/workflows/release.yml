@@ -16,14 +16,14 @@ jobs:
       - name: Generate artifacts
         run: |
           sudo apt-get update
-          sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools
+          sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools zlib1g-dev
 
           # Build austin
           autoreconf --install
           ./configure
           make
           
-          export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p");
+          export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p");
 
           pushd src
           tar -Jcf austin-$VERSION-gnu-linux-amd64.tar.xz austin
@@ -61,7 +61,7 @@ jobs:
         run: |
           echo "C:\Program Files (x86)\WiX Toolset v3.11\bin" >> $GITHUB_PATH
           export PATH="/c/Program Files (x86)/`ls /c/Program\ Files\ \(x86\) | grep \"[wW]i[xX] [tT]oolset\"`/bin:$PATH"
-          export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
 
           gcc -static -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll
 
@@ -87,7 +87,7 @@ jobs:
       - name: Upload to choco
         shell: bash
         run: |
-          export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
           export WIN_MSI="austin-$VERSION-win64.msi"
           export WIN_MSI_HASH=$( sha256sum src/$WIN_MSI | head -c 64 )
           git checkout "packaging/msi" -- choco
@@ -120,7 +120,7 @@ jobs:
 
       - name: Generate artifacts
         run: |
-          export VERSION=$(cat src/austin.h | sed -n -E "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          export VERSION=$(cat src/austin.h | sed -n -E "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
           echo "::set-output name=version::$VERSION"
 
           gcc -Wall -O3 -Os -o src/austin src/*.c

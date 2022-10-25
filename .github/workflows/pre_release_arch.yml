@@ -26,19 +26,19 @@ jobs:
             mkdir -p ./artifacts
 
             # Compute dev version
-            export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+            export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
             export VERSION=${{ github.ref_name }}
             sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
           run: |
             apt-get update
-            apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools
+            apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools zlib1g-dev
 
             # Build austin
             autoreconf --install
             ./configure
             make
 
-            export VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+            export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
 
             pushd src
             tar -Jcf austin-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz austin

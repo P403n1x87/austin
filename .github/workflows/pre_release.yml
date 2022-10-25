@@ -16,7 +16,7 @@ jobs:
       - name: Generate artifacts
         run: |
           sudo apt-get update
-          sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools
+          sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools zlib1g-dev
 
           # Build austin
           autoreconf --install
@@ -24,7 +24,7 @@ jobs:
           make
 
           # Compute dev version
-          export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
           export VERSION=${{ github.ref_name }}
           sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
 
@@ -68,7 +68,7 @@ jobs:
           export PATH="/c/Program Files (x86)/`ls /c/Program\ Files\ \(x86\) | grep \"[wW]i[xX] [tT]oolset\"`/bin:$PATH"
 
           # Compute dev version
-          export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          export PREV_VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
           export VERSION_DEV=${{ github.ref_name }}
           export VERSION=$(echo $PREV_VERSION | sed -r -n "s/([0-9]+\.[0-9]+\.[0-9]+).*/\1/p")
           sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
@@ -119,7 +119,7 @@ jobs:
       - name: Generate artifacts
         run: |
           # Compute dev version
-          export PREV_VERSION=$(cat src/austin.h | sed -n -E "s/.*VERSION[ ]+\"(.+)\"/\1/p")
+          export PREV_VERSION=$(cat src/austin.h | sed -n -E "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
           export VERSION=${{ github.ref_name }}
           sed -i "" "s/$PREV_VERSION/$VERSION/g" src/austin.h
           echo "::set-output name=version::$VERSION"
