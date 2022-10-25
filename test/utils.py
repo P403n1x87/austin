@@ -35,6 +35,7 @@ from types import ModuleType
 from typing import Iterator, TypeVar
 
 import pytest
+from austin.format.mojo import MojoFile
 
 HERE = Path(__file__).parent
 
@@ -295,25 +296,26 @@ match platform.system():
         )
 
 
-# Load from the utils scripts
-def load_util(name: str) -> ModuleType:
-    module_path = (Path(__file__).parent.parent / "utils" / name).with_suffix(".py")
-    spec = importlib.util.spec_from_file_location(name, str(module_path))
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-mojo2austin = load_util("mojo2austin")
-
-
 def demojo(data: bytes) -> str:
     result = StringIO()
 
-    for e in mojo2austin.MojoFile(BytesIO(data)).parse():
-        result.write(str(e))
+    for e in MojoFile(BytesIO(data)).parse():
+        result.write(e.to_austin())
 
     return result.getvalue()
 
 
 mojo = pytest.mark.parametrize("mojo", [False, True])
+
+
+# Load from the utils scripts
+def load_util(name: str) -> ModuleType:
+    module_path = (Path(__file__).parent.parent / "utils" / name).with_suffix(".py")
+    spec = importlib.util.spec_from_file_location(name, str(module_path))
+
+    assert spec is not None and spec.loader is not None, spec
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    return module
