@@ -31,6 +31,16 @@
 
 #define PTHREAD_BUFFER_ITEMS  200
 
+
+#if defined __arm__
+#define ADDR_FMT "%x"
+#define SIZE_FMT "%d"
+#else
+#define ADDR_FMT "%lx"
+#define SIZE_FMT "%ld"
+#endif
+
+
 static uintptr_t _pthread_buffer[PTHREAD_BUFFER_ITEMS];
 
 #define read_pthread_t(pid, addr) \

@@ -39,6 +39,8 @@
 
 #if defined PL_WIN
 #define MEM_METRIC "%lld"
+#elif defined __arm__
+#define MEM_METRIC "%d"
 #else
 #define MEM_METRIC "%ld"
 #endif

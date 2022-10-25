@@ -382,7 +382,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     ssize_t lower, upper;
     char    pathname[1024];
 
-    int field_count = sscanf(line, "%lx-%lx %*s %*x %*x:%*x %*x %s\n",
+    int field_count = sscanf(line, ADDR_FMT "-" ADDR_FMT " %*s %*x %*x:%*x %*x %s\n",
       &lower, &upper, // Map bounds
       pathname        // Binary path
     ) - 3; // We expect between 3 and 4 matches.
@@ -400,7 +400,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
         maps_flag |= HEAP_MAP;
 
-        log_d("HEAP bounds %lx-%lx", lower, upper);
+        log_d("HEAP bounds " ADDR_FMT "-" ADDR_FMT, lower, upper);
         continue;
       }
 
@@ -483,7 +483,7 @@ _py_proc__get_resident_memory(py_proc_t * self) {
   int ret = 0;
 
   ssize_t size, resident;
-  if (fscanf(statm, "%ld %ld", &size, &resident) != 2)
+  if (fscanf(statm, SIZE_FMT " " SIZE_FMT, &size, &resident) != 2)
     ret = -1;
 
   fclose(statm);
@@ -540,7 +540,7 @@ _py_proc__get_vm_maps(py_proc_t * self) {
   while (getline(&line, &len, fp) != -1 && nrange < 256) {
     ssize_t lower, upper;
 
-    if (sscanf(line, "%lx-%lx %*s %*x %*x:%*x %*x %s\n",
+    if (sscanf(line, ADDR_FMT "-" ADDR_FMT " %*s %*x %*x:%*x %*x %s\n",
       &lower, &upper, // Map bounds
       pathname        // Binary path
     ) == 3 && pathname[0] != '[') {
@@ -557,7 +557,7 @@ _py_proc__get_vm_maps(py_proc_t * self) {
       else
         // We print the maps instead so that we can resolve them later and use
         // the CPU more efficiently to collect samples.
-        emit_metadata("map", "%lx-%lx %s", lower, upper, pathname);
+        emit_metadata("map", ADDR_FMT "-" ADDR_FMT " %s", lower, upper, pathname);
     }
   }
 
@@ -581,7 +581,7 @@ _py_proc__init(py_proc_t * self) {
   ) FAIL;
 
   self->extra->page_size = getpagesize();
-  log_d("Page size: %ld", self->extra->page_size);
+  log_d("Page size: %u", self->extra->page_size);
 
   sprintf(self->extra->statm_file, "/proc/%d/statm", self->pid);
 

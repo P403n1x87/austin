@@ -48,14 +48,23 @@ enum {
   MOJO_MAX,
 };
 
-#ifdef PL_WIN
+#if defined PL_WIN
 #define FORMAT_TID "%llx"
+#elif defined __arm__
+#define FORMAT_TID "%x"
 #else
 #define FORMAT_TID "%lx"
 #endif
 
+#if defined __arm__
+typedef unsigned long mojo_int_t;
+#else
+typedef unsigned long long mojo_int_t;
+#endif
+
+
 // Bitmask to ensure that we encode at most 4 bytes for an integer.
-#define MOJO_INT32 ((unsigned long long)(1 << (6 + 7 * 3)) - 1)
+#define MOJO_INT32 ((mojo_int_t)(1 << (6 + 7 * 3)) - 1)
 
 // Primitives
 
@@ -70,7 +79,7 @@ enum {
   fprintf(pargs.output_file, __VA_ARGS__); \
   fputc('\0', pargs.output_file);
 
-static inline void mojo_integer(unsigned long long integer, int sign) {
+static inline void mojo_integer(mojo_int_t integer, int sign) {
   unsigned char byte = integer & 0x3f;
   if (sign) {
     byte |= 0x40;
@@ -95,7 +104,7 @@ static inline void mojo_integer(unsigned long long integer, int sign) {
 
 // We expect the least significant bits to be varied enough to provide a valid
 // key. This way we can keep the size of references to a maximum of 4 bytes.
-#define mojo_ref(integer) (mojo_integer(MOJO_INT32 & ((unsigned long long)integer), 0))
+#define mojo_ref(integer) (mojo_integer(MOJO_INT32 & ((mojo_int_t)integer), 0))
 
 // Mojo events
 
