@@ -63,7 +63,7 @@ if platform.system() == "Darwin":
 
 
 def python(version: str) -> list[str]:
-    match platform.system():
+    match pl := platform.system():
         case "Windows":
             py = ["py", f"-{version}"]
         case "Darwin" | "Linux":
@@ -75,6 +75,23 @@ def python(version: str) -> list[str]:
         check_output([*py, "-V"], stderr=STDOUT)
         return py
     except FileNotFoundError:
+        if pl == "Linux":
+            # Try with just the major version
+            py = [f"python{version.split('.')[0]}"]
+            try:
+                if version in check_output([*py, "-V"], stderr=STDOUT).decode():
+                    return py
+            except FileNotFoundError:
+                pass
+
+            # Try with no version
+            py = ["python"]
+            try:
+                if version in check_output([*py, "-V"], stderr=STDOUT).decode():
+                    return py
+            except FileNotFoundError:
+                pass
+
         pytest.skip(f"Python {version} not found")
 
 
