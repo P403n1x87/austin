@@ -59,7 +59,7 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r test/requirements.txt
-          sudo -E .venv/bin/pytest --pastebin=failed --no-flaky-report -sr a
+          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed --no-flaky-report -sr a
           .venv/bin/pytest --pastebin=failed --no-flaky-report -sr a
           deactivate
 

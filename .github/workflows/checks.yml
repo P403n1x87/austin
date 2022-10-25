@@ -117,7 +117,7 @@ jobs:
           pip install --upgrade pip
           pip install -r test/requirements.txt
           .venv/bin/pytest --pastebin=failed --no-flaky-report -sr fE -n auto || true
-          sudo .venv/bin/pytest --pastebin=failed --no-flaky-report -sr fE -n auto || true
+          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed --no-flaky-report -sr fE -n auto || true
           deactivate
 
       - name: Generate Cobertura report

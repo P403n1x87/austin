@@ -146,11 +146,11 @@ def test_where_multiprocess(py):
         assert lines[join_line] == 1, compress(result.stdout)
 
 
-@flaky(max_runs=3)
+@flaky(max_runs=6)
 @requires_sudo
 @allpythons()
 def test_where_kernel(py):
-    with run_python(py, target("sleepy.py"), sleep_after=1) as p:
+    with run_python(py, target("sleepy.py"), sleep_after=0.5) as p:
         result = austinp("-kw", str(p.pid))
         assert result.returncode == 0
 

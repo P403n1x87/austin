@@ -75,23 +75,6 @@ def python(version: str) -> list[str]:
         check_output([*py, "-V"], stderr=STDOUT)
         return py
     except FileNotFoundError:
-        if pl == "Linux":
-            # Try with just the major version
-            py = [f"python{version.split('.')[0]}"]
-            try:
-                if version in check_output([*py, "-V"], stderr=STDOUT).decode():
-                    return py
-            except FileNotFoundError:
-                pass
-
-            # Try with no version
-            py = ["python"]
-            try:
-                if version in check_output([*py, "-V"], stderr=STDOUT).decode():
-                    return py
-            except FileNotFoundError:
-                pass
-
         pytest.skip(f"Python {version} not found")
 
 
@@ -191,7 +174,7 @@ def run_async(command: list[str], *args: tuple[str]) -> Popen:
     return Popen(command + list(args), stdout=PIPE, stderr=PIPE)
 
 
-def run_python(version, *args: tuple[str], sleep_after: int | None = None) -> Popen:
+def run_python(version, *args: tuple[str], sleep_after: float | None = None) -> Popen:
     result = run_async(python(version), *args)
 
     if sleep_after is not None:
