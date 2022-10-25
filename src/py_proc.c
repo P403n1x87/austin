@@ -1370,7 +1370,7 @@ py_proc__log_version(py_proc_t * self, int parent) {
 void
 py_proc__terminate(py_proc_t * self) {
   if (self->pid) {
-    log_d("Terminating process %ld", self->pid);
+    log_d("Terminating process %u", self->pid);
     #if defined PL_UNIX
     kill(self->pid, SIGTERM);
     #else
