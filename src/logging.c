@@ -22,6 +22,7 @@
 
 #define _DEFAULT_SOURCE
 
+#include "events.h"
 #include "mem.h"
 #include "platform.h"
 
@@ -50,9 +51,11 @@ FILE * logfile = NULL;
 #include "austin.h"
 #include "logging.h"
 
+int logging = 1;
 
 void
 _log_writer(int prio, const char * fmt, va_list ap) {
+  if (!logging) return;
   #ifdef PL_UNIX
   vsyslog(prio, fmt, ap);
 
@@ -69,9 +72,16 @@ _log_writer(int prio, const char * fmt, va_list ap) {
   #endif
 }
 
+static int
+has_nonempty_env(const char * s) {
+  const char * v = getenv(s);
+  return v != NULL && *v != '\0';
+}
 
 void
 logger_init(void) {
+  if (has_nonempty_env("AUSTIN_NO_LOGGING")) logging = 0;
+  if (!logging) return;
   #ifdef PL_UNIX
   setlogmask (LOG_UPTO (LOG_DEBUG));
   openlog ("austin", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
@@ -162,6 +172,7 @@ log_t(const char * fmt, ...) {
 
 void
 logger_close(void) {
+  if (!logging) return;
   #ifdef PL_UNIX
   closelog();
 
@@ -172,21 +183,21 @@ logger_close(void) {
 }
 
 #if defined PL_WIN
-#define MEM_VALUE "%I64d"
+#define MEM_VALUE "%llu"
 #else
 #define MEM_VALUE "%lu"
 #endif
 
 void
 log_meta_header(void) {
-  meta("austin: " VERSION);
-  meta("interval: %lu", pargs.t_sampling_interval);
+  emit_metadata("austin", VERSION);
+  emit_metadata("interval", "%lu", pargs.t_sampling_interval);
 
-  if (pargs.full)           { meta("mode: full"); }
-  else if (pargs.memory)    { meta("mode: memory"); }
-  else if (pargs.sleepless) { meta("mode: cpu"); }
-  else                      { meta("mode: wall"); }
+  if (pargs.full)           { emit_metadata("mode", "full"); }
+  else if (pargs.memory)    { emit_metadata("mode", "memory"); }
+  else if (pargs.sleepless) { emit_metadata("mode", "cpu"); }
+  else                      { emit_metadata("mode", "wall"); }
 
-  if (pargs.memory || pargs.full) { meta("memory: " MEM_VALUE, get_total_memory()); }
-  if (pargs.children) { meta("multiprocess: on"); }
+  if (pargs.memory || pargs.full) { emit_metadata("memory", MEM_VALUE, get_total_memory()); }
+  if (pargs.children) { emit_metadata("multiprocess", "on"); }
 }

@@ -44,9 +44,6 @@
 #define MINOR(x)                        ((x >> 8) & 0xFF)
 #define PATCH(x)                        (x & 0xFF)
 
-#define PYVER_ATMOST(maj, min) \
-  (py_v->major < maj || (py_v->major == maj && py_v->minor <= min))
-
 
 /**
  * Get the value of a field of a versioned structure.
@@ -73,6 +70,17 @@
 
 #define V_DESC(desc) python_v * py_v = (desc)
 
+/**
+ * Ensure the current version of Python is at least/at most the request version.
+ * 
+ * @param  M  requested major version
+ * @param  m  requested minor version
+ * 
+ * @return    TRUE if the current version is at least/at most the requested one,
+ *            FALSE otherwise.
+ */
+#define V_MIN(M, m) (py_v->major > M || (py_v->major == M && py_v->minor >= m))
+#define V_MAX(M, m) (py_v->major < M || (py_v->major == M && py_v->minor <= m))
 
 typedef unsigned long offset_t;
 
@@ -84,6 +92,8 @@ typedef struct {
   offset_t o_name;
   offset_t o_lnotab;
   offset_t o_firstlineno;
+  offset_t o_code;
+  offset_t o_qualname;
 } py_code_v;
 
 
@@ -96,6 +106,23 @@ typedef struct {
   offset_t o_lineno;
 } py_frame_v;
 
+typedef struct {
+  ssize_t  size;
+
+  offset_t o_current_frame;
+  offset_t o_previous;
+} py_cframe_v;
+
+
+typedef struct {
+  ssize_t  size;
+
+  offset_t o_code;
+  offset_t o_previous;
+  offset_t o_prev_instr;
+  offset_t o_is_entry;
+} py_iframe_v;
+
 
 typedef struct {
   ssize_t  size;
@@ -105,6 +132,8 @@ typedef struct {
   offset_t o_interp;
   offset_t o_frame;
   offset_t o_thread_id;
+  offset_t o_native_thread_id;
+  offset_t o_stack;
 } py_thread_v;
 
 
@@ -148,6 +177,8 @@ typedef struct {
   py_is_v      py_is;
   py_runtime_v py_runtime;
   py_gc_v      py_gc;
+  py_cframe_v  py_cframe;
+  py_iframe_v  py_iframe;
 
   int          major;
   int          minor;
@@ -160,7 +191,7 @@ typedef struct {
 #define UNSUPPORTED_VERSION                                                    \
   log_w("Unsupported Python version detected. Austin might not work as expected.")
 
-#define LATEST_VERSION                  (&python_v3_10)
+#define LATEST_VERSION                  (&python_v3_11)
 
 #define PY_CODE(s) {                    \
   sizeof(s),                            \
@@ -170,6 +201,17 @@ typedef struct {
   offsetof(s, co_firstlineno)           \
 }
 
+#define PY_CODE_311(s) {                \
+  sizeof(s),                            \
+  offsetof(s, co_filename),             \
+  offsetof(s, co_name),                 \
+  offsetof(s, co_linetable),            \
+  offsetof(s, co_firstlineno),          \
+  offsetof(s, co_code_adaptive),        \
+  offsetof(s, co_qualname),             \
+}
+
+
 #define PY_FRAME(s) {                   \
   sizeof(s),                            \
   offsetof(s, f_back),                  \
@@ -177,6 +219,21 @@ typedef struct {
   offsetof(s, f_lasti),                 \
   offsetof(s, f_lineno),                \
 }
+
+#define PY_CFRAME_311(s) {              \
+  sizeof(s),                            \
+  offsetof(s, current_frame),           \
+  offsetof(s, previous),                \
+}
+
+#define PY_IFRAME_311(s) {              \
+  sizeof(s),                            \
+  offsetof(s, f_code),                  \
+  offsetof(s, previous),                \
+  offsetof(s, prev_instr),              \
+  offsetof(s, is_entry),                \
+}
+
 
 /* Hack. Python 3.3 and below don't have the prev field */
 #define PY_THREAD_2(s) {                \
@@ -197,6 +254,17 @@ typedef struct {
   offsetof(s, thread_id)                \
 }
 
+#define PY_THREAD_311(s) {              \
+  sizeof(s),                            \
+  offsetof(s, prev),                    \
+  offsetof(s, next),                    \
+  offsetof(s, interp),                  \
+  offsetof(s, cframe),                  \
+  offsetof(s, thread_id),               \
+  offsetof(s, native_thread_id),        \
+  offsetof(s, datastack_chunk),         \
+}
+
 #define PY_UNICODE(n) {                 \
   n                                     \
 }
@@ -211,10 +279,23 @@ typedef struct {
   offsetof(s, gc),                      \
 }
 
+#define PY_RUNTIME_311(s) {             \
+  sizeof(s),                            \
+  offsetof(s, interpreters.head),       \
+}
+
+
 #define PY_IS(s) {                      \
   sizeof(s),                            \
   offsetof(s, next),                    \
   offsetof(s, tstate_head),             \
+  offsetof(s, gc),                      \
+}
+
+#define PY_IS_311(s) {                  \
+  sizeof(s),                            \
+  offsetof(s, next),                    \
+  offsetof(s, threads.head),            \
   offsetof(s, gc),                      \
 }
 
@@ -305,6 +386,19 @@ python_v python_v3_10 = {
   PY_GC       (struct _gc_runtime_state3_8),
 };
 
+// ---- Python 3.11 -----------------------------------------------------------
+
+python_v python_v3_11 = {
+  PY_CODE_311     (PyCodeObject3_11),
+  PY_FRAME        (PyFrameObject3_10),  // Irrelevant
+  PY_THREAD_311   (PyThreadState3_11),
+  PY_IS_311       (PyInterpreterState3_11),
+  PY_RUNTIME_311  (_PyRuntimeState3_11),
+  PY_GC           (struct _gc_runtime_state3_8),
+  PY_CFRAME_311   (_PyCFrame3_11),
+  PY_IFRAME_311   (_PyInterpreterFrame3_11),
+};
+
 // ----------------------------------------------------------------------------
 static inline python_v *
 get_version_descriptor(int major, int minor, int patch) {
@@ -365,6 +459,9 @@ get_version_descriptor(int major, int minor, int patch) {
 
     // 3.10
     case 10: py_v = &python_v3_10; break;
+
+    // 3.11
+    case 11: py_v = &python_v3_11; break;
 
     default: py_v = LATEST_VERSION;
       UNSUPPORTED_VERSION;

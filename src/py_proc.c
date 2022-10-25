@@ -40,6 +40,7 @@
 
 #include "argparse.h"
 #include "bin.h"
+#include "events.h"
 #include "py_string.h"
 #include "error.h"
 #include "hints.h"
@@ -67,7 +68,7 @@
 static ctime_t _end_time;
 
 
-#define py_proc__memcpy(self, raddr, size, dest)  copy_memory(PROC_REF, raddr, size, dest)
+#define py_proc__memcpy(self, raddr, size, dest)  copy_memory(self->proc_ref, raddr, size, dest)
 
 
 // ----------------------------------------------------------------------------
@@ -93,24 +94,6 @@ static int _py_proc__check_sym(py_proc_t *, char *, void *);
 // ----------------------------------------------------------------------------
 
 
-// ---- Exported symbols ----
-#define DYNSYM_COUNT                   3
-
-#ifdef PL_MACOS
-  #define SYM_PREFIX "__"
-#else
-  #define SYM_PREFIX "_"
-#endif
-
-static const char * _dynsym_array[DYNSYM_COUNT] = {
-  SYM_PREFIX "PyThreadState_Current",
-  SYM_PREFIX "PyRuntime",
-  "interp_head"
-};
-
-static long _dynsym_hash_array[DYNSYM_COUNT] = {0};
-
-
 #ifdef DEREF_SYM
 static int
 _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
@@ -118,16 +101,13 @@ _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
     return 0;
 
   for (register int i = 0; i < DYNSYM_COUNT; i++) {
-    if (
-      string__hash(name) == _dynsym_hash_array[i]
-    &&strcmp(name, _dynsym_array[i]) == 0
-    ) {
-      *(&(self->tstate_curr_raddr) + i) = value;
+    if (success(symcmp(name, i))) {
+      self->symbols[i] = value;
       log_d("Symbol %s found @ %p", name, value);
-      return 1;
+      return TRUE;
     }
   }
-  return 0;
+  return FALSE;
 }
 #endif
 
@@ -152,17 +132,73 @@ _get_version_from_executable(char * binary, int * major, int * minor, int * patc
 
   fp = _popen(cmd, "r");
   if (!isvalid(fp)) {
-    return NOVERSION;
+    FAIL;
   }
+
+  with_resources;
 
   while (fgets(version, sizeof(version) - 1, fp) != NULL) {
     if (sscanf(version, "Python %d.%d.%d", major, minor, patch) == 3)
-      break;
+      OK;
   }
 
+  NOK;
+
+release:
   _pclose(fp);
-  return (*major << 16) | (*minor << 8) | *patch;
-}
+
+  released;
+} /* _get_version_from_executable */
+
+static int
+_get_version_from_filename(char * filename, int * major, int * minor, int * patch) {
+  #if defined PL_LINUX                                               /* LINUX */
+  char         * base       = filename;
+  char         * end        = base + strlen(base);
+  const char   * needle     = "python";
+  const size_t   needle_len = strlen(needle);
+
+  while (base < end) {
+    base = strstr(base, needle);
+    if (!isvalid(base)) {
+      break;
+    }
+    base += needle_len;
+    if (sscanf(base,"%d.%d", major, minor) == 2) {
+      SUCCESS;
+    }
+  }
+
+  #elif defined PL_WIN                                                 /* WIN */
+  // Assume the library path is of the form *.python[23][0-9]+[.]dll
+  int n = strlen(filename);
+  if (n < 10) {
+    FAIL;
+  }
+
+  char * p = filename + n - 1;
+  while (*(p--) != 'n' && p > filename);
+  p++;
+  *major = *(p++) - '0';
+  if (*major != 2 && *major != 3) {
+    FAIL;
+  }
+
+  if (sscanf(p,"%d.dll", minor) == 1) {
+    SUCCESS;
+  }
+
+  #elif defined PL_MACOS                                               /* MAC */
+  char * ver_needle = strstr(filename, "3.");
+  if (ver_needle == NULL) ver_needle = strstr(filename, "2.");
+  if (ver_needle != NULL && sscanf(ver_needle, "%d.%d", major, minor) == 2) {
+    SUCCESS;
+  }  
+
+  #endif
+
+  FAIL;
+} /* _get_version_from_filename */
 
 #if defined PL_MACOS
 static int
@@ -220,7 +256,7 @@ release:
   if (fd != -1) close(fd);
 
   released;
-}
+} /* _find_version_in_binary */
 #endif
 
 
@@ -231,62 +267,46 @@ _py_proc__infer_python_version(py_proc_t * self) {
 
   int major = 0, minor = 0, patch = 0;
 
+  // Starting with Python 3.11 we can rely on the Py_Version symbol
+  if (isvalid(self->symbols[DYNSYM_HEX_VERSION])) {
+    unsigned long py_version = 0;
+    
+    if (fail(py_proc__memcpy(self, self->symbols[DYNSYM_HEX_VERSION], sizeof(py_version), &py_version))) {
+      log_e("Failed to dereference remote Py_Version symbol");
+      return NOVERSION;
+    }
+    
+    major = (py_version>>24) & 0xFF;
+    minor = (py_version>>16) & 0xFF;
+    patch = (py_version>>8)  & 0xFF;
+
+    log_d("Python version (from symbol): %d.%d.%d", major, minor, patch);
+
+    self->py_v = get_version_descriptor(major, minor, patch);
+    
+    SUCCESS;
+  }
+
+  // Try to infer the Python version from the library file name.
+  if (
+    isvalid(self->lib_path)
+  &&success(_get_version_from_filename(self->lib_path, &major, &minor, &patch))
+  ) goto from_filename;
+
   // On Linux, the actual executable is sometimes picked as a library. Hence we
   // try to execute the library first and see if we get a version from it. If
   // not, we fall back to the actual binary, if any.
   #if defined PL_UNIX
   if (
     isvalid(self->lib_path)
-  &&(_get_version_from_executable(self->lib_path, &major, &minor, &patch) != NOVERSION)
+  &&(success(_get_version_from_executable(self->lib_path, &major, &minor, &patch)))
   ) goto from_exe;
   #endif
 
   if (
     isvalid(self->bin_path)
-  &&(_get_version_from_executable(self->bin_path, &major, &minor, &patch) != NOVERSION)
+  &&(success(_get_version_from_executable(self->bin_path, &major, &minor, &patch)))
   ) goto from_exe;
-
-  if (isvalid(self->lib_path)) {
-    #if defined PL_LINUX                                             /* LINUX */
-    char         * base       = self->lib_path;
-    char         * end        = base + strlen(self->lib_path);
-    const char   * needle     = "python";
-    const size_t   needle_len = strlen(needle);
-
-    while (base < end) {
-      base = strstr(base, needle);
-      if (!isvalid(base)) {
-        break;
-      }
-      base += needle_len;
-      if (sscanf(base,"%d.%d", &major, &minor) == 2) {
-        self->py_v = get_version_descriptor(major, minor, patch);
-        SUCCESS;
-      }
-    }
-
-    #elif defined PL_WIN                                               /* WIN */
-    // Assume the library path is of the form *pythonMm.dll
-    int n = strlen(self->lib_path);
-    major = self->lib_path[n - 6] - '0';
-    minor = self->lib_path[n - 5] - '0';
-
-    #elif defined PL_MACOS                                             /* MAC */
-    char * ver_needle = strstr(self->lib_path, "/3.");
-    if (ver_needle == NULL) ver_needle = strstr(self->lib_path, "/2.");
-    if (ver_needle == NULL || sscanf(ver_needle, "/%d.%d", &major, &minor) == 2) {
-      self->py_v = get_version_descriptor(major, minor, patch);
-      SUCCESS;
-    }
-
-    // Still no version detected so we look into the binary content
-    int version = NOVERSION;
-    if (isvalid(self->lib_path) && (version = _find_version_in_binary(self->lib_path))) {
-      self->py_v = get_version_descriptor(MAJOR(version), MINOR(version), PATCH(version));
-      SUCCESS;
-    }
-    #endif
-  }
 
   #if defined PL_MACOS
   if (major == 0) {
@@ -294,6 +314,7 @@ _py_proc__infer_python_version(py_proc_t * self) {
     // content for clues
     int version = NOVERSION;
     if (isvalid(self->bin_path) && (version = _find_version_in_binary(self->bin_path))) {
+      log_d("Python version (from binary content): %d.%d.%d", major, minor, patch);
       self->py_v = get_version_descriptor(MAJOR(version), MINOR(version), PATCH(version));
       SUCCESS;
     }
@@ -304,6 +325,14 @@ _py_proc__infer_python_version(py_proc_t * self) {
   FAIL;
 
 from_exe:
+  log_d("Python version (from executable): %d.%d.%d", major, minor, patch);
+  goto set_version;
+
+from_filename:
+  log_d("Python version (from file name): %d.%d.%d", major, minor, patch);
+  goto set_version;
+
+set_version:
   self->py_v = get_version_descriptor(major, minor, patch);
   SUCCESS;
 
@@ -371,7 +400,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   );
 
   #if defined PL_LINUX
-  raddr_t thread_raddr = {PROC_REF, V_FIELD(void *, is, py_is, o_tstate_head)};
+  raddr_t thread_raddr = {self->proc_ref, V_FIELD(void *, is, py_is, o_tstate_head)};
   py_thread_t thread;
 
   if (fail(py_thread__fill_from_raddr(&thread, &thread_raddr, self))) {
@@ -381,9 +410,15 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   log_d("Stack trace constructed from possible interpreter state");
 
-  if (py_v->major == 3 && py_v->minor >= 9) {
+  if (V_MIN(3, 9)) {
     self->gc_state_raddr = (void *) (((char *) raddr) + py_v->py_is.o_gc);
     log_d("GC runtime state @ %p", self->gc_state_raddr);
+  }
+
+  if (V_MIN(3, 11)) {
+    // In Python 3.11 we can make use of the native_thread_id field on Linux
+    // to get the thread id.
+    SUCCESS;
   }
 
   // Try to determine the TID by reading the remote struct pthread structure.
@@ -507,26 +542,26 @@ _py_proc__deref_interp_head(py_proc_t * self) {
   
   void * interp_head_raddr;
 
-  if (self->py_runtime_raddr != NULL) {
+  if (self->symbols[DYNSYM_RUNTIME] != NULL) {
     _PyRuntimeState py_runtime;
-    if (py_proc__get_type(self, self->py_runtime_raddr, py_runtime)) {
+    if (py_proc__get_type(self, self->symbols[DYNSYM_RUNTIME], py_runtime)) {
       log_d(
         "Cannot copy _PyRuntimeState structure from remote address %p",
-        self->py_runtime_raddr
+        self->symbols[DYNSYM_RUNTIME]
       );
       FAIL;
     }
     interp_head_raddr = V_FIELD(void *, py_runtime, py_runtime, o_interp_head);
-    if (py_v->major == 3 && py_v->minor < 9) {
-      self->gc_state_raddr = self->py_runtime_raddr + py_v->py_runtime.o_gc;
+    if (V_MAX(3, 8)) {
+      self->gc_state_raddr = self->symbols[DYNSYM_RUNTIME] + py_v->py_runtime.o_gc;
       log_d("GC runtime state @ %p", self->gc_state_raddr);
     }
   }
-  else if (self->interp_head_raddr != NULL) {
-    if (py_proc__get_type(self, self->interp_head_raddr, interp_head_raddr)) {
+  else if (self->symbols[DYNSYM_INTERP_HEAD] != NULL) {
+    if (py_proc__get_type(self, self->symbols[DYNSYM_INTERP_HEAD], interp_head_raddr)) {
       log_d(
         "Cannot copy PyInterpreterState structure from remote address %p",
-        self->interp_head_raddr
+        self->symbols[DYNSYM_INTERP_HEAD]
       );
       FAIL;
     }
@@ -547,16 +582,16 @@ static inline void *
 _py_proc__get_current_thread_state_raddr(py_proc_t * self) {
   void * p_tstate_current;
 
-  if (self->py_runtime_raddr != NULL) {
+  if (self->symbols[DYNSYM_RUNTIME] != NULL) {
     if (self->tstate_current_offset == 0 || py_proc__get_type(
       self,
-      self->py_runtime_raddr + self->tstate_current_offset,
+      self->symbols[DYNSYM_RUNTIME] + self->tstate_current_offset,
       p_tstate_current
     )) return (void *) -1;
   }
 
-  else if (self->tstate_curr_raddr != NULL) {
-    if (py_proc__get_type(self, self->tstate_curr_raddr, p_tstate_current))
+  else if (self->symbols[DYNSYM_THREADSTATE_CURRENT] != NULL) {
+    if (py_proc__get_type(self, self->symbols[DYNSYM_THREADSTATE_CURRENT], p_tstate_current))
       return (void *) -1;
   }
 
@@ -608,7 +643,7 @@ _py_proc__find_interpreter_state(py_proc_t * self) {
       V_FIELD(void*, tstate_current, py_thread, o_thread_id) == 0 && \
       V_FIELD(void*, tstate_current, py_thread, o_prev)      != 0
     ) {
-      self->tstate_curr_raddr = V_FIELD(void*, tstate_current, py_thread, o_prev);
+      self->symbols[DYNSYM_THREADSTATE_CURRENT] = V_FIELD(void*, tstate_current, py_thread, o_prev);
       return 1;
     } */
 }
@@ -765,10 +800,10 @@ _py_proc__run(py_proc_t * self) {
 
   #ifdef DEREF_SYM
   if (
-    self->tstate_curr_raddr == NULL &&
-    self->py_runtime_raddr  == NULL &&
-    self->interp_head_raddr == NULL &&
-    self->gc_state_raddr    == NULL
+    self->symbols[DYNSYM_THREADSTATE_CURRENT] == NULL &&
+    self->symbols[DYNSYM_RUNTIME]             == NULL &&
+    self->symbols[DYNSYM_INTERP_HEAD]         == NULL &&
+    self->gc_state_raddr                      == NULL
   )
     log_w("No remote symbol references have been set.");
   #endif
@@ -810,21 +845,27 @@ py_proc_new(int child) {
   py_proc->min_raddr = (void *) -1;
   py_proc->gc_state_raddr = NULL;
 
-  // Pre-hash symbol names
-  if (_dynsym_hash_array[0] == 0) {
-    for (register int i = 0; i < DYNSYM_COUNT; i++) {
-      _dynsym_hash_array[i] = string__hash((char *) _dynsym_array[i]);
-    }
-  }
+  _prehash_symbols();
 
   py_proc->frames_heap = py_proc->frames = NULL_MEM_BLOCK;
 
   py_proc->frame_cache = lru_cache_new(MAX_STACK_SIZE, (void (*)(value_t)) frame__destroy);
-
   if (!isvalid(py_proc->frame_cache)) {
-    log_e("Failed to allocate code object cache");
+    log_e("Failed to allocate frame cache");
     goto error;
   }
+  #ifdef DEBUG
+  py_proc->frame_cache->name = "frame cache";
+  #endif
+
+  py_proc->string_cache = lru_cache_new(MAX_STRING_CACHE_SIZE, (void (*)(value_t)) free);
+  if (!isvalid(py_proc->string_cache)) {
+    log_e("Failed to allocate string cache");
+    goto error;
+  }
+  #ifdef DEBUG
+  py_proc->string_cache->name = "string cache";
+  #endif
 
   py_proc->extra = (proc_extra_info *) calloc(1, sizeof(proc_extra_info));
   if (!isvalid(py_proc->extra))
@@ -844,16 +885,20 @@ py_proc__attach(py_proc_t * self, pid_t pid) {
   log_d("Attaching to process with PID %d", pid);
 
   #if defined PL_WIN                                                   /* WIN */
-  self->extra->h_proc = OpenProcess(
+  self->proc_ref = OpenProcess(
     PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid
   );
-  if (self->extra->h_proc == INVALID_HANDLE_VALUE) {
+  if (self->proc_ref == INVALID_HANDLE_VALUE) {
     set_error(EPROCATTACH);
     FAIL;
   }
   #endif                                                               /* ANY */
 
   self->pid = pid;
+
+  #if defined PL_LINUX                                               /* LINUX */
+  self->proc_ref = pid;
+  #endif
 
   if (fail(_py_proc__run(self))) {
     #if defined PL_WIN
@@ -962,7 +1007,7 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
     set_error(EPROCFORK);
     FAIL;
   }
-  self->extra->h_proc = piProcInfo.hProcess;
+  self->proc_ref = piProcInfo.hProcess;
   self->pid = (pid_t) piProcInfo.dwProcessId;
 
   CloseHandle(hChildStdInRd);
@@ -986,6 +1031,8 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   #endif                                                               /* ANY */
 
   #if defined PL_LINUX
+  self->proc_ref = self->pid;
+
   // On Linux we need to wait for the forked process or otherwise it will
   // become a zombie and we cannot tell with kill if it has terminated.
   pthread_create(&(self->extra->wait_thread_id), NULL, wait_thread, (void *) self);
@@ -1007,6 +1054,10 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
     #endif
   }
 
+  #ifdef NATIVE
+  self->timestamp = gettime();
+  #endif
+
   SUCCESS;
 }
 
@@ -1027,8 +1078,8 @@ py_proc__wait(py_proc_t * self) {
     WaitForSingleObject(self->extra->h_reader_thread, INFINITE);
     CloseHandle(self->extra->h_reader_thread);
   }
-  WaitForSingleObject(self->extra->h_proc, INFINITE);
-  CloseHandle(self->extra->h_proc);
+  WaitForSingleObject(self->proc_ref, INFINITE);
+  CloseHandle(self->proc_ref);
   #else                                                               /* UNIX */
   #ifdef NATIVE
   wait(NULL);
@@ -1044,7 +1095,7 @@ py_proc__wait(py_proc_t * self) {
 
 static inline int
 _py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
-  if (self->py_runtime_raddr == NULL)
+  if (self->symbols[DYNSYM_RUNTIME] == NULL)
     FAIL;
 
   V_DESC(self->py_v);
@@ -1052,7 +1103,7 @@ _py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
   void            * interp_head_raddr;
   _PyRuntimeState   py_runtime;
 
-  if (py_proc__get_type(self, self->py_runtime_raddr, py_runtime))
+  if (py_proc__get_type(self, self->symbols[DYNSYM_RUNTIME], py_runtime))
     FAIL;
 
   interp_head_raddr = V_FIELD(void *, py_runtime, py_runtime, o_interp_head);
@@ -1064,14 +1115,14 @@ _py_proc__find_current_thread_offset(py_proc_t * self, void * thread_raddr) {
 
   register int hit_count = 0;
   for (
-    register void ** raddr = (void **) self->py_runtime_raddr;
-    (void *) raddr < self->py_runtime_raddr + PYRUNTIMESTATE_SIZE;
+    register void ** raddr = (void **) self->symbols[DYNSYM_RUNTIME];
+    (void *) raddr < self->symbols[DYNSYM_RUNTIME] + PYRUNTIMESTATE_SIZE;
     raddr++
   ) {
     py_proc__get_type(self, raddr, current_thread_raddr);
     if (current_thread_raddr == thread_raddr) {
       if (++hit_count == 2) {
-        self->tstate_current_offset = (void *) raddr - self->py_runtime_raddr;
+        self->tstate_current_offset = (void *) raddr - self->symbols[DYNSYM_RUNTIME];
         log_d(
           "Offset of _PyRuntime.gilstate.tstate_current found at %x",
           self->tstate_current_offset
@@ -1090,7 +1141,7 @@ int
 py_proc__is_running(py_proc_t * self) {
   #if defined PL_WIN                                                   /* WIN */
   DWORD ec = 0;
-  return GetExitCodeProcess(self->extra->h_proc, &ec) ? ec == STILL_ACTIVE : 0;
+  return GetExitCodeProcess(self->proc_ref, &ec) ? ec == STILL_ACTIVE : 0;
 
   #elif defined PL_MACOS                                             /* MACOS */
   return success(check_pid(self->pid));
@@ -1148,20 +1199,26 @@ _py_proc__interrupt_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
   }
 
   do {
-    if (fail(py_thread__set_idle(&py_thread)))
-      FAIL;
     if (pargs.kernel && fail(py_thread__save_kernel_stack(&py_thread)))
       FAIL;
+
+    // !IMPORTANT! We need to retrieve the idle state *before* trying to
+    // interrupt the thread, else it will always be idle!
+    if (fail(py_thread__set_idle(&py_thread)))
+      FAIL;
+
     if (fail(wait_ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0))) {
       log_e("ptrace: failed to interrupt thread %d", py_thread.tid);
       FAIL;
     }
+
     if (fail(py_thread__set_interrupted(&py_thread, TRUE))) {
       if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
         log_d("ptrace: failed to resume interrupted thread %d (errno: %d)", py_thread.tid, errno);
       }
       FAIL;
     }
+    
     log_t("ptrace: thread %d interrupted", py_thread.tid);
   } while (success(py_thread__next(&py_thread)));
   
@@ -1207,12 +1264,14 @@ py_proc__sample(py_proc_t * self) {
   V_DESC(self->py_v);
 
   PyInterpreterState is;
-  if (fail(py_proc__get_type(self, self->is_raddr, is)))
+  if (fail(py_proc__get_type(self, self->is_raddr, is))) {
+    log_ie("Failed to get interpreter state while sampling");
     FAIL;
+  }
 
   void * tstate_head = V_FIELD(void *, is, py_is, o_tstate_head);
   if (isvalid(tstate_head)) {
-    raddr_t raddr = { .pid = PROC_REF, .addr = tstate_head };
+    raddr_t raddr = { .pref = self->proc_ref, .addr = tstate_head };
     py_thread_t py_thread;
 
     #ifdef NATIVE
@@ -1224,6 +1283,7 @@ py_proc__sample(py_proc_t * self) {
     #endif
 
     if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self))) {
+      log_ie("Failed to fill thread from raddr while sampling");
       if (is_fatal(austin_errno)) {
         FAIL;
       }
@@ -1238,7 +1298,7 @@ py_proc__sample(py_proc_t * self) {
     do {
       if (pargs.memory) {
         mem_delta = 0;
-        if (self->py_runtime_raddr != NULL && current_thread == (void *) -1) {
+        if (self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void *) -1) {
           if (_py_proc__find_current_thread_offset(self, py_thread.raddr.addr))
             continue;
           else
@@ -1250,7 +1310,7 @@ py_proc__sample(py_proc_t * self) {
         }
       }
 
-      py_thread__print_collapsed_stack(
+      py_thread__emit_collapsed_stack(
         &py_thread,
         time_delta,
         mem_delta
@@ -1284,14 +1344,14 @@ py_proc__log_version(py_proc_t * self, int parent) {
   if (pargs.pipe) {
     if (patch == 0xFF) {
       if (parent) {
-        meta("python: %d.%d.?", major, minor);
+        emit_metadata("python", "%d.%d.?", major, minor);
       }
       else
         log_m("# python: %d.%d.?", major, minor);
     }
     else {
       if (parent) {
-        meta("python: %d.%d.%d", major, minor, patch);
+        emit_metadata("python", "%d.%d.%d", major, minor, patch);
       }
       else
         log_m("# python: %d.%d.%d", major, minor, patch);
@@ -1314,7 +1374,7 @@ py_proc__terminate(py_proc_t * self) {
     #if defined PL_UNIX
     kill(self->pid, SIGTERM);
     #else
-    TerminateProcess(self->extra->h_proc, 42);
+    TerminateProcess(self->proc_ref, 42);
     #endif
   }
 }
@@ -1337,6 +1397,7 @@ py_proc__destroy(py_proc_t * self) {
   sfree(self->bss);
   sfree(self->extra);
 
+  lru_cache__destroy(self->string_cache);
   lru_cache__destroy(self->frame_cache);
 
   free(self);

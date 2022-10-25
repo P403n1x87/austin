@@ -27,7 +27,7 @@ import threading
 
 def keep_cpu_busy():
     a = []
-    for i in range(2000000):
+    for i in range(6000000):
         a.append(i)
         if i % 1000000 == 0:
             print("Unwanted output " + str(i))

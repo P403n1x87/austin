@@ -38,12 +38,11 @@ from flaky import flaky
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @allpythons()
 def test_accuracy_fast_recursive(py, heap):
-    result = austin("-i", "1ms", *heap, *python(py), target("recursive.py"))
+    result = austin("-i", "1ms", "-P", *heap, *python(py), target("recursive.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_pattern(result.stdout, "sum_up_to"), compress(result.stdout)
-    assert has_pattern(result.stdout, ":INVALID:"), compress(result.stdout)
 
     for _ in samples(result.stdout):
         if "sum_up_to" in _ and "<module>" in _:
-            assert len(_.split(";")) <= 20, _
+            assert len(_.split(";")) <= 20 or has_pattern(_, ":INVALID:"), _

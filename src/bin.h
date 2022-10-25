@@ -22,6 +22,8 @@
 
 typedef unsigned int bin_attr_t;
 
+#define INVALID_ATTR                   0
+
 #define BINARY_MIN_SIZE        (1 << 20)         // A meaningful Python binary takes MBs.
 
 #define BINARY_TYPE(x)                  (x & 3)  // Get binary type

@@ -26,6 +26,7 @@ from test.utils import (
     austin,
     has_pattern,
     metadata,
+    mojo,
     python,
     samples,
     target,
@@ -35,8 +36,9 @@ import pytest
 
 
 @allpythons(min=(3, 7))
-def test_gc_off(py):
-    result = austin("-i", "1ms", *python(py), target("target_gc.py"))
+@mojo
+def test_gc_off(py, mojo):
+    result = austin("-i", "1ms", *python(py), target("target_gc.py"), mojo=mojo)
     assert result.returncode == 0
 
     assert not has_pattern(":GC:", result.stdout)
@@ -47,8 +49,9 @@ def test_gc_off(py):
     reason="GC sampling seems to work reliably only on Linux",
 )
 @allpythons(min=(3, 7))
-def test_gc_on(py):
-    result = austin("-gi", "1ms", *python(py), target("target_gc.py"))
+@mojo
+def test_gc_on(py, mojo):
+    result = austin("-gi", "1ms", *python(py), target("target_gc.py"), mojo=mojo)
     assert result.returncode == 0
 
     meta = metadata(result.stdout)
@@ -59,14 +62,15 @@ def test_gc_on(py):
 
 
 @allpythons(min=(3, 7))
-def test_gc_disabled(py, monkeypatch):
+@mojo
+def test_gc_disabled(py, monkeypatch, mojo):
     monkeypatch.setenv("GC_DISABLED", "1")
 
-    result = austin("-gi", "10ms", *python(py), target("target_gc.py"))
+    result = austin("-gi", "10ms", *python(py), target("target_gc.py"), mojo=mojo)
     assert result.returncode == 0
 
     meta = metadata(result.stdout)
-    assert int(meta["gc"]) < int(meta["duration"]) / 20
+    assert int(meta["gc"]) * 0.8 < int(meta["duration"]) / 20
 
     gcs = [_ for _ in samples(result.stdout) if ":GC:" in _]
     assert len(gcs) < 5

@@ -24,10 +24,10 @@
 #include <math.h>
 #endif
 #include <stdio.h>
-#include <stdlib.h>
 
 #include "cache.h"
 #include "logging.h"
+#include "math.h"
 
 // -- Queue -------------------------------------------------------------------
 
@@ -229,6 +229,11 @@ hash_table_new(int capacity) {
   hash->capacity = capacity;
   hash->chains = (chain_t **) calloc(hash->capacity, sizeof(chain_t *));
 
+  #ifdef DEBUG
+  hash->set_total = 0;
+  hash->set_empty = 0;
+  #endif
+
   return hash;
 }
 
@@ -254,10 +259,6 @@ hash_table__get(hash_table_t *self, key_dt key) {
 }
 
 // ----------------------------------------------------------------------------
-#ifdef DEBUG
-static unsigned int _set_total = 0;
-static unsigned int _set_empty = 0;
-#endif
 
 void
 hash_table__set(hash_table_t *self, key_dt key, value_t value) {
@@ -267,7 +268,7 @@ hash_table__set(hash_table_t *self, key_dt key, value_t value) {
   index_t index = _hash_table__index(self, key);
 
   #ifdef DEBUG
-  _set_total++;
+  self->set_total++;
   #endif
 
   chain_t * chain = self->chains[index];
@@ -275,7 +276,7 @@ hash_table__set(hash_table_t *self, key_dt key, value_t value) {
     if (self->size >= self->capacity)
       return;
     #ifdef DEBUG
-    _set_empty++;
+    self->set_empty++;
     #endif
     self->chains[index] = chain_head();
     self->size += chain__add(self->chains[index], key, value);
@@ -315,7 +316,9 @@ hash_table__destroy(hash_table_t *self) {
     return;
 
   if (isvalid(self->chains)) {
-    for (int i = 0; i < self->capacity; chain__destroy(self->chains[i++]));
+    for (int i = 0; i < self->capacity; i++) {
+      chain__destroy(self->chains[i]);
+    }
     sfree(self->chains);
   }
 
@@ -334,6 +337,11 @@ lru_cache_new(int capacity, void (*deallocator)(value_t)) {
   cache->queue    = queue_new(capacity, deallocator);
   cache->hash     = hash_table_new((capacity * 4 / 3) | 1);
 
+  #ifdef DEBUG
+  cache->hits = 0;
+  cache->misses = 0;
+  #endif
+
   return cache;
 }
 
@@ -342,8 +350,16 @@ value_t
 lru_cache__maybe_hit(lru_cache_t *self, key_dt key) {
   queue_item_t *item = (queue_item_t *)hash_table__get(self->hash, key);
 
-  if (!isvalid(item))
+  if (!isvalid(item)) {
+    #ifdef DEBUG
+    self->misses++;
+    #endif
     return NULL;
+  }
+
+  #ifdef DEBUG
+  self->hits++;
+  #endif
 
   // Bring hit element to the front of the queue
   if (item != self->queue->front)
@@ -391,13 +407,21 @@ lru_cache__destroy(lru_cache_t *self) {
   if (!isvalid(self))
     return;
 
+  #ifdef DEBUG
+  size_t total = self->hits + self->misses;
   log_d(
-    "LRU cache collisions: %d/%d (%0.2f%%, prob: %0.2f%%)\n",
-    _set_total - _set_empty,
-    _set_total,
-    (_set_total - _set_empty) * 100.0 / _set_total,
+    "(%s) hit ratio: %d/%d (%0.2f%%)\n",
+    self->name, self->hits, total, (self->hits) * 100.0 / total
+  );
+  log_d(
+    "(%s) hash collisions: %d/%d (%0.2f%%, prob: %0.2f%%)\n",
+    self->name,
+    self->hash->set_total - self->hash->set_empty,
+    self->hash->set_total,
+    (self->hash->set_total - self->hash->set_empty) * 100.0 / self->hash->set_total,
     100.0 * (1 - exp(-((double) self->queue->count) * (self->queue->count - 1.0) / 2.0 / self->hash->capacity))
   );
+  #endif
 
   queue__destroy(self->queue);
   hash_table__destroy(self->hash);

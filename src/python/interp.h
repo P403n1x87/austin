@@ -28,9 +28,11 @@
 #ifndef PYTHON_INTERP_H
 #define PYTHON_INTERP_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "gc.h"
+#include "misc.h"
 
 // ---- pystate.h -------------------------------------------------------------
 
@@ -45,10 +47,6 @@ typedef struct _is2 {
 // ---- internal/pycore_interp.h ----------------------------------------------
 
 typedef void *PyThread_type_lock;
-
-typedef struct _Py_atomic_int {
-    int _value;
-} _Py_atomic_int;
 
 struct _pending_calls {
     PyThread_type_lock lock;
@@ -74,7 +72,7 @@ struct _ceval_state {
 typedef struct _is3_9 {
 
     struct _is3_9 *next;
-    struct _is3_9 *tstate_head;
+    struct _ts *tstate_head;
 
     /* Reference to the _PyRuntime global variable. This field exists
        to not have to pass runtime in addition to tstate to a function.
@@ -92,9 +90,40 @@ typedef struct _is3_9 {
     struct _gc_runtime_state3_8 gc;
 } PyInterpreterState3_9;
 
+typedef struct _is3_11 {
+
+    struct _is3_11 *next;
+
+    struct pythreads {
+        uint64_t next_unique_id;
+        struct _ts *head;  /* The linked list of threads, newest first. */
+        long count;
+        size_t stacksize;
+    } threads;
+
+    struct pyruntimestate3_11 *runtime;
+
+    int64_t id;
+    int64_t id_refcount;
+    int requires_idref;
+    PyThread_type_lock id_mutex;
+
+    int _initialized;
+    int finalizing;
+
+    /* Was this interpreter statically allocated? */
+    bool _static;
+
+    struct _ceval_state ceval;
+    struct _gc_runtime_state3_8 gc;
+} PyInterpreterState3_11;
+
+
+
 typedef union {
-  PyInterpreterState2   v2;
-  PyInterpreterState3_9 v3_9;
+  PyInterpreterState2    v2;
+  PyInterpreterState3_9  v3_9;
+  PyInterpreterState3_11 v3_11;
 } PyInterpreterState;
 
 #endif

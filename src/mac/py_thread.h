@@ -100,7 +100,7 @@ _py_thread__is_idle(py_thread_t * self) {
             &ti,
             sizeof(ti))
     != sizeof(ti)) {
-        log_d("Cannot get thread info for thread :%lx", self->tid);
+        log_d("Cannot get thread info for thread %lx", self->tid);
         return -1;
     }
     

@@ -33,9 +33,11 @@
 #include "argparse.h"
 #include "austin.h"
 #include "error.h"
+#include "events.h"
 #include "hints.h"
 #include "logging.h"
 #include "mem.h"
+#include "mojo.h"
 #include "msg.h"
 #include "platform.h"
 #include "python/abi.h"
@@ -249,6 +251,10 @@ int main(int argc, char ** argv) {
   // Initialise sampling metrics.
   stats_reset();
 
+  if (pargs.binary) {
+    mojo_header();
+  }
+
   if (pargs.attach_pid == 0) {
     if (
       (fail(py_proc__start(py_proc, argv[exec_arg], (char **) &argv[exec_arg]))
@@ -308,6 +314,7 @@ int main(int argc, char ** argv) {
 
   stats_start();
 
+
   // Start sampling
   if (pargs.children) {
     do_child_processes(py_proc);
@@ -330,9 +337,10 @@ int main(int argc, char ** argv) {
 
   // Log sampling metrics
   NL;
-  meta("duration: %lu", stats_duration());
+  
+  emit_metadata("duration", "%lu", stats_duration());
   if (pargs.gc) {
-    meta("gc: %lu", _gc_time);
+    emit_metadata("gc", "%lu", _gc_time);
   }
 
   stats_log_metrics();NL;

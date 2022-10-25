@@ -1,9 +1,23 @@
+import os
 import platform
 
-PY3_LATEST = 10
+PY3_LATEST = 11
+
+try:
+    REQUESTED_PYTHON_VERSIONS = [
+        tuple(int(_) for _ in v.split("."))
+        for v in os.getenv("AUSTIN_TESTS_PYTHON_VERSIONS", "").split(",")
+    ]
+except Exception:
+    REQUESTED_PYTHON_VERSIONS = None
+
 
 match platform.system():
     case "Darwin":
-        PYTHON_VERSIONS = [(3, _) for _ in range(7, PY3_LATEST + 1)]
+        PYTHON_VERSIONS = REQUESTED_PYTHON_VERSIONS or [
+            (3, _) for _ in range(7, PY3_LATEST + 1)
+        ]
     case _:
-        PYTHON_VERSIONS = [(2, 7)] + [(3, _) for _ in range(5, PY3_LATEST + 1)]
+        PYTHON_VERSIONS = REQUESTED_PYTHON_VERSIONS or [(2, 7)] + [
+            (3, _) for _ in range(5, PY3_LATEST + 1)
+        ]

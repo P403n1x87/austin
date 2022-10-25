@@ -50,12 +50,13 @@ const char * MPERM =
 "to attach to a running Python process. Alternatively, you need to grant the\n"
 "Austin binary the CAP_SYS_PTRACE capability. See\n"
 #elif defined PL_MACOS
-"🔒 Insufficient permissions. Austin requires the use of sudo on Mac OS in order\n"
-"to read the memory of even its child processes. Furthermore, the System \n"
+"🔒 Insufficient permissions. Austin requires the use of sudo on Mac OS to read\n"
+"the memory of even its child processes. Furthermore, the System \n"
 "Integrity Protection prevents Austin from working with Python binaries\n"
-"installed in certain areas of the file system. See\n"
+"installed in certain areas of the file system. In some cases, using a  virtual\n"
+"environment can provide a solution. See\n"
 #endif
-URL("https://github.com/P403n1x87/austin#compatibility")
+URL("https://github.com/P403n1x87/austin#on-macos")
 "for more details";
 #endif // PL_UNIX
 

@@ -29,11 +29,13 @@ from test.utils import (
     compress,
     has_pattern,
     metadata,
+    mojo,
     requires_sudo,
     run_python,
     sum_metric,
     target,
     threads,
+    variants,
 )
 from time import sleep
 
@@ -42,22 +44,28 @@ from flaky import flaky
 
 
 def allpythons():
-    # Attach tests fail on Windows for Python < 3.7
-    return _allpythons(min=(3, 7) if platform.system() == "Windows" else None)
+    # Attach tests fail on Windows for Python < 3.7 and on MacOS for Python < 3
+    match platform.system():
+        case "Windows":
+            return _allpythons(min=(3, 7))
+        case "Darwin":
+            return _allpythons(min=(3,))
+    return _allpythons()
 
 
-@flaky(max_runs=3)
+@flaky(max_runs=6)
 @requires_sudo
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @pytest.mark.parametrize(
     "mode,mode_meta", [("-i", "wall"), ("-si", "cpu"), ("-Ci", "wall"), ("-Csi", "cpu")]
 )
 @allpythons()
-def test_attach_wall_time(py, mode, mode_meta, heap):
+@variants
+def test_attach_wall_time(austin, py, mode, mode_meta, heap):
     with run_python(py, target("sleepy.py")) as p:
-        sleep(0.5)
+        sleep(0.4)
 
-        result = austin(mode, f"10ms", *heap, "-p", str(p.pid))
+        result = austin(mode, "2ms", *heap, "-p", str(p.pid))
         assert result.returncode == 0
 
         ts = threads(result.stdout)
@@ -92,7 +100,6 @@ def test_attach_exposure(py, exposure):
 
         meta = metadata(result.stdout)
 
-        a = sum_metric(result.stdout)
         d = int(meta["duration"])
 
         assert exposure * 800000 <= d < exposure * 1200000
@@ -102,10 +109,10 @@ def test_attach_exposure(py, exposure):
 
 @requires_sudo
 @allpythons()
-def test_where(py):
-    with run_python(py, target("sleepy.py")) as p:
-        sleep(1)
-        result = austin("-w", str(p.pid))
+@mojo
+def test_where(py, mojo):
+    with run_python(py, target("sleepy.py"), sleep_after=1) as p:
+        result = austin("-w", str(p.pid), mojo=mojo)
         assert result.returncode == 0
 
         assert "Process" in result.stdout
@@ -130,26 +137,26 @@ def test_where_multiprocess(py):
             if sum(c for line, c in lines.items() if "Process" in line) >= 3:
                 break
         else:
-            assert False, result.stdout
+            assert False, compress(result.stdout)
 
-        assert sum(c for line, c in lines.items() if "fact" in line) == 2, result.stdout
+        assert sum(c for line, c in lines.items() if "fact" in line) == 2, compress(
+            result.stdout
+        )
         (join_line,) = (line for line in lines if "join" in line)
-        assert lines[join_line] == 1, result.stdout
+        assert lines[join_line] == 1, compress(result.stdout)
 
 
 @flaky(max_runs=3)
 @requires_sudo
 @allpythons()
 def test_where_kernel(py):
-    with run_python(py, target("sleepy.py")) as p:
-        sleep(1)
+    with run_python(py, target("sleepy.py"), sleep_after=1) as p:
         result = austinp("-kw", str(p.pid))
         assert result.returncode == 0
 
-        assert "Process" in result.stdout, result.stdout
-        assert "Thread" in result.stdout, result.stdout
-        assert "sleepy.py" in result.stdout, result.stdout
-        assert "<module>" in result.stdout, result.stdout
-        assert "__select" in result.stdout, result.stdout
-        assert "libc" in result.stdout, result.stdout
-        assert "do_syscall" in result.stdout, result.stdout
+        assert "Process" in result.stdout, compress(result.stdout)
+        assert "Thread" in result.stdout, compress(result.stdout)
+        assert "sleepy.py" in result.stdout, compress(result.stdout)
+        assert "<module>" in result.stdout, compress(result.stdout)
+        assert "libc" in result.stdout, compress(result.stdout)
+        assert "do_syscall" in result.stdout, compress(result.stdout)

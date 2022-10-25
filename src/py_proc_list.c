@@ -229,28 +229,32 @@ py_proc_list__update(py_proc_list_t * self) {
       continue;
 
     char * line = NULL;
-    size_t n;
-    if (getline(&line, &n, stat_file) == 0) {
+    size_t n = 0;
+    if (getline(&line, &n, stat_file) < 0) {
       log_w("Failed to read stat file for process %d", pid);
-      sfree(line);
-      continue;
+      goto release;
     }
-    char * stat = strchr(line, ')') + 2;
+    
+    char * stat = strchr(line, ')');
+    if (!isvalid(stat))
+      goto failed;
+    
+    stat += 2;
     if (stat[0] == ' ') stat++;
-    if (sscanf(
-      stat, "%c %d",
-      (char *) buffer, &(self->pid_table[pid])
-    ) != 2) {
-      log_w("Failed to parse stat file for process %d", pid);
-      sfree(line);
-      continue;
-    }
-    sfree(line);
+    if (sscanf(stat, "%c %d", (char *)buffer, &(self->pid_table[pid])) != 2)
+      goto failed;
 
     if (pid > self->max_pid)
       self->max_pid = pid;
 
+    goto release;
+
+  failed:
+    log_w("Failed to parse stat file for process %d", pid);
+
+  release:
     fclose(stat_file);
+    sfree(line);
   }
 
   closedir(proc_dir);

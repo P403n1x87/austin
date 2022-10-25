@@ -33,4 +33,6 @@ pid_max() {
   return (1 << 22);  // 4M.  WARNING: This could potentially be violated!
 
   #endif
+
+  return 0;
 }

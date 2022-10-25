@@ -27,6 +27,7 @@
 #include <libproc.h>
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
+#include <mach/machine.h>
 #include <mach-o/fat.h>
 #include <mach-o/loader.h>
 #include <mach-o/nlist.h>
@@ -34,6 +35,8 @@
 #include <sys/stat.h>
 #include <sys/param.h>
 #include <sys/proc.h>
+#include <sys/types.h>
+#include <sys/sysctl.h>
 #include <unistd.h>
 
 #include "../hints.h"
@@ -43,8 +46,6 @@
 
 
 #define SYMBOLS                        2
-
-#define PROC_REF                        (self->extra->task_id)
 
 
 #define next_lc(cmd)    (cmd = (struct segment_command *)    ((void *) cmd + cmd->cmdsize));
@@ -64,7 +65,7 @@
 
 
 struct _proc_extra_info {
-  mach_port_t task_id;
+  // void
 };
 
 
@@ -252,49 +253,53 @@ _py_proc__analyze_macho32(py_proc_t * self, void * base, void * map) {
 // ----------------------------------------------------------------------------
 static bin_attr_t
 _py_proc__analyze_fat(py_proc_t * self, void * base, void * map) {
-  log_t("Analyze fat binary");
-  bin_attr_t bin_attrs = 0;
+  cpu_type_t cpu;
+  int is_abi64;
+  size_t cpu_size = sizeof(cpu), abi64_size = sizeof(is_abi64);
 
-  void * vm_map = malloc(sizeof(struct mach_header_64));
-  if (!isvalid(vm_map))
-    FAIL;
+  sysctlbyname("hw.cputype", &cpu, &cpu_size, NULL, 0);
+  sysctlbyname("hw.cpu64bit_capable", &is_abi64, &abi64_size, NULL, 0);
 
-  if (success(copy_memory(self->pid, base, sizeof(struct mach_header_64), vm_map))) {
-    // Determine CPU type from process in memory
-    struct mach_header_64 * hdr = (struct mach_header_64 *) vm_map;
-    int ms = hdr->magic == MH_CIGAM || hdr->magic == MH_CIGAM_64;  // This is probably useless
-    cpu_type_t cpu = hdr->cputype;
+  cpu |= is_abi64 * CPU_ARCH_ABI64;
 
-    // Look up corresponding part from universal binary
-    struct fat_header * fat_hdr = (struct fat_header *) map;
+  // Look up corresponding part from universal binary
+  struct fat_header * fat_hdr = (struct fat_header *) map;
 
-    int fs = fat_hdr->magic == FAT_CIGAM;
-    struct fat_arch * arch = (struct fat_arch *) (map + sizeof(struct fat_header));
+  int fs = fat_hdr->magic == FAT_CIGAM;
+  struct fat_arch * arch = (struct fat_arch *) (map + sizeof(struct fat_header));
 
-    uint32_t narchs = sw32(fs, fat_hdr->nfat_arch);
-    for (register int i = 0; i < narchs; i++) {
-      if (sw32(fs, arch[i].cputype) == sw32(ms, cpu)) {
-        hdr = (struct mach_header_64 *) (map + sw32(fs, arch[i].offset));
-        switch (hdr->magic) {
-        case MH_MAGIC:
-        case MH_CIGAM:
-          bin_attrs = _py_proc__analyze_macho32(self, base, (void *) hdr);
-          break;
+  uint32_t narchs = sw32(fs, fat_hdr->nfat_arch);
+  log_d("Found %d architectures in fat binary", narchs);
 
-        case MH_MAGIC_64:
-        case MH_CIGAM_64:
-          bin_attrs = _py_proc__analyze_macho64(self, base, (void *) hdr);
-          break;
-        }
-        break;
+  for (register int i = 0; i < narchs; i++) {
+    log_d("- architecture %x (expected %x)", sw32(fs, arch[i].cputype), cpu);
+    
+    if (sw32(fs, arch[i].cputype) == cpu) {
+      struct mach_header_64 * hdr = (struct mach_header_64 *) (map + sw32(fs, arch[i].offset));
+      
+      switch (hdr->magic) {
+      case MH_MAGIC:
+      case MH_CIGAM:
+        log_d("Using the 32-bit image of the fat binary");
+        return _py_proc__analyze_macho32(self, base, (void *) hdr);
+
+      case MH_MAGIC_64:
+      case MH_CIGAM_64:
+        log_d("Using the 64-bit image of the fat binary");
+        return _py_proc__analyze_macho64(self, base, (void *) hdr);
+      
+      default:
+        log_e("Unexpected Mach-O magic");
+        return INVALID_ATTR;
       }
+      
+      break;
     }
   }
-  else log_e("Unable to copy memory from universal binary\n");
 
-  free(vm_map);
+  log_e("Fat binary has no matching architectures");
 
-  return bin_attrs;
+  return INVALID_ATTR;
 }
 
 
@@ -306,9 +311,11 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * base, mach_vm_size
   int fd = open(path, O_RDONLY);
   if (fd == -1) {
     log_e("Cannot open binary %s", path);
-    return 0;
+    return INVALID_ATTR;
   }
-
+  
+  log_d("Analysing binary %s", path);
+  
   with_resources;
 
   // This would cause problem if allocated in the stack frame
@@ -331,16 +338,19 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * base, mach_vm_size
   switch (hdr->magic) {
   case MH_MAGIC:
   case MH_CIGAM:
+    log_d("Binary is Mach-O 32");
     bin_attrs = _py_proc__analyze_macho32(self, base, map);
     break;
 
   case MH_MAGIC_64:
   case MH_CIGAM_64:
+    log_d("Binary is Mach-O 64");
     bin_attrs = _py_proc__analyze_macho64(self, base, map);
     break;
 
   case FAT_MAGIC:
   case FAT_CIGAM:
+    log_d("Binary is fat");
     bin_attrs = _py_proc__analyze_fat(self, base, map);
     break;
 
@@ -423,8 +433,8 @@ _py_proc__get_maps(py_proc_t * self) {
   // stabilise.
   usleep(50000);
 
-  self->extra->task_id = pid_to_task(self->pid);
-  if (self->extra->task_id == 0)
+  self->proc_ref = pid_to_task(self->pid);
+  if (self->proc_ref == 0)
     NOK;
 
   self->min_raddr = (void *) -1;
@@ -437,7 +447,7 @@ _py_proc__get_maps(py_proc_t * self) {
   self->lib_path = NULL;
 
   while (mach_vm_region(
-    self->extra->task_id,
+    self->proc_ref,
     &address,
     &size,
     VM_REGION_BASIC_INFO_64,
@@ -509,7 +519,7 @@ _py_proc__get_resident_memory(py_proc_t * self) {
 	mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
 
   return task_info(
-    self->extra->task_id, MACH_TASK_BASIC_INFO, (task_info_t) &info, &count
+    self->proc_ref, MACH_TASK_BASIC_INFO, (task_info_t) &info, &count
   ) == KERN_SUCCESS
     ? info.resident_size
     : -1;

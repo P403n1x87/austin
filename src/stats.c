@@ -36,6 +36,7 @@
 
 #include "argparse.h"
 #include "error.h"
+#include "events.h"
 #include "logging.h"
 #include "stats.h"
 
@@ -76,7 +77,7 @@ static ctime_t _period;
 // ---- PUBLIC ----------------------------------------------------------------
 
 ctime_t
-gettime(void) {
+gettime() {
   #if defined PL_UNIX                                                 /* UNIX */
   #ifdef PL_MACOS
   mach_timespec_t ts;
@@ -97,7 +98,7 @@ gettime(void) {
 
 
 void
-stats_reset(void) {
+stats_reset() {
   _sample_cnt = 0;
   _error_cnt  = 0;
 
@@ -118,51 +119,51 @@ stats_reset(void) {
 
 
 ctime_t
-stats_get_max_sampling_time(void) {
+stats_get_max_sampling_time() {
   return _max_sampling_time;
 }
 
 
 ctime_t
-stats_get_min_sampling_time(void) {
+stats_get_min_sampling_time() {
   return _min_sampling_time;
 }
 
 
 ctime_t
-stats_get_avg_sampling_time(void) {
+stats_get_avg_sampling_time() {
   return _avg_sampling_time / _sample_cnt;
 }
 
 
 void
-stats_start(void) {
+stats_start() {
   _start_time = gettime();
 }
 
 
 ctime_t
-stats_duration(void) {
+stats_duration() {
   return gettime() - _start_time;
 }
 
 
 void
-stats_log_metrics(void) {
+stats_log_metrics() {
   if (pargs.pipe) {
     if (!_sample_cnt) {
       goto release;
     }
 
-    meta("sampling: %lu,%lu,%lu",
+    emit_metadata("sampling", "%lu,%lu,%lu",
       stats_get_min_sampling_time(),
       stats_get_avg_sampling_time(),
       stats_get_max_sampling_time()
     );
 
-    meta("saturation: %ld/%ld", _long_cnt, _sample_cnt);
+    emit_metadata("saturation", "%ld/%ld", _long_cnt, _sample_cnt);
 
-    meta("errors: %ld/%ld", _error_cnt, _sample_cnt);
+    emit_metadata("errors", "%ld/%ld", _error_cnt, _sample_cnt);
   }
   else {
     ctime_t duration = stats_duration();

@@ -1,3 +1,30 @@
+2022-10-25 v3.4.0
+
+  Added support for Python 3.11.
+
+  Allowed disabling logging by setting the environment variable
+  AUSTIN_NO_LOGGING.
+
+  Improved permission error reporting on MacOS.
+
+  Improved MacOS support.
+
+  Improved austinp support on fork.
+
+  Small performance improvements.
+
+  Renamed the austinp binary installed from the Snap Store from austin.austinp
+  to austin.p.
+  
+  Fixed a bug in austinp that could have caused the interpreter to stall on
+  launch.
+
+  Fixed a bug in austinp that could have caused segmentation faults.
+
+  Fixed a regression in austinp that caused most of the samples to be wrongly
+  reported as idle
+
+
 2022-01-28 v3.3.0
 
   Added the new Where mode.

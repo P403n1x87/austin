@@ -20,16 +20,22 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import importlib
 import os
 import platform
 from asyncio.subprocess import STDOUT
 from collections import Counter, defaultdict
+from io import BytesIO, StringIO
 from pathlib import Path
+from shutil import rmtree
 from subprocess import PIPE, CompletedProcess, Popen, check_output, run
 from test import PYTHON_VERSIONS
+from time import sleep
+from types import ModuleType
 from typing import Iterator, TypeVar
 
 import pytest
+from austin.format.mojo import MojoFile
 
 HERE = Path(__file__).parent
 
@@ -60,9 +66,7 @@ def python(version: str) -> list[str]:
     match platform.system():
         case "Windows":
             py = ["py", f"-{version}"]
-        case "Darwin":
-            py = [f"{BREW_PREFIX}/opt/python@{version}/bin/python3"]
-        case "Linux":
+        case "Darwin" | "Linux":
             py = [f"python{version}"]
         case _:
             raise RuntimeError(f"Unsupported platform: {platform.system()}")
@@ -76,7 +80,16 @@ def python(version: str) -> list[str]:
 
 def gdb(cmds: list[str], *args: tuple[str]) -> str:
     return check_output(
-        ["gdb"] + [_ for cs in (("-ex", _) for _ in cmds) for _ in cs] + list(args),
+        ["gdb", "-q", "-batch"]
+        + [_ for cs in (("-ex", _) for _ in cmds) for _ in cs]
+        + list(args),
+        stderr=STDOUT,
+    ).decode()
+
+
+def apport_unpack(report: Path, target_dir: Path):
+    return check_output(
+        ["apport-unpack", str(report), str(target_dir)],
         stderr=STDOUT,
     ).decode()
 
@@ -84,10 +97,29 @@ def gdb(cmds: list[str], *args: tuple[str]) -> str:
 def bt(binary: Path) -> str:
     if Path("core").is_file():
         return gdb(["bt full", "q"], str(binary), "core")
+
+    # On Ubuntu, apport puts crashes in /var/crash
+    crash_dir = Path("/var/crash")
+    if crash_dir.is_dir():
+        crashes = list(crash_dir.glob("*.crash"))
+        if crashes:
+            # Take the last one
+            crash = crashes[-1]
+            target_dir = Path(crash.stem)
+            apport_unpack(crash, target_dir)
+
+            result = gdb(["bt full", "q"], str(binary), target_dir / "CoreDump")
+
+            crash.unlink()
+            rmtree(str(target_dir))
+
+            return result
+
     return "No core dump available."
 
 
 EXEEXT = ".exe" if platform.system() == "Windows" else ""
+
 
 class Variant(str):
 
@@ -96,29 +128,38 @@ class Variant(str):
     def __init__(self, name: str) -> None:
         super().__init__()
 
-        austin_exe = f"{name}{EXEEXT}"
-        path = Path("src") / austin_exe
+        path = (Path("src") / name).with_suffix(EXEEXT)
         if not path.is_file():
-            path = Path(austin_exe)
+            path = Path(name).with_suffix(EXEEXT)
 
         self.path = path
 
         self.ALL.append(self)
 
-    def __call__(self, *args: tuple[str], timeout: int = 60) -> CompletedProcess:
+    def __call__(
+        self, *args: str, timeout: int = 60, mojo: bool = False
+    ) -> CompletedProcess:
         if not self.path.is_file():
             pytest.skip(f"Variant '{self}' not available")
 
+        mojo_args = ["-b"] if mojo else []
+
         result = run(
-            [str(self.path)] + list(args),
+            [str(self.path)] + mojo_args + list(args),
             capture_output=True,
             timeout=timeout,
-            text=True,
-            errors="ignore",
         )
 
         if result.returncode in (-11, 139):  # SIGSEGV
             print(bt(self.path))
+
+        if mojo and not ({"-o", "-w", "--output", "--where"} & set(args)):
+            # We produce MOJO binary data only if we are not writing to file
+            # or using the "where" option.
+            result.stdout = demojo(result.stdout)
+        else:
+            result.stdout = result.stdout.decode()
+        result.stderr = result.stderr.decode()
 
         return result
 
@@ -133,8 +174,13 @@ def run_async(command: list[str], *args: tuple[str]) -> Popen:
     return Popen(command + list(args), stdout=PIPE, stderr=PIPE)
 
 
-def run_python(version, *args: tuple[str]) -> Popen:
-    return run_async(python(version), *args)
+def run_python(version, *args: tuple[str], sleep_after: int | None = None) -> Popen:
+    result = run_async(python(version), *args)
+
+    if sleep_after is not None:
+        sleep(sleep_after)
+
+    return result
 
 
 def samples(data: str) -> Iterator[bytes]:
@@ -142,6 +188,7 @@ def samples(data: str) -> Iterator[bytes]:
 
 
 T = TypeVar("T")
+
 
 def denoise(data: Iterator[T], threshold: float = 0.1) -> set[T]:
     c = Counter(data)
@@ -163,16 +210,26 @@ def threads(data: str, threshold: float = 0.1) -> set[tuple[str, str]]:
 
 
 def metadata(data: str) -> dict[str, str]:
-    return dict(
+    meta = dict(
         _[1:].strip().split(": ", maxsplit=1)
         for _ in data.splitlines()
-        if _ and _[0] == "#"
+        if _ and _[0] == "#" and not _.startswith("# map:")
     )
+
+    for v in ("austin", "python"):
+        if v in meta:
+            meta[v] = tuple(int(_) for _ in meta[v].split("."))
+
+    return meta
 
 
 def maps(data: str) -> defaultdict[str, list[str]]:
     maps = defaultdict(list)
-    for r, f in (_[7:].split(" ", maxsplit=1) for _ in data.splitlines() if _.startswith("# map:")):
+    for r, f in (
+        _[7:].split(" ", maxsplit=1)
+        for _ in data.splitlines()
+        if _.startswith("# map:")
+    ):
         maps[f].append(r)
     return maps
 
@@ -208,17 +265,23 @@ def sum_metrics(data: str) -> tuple[int, int, int, int]:
 
 
 def compress(data: str) -> str:
-    output: list[str] = []
     stacks: dict[str, int] = {}
-    for _ in (_.strip() for _ in data.splitlines()):
-        if not _ or _[0] == "#":
-            output.append(_)
-            continue
 
+    for _ in (_.strip() for _ in data.splitlines() if _ and _[0] == "P"):
         stack, _, metric = _.rpartition(" ")
         stacks[stack] = stacks.setdefault(stack, 0) + int(metric)
 
-    return "\n".join(output) + "\n".join((f"{k} {v}" for k, v in stacks.items()))
+    compressed_stacks = "\n".join((f"{k} {v}" for k, v in stacks.items()))
+
+    output = (
+        f"# Metadata\n{metadata(data)}\n\n# Stacks\n{compressed_stacks or '<no data>'}"
+    )
+
+    ms = maps(data)
+    if ms:
+        output = f"# Maps\n{list(ms.keys())}\n\n" + output
+
+    return output
 
 
 match platform.system():
@@ -227,7 +290,32 @@ match platform.system():
     case _:
         requires_sudo = pytest.mark.skipif(
             os.geteuid() != 0, reason="Requires superuser privileges"
-)
+        )
         no_sudo = pytest.mark.skipif(
             os.geteuid() == 0, reason="Must not have superuser privileges"
         )
+
+
+def demojo(data: bytes) -> str:
+    result = StringIO()
+
+    for e in MojoFile(BytesIO(data)).parse():
+        result.write(e.to_austin())
+
+    return result.getvalue()
+
+
+mojo = pytest.mark.parametrize("mojo", [False, True])
+
+
+# Load from the utils scripts
+def load_util(name: str) -> ModuleType:
+    module_path = (Path(__file__).parent.parent / "utils" / name).with_suffix(".py")
+    spec = importlib.util.spec_from_file_location(name, str(module_path))
+
+    assert spec is not None and spec.loader is not None, spec
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    return module

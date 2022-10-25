@@ -33,6 +33,7 @@
 
 #define MAXLEN                      1024
 #define MAX_STACK_SIZE              2048
+#define MAX_STRING_CACHE_SIZE       1024
 
 
 typedef struct thread {
@@ -47,6 +48,10 @@ typedef struct thread {
   void          * top_frame;
 
   int             invalid;
+
+  /* The per-thread datastack was introduced in Python 3.11 */
+  void           * stack;
+  size_t           stack_size;
 } py_thread_t;
 
 
@@ -80,7 +85,7 @@ py_thread__next(py_thread_t *);
  * @param  ssize_t      the memory delta.
  */
 void
-py_thread__print_collapsed_stack(py_thread_t *, ctime_t, ssize_t);
+py_thread__emit_collapsed_stack(py_thread_t *, ctime_t, ssize_t);
 
 
 /**

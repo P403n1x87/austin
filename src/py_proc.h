@@ -32,8 +32,10 @@
 #include "cache.h"
 #endif
 
+#include "python/symbols.h"
 #include "cache.h"
 #include "heap.h"
+#include "platform.h"
 #include "stats.h"
 #include "version.h"
 
@@ -56,6 +58,7 @@ typedef struct _proc_extra_info proc_extra_info;  // Forward declaration.
 
 typedef struct {
   pid_t           pid;
+  proc_ref_t      proc_ref;
   int             child;
 
   char          * bin_path;
@@ -70,15 +73,14 @@ typedef struct {
   int             sym_loaded;
   python_v      * py_v;
 
-  // Symbols from .dynsym
-  void          * tstate_curr_raddr;
-  void          * py_runtime_raddr;
-  void          * interp_head_raddr;
+  void          * symbols[DYNSYM_COUNT];  // Binary symbols
+
   void          * gc_state_raddr;
 
   void          * is_raddr;
 
   lru_cache_t   * frame_cache;
+  lru_cache_t   * string_cache;
 
   // Temporal profiling support
   ctime_t         timestamp;

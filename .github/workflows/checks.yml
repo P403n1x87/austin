@@ -1,5 +1,12 @@
 name: Checks
-on: push
+
+on:
+  push:
+    branches:
+      - master
+      - devel
+  pull_request:
+
 jobs:
   check-manpage:
     runs-on: ubuntu-latest
@@ -22,7 +29,7 @@ jobs:
         run: bash doc/genman.sh
 
       - name: Check manpage
-        run: git diff --exit-code src/austin.1
+        run: git diff -I".* DO NOT MODIFY.*" -I"[.]TH AUSTIN.*" --exit-code src/austin.1
 
   cppcheck:
     runs-on: ubuntu-latest
@@ -54,7 +61,25 @@ jobs:
         run: pip install codespell
 
       - name: Check source code spelling
-        run: codespell src
+        run: codespell -I .github/workflows/wordlist.txt -S "src/python/*" src
+
+  formatting-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    name: Formatting (tests)
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: "actions/setup-python@v2"
+        with:
+          python-version: "3.10"
+
+      - name: Install black
+        run: pip install black
+
+      - name: Check source code spelling
+        run: black --check test/
 
   coverage:
     runs-on: ubuntu-latest
@@ -75,7 +100,7 @@ jobs:
           sudo apt-get -y install \
             valgrind \
             python2.7 \
-            python3.{5..10} \
+            python3.{5..11} \
             python3.10-full
 
       - name: Compile Austin
@@ -91,8 +116,8 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r test/requirements.txt
-          .venv/bin/pytest --pastebin=failed -svvr fE || true
-          sudo .venv/bin/pytest --pastebin=failed -svvr fE || true
+          .venv/bin/pytest --pastebin=failed --no-flaky-report -sr fE -n auto || true
+          sudo .venv/bin/pytest --pastebin=failed --no-flaky-report -sr fE -n auto || true
           deactivate
 
       - name: Generate Cobertura report
@@ -104,3 +129,23 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./cobertura.xml
           verbose: true
+
+  check-cog:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+    name: Check cog output
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install cog
+        run: pip install cogapp
+
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure
+          make
+
+      - name: Run cog check
+        run: bash scripts/cog.sh --check

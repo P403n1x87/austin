@@ -39,7 +39,7 @@
 
 #elif defined(PL_WIN)
   #include <windows.h>
-  extern BOOL GetPhysicallyInstalledSystemMemory(PULONGLONG);
+  __declspec( dllimport ) extern BOOL GetPhysicallyInstalledSystemMemory(PULONGLONG);
 
 #elif defined(PL_MACOS)
   #include <mach/mach.h>
@@ -62,7 +62,7 @@
  * @param  dt    the data structure as a local variable
  * @return       zero on success, otherwise non-zero.
  */
-#define copy_from_raddr(raddr, dt) copy_memory((raddr)->pid, (raddr)->addr, sizeof(dt), &dt)
+#define copy_from_raddr(raddr, dt) copy_memory((raddr)->pref, (raddr)->addr, sizeof(dt), &dt)
 
 
 /**
@@ -71,38 +71,55 @@
  * @param  dt    the data structure as a local variable
  * @return       zero on success, otherwise non-zero.
  */
-#define copy_from_raddr_v(raddr, dt, n) copy_memory(raddr->pid, raddr->addr, n, &dt)
+#define copy_from_raddr_v(raddr, dt, n) copy_memory(raddr->pref, raddr->addr, n, &dt)
 
 
 /**
  * Same as copy_from_raddr, but with explicit arguments instead of a pointer to
  * a remote address structure
- * @param  pid  the process ID
+ * @param  pref the process reference
  * @param  addr the remote address
  * @param  dt   the data structure as a local variable.
  * @return      zero on success, otherwise non-zero.
  */
-#define copy_datatype(pid, addr, dt) copy_memory(pid, addr, sizeof(dt), &dt)
+#define copy_datatype(pref, addr, dt) copy_memory(pref, addr, sizeof(dt), &dt)
 
 
+/**
+ * Same as copy_from_raddr, but for versioned Python data structures.
+ * @param  pref     the process reference
+ * @param  addr     the remote address
+ * @param  py_type  the versioned Python type (e.g. py_runtime).
+ * @param  dest     the destination variable.
+ * @return          zero on success, otherwise non-zero.
+ */
+#define copy_py(pref, addr, py_type, dest) copy_memory(pref, addr, py_v->py_type.size, &dest)
+
+
+// Whilst the PID is generally used to identify processes across platforms,
+// operations can only be performed on other process references, like a Win32
+// HANDLE or a OSX mach_port_t. We use this structure to abstract the process
+// reference to identify a remote address location in a platoform-independent
+// way.
 typedef struct {
-  pid_t  pid;
-  void * addr;
+  proc_ref_t   pref;  // Process reference
+  void       * addr;  // Virtual memory address within the process
 } raddr_t;
 
 
 /**
  * Copy a chunk of memory from a portion of the virtual memory of another
  * process.
- * @param pid_t   the process reference (platform-dependent)
- * @param void *  the remote address
- * @param ssize_t the number of bytes to read
- * @param void *  the destination buffer, expected to be at least as large as
- *                the number of bytes to read.
- * @return        zero on success, otherwise non-zero.
+ * @param proc_ref_t  the process reference (platform-dependent)
+ * @param void *      the remote address
+ * @param ssize_t     the number of bytes to read
+ * @param void *      the destination buffer, expected to be at least as large
+ *                    as the number of bytes to read.
+ * 
+ * @return  zero on success, otherwise non-zero.
  */
 static inline int
-copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
+copy_memory(proc_ref_t proc_ref, void * addr, ssize_t len, void * buf) {
   ssize_t result = -1;
 
   #if defined(PL_LINUX)                                              /* LINUX */
@@ -114,7 +131,7 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
   remote[0].iov_base = addr;
   remote[0].iov_len = len;
 
-  result = process_vm_readv(pid, local, 1, remote, 1, 0);
+  result = process_vm_readv(proc_ref, local, 1, remote, 1, 0);
   if (result == -1) {
     switch (errno) {
     case ESRCH:
@@ -130,7 +147,7 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
 
   #elif defined(PL_WIN)                                                /* WIN */
   size_t n;
-  result = ReadProcessMemory((HANDLE) pid, addr, buf, len, &n) ? n : -1;
+  result = ReadProcessMemory(proc_ref, addr, buf, len, &n) ? n : -1;
   if (result == -1) {
     switch(GetLastError()) {
     case ERROR_ACCESS_DENIED:
@@ -146,13 +163,13 @@ copy_memory(pid_t pid, void * addr, ssize_t len, void * buf) {
 
   #elif defined(PL_MACOS)                                              /* MAC */
   kern_return_t kr = mach_vm_read_overwrite(
-    (mach_port_t) pid,
+    proc_ref,
     (mach_vm_address_t) addr,
     len,
     (mach_vm_address_t) buf,
     (mach_vm_size_t *) &result
   );
-  if (kr != KERN_SUCCESS) {
+  if (unlikely(kr != KERN_SUCCESS)) {
     // If we got to the point of calling this function on macOS then we must
     // have permissions to call task_for_pid successfully. This also means that
     // the PID that was used must have been valid. Therefore this call can only
@@ -190,6 +207,8 @@ get_total_memory(void) {
   return GetPhysicallyInstalledSystemMemory(&size) == TRUE ? size : 0;
 
   #endif
+
+  return 0;
 }
 
 #endif // MEM_H

@@ -31,12 +31,15 @@
 #include "austin.h"
 
 
-#define META "# "
+#define META_HEAD "# "
+#define META_SEP  ": "
 
-#define NL fputc('\n', pargs.output_file)
+#define NL {if (!pargs.binary) fputc('\n', pargs.output_file);}
 
-#define meta(...)                          \
-  fprintf(pargs.output_file, META);        \
+#define meta(key, ...)                     \
+  fputs(META_HEAD, pargs.output_file);     \
+  fputs(key, pargs.output_file);           \
+  fputs(META_SEP, pargs.output_file);      \
   fprintf(pargs.output_file, __VA_ARGS__); \
   NL;
 

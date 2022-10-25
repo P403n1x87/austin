@@ -42,7 +42,7 @@ _py_thread__is_idle(py_thread_t * self) {
 
   retval = -1;
 
-  sprintf(file_name, "/proc/%d/task/%ld/stat", self->raddr.pid, self->tid);
+  sprintf(file_name, "/proc/%d/task/%ld/stat", self->proc->pid, self->tid);
   int fd = open(file_name, O_RDONLY);
   if (fd == -1) {
     log_d("Cannot open %s", file_name);

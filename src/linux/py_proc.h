@@ -57,9 +57,7 @@
 #define HEAP_MAP                 (1 << 3)
 #define BSS_MAP                  (1 << 4)
 
-#define SYMBOLS                        2
-
-#define PROC_REF                        (self->pid)
+#define SYMBOLS                        3
 
 
 // Get the offset of the ith section header
@@ -329,12 +327,16 @@ release:
 // ----------------------------------------------------------------------------
 static int
 _elf_is_executable(char * object_file) {
-  int fd   = open(object_file, O_RDONLY);
+  int fd = open(object_file, O_RDONLY);
   if (fd == -1)
     return FALSE;
 
   Elf64_Ehdr * ehdr = (Elf64_Ehdr *) mmap(NULL, sizeof(Elf64_Ehdr), PROT_READ, MAP_SHARED, fd, 0);
-
+  if (ehdr == MAP_FAILED) {
+    close(fd);
+    return FALSE;
+  }
+  
   int is_exec = ehdr->e_type == ET_EXEC;
 
   munmap(ehdr, sizeof(Elf64_Ehdr));
@@ -555,7 +557,7 @@ _py_proc__get_vm_maps(py_proc_t * self) {
       else
         // We print the maps instead so that we can resolve them later and use
         // the CPU more efficiently to collect samples.
-        fprintf(pargs.output_file, "# map: %lx-%lx %s\n", lower, upper, pathname);
+        emit_metadata("map", "%lx-%lx %s", lower, upper, pathname);
     }
   }
 
@@ -601,7 +603,7 @@ _py_proc__init(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _infer_tid_field_offset(py_thread_t * py_thread) {
-  if (fail(read_pthread_t(py_thread->raddr.pid, (void *) py_thread->tid))) {
+  if (fail(read_pthread_t(py_thread->raddr.pref, (void *) py_thread->tid))) {
     log_d("Cannot copy pthread_t structure");
     FAIL;
   }
@@ -609,7 +611,7 @@ _infer_tid_field_offset(py_thread_t * py_thread) {
   log_d("pthread_t at %p", py_thread->tid);
 
   for (register int i = 0; i < PTHREAD_BUFFER_ITEMS; i++) {
-    if (py_thread->raddr.pid == _pthread_buffer[i]) {
+    if (py_thread->raddr.pref == _pthread_buffer[i]) {
       log_d("TID field offset: %d", i);
       py_thread->proc->extra->pthread_tid_offset = i;
       SUCCESS;
@@ -618,7 +620,7 @@ _infer_tid_field_offset(py_thread_t * py_thread) {
 
   // Fall-back to smaller steps if we failed
   for (register int i = 0; i < PTHREAD_BUFFER_ITEMS * (sizeof(uintptr_t) / sizeof(pid_t)); i++) {
-    if (py_thread->raddr.pid == (pid_t) ((pid_t *) _pthread_buffer)[i]) {
+    if (py_thread->raddr.pref == (pid_t) ((pid_t *) _pthread_buffer)[i]) {
       log_d("TID field offset (from fall-back): %d", i);
       py_thread->proc->extra->pthread_tid_offset = -i;
       SUCCESS;

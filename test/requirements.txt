@@ -1,2 +1,7 @@
-pytest
+austin-python~=1.4
 flaky
+pytest
+pytest-xdist
+
+# C unit tests
+pycparser

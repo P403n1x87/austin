@@ -111,11 +111,51 @@ typedef struct {
     PyObject *co_lnotab;        /* string (encoding addr<->lineno mapping) */
 } PyCodeObject3_8;
 
+#define _PyCode_DEF_311(SIZE) {                                                \
+    PyObject_VAR_HEAD                                                          \
+                                                                               \
+    PyObject *co_consts;           /* list (constants used) */                 \
+    PyObject *co_names;            /* list of strings (names used) */          \
+    PyObject *co_exceptiontable;   /* Byte string encoding exception handling  \
+                                      table */                                 \
+    int co_flags;                  /* CO_..., see below */                     \
+    short co_warmup;                 /* Warmup counter for quickening */       \
+    short _co_linearray_entry_size;  /* Size of each entry in _co_linearray */ \
+                                                                               \
+    /* The rest are not so impactful on performance. */                        \
+    int co_argcount;              /* #arguments, except *args */               \
+    int co_posonlyargcount;       /* #positional only arguments */             \
+    int co_kwonlyargcount;        /* #keyword only arguments */                \
+    int co_stacksize;             /* #entries needed for evaluation stack */   \
+    int co_firstlineno;           /* first source line number */               \
+    int co_nlocalsplus;           /* number of local + cell + free variables */\
+    int co_nlocals;               /* number of local variables */              \
+    int co_nplaincellvars;        /* number of non-arg cell variables */       \
+    int co_ncellvars;             /* total number of cell variables */         \
+    int co_nfreevars;             /* number of free variables */               \
+    PyObject *co_localsplusnames; /* tuple mapping offsets to names */         \
+    PyObject *co_localspluskinds; /* Bytes mapping to local kinds (one byte    \
+                                     per variable) */                          \
+    PyObject *co_filename;        /* unicode (where it was loaded from) */     \
+    PyObject *co_name;            /* unicode (name, for reference) */          \
+    PyObject *co_qualname;        /* unicode (qualname, for reference) */      \
+    PyObject *co_linetable;       /* bytes object that holds location info */  \
+    PyObject *co_weakreflist;     /* to support weakrefs to code objects */    \
+    PyObject *_co_code;           /* cached co_code object/attribute */        \
+    char *_co_linearray;          /* array of line offsets */                  \
+    int _co_firsttraceable;       /* index of first traceable instruction */   \
+    void *co_extra;                                                            \
+    char co_code_adaptive[(SIZE)];                                             \
+}
+typedef struct _PyCode_DEF_311(1) PyCodeObject3_11;
+
+
 typedef union {
-  PyCodeObject2   v2;
-  PyCodeObject3_3 v3_3;
-  PyCodeObject3_6 v3_6;
-  PyCodeObject3_8 v3_8;
+  PyCodeObject2    v2;
+  PyCodeObject3_3  v3_3;
+  PyCodeObject3_6  v3_6;
+  PyCodeObject3_8  v3_8;
+  PyCodeObject3_11 v3_11;
 } PyCodeObject;
 
 #endif

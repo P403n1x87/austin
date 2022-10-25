@@ -24,11 +24,11 @@
 #define STATS_H
 
 
-#include "argparse.h"
-
-
 typedef unsigned long ctime_t;  /* Forward */
 typedef unsigned long ustat_t;  /* non-negative statistics metric */
+
+
+#include "argparse.h"
 
 
 #ifndef STATS_C
@@ -50,28 +50,28 @@ extern ctime_t _gc_time;
  * something that is as close as possible to wall-clock time.
  */
 ctime_t
-gettime(void);
+gettime();
 
 
 /**
  * Reset the statistics. Call this every time a new run is started.
  */
 void
-stats_reset(void);
+stats_reset();
 
 
 /**
  * Get the maximum sampling time observed.
  */
 ctime_t
-stats_get_max_sampling_time(void);
+stats_get_max_sampling_time();
 
 
 /**
  * Get the smallest sampling time observed.
  */
 ctime_t
-stats_get_min_sampling_time(void);
+stats_get_min_sampling_time();
 
 
 /**
@@ -79,7 +79,7 @@ stats_get_min_sampling_time(void);
  * method is called.
  */
 ctime_t
-stats_get_avg_sampling_time(void);
+stats_get_avg_sampling_time();
 
 
 /**
@@ -121,20 +121,20 @@ stats_get_avg_sampling_time(void);
  * Log the current statistics. Usually called at the end of a sampling run.
  */
 void
-stats_log_metrics(void);
+stats_log_metrics();
 
 
 /**
  * Set the start time.
  */
 void
-stats_start(void);
+stats_start();
 
 
 /**
  * Return the current sampling duration.
  */
 ctime_t
-stats_duration(void);
+stats_duration();
 
 #endif
