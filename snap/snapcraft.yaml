@@ -24,9 +24,9 @@ architectures:
 parts:
   austin:
     plugin: autotools
-    source: git://github.com/P403n1x87/austin
+    source: https://github.com/P403n1x87/austin
     source-depth: 1
-    build-packages: [libunwind-dev, binutils-dev, libiberty-dev]
+    build-packages: [libunwind-dev, binutils-dev, libiberty-dev, zlib1g-dev]
     stage-packages: [libbinutils]
 
 apps:
