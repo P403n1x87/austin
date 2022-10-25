@@ -29,7 +29,7 @@ jobs:
         run: bash doc/genman.sh
 
       - name: Check manpage
-        run: git diff -I"[.]TH AUSTIN.*" --exit-code src/austin.1
+        run: git diff -I".* DO NOT MODIFY.*" -I"[.]TH AUSTIN.*" --exit-code src/austin.1
 
   cppcheck:
     runs-on: ubuntu-latest
