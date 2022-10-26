@@ -28,6 +28,7 @@
 
 #include "cache.h"
 #include "hints.h"
+#include "mojo.h"
 #include "platform.h"
 #include "py_proc.h"
 #include "py_string.h"
@@ -41,7 +42,7 @@ typedef struct {
   unsigned int   line;
 } frame_t;
 
-#define py_frame_key(code, lasti)  (((key_dt) code << 16) | lasti)
+#define py_frame_key(code, lasti)  (((key_dt) (((key_dt) code) & MOJO_INT32) << 16) | lasti)
 #define py_string_key(code, field) ((key_dt) *((void **) ((void *) &code + py_v->py_code.field)))
 
 #ifdef PY_THREAD_C
@@ -245,8 +246,11 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
     }
     lru_cache__store(py_proc->string_cache, string_key, filename);
     if (pargs.binary) {
-      mojo_string_event(filename, filename);
+      mojo_string_event(string_key, filename);
     }
+  }
+  if (pargs.binary) {
+    filename = (char *) string_key;
   }
 
   string_key = V_MIN(3, 11) ? py_string_key(code, o_qualname) : py_string_key(code, o_name);
@@ -261,8 +265,11 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
     }
     lru_cache__store(py_proc->string_cache, string_key, scope);
     if (pargs.binary) {
-      mojo_string_event(scope, scope);
+      mojo_string_event(string_key, scope);
     }
+  }
+  if (pargs.binary) {
+    scope = (char *) string_key;
   }
 
   ssize_t len = 0;

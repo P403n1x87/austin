@@ -173,8 +173,9 @@ def test_fork_output(py, tmp_path: Path, mojo):
 @flaky
 @pytest.mark.xfail(platform.system() == "Windows", reason="Does not pass in Windows CI")
 @allpythons(min=(3, 7) if platform.system() == "Windows" else None)
-def test_fork_multiprocess(py):
-    result = austin("-Ci", "1ms", *python(py), target("target_mp.py"))
+@mojo
+def test_fork_multiprocess(py, mojo):
+    result = austin("-Ci", "1ms", *python(py), target("target_mp.py"), mojo=mojo)
     assert result.returncode == 0, result.stderr or result.stdout
 
     ps = processes(result.stdout)
@@ -185,7 +186,7 @@ def test_fork_multiprocess(py):
     assert meta["mode"] == "wall", meta
 
     assert has_pattern(result.stdout, "target_mp.py:do:"), compress(result.stdout)
-    assert has_pattern(result.stdout, "target_mp.py:fact:"), compress(result.stdout)
+    assert has_pattern(result.stdout, "target_mp.py:fact:31 "), compress(result.stdout)
 
 
 @flaky

@@ -127,14 +127,14 @@ static inline void mojo_integer(mojo_int_t integer, int sign) {
 
 #define mojo_frame(frame)    \
   mojo_event(MOJO_FRAME);    \
-  mojo_ref(frame->key);      \
+  mojo_integer(frame->key, 0);      \
   mojo_ref(frame->filename); \
   mojo_ref(frame->scope);    \
   mojo_integer(frame->line, 0);
 
 #define mojo_frame_ref(frame) \
   mojo_event(MOJO_FRAME_REF); \
-  mojo_ref(frame->key);
+  mojo_integer(frame->key, 0);
 
 #define mojo_frame_kernel(scope) \
   mojo_event(MOJO_FRAME_KERNEL); \
