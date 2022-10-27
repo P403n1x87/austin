@@ -644,16 +644,18 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
         unw_proc_info_t pi;
         if (success(unw_get_proc_info(&cursor, &pi))) {
           key_dt scope_key = (key_dt) pi.start_ip;
-
           scope = lru_cache__maybe_hit(string_cache, scope_key);
           if (!isvalid(scope)) {
             if (unw_get_proc_name(&cursor, _native_buf, MAXLEN, &offset) == 0) {
               scope = strdup(_native_buf);
               lru_cache__store(string_cache, scope_key, scope);
               if (pargs.binary) {
-                mojo_string_event(scope, scope);
+                mojo_string_event(scope_key, scope);
               }
             }
+          }
+          if (pargs.binary) {
+            scope = (char *) scope_key;
           }
         }
         if (!isvalid(scope)) {
@@ -663,14 +665,24 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
         if (isvalid(range))  // For now this is only relevant in `where` mode
           filename = strdup(range->name);
         else {
-          filename = lru_cache__maybe_hit(string_cache, (key_dt) pc);
+          // The program counter carries information about the file name *and*
+          // the line number. Given that we don't resolve the file name using
+          // memory ranges at runtime for performance reasons, we need to store
+          // the PC value so that we can later resolve it to a file name and
+          // line number, instead of doing the more sensible thing of using
+          // something like `scope_key+1`, or the resolved base address.
+          key_dt filename_key = (key_dt) pc;
+          filename = lru_cache__maybe_hit(string_cache, filename_key);
           if (!isvalid(filename)) {
             sprintf(_native_buf, "native@" ADDR_FMT, pc);
             filename = strdup(_native_buf);
             lru_cache__store(string_cache, (key_dt) pc, filename);
             if (pargs.binary) {
-              mojo_string_event(filename, filename);
+              mojo_string_event(filename_key, filename);
             }
+          }
+          if (pargs.binary) {
+            filename = (char *) filename_key;
           }
         }
 
