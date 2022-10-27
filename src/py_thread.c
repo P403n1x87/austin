@@ -648,13 +648,13 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
           if (!isvalid(scope)) {
             if (unw_get_proc_name(&cursor, _native_buf, MAXLEN, &offset) == 0) {
               scope = strdup(_native_buf);
-              lru_cache__store(string_cache, scope_key, scope);
+              _py_proc__store_string(self->proc, scope_key, scope);
               if (pargs.binary) {
                 mojo_string_event(scope_key, scope);
               }
             }
           }
-          if (pargs.binary) {
+          if (pargs.binary && isvalid(scope)) {
             scope = (char *) scope_key;
           }
         }
@@ -676,7 +676,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
           if (!isvalid(filename)) {
             sprintf(_native_buf, "native@" ADDR_FMT, pc);
             filename = strdup(_native_buf);
-            lru_cache__store(string_cache, (key_dt) pc, filename);
+            _py_proc__store_string(self->proc, (key_dt) pc, filename);
             if (pargs.binary) {
               mojo_string_event(filename_key, filename);
             }
@@ -937,9 +937,13 @@ py_thread__emit_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t 
       log_e("Invalid native frame");
       break;
     }
-    char * eval_frame_fn = native_frame->scope == UNKNOWN_SCOPE
-      ? NULL
-      : strstr(native_frame->scope, "PyEval_EvalFrame");
+    char * scope = pargs.binary
+      ? lru_cache__maybe_hit(self->proc->string_cache, (key_dt) native_frame->scope)
+      : native_frame->scope;
+    if (!isvalid(scope)) {
+      scope = UNKNOWN_SCOPE;
+    }
+    char * eval_frame_fn = scope == UNKNOWN_SCOPE ? NULL : strstr(scope, "PyEval_EvalFrame");
     int is_frame_eval = FALSE;
     if (isvalid(eval_frame_fn)) {
       char c = *(eval_frame_fn+16);

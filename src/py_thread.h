@@ -33,7 +33,9 @@
 
 #define MAXLEN                      1024
 #define MAX_STACK_SIZE              2048
-#define MAX_STRING_CACHE_SIZE       1024
+// We make the string cache large to reduce the chances of having to invalidate
+// the frame cache because of string evictions.
+#define MAX_STRING_CACHE_SIZE       (1 << 16)  // 64K entries
 
 
 typedef struct thread {

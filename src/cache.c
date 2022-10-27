@@ -386,6 +386,12 @@ lru_cache__maybe_hit(lru_cache_t *self, key_dt key) {
 }
 
 // ----------------------------------------------------------------------------
+int
+lru_cache__is_full(lru_cache_t *self) {
+  return queue__is_full(self->queue);
+}
+
+// ----------------------------------------------------------------------------
 void
 lru_cache__store(lru_cache_t *self, key_dt key, value_t value) {
   queue_t * queue = self->queue;
@@ -400,6 +406,24 @@ lru_cache__store(lru_cache_t *self, key_dt key, value_t value) {
 
   hash_table__set(self->hash, key, queue__enqueue(self->queue, value, key));
 }
+
+// ----------------------------------------------------------------------------
+void
+lru_cache__invalidate(lru_cache_t *self) {
+  if (!isvalid(self) || queue__is_empty(self->queue))
+    return;
+
+  void (*deallocator)(value_t) = self->queue->deallocator;
+
+  queue__destroy(self->queue);
+  hash_table__destroy(self->hash);
+
+  int capacity = self->capacity;
+
+  self->queue = queue_new(capacity, deallocator);
+  self->hash  = hash_table_new((capacity * 4 / 3) | 1);
+}
+
 
 // ----------------------------------------------------------------------------
 void

@@ -233,4 +233,16 @@ py_proc__terminate(py_proc_t *);
 void
 py_proc__destroy(py_proc_t *);
 
+
+static inline void
+_py_proc__store_string(py_proc_t * self, key_dt key, char * value) {
+  // If we need to evict a string from the cache we must invalidate the frame
+  // cache to avoid any cached frames to reference an evicted string.
+  // NOTE: This method should be called only on a string cache miss.
+  if (lru_cache__is_full(self->string_cache)) {
+    lru_cache__invalidate(self->frame_cache);
+  }
+  lru_cache__store(self->string_cache, key, (value_t) value);
+}
+
 #endif // PY_PROC_H

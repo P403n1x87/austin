@@ -390,6 +390,17 @@ lru_cache__maybe_hit(lru_cache_t *, key_dt);
 
 
 /**
+ * Check if the cache is full.
+ * 
+ * @param self  the cache
+ * 
+ * @return TRUE if the cache is full, else FALSE.
+ */
+int
+lru_cache__is_full(lru_cache_t *);
+
+
+/**
  * Store a value within the cache at the given key. If the cache is full, the
  * least recently used key/value pair is evicted.
  * 
@@ -399,6 +410,15 @@ lru_cache__maybe_hit(lru_cache_t *, key_dt);
  */
 void
 lru_cache__store(lru_cache_t *, key_dt, value_t);
+
+
+/**
+ * Invalidate the cache.
+ * 
+ * @param self  the cache to invalidate
+ */
+void
+lru_cache__invalidate(lru_cache_t *);
 
 
 /**
