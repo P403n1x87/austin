@@ -592,6 +592,8 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
   lru_cache_t * string_cache = self->proc->string_cache;
   void        * context      = _tids[self->tid];
 
+  stack_native_reset();
+
   if (!isvalid(context)) {
     _tids[self->tid] = _UPT_create(self->tid);
     if (!isvalid(_tids[self->tid])) {
@@ -606,8 +608,6 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
 
   if (fail(wait_unw_init_remote(&cursor, self->proc->unwind.as, context)))
     FAIL;
-
-  stack_native_reset();
 
   do {
     if (unw_get_reg(&cursor, UNW_REG_IP, &pc)) {
@@ -644,16 +644,18 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
         unw_proc_info_t pi;
         if (success(unw_get_proc_info(&cursor, &pi))) {
           key_dt scope_key = (key_dt) pi.start_ip;
-
           scope = lru_cache__maybe_hit(string_cache, scope_key);
           if (!isvalid(scope)) {
             if (unw_get_proc_name(&cursor, _native_buf, MAXLEN, &offset) == 0) {
               scope = strdup(_native_buf);
               lru_cache__store(string_cache, scope_key, scope);
               if (pargs.binary) {
-                mojo_string_event(scope, scope);
+                mojo_string_event(scope_key, scope);
               }
             }
+          }
+          if (pargs.binary && isvalid(scope)) {
+            scope = (char *) scope_key;
           }
         }
         if (!isvalid(scope)) {
@@ -663,14 +665,24 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
         if (isvalid(range))  // For now this is only relevant in `where` mode
           filename = strdup(range->name);
         else {
-          filename = lru_cache__maybe_hit(string_cache, (key_dt) pc);
+          // The program counter carries information about the file name *and*
+          // the line number. Given that we don't resolve the file name using
+          // memory ranges at runtime for performance reasons, we need to store
+          // the PC value so that we can later resolve it to a file name and
+          // line number, instead of doing the more sensible thing of using
+          // something like `scope_key+1`, or the resolved base address.
+          key_dt filename_key = (key_dt) pc;
+          filename = lru_cache__maybe_hit(string_cache, filename_key);
           if (!isvalid(filename)) {
             sprintf(_native_buf, "native@" ADDR_FMT, pc);
             filename = strdup(_native_buf);
             lru_cache__store(string_cache, (key_dt) pc, filename);
             if (pargs.binary) {
-              mojo_string_event(filename, filename);
+              mojo_string_event(filename_key, filename);
             }
+          }
+          if (pargs.binary) {
+            filename = (char *) filename_key;
           }
         }
 
@@ -691,7 +703,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
   } while (!stack_native_full() && unw_step(&cursor) > 0);
   
   SUCCESS;
-} /* wait_unw_init_remote */
+} /* _py_thread__unwind_native_frame_stack */
 
 
 // ----------------------------------------------------------------------------
@@ -860,6 +872,16 @@ py_thread__emit_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t 
     }
   }
 
+  // Group entries by thread.
+  emit_stack(
+    pargs.head_format, self->proc->pid, self->tid,
+    // These are relevant only in `where` mode
+    is_idle           ? "💤" : "🚀",
+    self->proc->child ? "🧒" : ""
+  );
+
+  int error = FALSE;
+
   #ifdef NATIVE
 
   // We sample the kernel frame stack BEFORE interrupting because otherwise
@@ -870,8 +892,8 @@ py_thread__emit_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t 
     _py_thread__unwind_kernel_frame_stack(self);
   }
   if (fail(_py_thread__unwind_native_frame_stack(self))) {
-    log_ie("Failed to unwind native stack");
-    return;
+    emit_invalid_frame();
+    error = TRUE;
   }
 
   // Update the thread state to improve guarantees that it will be in sync with
@@ -879,33 +901,25 @@ py_thread__emit_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t 
   py_thread__fill_from_raddr(self, &self->raddr, self->proc);
   #endif
 
-  // Group entries by thread.
-  emit_stack(
-    pargs.head_format, self->proc->pid, self->tid,
-    // These are relevant only in `where` mode
-    is_idle           ? "💤" : "🚀",
-    self->proc->child ? "🧒" : ""
-  );
-
   V_DESC(self->proc->py_v);
 
   if (isvalid(self->top_frame)) {
     if (V_MIN(3, 11)) {
       if (fail(_py_thread__unwind_cframe_stack(self))) {
         emit_invalid_frame();
-        stats_count_error();
+        error = TRUE;
       }
     }
     else {
       if (fail(_py_thread__unwind_frame_stack(self))) {
         emit_invalid_frame();
-        stats_count_error();
+        error = TRUE;
       }
     }
     
     if (fail(_py_thread__resolve_py_stack(self))) {
       emit_invalid_frame();
-      stats_count_error();
+      error = TRUE;
     }
   }
 
@@ -923,9 +937,13 @@ py_thread__emit_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t 
       log_e("Invalid native frame");
       break;
     }
-    char * eval_frame_fn = native_frame->scope == UNKNOWN_SCOPE
-      ? NULL
-      : strstr(native_frame->scope, "PyEval_EvalFrame");
+    char * scope = pargs.binary
+      ? lru_cache__maybe_hit(self->proc->string_cache, (key_dt) native_frame->scope)
+      : native_frame->scope;
+    if (!isvalid(scope)) {
+      scope = UNKNOWN_SCOPE;
+    }
+    char * eval_frame_fn = scope == UNKNOWN_SCOPE ? NULL : strstr(scope, "PyEval_EvalFrame");
     int is_frame_eval = FALSE;
     if (isvalid(eval_frame_fn)) {
       char c = *(eval_frame_fn+16);
@@ -995,8 +1013,9 @@ py_thread__emit_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t 
 
   // Update sampling stats
   stats_count_sample();
+  if (error) stats_count_error();
   stats_check_duration(stopwatch_duration());
-} /* py_thread__print_collapsed_stack */
+} /* py_thread__emit_collapsed_stack */
 
 
 // ----------------------------------------------------------------------------

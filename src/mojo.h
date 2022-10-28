@@ -62,7 +62,6 @@ typedef unsigned long mojo_int_t;
 typedef unsigned long long mojo_int_t;
 #endif
 
-
 // Bitmask to ensure that we encode at most 4 bytes for an integer.
 #define MOJO_INT32 ((mojo_int_t)(1 << (6 + 7 * 3)) - 1)
 
@@ -125,16 +124,16 @@ static inline void mojo_integer(mojo_int_t integer, int sign) {
   mojo_integer(pid, 0);      \
   mojo_fstring(FORMAT_TID, tid);
 
-#define mojo_frame(frame)    \
-  mojo_event(MOJO_FRAME);    \
-  mojo_ref(frame->key);      \
-  mojo_ref(frame->filename); \
-  mojo_ref(frame->scope);    \
+#define mojo_frame(frame)      \
+  mojo_event(MOJO_FRAME);      \
+  mojo_integer(frame->key, 0); \
+  mojo_ref(frame->filename);   \
+  mojo_ref(frame->scope);      \
   mojo_integer(frame->line, 0);
 
 #define mojo_frame_ref(frame) \
   mojo_event(MOJO_FRAME_REF); \
-  mojo_ref(frame->key);
+  mojo_integer(frame->key, 0);
 
 #define mojo_frame_kernel(scope) \
   mojo_event(MOJO_FRAME_KERNEL); \

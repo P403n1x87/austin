@@ -271,10 +271,14 @@ void
 chain__destroy(chain_t *);
 
 
+#define LRU_CACHE_EXPAND 0
+
+
 /**
  * Create a new hash table.
  * 
- * @param capacity  the hash table maximum capacity
+ * @param capacity  the hash table maximum capacity. Pass ``LRU_CACHE_EXPAND``
+ *                   to allow the hash table to expand.
  * 
  * @return a valid reference to a new hash table, NULL otherwise.
  */
@@ -311,15 +315,16 @@ void
 hash_table__set(hash_table_t *, key_dt, value_t);
 
 
-#define hash_table__iter_start(table)                                          \
-    for (int i = 0; i < table->capacity; i++) {                                \
-        chain_t * chain = table->chains[i];                                    \
+#define hash_table__iter_start(table, valtype, valvar)                         \
+    for (int __i = 0; __i < table->capacity; __i++) {                          \
+        chain_t * chain = table->chains[__i];                                  \
         if (!isvalid(chain))                                                   \
             continue;                                                          \
         while (isvalid(chain->next)) {                                         \
             chain = chain->next;                                               \
-            value_t value = chain->value;                                      \
-      
+            valtype valvar = (valtype) chain->value;                           \
+            if (!isvalid(valvar))                                              \
+                continue;
 
 #define hash_table__iter_stop(table) }}
 
@@ -387,6 +392,17 @@ lru_cache_new(int, void (*)(value_t));
  */
 value_t
 lru_cache__maybe_hit(lru_cache_t *, key_dt);
+
+
+/**
+ * Check if the cache is full.
+ * 
+ * @param self  the cache
+ * 
+ * @return TRUE if the cache is full, else FALSE.
+ */
+int
+lru_cache__is_full(lru_cache_t *);
 
 
 /**

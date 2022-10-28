@@ -1,3 +1,8 @@
+2022-10-26 v3.4.1
+
+  Fixed a bug with the MOJO binary format.
+
+
 2022-10-25 v3.4.0
 
   Added support for Python 3.11.

@@ -81,11 +81,16 @@ def test_hash_table_full():
 
 def test_lru_cache():
     c = LruCache(10, C.free)
+
+    assert not c.is_full()
+
     assert c.maybe_hit(42) is NULL
 
     values = [(42 + i, C.malloc(8)) for i in range(10)]
     for k, v in values:
         c.store(k, v)
+
+    assert c.is_full()
 
     for i in range(8):
         assert c.maybe_hit(42 + i) == values[i][1]
@@ -94,3 +99,32 @@ def test_lru_cache():
 
     c.store(100, C.malloc(8))
     assert c.maybe_hit(50) is NULL
+
+
+def test_lru_cache_expand():
+    c = LruCache(0, C.free)
+
+    # Fill the cache to the initial size
+    values = [(i + 1, C.malloc(8)) for i in range(1024)]
+    for k, v in values:
+        c.store(k, v)
+
+    # Check that we can retrieve the values
+    for k, v in values:
+        assert c.maybe_hit(k) == v
+
+    # Check that the cache is now full
+    assert c.is_full()
+
+    # Add a new value
+    new_value = C.malloc(8)
+    c.store(1025, new_value)
+
+    # Check that the cache has been resized and not full
+    assert not c.is_full()
+
+    values.append((1025, new_value))
+
+    # Check that we still have all the items
+    for k, v in values:
+        assert c.maybe_hit(k) == v

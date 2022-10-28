@@ -28,6 +28,7 @@
 
 #include "cache.h"
 #include "hints.h"
+#include "mojo.h"
 #include "platform.h"
 #include "py_proc.h"
 #include "py_string.h"
@@ -41,7 +42,7 @@ typedef struct {
   unsigned int   line;
 } frame_t;
 
-#define py_frame_key(code, lasti)  (((key_dt) code << 16) | lasti)
+#define py_frame_key(code, lasti)  (((key_dt) (((key_dt) code) & MOJO_INT32) << 16) | lasti)
 #define py_string_key(code, field) ((key_dt) *((void **) ((void *) &code + py_v->py_code.field)))
 
 #ifdef PY_THREAD_C
@@ -235,22 +236,27 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
     return NULL;
   }
 
+  lru_cache_t * cache = py_proc->string_cache;
+
   key_dt string_key = py_string_key(code, o_filename);
-  char * filename = lru_cache__maybe_hit(py_proc->string_cache, string_key);
+  char * filename = lru_cache__maybe_hit(cache, string_key);
   if (!isvalid(filename)) {
     filename = _code__get_filename(&code, pref, py_v);
     if (!isvalid(filename)) {
       log_ie("Cannot get file name from PyCodeObject");
       return NULL;
     }
-    lru_cache__store(py_proc->string_cache, string_key, filename);
+    lru_cache__store(cache, string_key, filename);
     if (pargs.binary) {
-      mojo_string_event(filename, filename);
+      mojo_string_event(string_key, filename);
     }
+  }
+  if (pargs.binary) {
+    filename = (char *) string_key;
   }
 
   string_key = V_MIN(3, 11) ? py_string_key(code, o_qualname) : py_string_key(code, o_name);
-  char * scope = lru_cache__maybe_hit(py_proc->string_cache, string_key);
+  char * scope = lru_cache__maybe_hit(cache, string_key);
   if (!isvalid(scope)) {
     scope = V_MIN(3, 11)
       ? _code__get_qualname(&code, pref, py_v)
@@ -259,10 +265,13 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
       log_ie("Cannot get scope name from PyCodeObject");
       return NULL;
     }
-    lru_cache__store(py_proc->string_cache, string_key, scope);
+    lru_cache__store(cache, string_key, scope);
     if (pargs.binary) {
-      mojo_string_event(scope, scope);
+      mojo_string_event(string_key, scope);
     }
+  }
+  if (pargs.binary) {
+    scope = (char *) string_key;
   }
 
   ssize_t len = 0;

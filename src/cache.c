@@ -334,8 +334,11 @@ lru_cache_new(int capacity, void (*deallocator)(value_t)) {
   lru_cache_t *cache = (lru_cache_t *)calloc(1, sizeof(lru_cache_t));
 
   cache->capacity = capacity;
-  cache->queue    = queue_new(capacity, deallocator);
-  cache->hash     = hash_table_new((capacity * 4 / 3) | 1);
+  
+  capacity = capacity ? capacity : 1024;
+  
+  cache->queue = queue_new(capacity, deallocator);
+  cache->hash  = hash_table_new((capacity * 4 / 3) | 1);
 
   #ifdef DEBUG
   cache->hits = 0;
@@ -386,16 +389,38 @@ lru_cache__maybe_hit(lru_cache_t *self, key_dt key) {
 }
 
 // ----------------------------------------------------------------------------
+int
+lru_cache__is_full(lru_cache_t *self) {
+  return queue__is_full(self->queue);
+}
+
+// ----------------------------------------------------------------------------
 void
 lru_cache__store(lru_cache_t *self, key_dt key, value_t value) {
   queue_t * queue = self->queue;
 
   if (queue__is_full(queue)) {
-    hash_table__del(self->hash, queue->rear->key);
-    
-    value_t value = queue__dequeue(queue);
-    if (isvalid(value))
-      queue->deallocator(value);
+    if (self->capacity == LRU_CACHE_EXPAND) {
+      // Double the queue capacity.
+      unsigned capacity = queue->capacity = (queue->capacity << 1);
+
+      // Double the hash table and move the items across.
+      hash_table_t *new_hash = hash_table_new((capacity * 4 / 3) | 1);
+      
+      hash_table__iter_start(self->hash, queue_item_t *, item) {
+        hash_table__set(new_hash, item->key, item);
+      } hash_table__iter_stop(self->hash);
+
+      // Destroy the old hash table and replace it with the new one.
+      hash_table__destroy(self->hash);
+      self->hash = new_hash;
+    } else {
+      hash_table__del(self->hash, queue->rear->key);
+      
+      value_t value = queue__dequeue(queue);
+      if (isvalid(value))
+        queue->deallocator(value);
+    }
   }
 
   hash_table__set(self->hash, key, queue__enqueue(self->queue, value, key));
