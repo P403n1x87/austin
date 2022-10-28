@@ -115,3 +115,32 @@ def test_lru_cache_invalidate():
     c.invalidate()
 
     assert c.maybe_hit(42) is NULL
+
+
+def test_lru_cache_expand():
+    c = LruCache(0, C.free)
+
+    # Fill the cache to the initial size
+    values = [(i + 1, C.malloc(8)) for i in range(1024)]
+    for k, v in values:
+        c.store(k, v)
+
+    # Check that we can retrieve the values
+    for k, v in values:
+        assert c.maybe_hit(k) == v
+
+    # Check that the cache is now full
+    assert c.is_full()
+
+    # Add a new value
+    new_value = C.malloc(8)
+    c.store(1025, new_value)
+
+    # Check that the cache has been resized and not full
+    assert not c.is_full()
+
+    values.append((1025, new_value))
+
+    # Check that we still have all the items
+    for k, v in values:
+        assert c.maybe_hit(k) == v
