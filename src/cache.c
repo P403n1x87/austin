@@ -428,24 +428,6 @@ lru_cache__store(lru_cache_t *self, key_dt key, value_t value) {
 
 // ----------------------------------------------------------------------------
 void
-lru_cache__invalidate(lru_cache_t *self) {
-  if (!isvalid(self) || queue__is_empty(self->queue))
-    return;
-
-  void (*deallocator)(value_t) = self->queue->deallocator;
-
-  queue__destroy(self->queue);
-  hash_table__destroy(self->hash);
-
-  int capacity = self->capacity;
-
-  self->queue = queue_new(capacity, deallocator);
-  self->hash  = hash_table_new((capacity * 4 / 3) | 1);
-}
-
-
-// ----------------------------------------------------------------------------
-void
 lru_cache__destroy(lru_cache_t *self) {
   if (!isvalid(self))
     return;

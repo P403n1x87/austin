@@ -648,7 +648,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
           if (!isvalid(scope)) {
             if (unw_get_proc_name(&cursor, _native_buf, MAXLEN, &offset) == 0) {
               scope = strdup(_native_buf);
-              _py_proc__store_string(self->proc, scope_key, scope);
+              lru_cache__store(string_cache, scope_key, scope);
               if (pargs.binary) {
                 mojo_string_event(scope_key, scope);
               }
@@ -676,7 +676,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
           if (!isvalid(filename)) {
             sprintf(_native_buf, "native@" ADDR_FMT, pc);
             filename = strdup(_native_buf);
-            _py_proc__store_string(self->proc, (key_dt) pc, filename);
+            lru_cache__store(string_cache, (key_dt) pc, filename);
             if (pargs.binary) {
               mojo_string_event(filename_key, filename);
             }

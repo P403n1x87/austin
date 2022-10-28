@@ -233,10 +233,4 @@ py_proc__terminate(py_proc_t *);
 void
 py_proc__destroy(py_proc_t *);
 
-
-static inline void
-_py_proc__store_string(py_proc_t * self, key_dt key, char * value) {
-  lru_cache__store(self->string_cache, key, (value_t) value);
-}
-
 #endif // PY_PROC_H

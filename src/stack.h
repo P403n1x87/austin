@@ -236,15 +236,17 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
     return NULL;
   }
 
+  lru_cache_t * cache = py_proc->string_cache;
+
   key_dt string_key = py_string_key(code, o_filename);
-  char * filename = lru_cache__maybe_hit(py_proc->string_cache, string_key);
+  char * filename = lru_cache__maybe_hit(cache, string_key);
   if (!isvalid(filename)) {
     filename = _code__get_filename(&code, pref, py_v);
     if (!isvalid(filename)) {
       log_ie("Cannot get file name from PyCodeObject");
       return NULL;
     }
-    _py_proc__store_string(py_proc, string_key, filename);
+    lru_cache__store(cache, string_key, filename);
     if (pargs.binary) {
       mojo_string_event(string_key, filename);
     }
@@ -254,7 +256,7 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
   }
 
   string_key = V_MIN(3, 11) ? py_string_key(code, o_qualname) : py_string_key(code, o_name);
-  char * scope = lru_cache__maybe_hit(py_proc->string_cache, string_key);
+  char * scope = lru_cache__maybe_hit(cache, string_key);
   if (!isvalid(scope)) {
     scope = V_MIN(3, 11)
       ? _code__get_qualname(&code, pref, py_v)
@@ -263,7 +265,7 @@ _frame_from_code_raddr(py_thread_t * py_thread, void * code_raddr, int lasti, py
       log_ie("Cannot get scope name from PyCodeObject");
       return NULL;
     }
-    _py_proc__store_string(py_proc, string_key, scope);
+    lru_cache__store(cache, string_key, scope);
     if (pargs.binary) {
       mojo_string_event(string_key, scope);
     }
