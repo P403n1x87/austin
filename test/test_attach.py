@@ -23,9 +23,20 @@
 import platform
 from collections import Counter
 from test.utils import allpythons as _allpythons
-from test.utils import (austin, austinp, compress, has_pattern, metadata, mojo,
-                        requires_sudo, run_python, sum_metric, target, threads,
-                        variants)
+from test.utils import (
+    austin,
+    austinp,
+    compress,
+    has_pattern,
+    metadata,
+    mojo,
+    requires_sudo,
+    run_python,
+    sum_metric,
+    target,
+    threads,
+    variants,
+)
 from time import sleep
 
 import pytest
