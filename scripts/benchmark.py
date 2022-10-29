@@ -1,4 +1,5 @@
 # Run as python3 scripts/benchmark.py from the repository root directory.
+# Ensure dependencies from requirements-bm.txt are installed.
 
 import re
 import sys
@@ -15,7 +16,7 @@ from test.utils import Variant, metadata, target
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
-VERSIONS = ("3.0.0", "3.1.0", "3.2.0", "3.3.0", "dev")
+VERSIONS = ("3.2.0", "3.3.0", "3.4.1", "dev")
 SCENARIOS = [
     *[
         (

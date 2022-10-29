@@ -34,7 +34,11 @@ from time import sleep
 from types import ModuleType
 from typing import Iterator, TypeVar
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    pytest = None
+
 from austin.format.mojo import MojoFile
 
 HERE = Path(__file__).parent
@@ -167,8 +171,6 @@ class Variant(str):
 austin = Variant("austin")
 austinp = Variant("austinp")
 
-variants = pytest.mark.parametrize("austin", Variant.ALL)
-
 
 def run_async(command: list[str], *args: tuple[str]) -> Popen:
     return Popen(command + list(args), stdout=PIPE, stderr=PIPE)
@@ -284,18 +286,6 @@ def compress(data: str) -> str:
     return output
 
 
-match platform.system():
-    case "Windows":
-        requires_sudo = no_sudo = lambda f: f
-    case _:
-        requires_sudo = pytest.mark.skipif(
-            os.geteuid() != 0, reason="Requires superuser privileges"
-        )
-        no_sudo = pytest.mark.skipif(
-            os.geteuid() == 0, reason="Must not have superuser privileges"
-        )
-
-
 def demojo(data: bytes) -> str:
     result = StringIO()
 
@@ -303,9 +293,6 @@ def demojo(data: bytes) -> str:
         result.write(e.to_austin())
 
     return result.getvalue()
-
-
-mojo = pytest.mark.parametrize("mojo", [False, True])
 
 
 # Load from the utils scripts
@@ -319,3 +306,20 @@ def load_util(name: str) -> ModuleType:
     spec.loader.exec_module(module)
 
     return module
+
+
+if pytest is not None:
+    variants = pytest.mark.parametrize("austin", Variant.ALL)
+
+    match platform.system():
+        case "Windows":
+            requires_sudo = no_sudo = lambda f: f
+        case _:
+            requires_sudo = pytest.mark.skipif(
+                os.geteuid() != 0, reason="Requires superuser privileges"
+            )
+            no_sudo = pytest.mark.skipif(
+                os.geteuid() == 0, reason="Must not have superuser privileges"
+            )
+
+    mojo = pytest.mark.parametrize("mojo", [False, True])
