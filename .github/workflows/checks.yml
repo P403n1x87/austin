@@ -119,7 +119,7 @@ jobs:
             valgrind \
             python2.7 \
             python3.{5..11} \
-            python3.10-full
+            python3.10-full python3.10-dev
 
       - name: Compile Austin
         run: |
