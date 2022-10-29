@@ -1,13 +1,26 @@
 import ctypes
 import re
-from ctypes import CDLL, POINTER, Structure, c_char_p, c_long, c_void_p, cast
+from ctypes import CDLL
+from ctypes import POINTER
+from ctypes import Structure
+from ctypes import c_char_p
+from ctypes import c_long
+from ctypes import c_void_p
+from ctypes import cast
 from pathlib import Path
-from subprocess import PIPE, STDOUT, run
+from subprocess import PIPE
+from subprocess import STDOUT
+from subprocess import run
 from types import ModuleType
-from typing import Any, Callable, Optional, Type, Union
+from typing import Any
+from typing import Callable
+from typing import Optional
+from typing import Type
 
-from pycparser import c_ast, c_parser
+from pycparser import c_ast
+from pycparser import c_parser
 from pycparser.plyparser import ParseError
+
 
 HERE = Path(__file__).resolve().parent
 TEST = HERE.parent

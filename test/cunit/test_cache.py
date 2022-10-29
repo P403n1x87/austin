@@ -1,8 +1,13 @@
 from ctypes import c_void_p
 from test.cunit import C
-from test.cunit.cache import Chain, HashTable, LruCache, Queue, QueueItem
+from test.cunit.cache import Chain
+from test.cunit.cache import HashTable
+from test.cunit.cache import LruCache
+from test.cunit.cache import Queue
+from test.cunit.cache import QueueItem
 
 import pytest
+
 
 NULL = 0
 C.free.argtypes = [c_void_p]

@@ -21,7 +21,10 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import platform
-from test.utils import austin, no_sudo, run_python, target
+from test.utils import austin
+from test.utils import no_sudo
+from test.utils import run_python
+from test.utils import target
 
 import pytest
 

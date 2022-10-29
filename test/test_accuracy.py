@@ -20,15 +20,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from test.utils import (
-    allpythons,
-    austin,
-    compress,
-    has_pattern,
-    python,
-    samples,
-    target,
-)
+from test.utils import allpythons
+from test.utils import austin
+from test.utils import compress
+from test.utils import has_pattern
+from test.utils import python
+from test.utils import samples
+from test.utils import target
 
 import pytest
 from flaky import flaky
