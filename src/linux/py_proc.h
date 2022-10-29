@@ -604,7 +604,8 @@ _py_proc__init(py_proc_t * self) {
 static int
 _infer_tid_field_offset(py_thread_t * py_thread) {
   if (fail(read_pthread_t(py_thread->raddr.pref, (void *) py_thread->tid))) {
-    log_d("Cannot copy pthread_t structure");
+    log_d("> Cannot copy pthread_t structure (pid: %u)", py_thread->raddr.pref);
+    set_error(EMMAP);
     FAIL;
   }
 
