@@ -5,3 +5,8 @@ pytest-xdist
 
 # C unit tests
 pycparser
+
+# Support tests
+psutil
+requests
+uwsgi; sys_platform != 'win32'
