@@ -1,3 +1,8 @@
+xxxx-xx-xx v3.5.0
+
+  Improved multiprocess support.
+
+
 2022-10-26 v3.4.1
 
   Fixed a bug with the MOJO binary format.
