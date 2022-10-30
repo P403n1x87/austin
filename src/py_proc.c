@@ -427,6 +427,8 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   while (isvalid(thread.raddr.addr)) {
     if (success(_infer_tid_field_offset(&thread)))
       SUCCESS;
+    if (is_fatal(austin_errno))
+      FAIL;
     py_thread__next(&thread);
   }
   log_d("tid field offset not ready");
@@ -614,7 +616,7 @@ _py_proc__find_interpreter_state(py_proc_t * self) {
 
   // First try to de-reference interpreter head as the most reliable method
   if (_py_proc__deref_interp_head(self)) {
-    log_d("Cannot dereference PyInterpreterState head from symbols");
+    log_d("Cannot dereference PyInterpreterState head from symbols (pid: %d)", self->pid);
     // If that fails try to get the current thread state (can be NULL during idle)
     tstate_current_raddr = _py_proc__get_current_thread_state_raddr(self);
     if (tstate_current_raddr == NULL || tstate_current_raddr == (void *) -1)
@@ -693,6 +695,11 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
       case OUT_OF_BOUND:
         TIMER_STOP
       }
+
+      // Try once for child processes.
+      if (self->child)
+        TIMER_STOP
+
     #ifdef DEREF_SYM
     } else {
       TIMER_STOP
@@ -719,6 +726,9 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
     );
     SUCCESS;
   }
+
+  if (self->child)
+    FAIL;
 
   #ifdef CHECK_HEAP
   log_w("BSS scan unsuccessful so we scan the heap directly ...");
