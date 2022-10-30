@@ -173,7 +173,7 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
     frame_t * frame     = lru_cache__maybe_hit(cache, frame_key);
 
     if (!isvalid(frame)) {
-      frame = _frame_from_code_raddr(self, py_frame.code, lasti, self->proc->py_v);
+      frame = _frame_from_code_raddr(self->proc, py_frame.code, lasti, self->proc->py_v);
       if (!isvalid(frame)) {
         log_ie("Failed to get frame from code object");
         // Truncate the stack to the point where we have successfully resolved.
