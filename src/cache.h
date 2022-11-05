@@ -339,6 +339,18 @@ hash_table__set(hash_table_t *, key_dt, value_t);
             if (!isvalid(valvar))                                              \
                 continue;
 
+#define hash_table__iteritems_start(table, keytype, keyvar, valtype, valvar)   \
+    for (int __i = 0; __i < table->capacity; __i++) {                          \
+        chain_t * chain = table->chains[__i];                                  \
+        if (!isvalid(chain))                                                   \
+            continue;                                                          \
+        while (isvalid(chain->next)) {                                         \
+            chain = chain->next;                                               \
+            keytype keyvar = (keytype) chain->key;                             \
+            valtype valvar = (valtype) chain->value;                           \
+            if (!isvalid(valvar))                                              \
+                continue;
+
 #define hash_table__iter_stop(table) }}
 
 
@@ -499,6 +511,26 @@ lookup__set(lookup_t *, key_dt, value_t);
  */
 void
 lookup__del(lookup_t *, key_dt);
+
+
+/**
+ * Clear the lookup.
+ * 
+ * @param self  the lookup to clear
+ */
+void
+lookup__clear(lookup_t *);
+
+
+/**
+ * Iterate over the lookup.
+*/
+#define lookup__iteritems_start(lu, keytype, keyvar, valtype, valvar) \
+    hash_table__iteritems_start((lu->hash), keytype, keyvar, valtype, valvar)
+
+
+#define lookup__iter_stop(lu) \
+    hash_table__iter_stop((lu->hash))
 
 
 /**

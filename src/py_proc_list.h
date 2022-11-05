@@ -38,9 +38,7 @@ typedef struct {
   int              count;      // Number of entries in the list
   py_proc_item_t * first;      // First item in the list
   lookup_t       * index;      // Map PID to py_proc_t currently in the list.
-  pid_t          * pid_table;  // Table of pids with their parents
-  pid_t            max_pid;    // Highest seen PID in the index
-  int              pids;       // Maximum number of PIDs in the index
+  lookup_t       * pid_table;  // PID to PPID lookup table.
   ctime_t          timestamp;  // Timestamp of the last update
 } py_proc_list_t;
 
@@ -72,10 +70,10 @@ py_proc_list__is_empty(py_proc_list_t *);
  * Add the the children of the given process to the list.
  *
  * @param  py_proc_list_t  the list.
- * @param  pid_t           the PID of the parent process.
+ * @param  long unsigned   the PID of the parent process.
  */
 void
-py_proc_list__add_proc_children(py_proc_list_t *, pid_t);
+py_proc_list__add_proc_children(py_proc_list_t *, long unsigned);
 
 
 /**

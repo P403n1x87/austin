@@ -497,8 +497,8 @@ lookup__set(lookup_t *self, key_dt key, value_t value) {
     // Double the hash table and move the items across.
     hash_table_t *new_hash = hash_table_new(self->hash->capacity << 1);
     
-    hash_table__iter_start(self->hash, value_t, value) {
-      hash_table__set(new_hash, key, value);
+    hash_table__iteritems_start(self->hash, key_dt, _key, value_t, _value) {
+      hash_table__set(new_hash, _key, _value);
     } hash_table__iter_stop(self->hash);
 
     // Destroy the old hash table and replace it with the new one.
@@ -516,6 +516,17 @@ lookup__del(lookup_t *self, key_dt key) {
     return;
 
   hash_table__del(self->hash, key);
+}
+
+// ----------------------------------------------------------------------------
+void
+lookup__clear(lookup_t *self) {
+  if (!isvalid(self))
+    return;
+
+  size_t size = self->hash->capacity;
+  hash_table__destroy(self->hash);
+  self->hash = hash_table_new(size);
 }
 
 // ----------------------------------------------------------------------------
