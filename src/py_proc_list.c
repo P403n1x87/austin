@@ -64,7 +64,7 @@ _py_proc_list__add(py_proc_list_t * self, py_proc_t * py_proc) {
   self->first = item;
 
   // Update index table.
-  self->index[py_proc->pid] = py_proc;
+  lookup__set(self->index, py_proc->pid, py_proc);
 
   self->count++;
 
@@ -75,7 +75,7 @@ _py_proc_list__add(py_proc_list_t * self, py_proc_t * py_proc) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc_list__has_pid(py_proc_list_t * self, pid_t pid) {
-  return self->index[pid] != NULL;
+  return isvalid(lookup__get(self->index, pid));
 } /* _py_proc_list__has_pid */
 
 
@@ -86,7 +86,7 @@ _py_proc_list__remove(py_proc_list_t * self, py_proc_item_t * item) {
   pid_t pid = item->py_proc->pid;
   #endif
 
-  self->index[item->py_proc->pid] = NULL;
+  lookup__del(self->index, item->py_proc->pid);
 
   if (item == self->first)
     self->first = item->next;
@@ -117,13 +117,12 @@ py_proc_list_new(py_proc_t * parent_py_proc) {
 
   log_t("Maximum number of PIDs: %d", list->pids);
 
-  list->index = (py_proc_t **) calloc(list->pids, sizeof(py_proc_t *));
-  if (list->index == NULL)
+  list->index = lookup_new(256);
+  if (!isvalid(list->index))
     goto release;
 
   list->pid_table = (pid_t *) calloc(list->pids, sizeof(pid_t));
   if (list->pid_table == NULL) {
-    free(list->index);
     goto release;
   }
 
@@ -134,6 +133,7 @@ py_proc_list_new(py_proc_t * parent_py_proc) {
 
 release:
   py_proc_list__destroy(list);
+  
   return NULL;
 } /* py_proc_list_new */
 
@@ -337,7 +337,10 @@ py_proc_list__destroy(py_proc_list_t * self) {
   while (self->first)
     _py_proc_list__remove(self, self->first);
 
-  sfree(self->index);
+  lookup__destroy(self->index);
+  self->index = NULL;
+
   sfree(self->pid_table);
+  
   free(self);
 } /* py_proc_list__destroy */

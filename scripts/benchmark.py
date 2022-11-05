@@ -50,6 +50,14 @@ SCENARIOS = [
         )
         for i in (1, 10, 100, 1000)
     ],
+    *[
+        (
+            "austin",
+            f"Multiprocess wall time [sampling interval: {i}]",
+            ["-CPfi", str(i), sys.executable, target("target_mp.py"), "16"],
+        )
+        for i in (1, 10, 100, 1000)
+    ],
 ]
 
 

@@ -23,7 +23,7 @@
 #ifndef PY_PROC_LIST_H
 #define PY_PROC_LIST_H
 
-
+#include "cache.h"
 #include "py_proc.h"
 
 
@@ -37,7 +37,7 @@ typedef struct _py_proc_item {
 typedef struct {
   int              count;      // Number of entries in the list
   py_proc_item_t * first;      // First item in the list
-  py_proc_t     ** index;      // Index of PIDs in the list
+  lookup_t       * index;      // Map PID to py_proc_t currently in the list.
   pid_t          * pid_table;  // Table of pids with their parents
   pid_t            max_pid;    // Highest seen PID in the index
   int              pids;       // Maximum number of PIDs in the index
