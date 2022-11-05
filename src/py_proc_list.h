@@ -73,7 +73,7 @@ py_proc_list__is_empty(py_proc_list_t *);
  * @param  long unsigned   the PID of the parent process.
  */
 void
-py_proc_list__add_proc_children(py_proc_list_t *, long unsigned);
+py_proc_list__add_proc_children(py_proc_list_t *, uintptr_t);
 
 
 /**

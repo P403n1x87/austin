@@ -138,7 +138,7 @@ release:
 
 // ----------------------------------------------------------------------------
 void
-py_proc_list__add_proc_children(py_proc_list_t * self, long unsigned ppid) {
+py_proc_list__add_proc_children(py_proc_list_t * self, uintptr_t ppid) {
   lookup__iteritems_start(self->pid_table, key_dt, pid, value_t, pid_ppid) {
     if (pid_ppid == (value_t) ppid && !_py_proc_list__has_pid(self, pid)) {
       py_proc_t * child_proc = py_proc_new(TRUE);
@@ -276,7 +276,7 @@ py_proc_list__update(py_proc_list_t * self) {
     if (proc_pidinfo(pid_list[i], PROC_PIDTBSDINFO, 0, &proc, PROC_PIDTBSDINFO_SIZE) == -1)
       continue;
 
-    lookup__set(self->pid_table, pid_list[i], (value_t) proc.pbi_ppid);
+    lookup__set(self->pid_table, pid_list[i], (value_t) (uintptr_t) proc.pbi_ppid);
   }
 
   #elif defined PL_WIN                                                 /* WIN */
@@ -289,7 +289,7 @@ py_proc_list__update(py_proc_list_t * self) {
 
   if (Process32First(h, &pe)) {
     do {
-      lookup__set(self->pid_table, pe.th32ProcessID, (value_t) pe.th32ParentProcessID);
+      lookup__set(self->pid_table, pe.th32ProcessID, (value_t) (uintptr_t) pe.th32ParentProcessID);
     } while (Process32Next(h, &pe));
   }
 
