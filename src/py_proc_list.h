@@ -23,7 +23,7 @@
 #ifndef PY_PROC_LIST_H
 #define PY_PROC_LIST_H
 
-
+#include "cache.h"
 #include "py_proc.h"
 
 
@@ -35,13 +35,11 @@ typedef struct _py_proc_item {
 
 
 typedef struct {
-  int              count;      // Number of entries in the list
-  py_proc_item_t * first;      // First item in the list
-  py_proc_t     ** index;      // Index of PIDs in the list
-  pid_t          * pid_table;  // Table of pids with their parents
-  pid_t            max_pid;    // Highest seen PID in the index
-  int              pids;       // Maximum number of PIDs in the index
-  ctime_t          timestamp;  // Timestamp of the last update
+  int              count;            // Number of entries in the list
+  py_proc_item_t * first;            // First item in the list
+  lookup_t       * py_proc_for_pid;  // PID to py_proc_t lookup table
+  lookup_t       * ppid_for_pid;     // PID to PPID lookup table
+  ctime_t          timestamp;        // Timestamp of the last update
 } py_proc_list_t;
 
 
@@ -72,10 +70,10 @@ py_proc_list__is_empty(py_proc_list_t *);
  * Add the the children of the given process to the list.
  *
  * @param  py_proc_list_t  the list.
- * @param  pid_t           the PID of the parent process.
+ * @param  uintptr_t       the PID of the parent process.
  */
 void
-py_proc_list__add_proc_children(py_proc_list_t *, pid_t);
+py_proc_list__add_proc_children(py_proc_list_t *, uintptr_t);
 
 
 /**
