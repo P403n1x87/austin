@@ -3,6 +3,7 @@
 
 import re
 import sys
+import typing as t
 from argparse import ArgumentParser
 from itertools import product
 from math import floor, log
@@ -61,23 +62,28 @@ SCENARIOS = [
 ]
 
 
-def get_stats(output: str) -> dict:
-    meta = metadata(output)
-    raw_saturation = meta["saturation"]
-    _, _, raw_samples = raw_saturation.partition("/")
+def get_stats(output: str) -> t.Optional[dict]:
+    try:
+        meta = metadata(output)
+        raw_saturation = meta["saturation"]
+        _, _, raw_samples = raw_saturation.partition("/")
 
-    duration = float(meta["duration"]) / 1e6
-    samples = int(raw_samples)
-    saturation = eval(raw_saturation)
-    error_rate = eval(meta["errors"])
-    sampling = int(meta["sampling"].split(",")[1])
+        duration = float(meta["duration"]) / 1e6
+        samples = int(raw_samples)
+        saturation = eval(raw_saturation)
+        error_rate = eval(meta["errors"])
+        sampling = int(meta["sampling"].split(",")[1])
 
-    return {
-        "Sample Rate": samples / duration,
-        "Saturation": saturation,
-        "Error Rate": error_rate,
-        "Sampling Speed": sampling,
-    }
+        return {
+            "Sample Rate": samples / duration,
+            "Saturation": saturation,
+            "Error Rate": error_rate,
+            "Sampling Speed": sampling,
+        }
+
+    except Exception:
+        # Failed to get stats
+        return None
 
 
 def download_release(version: str, dest: Path, variant_name: str = "austin") -> Variant:
@@ -161,10 +167,18 @@ def render(table):
 
 def main():
     argp = ArgumentParser()
+
     argp.add_argument(
         "-k",
         type=re.compile,
         help="Run benchmark scenarios that match the given regular expression",
+    )
+
+    argp.add_argument(
+        "-n",
+        type=int,
+        default=10,
+        help="Number of times to run each scenario",
     )
 
     opts = argp.parse_args()
@@ -189,7 +203,11 @@ def main():
                 print(f"WARNING: Could not download {variant} {version}")
                 continue
 
-            stats = [get_stats(austin(*args).stdout) for _ in range(10)]
+            stats = [
+                _
+                for _ in (get_stats(austin(*args).stdout) for _ in range(opts.n))
+                if _ is not None
+            ]
             table.append(
                 (
                     version,
