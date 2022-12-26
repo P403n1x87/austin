@@ -5,7 +5,7 @@ on:
       - 'v*-*'
 jobs:
   release-linux-archs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
         arch: ["armv7", "aarch64", "ppc64le"]

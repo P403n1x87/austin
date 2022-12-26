@@ -9,7 +9,7 @@ on:
 
 jobs:
   check-manpage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
     name: Check manpage
@@ -32,7 +32,7 @@ jobs:
         run: git diff -I".* DO NOT MODIFY.*" -I"[.]TH AUSTIN.*" --exit-code src/austin.1
 
   cppcheck:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
     name: Static code analysis
@@ -46,7 +46,7 @@ jobs:
         run: cppcheck -q -f --error-exitcode=1 src
 
   codespell:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
     name: Codespell
@@ -64,7 +64,7 @@ jobs:
         run: codespell -I .github/workflows/wordlist.txt -S "src/python/*" src
 
   formatting-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
     name: Formatting (tests)
@@ -82,7 +82,7 @@ jobs:
         run: black --check test/
 
   linting-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
     name: Linting (tests)
@@ -100,7 +100,7 @@ jobs:
         run: flake8 --config test/.flake8 test/
 
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
     name: Code coverage
@@ -149,7 +149,7 @@ jobs:
           verbose: true
 
   check-cog:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
     name: Check cog output
