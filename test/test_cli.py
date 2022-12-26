@@ -55,6 +55,7 @@ def test_cli_no_python():
 
 def test_cli_invalid_command():
     result = austin("snafubar")
+    assert "[GCC" in result.stderr
     assert result.returncode == 33
     assert "Cannot launch" in (result.stderr or result.stdout)
 
