@@ -418,6 +418,9 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     log_e("Cannot readlink %s", file_name);
     goto release;
   }
+  if (strcmp(pd->exe_path + (strlen(pd->exe_path) - 10), " (deleted)") == 0) {
+    pd->exe_path[strlen(pd->exe_path) - 10] = '\0';
+  }
   log_d("Executable path: %s", pd->exe_path);
 
   while (getline(&line, &len, fp) != -1) {
