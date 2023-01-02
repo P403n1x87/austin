@@ -45,8 +45,8 @@
 #else
 #define DEFAULT_SAMPLING_INTERVAL    100
 #endif
-#define DEFAULT_INIT_RETRY_CNT       100
-#define DEFAULT_HEAP_SIZE            0
+#define DEFAULT_INIT_TIMEOUT_MS      100  // 0.1 seconds
+#define DEFAULT_HEAP_SIZE              0
 
 const char SAMPLE_FORMAT_NORMAL[]      = ";%s:%s:%d";
 const char SAMPLE_FORMAT_WHERE[]       = "    \033[33;1m%2$s\033[0m (\033[36;1m%1$s\033[0m:\033[32;1m%3$d\033[0m)\n";
@@ -67,7 +67,7 @@ const char HEAD_FORMAT_WHERE[]         = "\n\n%3$s%4$s Process \033[35;1m%1$d\03
 // Globals for command line arguments
 parsed_args_t pargs = {
   /* t_sampling_interval */ DEFAULT_SAMPLING_INTERVAL,
-  /* timeout             */ DEFAULT_INIT_RETRY_CNT * 1000,
+  /* timeout             */ DEFAULT_INIT_TIMEOUT_MS * 1000,
   /* attach_pid          */ 0,
   /* where               */ 0,
   /* exclude_empty       */ 0,

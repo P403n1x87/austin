@@ -151,20 +151,17 @@ release:
 } /* _get_version_from_executable */
 
 static int
-_get_version_from_filename(char * filename, int * major, int * minor, int * patch) {
+_get_version_from_filename(char * filename, const char * needle, int * major, int * minor, int * patch) {
   #if defined PL_LINUX                                               /* LINUX */
   char         * base       = filename;
   char         * end        = base + strlen(base);
-  const char   * needle     = "python";
-  const size_t   needle_len = strlen(needle);
 
   while (base < end) {
     base = strstr(base, needle);
     if (!isvalid(base)) {
       break;
     }
-    base += needle_len;
-    if (sscanf(base,"%d.%d", major, minor) == 2) {
+    if (sscanf(base + strlen(needle), "%u.%u", major, minor) == 2) {
       SUCCESS;
     }
   }
@@ -260,6 +257,12 @@ release:
 #endif
 
 
+#if defined PL_LINUX
+#define LIB_NEEDLE "libpython"
+#else
+#define LIB_NEEDLE "python"
+#endif
+
 static int
 _py_proc__infer_python_version(py_proc_t * self) {
   if (self == NULL || (self->bin_path == NULL && self->lib_path == NULL))
@@ -290,7 +293,7 @@ _py_proc__infer_python_version(py_proc_t * self) {
   // Try to infer the Python version from the library file name.
   if (
     isvalid(self->lib_path)
-  &&success(_get_version_from_filename(self->lib_path, &major, &minor, &patch))
+  &&success(_get_version_from_filename(self->lib_path, LIB_NEEDLE, &major, &minor, &patch))
   ) goto from_filename;
 
   // On Linux, the actual executable is sometimes picked as a library. Hence we
@@ -307,6 +310,12 @@ _py_proc__infer_python_version(py_proc_t * self) {
     isvalid(self->bin_path)
   &&(success(_get_version_from_executable(self->bin_path, &major, &minor, &patch)))
   ) goto from_exe;
+
+  // Try to infer the Python version from the executable file name.
+  if (
+    isvalid(self->bin_path)
+  &&success(_get_version_from_filename(self->bin_path, "python", &major, &minor, &patch))
+  ) goto from_filename;
 
   #if defined PL_MACOS
   if (major == 0) {
@@ -391,7 +400,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   log_d(
     "Found possible interpreter state @ %p (offset %p).",
-    raddr, raddr - self->map.heap.base
+    raddr, raddr - self->map.elf.base
   );
 
   log_t(
@@ -492,43 +501,64 @@ _py_proc__scan_heap(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__scan_bss(py_proc_t * self) {
-  if (fail(py_proc__memcpy(self, self->map.bss.base, self->map.bss.size, self->bss)))
-    FAIL;
-
-  log_d("Scanning the BSS section for PyInterpreterState");
-
-  void * upper_bound = self->bss + self->map.bss.size;
-  #ifdef CHECK_HEAP
-  // When the process uses the shared library we need to search in other maps
-  // other than the heap (at least on Linux). This could be optimised by
-  // creating a list of all the maps and checking that a value is valid address
-  // within any of these maps. However, this scan between min and max address
-  // should still be relatively quick so that the extra complexity of a list is
-  // not strictly required.
-  int is_lib = self->lib_path != NULL;
-  #endif
-  for (
-    register void ** raddr = (void **) self->bss;
-    (void *) raddr < upper_bound;
-    raddr++
-  ) {
-    if (
-      #ifdef CHECK_HEAP
-        (is_lib ? _py_proc__is_raddr_within_max_range(self, *raddr)
-                : _py_proc__is_heap_raddr(self, *raddr)) &&
-      #endif
-      _py_proc__check_interp_state(self, *raddr) == 0
-    ) {
-      log_d(
-        "Possible interpreter state referenced by BSS @ %p (offset %x)",
-        (void *) raddr - (void *) self->bss + (void *) self->map.bss.base,
-        (void *) raddr - (void *) self->bss
-      );
-      self->is_raddr = *raddr;
-      SUCCESS;
+  // Starting with Python 3.11, BSS scans fail because it seems that the
+  // interpreter state is stored in the data section. In this case, we shift our
+  // data queries into the data section. We then take steps of 64KB backwards
+  // and try to find the interpreter state. This is a bit of a hack for now, but
+  // it seems to work with decent performance. Note that if we fail the first
+  // scan, we then look for actual interpreter states rather than pointers to
+  // it. This make the search a little slower, since we now have to check every
+  // value in the range. However, the step size we chose seems to get us close
+  // enough in a few attempts.
+  int    shift = 0;
+  size_t step  = self->map.bss.size > 0x10000 ? 0x10000 : self->map.bss.size;
+  
+  V_DESC(self->py_v);
+  
+  while (!(shift && V_MAX(3, 10))) {
+    void * base = self->map.bss.base - (shift * step);
+    if (fail(py_proc__memcpy(self, base, self->map.bss.size, self->bss))) {
+      log_ie("Failed to copy BSS section");
+      FAIL;
     }
-  }
 
+    log_d("Scanning the BSS section @ %p (shift %d)", base, shift);
+
+    void * upper_bound = self->bss + (shift ? step : self->map.bss.size);
+    #ifdef CHECK_HEAP
+    // When the process uses the shared library we need to search in other maps
+    // other than the heap (at least on Linux). This could be optimised by
+    // creating a list of all the maps and checking that a value is valid address
+    // within any of these maps. However, this scan between min and max address
+    // should still be relatively quick so that the extra complexity of a list is
+    // not strictly required.
+    #endif
+    for (
+      register void ** raddr = (void **) self->bss;
+      (void *) raddr < upper_bound;
+      raddr++
+    ) {
+      if (
+        (!shift &&
+        #ifdef CHECK_HEAP
+        (isvalid(self->lib_path)
+          ? _py_proc__is_raddr_within_max_range(self, *raddr)
+          : _py_proc__is_heap_raddr(self, *raddr)) &&
+        #endif
+        success(_py_proc__check_interp_state(self, *raddr)))
+        ||(shift && success(_py_proc__check_interp_state(self, (void*) raddr - self->bss + base)))
+      ) {
+        log_d(
+          "Possible interpreter state referenced by BSS @ %p (offset %x)",
+          (void *) raddr - (void *) self->bss + (void *) base,
+          (void *) raddr - (void *) self->bss
+        );
+        self->is_raddr = shift ? (void*) raddr - self->bss + base : *raddr;
+        SUCCESS;
+      }
+    }
+    shift++;
+  }
   FAIL;
 }
 
@@ -661,6 +691,10 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 
   self->is_raddr = NULL;
 
+  self->bss = realloc(self->bss, self->map.bss.size);
+  if (!isvalid(self->bss))
+    FAIL;
+
   TIMER_RESET
   TIMER_START
     if (!py_proc__is_running(self)) {
@@ -682,11 +716,6 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
         );
         FAIL;
       }
-      if (self->bss == NULL) {
-        self->bss = malloc(self->map.bss.size);
-      }
-      if (self->bss == NULL)
-        FAIL;
 
       switch (_py_proc__scan_bss(self)) {
       case 0:
@@ -707,10 +736,7 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
     #endif
   TIMER_END
 
-  if (self->bss != NULL) {
-    free(self->bss);
-    self->bss = NULL;
-  }
+  sfree(self->bss);
 
   // NOTE: This case should not happen anymore as the addresses have been
   //       corrected.
@@ -734,7 +760,7 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
   log_w("BSS scan unsuccessful so we scan the heap directly ...");
 
   // TODO: Consider copying heap over and check for pointers
-  TIMER_SET(10)
+  TIMER_SET(100)
   TIMER_START
     switch (_py_proc__scan_heap(self)) {
     case 0:

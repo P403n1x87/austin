@@ -20,8 +20,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 import platform
 from collections import Counter
+from shutil import rmtree
 from test.utils import allpythons as _allpythons
 from test.utils import austin
 from test.utils import austinp
@@ -158,3 +160,37 @@ def test_where_kernel(py):
         assert "<module>" in result.stdout, compress(result.stdout)
         assert "libc" in result.stdout, compress(result.stdout)
         assert "do_syscall" in result.stdout, compress(result.stdout)
+
+
+@pytest.mark.skipif(platform.system() != "Linux", reason="Linux only")
+@requires_sudo
+@_allpythons(min=(3,))
+def test_attach_no_binaries(py, tmp_path):
+    venv_path = tmp_path / ".venv"
+    p = run_python(py, "-m", "venv", "--copies", str(venv_path))
+    p.wait(30)
+    assert 0 == p.returncode, "Virtual environment was created successfully"
+
+    env = os.environ.copy()
+    env["LD_LIBRARY_PATH"] = str(venv_path / "lib")
+    env["PATH"] = str(venv_path / "bin") + os.pathsep + env["PATH"]
+    with run_python(py, target("sleepy.py"), "3", env=env, sleep_after=0.5) as p:
+        rmtree(venv_path)
+        sleep(0.5)
+
+        result = austin("-p", str(p.pid))
+        assert result.returncode == 0
+
+        ts = threads(result.stdout)
+        assert len(ts) == 1, compress(result.stdout)
+
+        assert has_pattern(result.stdout, "sleepy.py:<module>:"), compress(
+            result.stdout
+        )
+
+        meta = metadata(result.stdout)
+
+        a = sum_metric(result.stdout)
+        d = int(meta["duration"])
+
+        assert a <= d
