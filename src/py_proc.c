@@ -433,12 +433,16 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   // Try to determine the TID by reading the remote struct pthread structure.
   // We can then use this information to parse the appropriate procfs file and
   // determine the native thread's running state.
+  void * initial_thread_addr = thread.raddr.addr;
   while (isvalid(thread.raddr.addr)) {
     if (success(_infer_tid_field_offset(&thread)))
       SUCCESS;
     if (is_fatal(austin_errno))
       FAIL;
+    
     py_thread__next(&thread);
+    if (thread.raddr.addr == initial_thread_addr)
+      break;
   }
   log_d("tid field offset not ready");
   FAIL;
