@@ -180,9 +180,10 @@ def run_python(
     version,
     *args: tuple[str],
     env: dict | None = None,
+    prefix: list[str] = [],
     sleep_after: float | None = None,
 ) -> Popen:
-    result = run_async(python(version), *args, env=env)
+    result = run_async(prefix + python(version), *args, env=env)
 
     if sleep_after is not None:
         sleep(sleep_after)

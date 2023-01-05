@@ -162,10 +162,18 @@ def test_where_kernel(py):
         assert "do_syscall" in result.stdout, compress(result.stdout)
 
 
+@pytest.mark.parametrize("prefix", [[], ["unshare", "-p", "-f", "-r"]])
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux only")
 @requires_sudo
 @_allpythons(min=(3,))
-def test_attach_no_binaries(py, tmp_path):
+def test_attach_container_like(py, tmp_path, prefix):
+    """Test in container-like conditions.
+
+    We test that we can still attach Austin to a running process even if we
+    don't have access to the binary files to determine the location of the
+    symbols. We also test against an interpreter started in a different PID
+    namespace to emulate a container as closely as possible.
+    """
     venv_path = tmp_path / ".venv"
     p = run_python(py, "-m", "venv", "--copies", str(venv_path))
     p.wait(30)
@@ -174,11 +182,13 @@ def test_attach_no_binaries(py, tmp_path):
     env = os.environ.copy()
     env["LD_LIBRARY_PATH"] = str(venv_path / "lib")
     env["PATH"] = str(venv_path / "bin") + os.pathsep + env["PATH"]
-    with run_python(py, target("sleepy.py"), "3", env=env, sleep_after=0.5) as p:
+    with run_python(
+        py, target("sleepy.py"), "3", env=env, prefix=prefix, sleep_after=0.5
+    ) as p:
         rmtree(venv_path)
         sleep(0.5)
 
-        result = austin("-p", str(p.pid))
+        result = austin("-Cp", str(p.pid))
         assert result.returncode == 0
 
         ts = threads(result.stdout)
