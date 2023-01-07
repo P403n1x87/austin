@@ -37,6 +37,7 @@
 
 #include "hints.h"
 #include "logging.h"
+#include "resources.h"
 #include "timing.h"
 
 #include "py_proc_list.h"
@@ -117,11 +118,11 @@ py_proc_list_new(py_proc_t * parent_py_proc) {
 
   list->py_proc_for_pid = lookup_new(256);
   if (!isvalid(list->py_proc_for_pid))
-    goto release;
+    goto error;
 
   list->ppid_for_pid = lookup_new(1024);
   if (!isvalid(list->ppid_for_pid)) {
-    goto release;
+    goto error;
   }
 
   // Add the parent process to the list.
@@ -129,7 +130,7 @@ py_proc_list_new(py_proc_t * parent_py_proc) {
 
   return list;
 
-release:
+error:
   py_proc_list__destroy(list);
   
   return NULL;
@@ -208,9 +209,11 @@ py_proc_list__update(py_proc_list_t * self) {
   char buffer[1024];
   struct dirent *ent;
 
-  DIR * proc_dir = opendir("/proc");
-  if (proc_dir == NULL)
-    goto finally;
+  cu_DIR * proc_dir = opendir("/proc");
+  if (!isvalid(proc_dir)) {
+    log_e("Failed to open /proc directory");
+    return;
+  }
 
   for (;;) {
     // This code is inspired by the ps util
@@ -221,20 +224,22 @@ py_proc_list__update(py_proc_list_t * self) {
     unsigned long pid = strtoul(ent->d_name, NULL, 10);
     sprintf(stat_path, "/proc/%ld/stat", pid);
 
-    FILE * stat_file = fopen(stat_path, "rb");
+    cu_FILE * stat_file = fopen(stat_path, "rb");
     if (stat_file == NULL)
       continue;
 
-    char * line = NULL;
+    cu_char * line = NULL;
     size_t n = 0;
     if (getline(&line, &n, stat_file) < 0) {
       log_w("Failed to read stat file for process %d", pid);
-      goto release;
+      return;
     }
     
     char * stat = strchr(line, ')');
-    if (!isvalid(stat))
-      goto failed;
+    if (!isvalid(stat)) {
+      log_e("Failed to parse stat file for process %d", pid);
+      return;
+    }
     
     stat += 2;
     if (stat[0] == ' ') stat++;
@@ -246,36 +251,34 @@ py_proc_list__update(py_proc_list_t * self) {
     #endif
 
     uintptr_t ppid;
-    if (sscanf(stat, STAT_FMT, (char *)buffer, &ppid) != 2)
-      goto failed;
+    if (sscanf(stat, STAT_FMT, (char *)buffer, &ppid) != 2) {
+      log_e("Failed to parse stat file for process %d", pid);
+      return;
+    }
 
     lookup__set(self->ppid_for_pid, pid, (value_t) ppid);
 
-    goto release;
-
-  failed:
-    log_w("Failed to parse stat file for process %d", pid);
-
-  release:
-    fclose(stat_file);
-    sfree(line);
   }
 
-  closedir(proc_dir);
-
   #elif defined PL_MACOS                                             /* MACOS */
-  int * pid_list = NULL;
+  cu_int * pid_list = NULL;
 
   int n_pids = proc_listallpids(NULL, 0);
-  if (n_pids <= 0)
-    goto finally;
+  if (n_pids <= 0) {
+    log_e("Failed to get the number of PIDs");
+    return;
+  }
   
   pid_list = (int *) calloc(n_pids, sizeof(int));
-  if (!isvalid(pid_list))
-    goto finally;
+  if (!isvalid(pid_list)) {
+    log_e("Failed to allocate memory for PID list");
+    return;
+  }
 
-  if (proc_listallpids(pid_list, n_pids) == -1)
-    goto finally;
+  if (proc_listallpids(pid_list, n_pids) == -1) {
+    log_e("Failed to get list of all PIDs");
+    return;
+  }
 
   for (register int i = 0; i < n_pids; i++) {
     struct proc_bsdinfo proc;
@@ -287,9 +290,9 @@ py_proc_list__update(py_proc_list_t * self) {
   }
 
   #elif defined PL_WIN                                                 /* WIN */
-  HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  cu_HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (h == INVALID_HANDLE_VALUE)
-    goto finally;
+    return;
 
   PROCESSENTRY32 pe = { 0 };
   pe.dwSize = sizeof(PROCESSENTRY32);
@@ -299,8 +302,6 @@ py_proc_list__update(py_proc_list_t * self) {
       lookup__set(self->ppid_for_pid, pe.th32ProcessID, (value_t) (uintptr_t) pe.th32ParentProcessID);
     } while (Process32Next(h, &pe));
   }
-
-  CloseHandle(h);
   #endif
 
   log_t("PID table populated");
@@ -321,10 +322,6 @@ py_proc_list__update(py_proc_list_t * self) {
     }
   }
 
-finally:
-  #if defined PL_MACOS
-  sfree(pid_list);
-  #endif
   self->timestamp = now;
 } /* py_proc_list__update */
 

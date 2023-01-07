@@ -24,6 +24,7 @@
 
 
 #include "cache.h"
+#include "resources.h"
 
 
 typedef struct {
@@ -102,9 +103,9 @@ _read_signed_varint(unsigned char * lnotab, size_t * i) {
 // ----------------------------------------------------------------------------
 static inline frame_t *
 _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python_v * py_v) {
-  PyCodeObject    code;
-  unsigned char * lnotab = NULL;
-  proc_ref_t      pref   = py_proc->proc_ref;
+  cu_uchar     * lnotab = NULL;
+  proc_ref_t     pref   = py_proc->proc_ref;
+  PyCodeObject   code;
 
   if (fail(copy_py(pref, code_raddr, py_code, code))) {
     log_ie("Cannot read remote PyCodeObject");
@@ -114,7 +115,7 @@ _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python
   lru_cache_t * cache = py_proc->string_cache;
 
   key_dt string_key = py_string_key(code, o_filename);
-  char * filename = lru_cache__maybe_hit(cache, string_key);
+  char * filename = (char *) lru_cache__maybe_hit(cache, string_key);
   if (!isvalid(filename)) {
     filename = _code__get_filename(&code, pref, py_v);
     if (!isvalid(filename)) {
@@ -131,7 +132,7 @@ _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python
   }
 
   string_key = V_MIN(3, 11) ? py_string_key(code, o_qualname) : py_string_key(code, o_name);
-  char * scope = lru_cache__maybe_hit(cache, string_key);
+  char * scope = (char *) lru_cache__maybe_hit(cache, string_key);
   if (!isvalid(scope)) {
     scope = V_MIN(3, 11)
       ? _code__get_qualname(&code, pref, py_v)
@@ -156,7 +157,7 @@ _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python
     lnotab = _code__get_lnotab(&code, pref, &len, py_v);
     if (!isvalid(lnotab) || len == 0) {
       log_ie("Cannot get line information from PyCodeObject");
-      goto failed;
+      return NULL;
     }
 
     lasti >>= 1;
@@ -198,12 +199,12 @@ _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python
     lnotab = _code__get_lnotab(&code, pref, &len, py_v);
     if (!isvalid(lnotab) || len % 2) {
       log_ie("Cannot get line information from PyCodeObject");
-      goto failed;
+      return NULL;
     }
 
     if (V_MIN(3, 10)) {
       lasti <<= 1;
-      for (register int i = 0, bc = 0; i < len; i++) {
+      for (int i = 0, bc = 0; i < len; i++) {
         int sdelta = lnotab[i++];
         if (sdelta == 0xff)
           break;
@@ -222,7 +223,7 @@ _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python
       }
     }
     else { // Python < 3.10
-      for (register int i = 0, bc = 0; i < len; i++) {
+      for (int i = 0, bc = 0; i < len; i++) {
         bc += lnotab[i++];
         if (bc > lasti)
           break;
@@ -235,18 +236,11 @@ _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python
     }
   }
 
-  free(lnotab);
-
   frame_t * frame = frame_new(py_frame_key(code_raddr, lasti), filename, scope, lineno);
   if (!isvalid(frame)) {
     log_e("Failed to create frame object");
-    goto failed;
+    return NULL;
   }
 
   return frame;
-
-failed:
-  sfree(lnotab);
-  
-  return NULL;
 }

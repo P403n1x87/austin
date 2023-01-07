@@ -25,6 +25,7 @@
 
 #include "cache.h"
 #include "py_proc.h"
+#include "resources.h"
 
 
 typedef struct _py_proc_item {
@@ -131,5 +132,8 @@ py_proc_list__wait(py_proc_list_t *);
 void
 py_proc_list__destroy(py_proc_list_t *);
 
+
+CLEANUP_TYPE(py_proc_list_t, py_proc_list__destroy);
+#define cu_py_proc_list_t __attribute__((cleanup(py_proc_list__destroyt))) py_proc_list_t
 
 #endif

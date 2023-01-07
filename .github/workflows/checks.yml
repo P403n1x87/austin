@@ -43,7 +43,7 @@ jobs:
         run: sudo apt-get -y install cppcheck
 
       - name: Check soure code
-        run: cppcheck -q -f --error-exitcode=1 src
+        run: cppcheck -q -f --error-exitcode=1 --inline-suppr src
 
   codespell:
     runs-on: ubuntu-20.04

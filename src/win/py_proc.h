@@ -26,6 +26,7 @@
 #include <tlhelp32.h>
 
 #include "../py_proc.h"
+#include "../resources.h"
 
 
 #define CHECK_HEAP
@@ -218,17 +219,16 @@ static int
 _py_proc__try_child_proc(py_proc_t * self) {
   log_d("Process is not Python so we look for a single child Python process");
 
-  HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  cu_HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (h == INVALID_HANDLE_VALUE) {
     log_e("Cannot inspect processes details");
     FAIL;
   }
 
-with_resources;
-
   HANDLE orig_hproc = self->proc_ref;
   pid_t  orig_pid   = self->pid;
-  while (TRUE) {
+
+  for(;;) {
     pid_t parent_pid = self->pid;
 
     PROCESSENTRY32 pe = { 0 };
@@ -240,7 +240,7 @@ with_resources;
         if (pe.th32ParentProcessID == parent_pid) {
           if (child_pid) {
             log_d("Process has more than one child");
-            NOK;
+            goto rollback;
           }
           child_pid = pe.th32ProcessID;
         }
@@ -248,7 +248,7 @@ with_resources;
 
       if (!child_pid) {
         log_d("Process has no children");
-        NOK;
+        goto rollback;
       }
 
       self->pid = child_pid;
@@ -257,11 +257,11 @@ with_resources;
       );
       if (self->proc_ref == INVALID_HANDLE_VALUE) {
         log_e("Cannot open child process handle");
-        NOK;
+        goto rollback;
       }
       if (success(_py_proc__run(self))) {
         log_d("Process has a single Python child with PID %d. We will attach to that", child_pid);
-        OK;
+        SUCCESS;
       }
       else {
         log_d("Process has a single non-Python child with PID %d. Taking it as new parent", child_pid);
@@ -270,14 +270,11 @@ with_resources;
     }
   }
 
-release:
-  CloseHandle(h);
-  if (retval) {
-    self->pid = orig_pid;
-    self->proc_ref = orig_hproc;
-  }
+rollback:
+  self->pid = orig_pid;
+  self->proc_ref = orig_hproc;
   
-  released;
+  FAIL;
 }
 
 #endif

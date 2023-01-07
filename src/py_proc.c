@@ -113,16 +113,11 @@ _py_proc__check_sym(py_proc_t * self, char * name, void * value) {
 
 
 // ----------------------------------------------------------------------------
-#ifdef PL_UNIX
-#define _popen  popen
-#define _pclose pclose
-#endif
-
 static int
 _get_version_from_executable(char * binary, int * major, int * minor, int * patch) {
-  FILE * fp;
-  char   version[64];
-  char   cmd[256];
+  cu_pipe * fp;
+  char      version[64];
+  char      cmd[256];
 
   #if defined PL_WIN
   sprintf(cmd, "\"\"%s\"\" -V 2>&1", binary);
@@ -135,19 +130,12 @@ _get_version_from_executable(char * binary, int * major, int * minor, int * patc
     FAIL;
   }
 
-  with_resources;
-
   while (fgets(version, sizeof(version) - 1, fp) != NULL) {
     if (sscanf(version, "Python %d.%d.%d", major, minor, patch) == 3)
-      OK;
+      SUCCESS;
   }
 
-  NOK;
-
-release:
-  _pclose(fp);
-
-  released;
+  FAIL;
 } /* _get_version_from_executable */
 
 static int
@@ -200,40 +188,36 @@ _get_version_from_filename(char * filename, const char * needle, int * major, in
 #if defined PL_MACOS
 static int
 _find_version_in_binary(char * path) {
+  size_t      binary_size = 0;
+  struct stat s;
+
   log_d("Finding version in binary %s", path);
 
-  int fd = open (path, O_RDONLY);
+  cu_fd fd = open(path, O_RDONLY);
   if (fd == -1) {
     log_e("Cannot open binary file %s", path);
     FAIL;
   }
 
-  void        * binary_map  = MAP_FAILED;
-  size_t        binary_size = 0;
-  struct stat   s;
-
-  with_resources;
-
   if (fstat(fd, &s) == -1) {
     log_ie("Cannot determine size of binary file");
-    NOK;
+    FAIL;
   }
 
   binary_size = s.st_size;
 
-  binary_map = mmap(0, binary_size, PROT_READ, MAP_PRIVATE, fd, 0);
-  if (binary_map == MAP_FAILED) {
+  cu_map_t * binary_map = map_new(fd, binary_size, MAP_PRIVATE);
+  if (!isvalid(binary_map)) {
     log_ie("Cannot map binary file to memory");
-    NOK;
+    FAIL;
   }
 
   for (char m = '3'; m >= '2'; --m) {
     char     needle[3]    = {0x00, m, '.'};
     size_t   current_size = binary_size;
-    char   * current_pos  = binary_map;
+    char   * current_pos  = binary_map->addr;
     int      major, minor, patch;
     major = 0;
-    retval = NOVERSION;
     while (TRUE) {
       char * p = memmem(current_pos, current_size, needle, sizeof(needle));
       if (!isvalid(p)) break;
@@ -243,16 +227,11 @@ _find_version_in_binary(char * path) {
     }
 
     if (major > 0) {
-      retval = PYVERSION(major, minor, patch);
-      break;
+      return PYVERSION(major, minor, patch);
     }
   }
 
-release:
-  if (binary_map != MAP_FAILED) munmap(binary_map, binary_size);
-  if (fd != -1) close(fd);
-
-  released;
+  return NOVERSION;
 } /* _find_version_in_binary */
 #endif
 

@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "../resources.h"
 
 #ifdef NATIVE
 #include "../argparse.h"
@@ -343,61 +344,51 @@ _elf_check(Elf64_Ehdr * ehdr) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__analyze_elf(py_proc_t * self, char * path, void * elf_base) {
-  int fd = open (path, O_RDONLY);
+  cu_fd fd = open(path, O_RDONLY);
   if (fd == -1) {
     log_e("Cannot open binary file %s", path);
     FAIL;
   }
 
-  void        * binary_map  = MAP_FAILED;
+  cu_map_t    * binary_map  = NULL;
   size_t        binary_size = 0;
   struct stat   s;
 
-  with_resources;
-
   if (fstat(fd, &s) == -1) {
     log_ie("Cannot determine size of binary file");
-    NOK;
+    FAIL;
   }
 
   binary_size = s.st_size;
 
-  binary_map = mmap(0, binary_size, PROT_READ, MAP_PRIVATE, fd, 0);
-  if (binary_map == MAP_FAILED) {
+  binary_map = map_new(fd, binary_size, MAP_PRIVATE);
+  if (!isvalid(binary_map)) {
     log_ie("Cannot map binary file to memory");
-    NOK;
+    FAIL;
   }
 
-  Elf64_Ehdr * ehdr = binary_map;
+  Elf64_Ehdr * ehdr = binary_map->addr;
   log_t("Analysing ELF");
 
   if (fail(_elf_check(ehdr))) {
     log_e("Bad ELF header");
-    NOK;
+    FAIL;
   }
 
   // Dispatch
   switch (ehdr->e_ident[EI_CLASS]) {
   case ELFCLASS64:
     log_d("%s is 64-bit ELF", path);
-    retval = _py_proc__analyze_elf64(self, binary_map, elf_base);
-    break;
+    return _py_proc__analyze_elf64(self, binary_map->addr, elf_base);
 
   case ELFCLASS32:
     log_d("%s is 32-bit ELF", path);
-    retval = _py_proc__analyze_elf32(self, binary_map, elf_base);
-    break;
+    return _py_proc__analyze_elf32(self, binary_map->addr, elf_base);
 
   default:
     log_e("%s has invalid ELF class", path);
-    NOK;
+    FAIL;
   }
-
-release:
-  if (binary_map != MAP_FAILED) munmap(binary_map, binary_size);
-  if (fd != -1) close(fd);
-
-  released;
 } /* _py_proc__analyze_elf */
 
 
@@ -405,11 +396,12 @@ release:
 static int
 _py_proc__parse_maps_file(py_proc_t * self) {
   char      file_name[32];
-  FILE    * fp        = NULL;
-  char    * line      = NULL;
-  size_t    len       = 0;
-  int       maps_flag = 0;
-  char    * prev_path = NULL;
+  cu_FILE * fp          = NULL;
+  cu_char * line        = NULL;
+  cu_char * prev_path   = NULL;
+  cu_char * needle_path = NULL;
+  size_t    len         = 0;
+  int       maps_flag   = 0;
 
   struct vm_map * map = NULL;
 
@@ -439,10 +431,13 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   self->map.elf.size = 0;
 
   sprintf(file_name, "/proc/%d/exe", self->pid);
-  struct proc_desc * pd = calloc(1, sizeof(struct proc_desc));
+
+  cu_void          * pd_mem = calloc(1, sizeof(struct proc_desc));
+  struct proc_desc * pd     = pd_mem;
+
   if (readlink(file_name, pd->exe_path, sizeof(pd->exe_path)) == -1) {
     log_e("Cannot readlink %s", file_name);
-    goto release;
+    FAIL;  // cppcheck-suppress [resourceLeak]
   }
   if (strcmp(pd->exe_path + (strlen(pd->exe_path) - 10), " (deleted)") == 0) {
     pd->exe_path[strlen(pd->exe_path) - 10] = '\0';
@@ -502,7 +497,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     prev_path = strndup(pathname, strlen(pathname));
     if (!isvalid(prev_path)) {
       log_ie("Cannot duplicate path name");
-      goto release;
+      FAIL;
     }
 
     // The first memory map of the executable
@@ -511,7 +506,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
       map->path = strndup(pathname, strlen(pathname));
       if (!isvalid(map->path)) {
         log_ie("Cannot duplicate path name");
-        goto release;
+        FAIL;
       }
       map->file_size = _file_size(pathname);
       map->base = (void *) lower;
@@ -534,7 +529,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
         map->path = strndup(pathname, strlen(pathname));
         if (!isvalid(map->path)) {
           log_ie("Cannot duplicate path name");
-          goto release;
+          FAIL;
         }
         map->file_size = _file_size(pathname);
         map->base = (void *) lower;
@@ -554,10 +549,10 @@ _py_proc__parse_maps_file(py_proc_t * self) {
           unsigned int v;
           if (sscanf(needle, "libpython%u.%u", &v, &v) == 2) {
             map = &(pd->maps[MAP_LIBNEEDLE]);
-            map->path = strndup(pathname, strlen(pathname));
+            map->path = needle_path = strndup(pathname, strlen(pathname));
             if (!isvalid(map->path)) {
               log_ie("Cannot duplicate path name");
-              goto release;
+              FAIL;
             }
             map->file_size = _file_size(pathname);
             map->base = (void *) lower;
@@ -574,7 +569,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   // If the library map is not valid, use the needle map
   if (!isvalid(pd->maps[MAP_LIBSYM].path)) {
     pd->maps[MAP_LIBSYM] = pd->maps[MAP_LIBNEEDLE];
-    pd->maps[MAP_LIBNEEDLE].path = NULL;
+    pd->maps[MAP_LIBNEEDLE].path = needle_path = NULL;
   }
 
   // Work out paths
@@ -596,15 +591,8 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   int map_index = isvalid(pd->maps[MAP_LIBSYM].path) ? MAP_LIBSYM : MAP_BIN;
   self->map.bss.base = pd->maps[map_index].bss_base;
   self->map.bss.size = pd->maps[map_index].bss_size;
+  
   log_d("BSS map %d from %s @ %p", map_index, pd->maps[map_index].path, self->map.bss.base);
-
-release:
-  sfree(pd->maps[MAP_LIBNEEDLE].path);
-  sfree(pd);
-  sfree(line);
-  sfree(prev_path);
-  fclose(fp);
-
   log_d("VM maps parsing result: bin=%s lib=%s flags=%d", self->bin_path, self->lib_path, maps_flag);
 
   return maps_flag != (BIN_MAP | HEAP_MAP);
