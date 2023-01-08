@@ -24,6 +24,8 @@
 
 #if defined PL_LINUX
 #include <dirent.h>
+
+#include "linux/common.h"
 #elif defined PL_MACOS
 #include <libproc.h>
 #elif defined PL_WIN
@@ -205,9 +207,8 @@ py_proc_list__update(py_proc_list_t * self) {
 
   // Update PID table
   #if defined PL_LINUX                                               /* LINUX */
-  char stat_path[32];
-  char buffer[1024];
-  struct dirent *ent;
+  char            buffer[1024];
+  struct dirent * ent;
 
   cu_DIR * proc_dir = opendir("/proc");
   if (!isvalid(proc_dir)) {
@@ -222,9 +223,7 @@ py_proc_list__update(py_proc_list_t * self) {
     if ((*ent->d_name <= '0') || (*ent->d_name > '9')) continue;
 
     unsigned long pid = strtoul(ent->d_name, NULL, 10);
-    sprintf(stat_path, "/proc/%ld/stat", pid);
-
-    cu_FILE * stat_file = fopen(stat_path, "rb");
+    cu_FILE * stat_file = _procfs(pid, "stat");
     if (stat_file == NULL)
       continue;
 
