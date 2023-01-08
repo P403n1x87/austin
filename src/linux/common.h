@@ -20,12 +20,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef COMMON_H
-#define COMMON_H
+#pragma once
+
 
 #include <pthread.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <sys/ptrace.h>
 
+#include "../error.h"
 #include "../stats.h"
 
 
@@ -41,18 +44,22 @@
 #endif
 
 
-static uintptr_t _pthread_buffer[PTHREAD_BUFFER_ITEMS];
-
-#define read_pthread_t(pid, addr) \
-  (copy_memory(pid, addr, sizeof(_pthread_buffer), _pthread_buffer))
-
-
 struct _proc_extra_info {
   unsigned int page_size;
   char         statm_file[24];
   pthread_t    wait_thread_id;
   unsigned int pthread_tid_offset;
+  uintptr_t    _pthread_buffer[PTHREAD_BUFFER_ITEMS];
 };
+
+
+#define read_pthread_t(py_proc, addr) \
+  (copy_memory( \
+    py_proc->proc_ref, \
+    addr, \
+    sizeof(py_proc->extra->_pthread_buffer), \
+    py_proc->extra->_pthread_buffer \
+  ))
 
 
 #ifdef NATIVE
@@ -78,4 +85,27 @@ wait_ptrace(enum __ptrace_request request, pid_t pid, void * addr, void * data) 
 #endif
 
 
-#endif
+// ----------------------------------------------------------------------------
+static inline FILE*
+_procfs(pid_t pid, char * file) {
+  FILE * fp;
+  char   buffer[32];
+  
+  sprintf(buffer, "/proc/%d/%s", pid, file);
+  
+  fp = fopen(buffer, "rb");
+  if (fp == NULL) {
+    switch (errno) {
+    case EACCES:  // Needs elevated privileges
+      set_error(EPROCPERM);
+      break;
+    case ENOENT:  // Invalid pid
+      set_error(EPROCNPID);
+      break;
+    default:
+      set_error(EPROCVM);
+    }
+  }
+
+  return fp;
+}

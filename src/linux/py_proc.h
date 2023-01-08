@@ -97,32 +97,6 @@ struct proc_desc {
 
 
 // ----------------------------------------------------------------------------
-static FILE*
-_procfs(char * buffer, pid_t pid, char * file) {
-  FILE * fp;
-  
-  sprintf(buffer, "/proc/%d/%s", pid, file);
-  
-  fp = fopen(buffer, "r");
-  if (fp == NULL) {
-    switch (errno) {
-    case EACCES:  // Needs elevated privileges
-      set_error(EPROCPERM);
-      break;
-    case ENOENT:  // Invalid pid
-      set_error(EPROCNPID);
-      break;
-    default:
-      set_error(EPROCVM);
-    }
-    return NULL;
-  }
-
-  return fp;
-}
-
-
-// ----------------------------------------------------------------------------
 static void *
 wait_thread(void * py_proc) {
   waitpid(((py_proc_t *) py_proc)->pid, 0, 0);
@@ -405,8 +379,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
   struct vm_map * map = NULL;
 
-  sprintf(file_name, "/proc/%d/maps", self->pid);
-  fp = fopen(file_name, "r");
+  fp = _procfs(self->pid, "maps");
   if (fp == NULL) {
     switch (errno) {
     case EACCES:  // Needs elevated privileges
@@ -628,12 +601,11 @@ vm_range_t * ranges[256];
 
 static int
 _py_proc__get_vm_maps(py_proc_t * self) {
-  FILE            * fp    = NULL;
-  char            * line  = NULL;
+  cu_FILE         * fp    = NULL;
+  cu_char         * line  = NULL;
   size_t            len   = 0;
   vm_range_tree_t * tree  = NULL;
   hash_table_t    * table = NULL;
-  char              file_name[32];
   
   if (pargs.where) {
     tree  = vm_range_tree_new();
@@ -646,19 +618,8 @@ _py_proc__get_vm_maps(py_proc_t * self) {
     self->base_table = table;
   }
 
-  sprintf(file_name, "/proc/%d/maps", self->pid);
-  fp = fopen(file_name, "r");
-  if (fp == NULL) {
-    switch (errno) {
-    case EACCES:  // Needs elevated privileges
-      set_error(EPROCPERM);
-      break;
-    case ENOENT:  // Invalid pid
-      set_error(EPROCNPID);
-      break;
-    default:
-      set_error(EPROCVM);
-    }
+  fp = _procfs(self->pid, "maps");
+  if (!isvalid(fp)) {
     FAIL;
   }
 
@@ -692,9 +653,6 @@ _py_proc__get_vm_maps(py_proc_t * self) {
   for (int i = 0; i < nrange; i++)
     vm_range_tree__add(tree, (vm_range_t *) ranges[i]); 
 
-  sfree(line);
-  fclose(fp);
-
   SUCCESS;
 } /* _py_proc__get_vm_maps */
 #endif
@@ -726,13 +684,12 @@ _py_proc__init(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 pid_t
 _get_nspid(pid_t pid) {
-  char     path[32];
-  char   * line  = NULL;
-  size_t   len   = 0;
-  pid_t    nspid = 0;
-  pid_t    this  = 0;
+  cu_char * line  = NULL;
+  size_t    len   = 0;
+  pid_t     nspid = 0;
+  pid_t     this  = 0;
 
-  FILE* status = _procfs(path, pid, "status");
+  cu_FILE * status = _procfs(pid, "status");
   if (!isvalid(status)) {
     log_e("Cannot get namespace PID for %d", pid);
     return 0;
@@ -744,9 +701,6 @@ _get_nspid(pid_t pid) {
     }
   }
 
-  fclose(status);
-  sfree(line);
-  
   log_d("NS PID for %d: %d", pid, nspid);
 
   return nspid;
@@ -761,7 +715,7 @@ _get_nspid(pid_t pid) {
 // ----------------------------------------------------------------------------
 static int
 _infer_tid_field_offset(py_thread_t * py_thread) {
-  if (fail(read_pthread_t(py_thread->raddr.pref, (void *) py_thread->tid))) {
+  if (fail(read_pthread_t(py_thread->proc, (void *) py_thread->tid))) {
     log_d("> Cannot copy pthread_t structure (pid: %u)", py_thread->raddr.pref);
     set_error(EMMAP);
     FAIL;
@@ -775,8 +729,8 @@ _infer_tid_field_offset(py_thread_t * py_thread) {
 
   for (register int i = 0; i < PTHREAD_BUFFER_ITEMS; i++) {
     if (
-      py_thread->raddr.pref == _pthread_buffer[i]
-      || (nspid && nspid == _pthread_buffer[i])
+      py_thread->raddr.pref == py_thread->proc->extra->_pthread_buffer[i]
+      || (nspid && nspid == py_thread->proc->extra->_pthread_buffer[i])
     ) {
       log_d("TID field offset: %d", i);
       py_thread->proc->extra->pthread_tid_offset = i;
@@ -787,8 +741,8 @@ _infer_tid_field_offset(py_thread_t * py_thread) {
   // Fall-back to smaller steps if we failed
   for (register int i = 0; i < PTHREAD_BUFFER_ITEMS * (sizeof(uintptr_t) / sizeof(pid_t)); i++) {
     if (
-      py_thread->raddr.pref == (pid_t) ((pid_t *) _pthread_buffer)[i]
-      || (nspid && nspid == (pid_t) ((pid_t *) _pthread_buffer)[i])
+      py_thread->raddr.pref == (pid_t) ((pid_t *) py_thread->proc->extra->_pthread_buffer)[i]
+      || (nspid && nspid == (pid_t) ((pid_t *) py_thread->proc->extra->_pthread_buffer)[i])
     ) {
       log_d("TID field offset (from fall-back): %d", i);
       py_thread->proc->extra->pthread_tid_offset = -i;
