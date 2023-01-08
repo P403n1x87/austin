@@ -26,6 +26,7 @@
 
 #include "../logging.h"
 #include "../py_thread.h"
+#include "../resources.h"
 
 
 // This offset was discovered by looking at the result of PROC_PIDLISTTHREADS.
@@ -45,9 +46,10 @@ _infer_thread_id_offset(py_thread_t * py_thread) {
     // Set the default value, in case we fail to find the actual one.
     _silly_offset = SILLY_OFFSET;
 
-    uint64_t * tids = (uint64_t *) calloc(MAX_THREADS, sizeof(uint64_t));
+    cu_void  * tids_mem = calloc(MAX_THREADS, sizeof(uint64_t));
+    uint64_t * tids     = (uint64_t *) tids_mem;
     if (!isvalid(tids)) {
-        return;
+        return;  // cppcheck-suppress [memleak]
     }
 
     int n = proc_pidinfo(
@@ -62,7 +64,7 @@ _infer_thread_id_offset(py_thread_t * py_thread) {
     }
     else if (n <= 0) {
         log_w("No native threads found. This is weird.");
-        goto release;
+        return;  // cppcheck-suppress [memleak]
     }
 
     // Find the thread ID offset
@@ -75,9 +77,6 @@ _infer_thread_id_offset(py_thread_t * py_thread) {
     }
     _silly_offset = min;
     log_t("Silly thread id offset: %x", _silly_offset);
-
-release:
-    sfree(tids);
 }
 
 

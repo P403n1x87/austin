@@ -40,6 +40,7 @@
 #include <unistd.h>
 
 #include "../hints.h"
+#include "../resources.h"
 
 #define CHECK_HEAP
 #define DEREF_SYM
@@ -306,9 +307,7 @@ _py_proc__analyze_fat(py_proc_t * self, void * base, void * map) {
 // ----------------------------------------------------------------------------
 static bin_attr_t
 _py_proc__analyze_macho(py_proc_t * self, char * path, void * base, mach_vm_size_t size) {
-  bin_attr_t bin_attrs = 0;
-
-  int fd = open(path, O_RDONLY);
+  cu_fd fd = open(path, O_RDONLY);
   if (fd == -1) {
     log_e("Cannot open binary %s", path);
     return INVALID_ATTR;
@@ -316,56 +315,46 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * base, mach_vm_size
   
   log_d("Analysing binary %s", path);
   
-  with_resources;
-
   // This would cause problem if allocated in the stack frame
-  struct stat * fs  = (struct stat *) malloc(sizeof(struct stat));
-  void        * map = MAP_FAILED;
+  cu_void     * fs_buffer = malloc(sizeof(struct stat));
+  struct stat * fs        = (struct stat *) fs_buffer;
+  cu_map_t    * map       = NULL;
   if (fstat(fd, fs) == -1) {  // Get file size
     log_e("Cannot get size of binary %s", path);
-    NOK;
+    FAIL;  // cppcheck-suppress [memleak]
   }
 
-  map = mmap(NULL, fs->st_size, PROT_READ, MAP_SHARED, fd, 0);
-  if (map == MAP_FAILED) {
+  map = map_new(fd, fs->st_size, MAP_SHARED);
+  if (!isvalid(map)) {
     log_e("Cannot map binary %s", path);
-    NOK;
+    FAIL;  // cppcheck-suppress [memleak]
   }
 
-  log_t("Local Mach-O file mapping %p-%p\n", map, map+size);
+  void * map_addr = map->addr;
+  log_t("Local Mach-O file mapping %p-%p\n", map_addr, map_addr + size);
 
-  struct mach_header_64 * hdr = (struct mach_header_64 *) map;
+  struct mach_header_64 * hdr = (struct mach_header_64 *) map_addr;
   switch (hdr->magic) {
   case MH_MAGIC:
   case MH_CIGAM:
     log_d("Binary is Mach-O 32");
-    bin_attrs = _py_proc__analyze_macho32(self, base, map);
-    break;
+    return _py_proc__analyze_macho32(self, base, map_addr);
 
   case MH_MAGIC_64:
   case MH_CIGAM_64:
     log_d("Binary is Mach-O 64");
-    bin_attrs = _py_proc__analyze_macho64(self, base, map);
-    break;
+    return _py_proc__analyze_macho64(self, base, map_addr);
 
   case FAT_MAGIC:
   case FAT_CIGAM:
     log_d("Binary is fat");
-    bin_attrs = _py_proc__analyze_fat(self, base, map);
-    break;
+    return _py_proc__analyze_fat(self, base, map_addr);
 
   default:
     self->sym_loaded = 0;
   }
 
-release:
-  if (map != MAP_FAILED) munmap(map, fs->st_size);
-  sfree(fs);
-  close(fd);
-
-  retval = bin_attrs;
-
-  released;
+  return 0;
 } // _py_proc__analyze_macho
 
 
@@ -418,16 +407,14 @@ pid_to_task(pid_t pid) {
 static int
 _py_proc__get_maps(py_proc_t * self) {
   mach_vm_address_t              address = 0;
-  mach_vm_size_t                 size = 0;
+  mach_vm_size_t                 size    = 0;
+  mach_msg_type_number_t         count   = sizeof(vm_region_basic_info_data_64_t);
   vm_region_basic_info_data_64_t region_info;
-  mach_msg_type_number_t         count = sizeof(vm_region_basic_info_data_64_t);
   mach_port_t                    object_name;
 
-  char * path = (char *) calloc(MAXPATHLEN + 1, sizeof(char));
+  cu_char * path = (char *) calloc(MAXPATHLEN + 1, sizeof(char));
   if (!isvalid(path))
     FAIL;
-
-  with_resources;
 
   // NOTE: Mac OS X kernel bug. This also gives time to the VM maps to
   // stabilise.
@@ -435,16 +422,13 @@ _py_proc__get_maps(py_proc_t * self) {
 
   self->proc_ref = pid_to_task(self->pid);
   if (self->proc_ref == 0)
-    NOK;
+    FAIL;  // cppcheck-suppress [memleak]
 
   self->min_raddr = (void *) -1;
   self->max_raddr = NULL;
 
   sfree(self->bin_path);
-  self->bin_path = NULL;
-
   sfree(self->lib_path);
-  self->lib_path = NULL;
 
   while (mach_vm_region(
     self->proc_ref,
@@ -503,12 +487,7 @@ _py_proc__get_maps(py_proc_t * self) {
   log_d("BSS bounds  [%p - %p]", self->map.bss.base, self->map.bss.base + self->map.bss.size);
   log_d("HEAP bounds [%p - %p]", self->map.heap.base, self->map.heap.base + self->map.heap.size);
 
-  retval = !self->sym_loaded;
-
-release:
-  free(path);
-
-  released;
+  return !self->sym_loaded;
 } // _py_proc__get_maps
 
 
