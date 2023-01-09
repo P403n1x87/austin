@@ -62,7 +62,7 @@ def allpythons():
 @allpythons()
 @variants
 def test_attach_wall_time(austin, py, mode, mode_meta, heap):
-    with run_python(py, target("sleepy.py")) as p:
+    with run_python(py, target("sleepy.py"), "1") as p:
         sleep(0.4)
 
         result = austin(mode, "2ms", *heap, "-p", str(p.pid))

@@ -7,6 +7,6 @@ def sum_up_to(n):
     return result
 
 
-for _ in range(200000):
+for _ in range(300000):
     N = 16
     assert sum_up_to(N) == (N * (N + 1)) >> 1

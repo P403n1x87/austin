@@ -4,7 +4,7 @@ xxxx-xx-xx v3.5.0
 
   Dropped the alternative output format.
 
-  Improved interpreter detection on Linux.
+  Improved interpreter detection on Linux and MacOS.
 
 
 2022-10-26 v3.4.1
