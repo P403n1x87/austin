@@ -45,7 +45,11 @@
 #else
 #define DEFAULT_SAMPLING_INTERVAL    100
 #endif
+#if defined PL_UNIX
+#define DEFAULT_INIT_TIMEOUT_MS      500  // 0.5 seconds
+#else
 #define DEFAULT_INIT_TIMEOUT_MS      100  // 0.1 seconds
+#endif
 #define DEFAULT_HEAP_SIZE              0
 
 const char SAMPLE_FORMAT_NORMAL[]      = ";%s:%s:%d";

@@ -43,14 +43,8 @@ def test_cli_no_python():
         "-c",
         "sleep 1",
     )
-    if platform.system() == "Darwin":
-        # Darwin CI gives a different result than manual tests. We are accepting
-        # this for now.
-        assert result.returncode in (37, 39)
-        assert "Insufficient permissions" in result.stderr, result.stderr
-    else:
-        assert result.returncode == 39
-        assert "not a Python" in result.stderr or "Cannot launch" in result.stderr
+    assert result.returncode == 39
+    assert "not a Python" in result.stderr or "Cannot launch" in result.stderr
 
 
 def test_cli_invalid_command():

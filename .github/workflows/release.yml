@@ -123,7 +123,7 @@ jobs:
           export VERSION=$(cat src/austin.h | sed -n -E "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
           echo "::set-output name=version::$VERSION"
 
-          gcc -Wall -O3 -Os -o src/austin src/*.c
+          gcc-11 -Wall -O3 -Os -o src/austin src/*.c
 
           pushd src
           zip -r austin-${VERSION}-mac64.zip austin

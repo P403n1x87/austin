@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "../mem.h"
 #include "../resources.h"
 
 #ifdef NATIVE
@@ -69,31 +70,6 @@ union {
   Elf32_Ehdr v32;
   Elf64_Ehdr v64;
 } ehdr_v;
-
-
-struct vm_map{
-  char    * path;
-  ssize_t   file_size;
-  void    * base;
-  size_t    size;
-  void    * bss_base;
-  size_t    bss_size;
-  int       has_symbols;
-};
-
-
-enum {
-  MAP_BIN,
-  MAP_LIBSYM,
-  MAP_LIBNEEDLE,
-  MAP_COUNT,
-};
-
-
-struct proc_desc {
-  char          exe_path[1024];
-  struct vm_map maps[MAP_COUNT];
-};
 
 
 // ----------------------------------------------------------------------------
@@ -405,8 +381,12 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
   sprintf(file_name, "/proc/%d/exe", self->pid);
 
-  cu_void          * pd_mem = calloc(1, sizeof(struct proc_desc));
-  struct proc_desc * pd     = pd_mem;
+  cu_void * pd_mem = calloc(1, sizeof(struct proc_desc));
+  if (!isvalid(pd_mem)) {
+    log_ie("Cannot allocate memory for proc_desc");
+    FAIL;
+  }
+  struct proc_desc * pd = pd_mem;
 
   if (readlink(file_name, pd->exe_path, sizeof(pd->exe_path)) == -1) {
     log_e("Cannot readlink %s", file_name);
@@ -507,12 +487,12 @@ _py_proc__parse_maps_file(py_proc_t * self) {
         map->file_size = _file_size(pathname);
         map->base = (void *) lower;
         map->size = upper - lower;
-        map->has_symbols = has_symbols;
-        if (map->has_symbols) {
-          map->bss_base = self->map.bss.base;
-          map->bss_size = self->map.bss.size;
-        }
+        map->has_symbols = TRUE;
+        map->bss_base = self->map.bss.base;
+        map->bss_size = self->map.bss.size;
+
         log_d("Library map: %s (symbols %d)", map->path, map->has_symbols);
+
         continue;
       }
       

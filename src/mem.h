@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef MEM_H
-#define MEM_H
+#pragma once
 
 
 #include <sys/types.h>
@@ -211,4 +210,27 @@ get_total_memory(void) {
   return 0;
 }
 
-#endif // MEM_H
+
+struct vm_map{
+  char    * path;
+  ssize_t   file_size;
+  void    * base;
+  size_t    size;
+  void    * bss_base;
+  size_t    bss_size;
+  int       has_symbols;
+};
+
+
+enum {
+  MAP_BIN,
+  MAP_LIBSYM,
+  MAP_LIBNEEDLE,
+  MAP_COUNT,
+};
+
+
+struct proc_desc {
+  char          exe_path[1024];
+  struct vm_map maps[MAP_COUNT];
+};

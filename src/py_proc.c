@@ -361,11 +361,13 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   PyInterpreterState is;
   PyThreadState      tstate_head;
 
-  if (py_proc__get_type(self, raddr, is))
+  if (py_proc__get_type(self, raddr, is)) {
+    log_ie("Cannot get remote interpreter state");
     return OUT_OF_BOUND;
+  }
 
-  if (py_proc__get_type(self, V_FIELD(void *, is, py_is, o_tstate_head), tstate_head)) {
-    log_t(
+  if (fail(py_proc__get_type(self, V_FIELD(void *, is, py_is, o_tstate_head), tstate_head))) {
+    log_e(
       "Cannot copy PyThreadState head at %p from PyInterpreterState instance",
       V_FIELD(void *, is, py_is, o_tstate_head)
     );
@@ -374,8 +376,10 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   log_t("PyThreadState head loaded @ %p", V_FIELD(void *, is, py_is, o_tstate_head));
 
-  if (V_FIELD(void*, tstate_head, py_thread, o_interp) != raddr)
+  if (V_FIELD(void*, tstate_head, py_thread, o_interp) != raddr) {
+    log_d("PyThreadState head does not point to interpreter state");
     FAIL;
+  }
 
   log_d(
     "Found possible interpreter state @ %p (offset %p).",
@@ -493,6 +497,10 @@ _py_proc__scan_bss(py_proc_t * self) {
   // it. This make the search a little slower, since we now have to check every
   // value in the range. However, the step size we chose seems to get us close
   // enough in a few attempts.
+  if (!isvalid(self) || !isvalid(self->map.bss.base)) {
+    FAIL;
+  }
+
   int    shift = 0;
   size_t step  = self->map.bss.size > 0x10000 ? 0x10000 : self->map.bss.size;
   
@@ -583,8 +591,10 @@ _py_proc__deref_interp_head(py_proc_t * self) {
   }
   else FAIL;
 
-  if (_py_proc__check_interp_state(self, interp_head_raddr))
+  if (fail(_py_proc__check_interp_state(self, interp_head_raddr))) {
+    log_d("Interpreter state check failed while dereferencing symbol");
     FAIL;
+  }
 
   self->is_raddr = interp_head_raddr;
 
@@ -628,7 +638,7 @@ _py_proc__find_interpreter_state(py_proc_t * self) {
   void          * tstate_current_raddr;
 
   // First try to de-reference interpreter head as the most reliable method
-  if (_py_proc__deref_interp_head(self)) {
+  if (fail(_py_proc__deref_interp_head(self))) {
     log_d("Cannot dereference PyInterpreterState head from symbols (pid: %d)", self->pid);
     // If that fails try to get the current thread state (can be NULL during idle)
     tstate_current_raddr = _py_proc__get_current_thread_state_raddr(self);
@@ -675,13 +685,16 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
   self->is_raddr = NULL;
 
   self->bss = realloc(self->bss, self->map.bss.size);
-  if (!isvalid(self->bss))
+  if (!isvalid(self->bss)) {
+    log_e("Cannot allocate memory for BSS scan (pid: %d)", self->pid);
     FAIL;
+  }
 
   TIMER_RESET
   TIMER_START
     if (!py_proc__is_running(self)) {
       set_error(EPROCNPID);
+      log_e("Process %d is not running.", self->pid);
       FAIL;
     }
 
@@ -694,7 +707,7 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
     #endif
       if (is_fatal(austin_errno)) {
         log_d(
-          "Terminatig _py_proc__wait_for_interp_state loop because of fatal error code %d",
+          "Terminating _py_proc__wait_for_interp_state loop because of fatal error code %d",
           austin_errno
         );
         FAIL;
@@ -784,12 +797,9 @@ _py_proc__run(py_proc_t * self) {
     sfree(self->lib_path);
     self->sym_loaded = 0;
 
-    if (success(_py_proc__init(self)))
+    if (success(_py_proc__init(self))) {
+      log_d("Process is ready");
       break;
-
-    if (is_fatal(austin_errno)) {
-      log_d("Terminatig _py_proc__run loop because of fatal error code %d", austin_errno);
-      FAIL;
     }
 
     log_d("Process is not ready");
