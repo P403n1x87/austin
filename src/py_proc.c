@@ -548,6 +548,9 @@ _py_proc__scan_bss(py_proc_t * self) {
         SUCCESS;
       }
     }
+    #if defined PL_WIN
+    break;
+    #endif
     shift++;
   }
   FAIL;
@@ -930,19 +933,13 @@ py_proc__attach(py_proc_t * self, pid_t pid) {
   #endif
 
   if (fail(_py_proc__run(self))) {
-    #if defined PL_WIN
-    if (fail(_py_proc__try_child_proc(self))) {
-    #endif
-      if (austin_errno == EPROCNPID) {
-        set_error(EPROCATTACH);
-      }
-      else {
-        log_ie("Cannot attach to running process.");
-      }
-      FAIL;
-    #if defined PL_WIN
+    if (austin_errno == EPROCNPID) {
+      set_error(EPROCATTACH);
     }
-    #endif
+    else {
+      log_ie("Cannot attach to running process.");
+    }
+    FAIL;
   }
 
   SUCCESS;
@@ -1071,16 +1068,10 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   log_d("New process created with PID %d", self->pid);
 
   if (fail(_py_proc__run(self))) {
-    #if defined PL_WIN
-    if (fail(_py_proc__try_child_proc(self))) {
-    #endif
-      if (austin_errno == EPROCNPID)
-        set_error(EPROCFORK);
-      log_ie("Cannot start new process");
-      FAIL;
-    #if defined PL_WIN
-    }
-    #endif
+    if (austin_errno == EPROCNPID)
+      set_error(EPROCFORK);
+    log_ie("Cannot start new process");
+    FAIL;
   }
 
   #ifdef NATIVE
