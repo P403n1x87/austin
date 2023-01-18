@@ -146,4 +146,7 @@ CLEANUP_FUNC(DIR, closedir);
 #if defined PL_WIN
 CLEANUP_FUNC_SENTINEL(HANDLE, CloseHandle, INVALID_HANDLE_VALUE);
 #define cu_HANDLE __attribute__((cleanup(CloseHandleHANDLE))) HANDLE
+
+CLEANUP_FUNC_SENTINEL(LPVOID, UnmapViewOfFile, NULL);
+#define cu_VOF __attribute__((cleanup(UnmapViewOfFileLPVOID))) LPVOID
 #endif // PL_WIN

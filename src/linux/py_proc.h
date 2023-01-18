@@ -491,7 +491,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
         map->bss_base = self->map.bss.base;
         map->bss_size = self->map.bss.size;
 
-        log_d("Library map: %s (symbols %d)", map->path, map->has_symbols);
+        log_d("Library map: %s (with symbols)", map->path);
 
         continue;
       }
