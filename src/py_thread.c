@@ -683,7 +683,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
           }
         }
 
-        frame = frame_new(frame_key, filename, scope, offset);
+        frame = frame_new(frame_key, filename, scope, offset, 0, 0, 0);
         if (!isvalid(frame)) {
           log_ie("Failed to make native frame");
           FAIL;

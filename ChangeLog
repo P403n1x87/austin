@@ -1,5 +1,8 @@
 xxxx-xx-xx v3.5.0
 
+  Added support for fine-grained, column-level location information when
+  exporting samples in binary mode.
+
   Improved multiprocess support.
 
   Dropped the alternative output format.

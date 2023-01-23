@@ -224,8 +224,8 @@ get_native_frame(const char *file_name, bfd_vma addr, key_dt frame_key)
     syms = NULL;
 
     frame_t *frame = isvalid(filename) && isvalid(name)
-                         ? frame_new(frame_key, strdup(filename), strdup(name), line)
-                         : NULL;
+        ? frame_new(frame_key, strdup(filename), strdup(name), line, 0, 0, 0)
+        : NULL;
 
     bfd_close(abfd);
 

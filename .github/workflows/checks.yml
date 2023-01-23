@@ -79,7 +79,7 @@ jobs:
         run: pip install black
 
       - name: Check source code spelling
-        run: black --check test/
+        run: black --check --exclude=test/targets test/
 
   linting-tests:
     runs-on: ubuntu-20.04
