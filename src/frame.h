@@ -32,6 +32,9 @@ typedef struct {
   char         * filename;
   char         * scope;
   unsigned int   line;
+  unsigned int   line_end;
+  unsigned int   column;
+  unsigned int   column_end;
 } frame_t;
 
 
@@ -44,7 +47,15 @@ typedef struct {
 
 // ----------------------------------------------------------------------------
 static inline frame_t *
-frame_new(key_dt key, char * filename, char * scope, unsigned int line) {
+frame_new(
+  key_dt key,
+  char * filename,
+  char * scope,
+  unsigned int line,
+  unsigned int line_end,
+  unsigned int column,
+  unsigned int column_end
+) {
   frame_t * frame = (frame_t *) malloc(sizeof(frame_t));
   if (!isvalid(frame)) {
     return NULL;
@@ -53,7 +64,11 @@ frame_new(key_dt key, char * filename, char * scope, unsigned int line) {
   frame->key      = key;
   frame->filename = filename;
   frame->scope    = scope;
-  frame->line     = line;
+
+  frame->line       = line;
+  frame->line_end   = line_end;
+  frame->column     = column;
+  frame->column_end = column_end;
 
   return frame;
 }
@@ -151,7 +166,11 @@ _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python
   }
 
   ssize_t len = 0;
-  int lineno = V_FIELD(unsigned int, code, py_code, o_firstlineno);
+
+  unsigned int lineno     = V_FIELD(unsigned int, code, py_code, o_firstlineno);
+  unsigned int line_end   = lineno;
+  unsigned int column     = 0;
+  unsigned int column_end = 0;
 
   if (V_MIN(3, 11)) {
     lnotab = _code__get_lnotab(&code, pref, &len, py_v);
@@ -165,30 +184,39 @@ _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python
     for (size_t i = 0, bc = 0; i < len; i++) {
       bc += (lnotab[i] & 7) + 1;
       int code = (lnotab[i] >> 3) & 15;
+      unsigned char next_byte = 0;
       switch (code) {
         case 15:
           break;
 
         case 14: // Long form
-          lineno += _read_signed_varint(lnotab, &i);
-          _read_varint(lnotab, &i); // end line
-          _read_varint(lnotab, &i); // column
-          _read_varint(lnotab, &i); // end column
+          lineno    += _read_signed_varint(lnotab, &i);
+          line_end   = lineno + _read_varint(lnotab, &i); // end line
+          column     = _read_varint(lnotab, &i); // column
+          column_end = _read_varint(lnotab, &i); // end column
           break;
 
         case 13: // No column data
-          lineno += _read_signed_varint(lnotab, &i);
+          lineno  += _read_signed_varint(lnotab, &i);
+          line_end = lineno;
+          
+          column = column_end = 0;
           break;
 
         case 12: // New lineno
         case 11:
         case 10:
-          lineno += code - 10;
-          i += 2; // skip column + end column
+          lineno    += code - 10;
+          line_end   = lineno;
+          column     = lnotab[++i];
+          column_end = lnotab[++i];
           break;
 
         default:
-          i++; // skip column
+          next_byte  = lnotab[++i];
+          line_end   = lineno;
+          column     = 1 + (code << 3) + ((next_byte >> 4) & 7);
+          column_end = column + (next_byte & 15);
       }
       
       if (bc > lasti)
@@ -236,7 +264,15 @@ _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python
     }
   }
 
-  frame_t * frame = frame_new(py_frame_key(code_raddr, lasti), filename, scope, lineno);
+  frame_t * frame = frame_new(
+    py_frame_key(code_raddr, lasti),
+    filename,
+    scope,
+    lineno,
+    line_end,
+    column,
+    column_end
+  );
   if (!isvalid(frame)) {
     log_e("Failed to create frame object");
     return NULL;

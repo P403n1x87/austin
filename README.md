@@ -403,6 +403,16 @@ More details about the [MOJO] binary format can be found in the [Wiki].
 *Since Austin 3.4.0*.
 
 
+## Column-level Location Information
+
+Since Python 3.11, code objects carry finer-grained location information at the
+column level. When using the binary MOJO format, Austin can extract this extra
+location information when profiling code running with versions of the
+interpreter that expose this data.
+
+*Since Austin 3.5.0*.
+
+
 ## Memory and Full Metrics
 
 When profiling in memory mode with the `-m` or `--memory` switch, the metric
