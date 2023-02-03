@@ -10,8 +10,6 @@ on:
 jobs:
   check-manpage:
     runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
     name: Check manpage
     steps:
       - uses: actions/checkout@v2
@@ -33,8 +31,6 @@ jobs:
 
   cppcheck:
     runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
     name: Static code analysis
     steps:
       - uses: actions/checkout@v2
@@ -47,8 +43,6 @@ jobs:
 
   codespell:
     runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
     name: Codespell
     steps:
       - uses: actions/checkout@v2
@@ -65,8 +59,6 @@ jobs:
 
   formatting-tests:
     runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
     name: Formatting (tests)
     steps:
       - uses: actions/checkout@v2
@@ -78,13 +70,11 @@ jobs:
       - name: Install black
         run: pip install black
 
-      - name: Check source code spelling
+      - name: Check formatting
         run: black --check --exclude=test/targets test/
 
   linting-tests:
     runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
     name: Linting (tests)
     steps:
       - uses: actions/checkout@v2
@@ -96,13 +86,11 @@ jobs:
       - name: Install flake8
         run: pip install flake8
 
-      - name: Check source code spelling
+      - name: Lint code
         run: flake8 --config test/.flake8 test/
 
   coverage:
     runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
     name: Code coverage
     steps:
       - uses: actions/checkout@v2
@@ -150,8 +138,6 @@ jobs:
 
   check-cog:
     runs-on: ubuntu-20.04
-    strategy:
-      fail-fast: false
     name: Check cog output
     steps:
       - uses: actions/checkout@v2
