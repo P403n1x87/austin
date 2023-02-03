@@ -24,15 +24,23 @@ import importlib
 import os
 import platform
 from asyncio.subprocess import STDOUT
-from collections import Counter, defaultdict
-from io import BytesIO, StringIO
+from collections import Counter
+from collections import defaultdict
+from io import BytesIO
+from io import StringIO
 from pathlib import Path
 from shutil import rmtree
-from subprocess import PIPE, CompletedProcess, Popen, check_output, run
+from subprocess import PIPE
+from subprocess import CompletedProcess
+from subprocess import Popen
+from subprocess import check_output
+from subprocess import run
 from test import PYTHON_VERSIONS
 from time import sleep
 from types import ModuleType
-from typing import Iterator, TypeVar
+from typing import Iterator
+from typing import TypeVar
+
 
 try:
     import pytest
@@ -40,6 +48,7 @@ except ImportError:
     pytest = None
 
 from austin.format.mojo import MojoFile
+
 
 HERE = Path(__file__).parent
 
@@ -126,7 +135,6 @@ EXEEXT = ".exe" if platform.system() == "Windows" else ""
 
 
 class Variant(str):
-
     ALL: list["Variant"] = []
 
     def __init__(self, name: str) -> None:
