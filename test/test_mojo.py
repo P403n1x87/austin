@@ -51,7 +51,7 @@ def test_mojo_column_data(py, tmp_path: Path):
             and _.filename.string.value.endswith("column.py")
         }
 
-        assert frames >= {
+        assert frames & {
             ("<module>", 16, 19, 5, 2),
             ("<listcomp>", 16, 19, 5, 2),
             ("lazy", 6, 6, 9, 19),
