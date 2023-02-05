@@ -191,9 +191,9 @@ _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python
 
         case 14: // Long form
           lineno    += _read_signed_varint(lnotab, &i);
-          line_end   = lineno + _read_varint(lnotab, &i); // end line
-          column     = _read_varint(lnotab, &i); // column
-          column_end = _read_varint(lnotab, &i); // end column
+          line_end   = lineno + _read_varint(lnotab, &i);
+          column     = _read_varint(lnotab, &i);
+          column_end = _read_varint(lnotab, &i);
           break;
 
         case 13: // No column data
@@ -208,8 +208,8 @@ _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python
         case 10:
           lineno    += code - 10;
           line_end   = lineno;
-          column     = lnotab[++i];
-          column_end = lnotab[++i];
+          column     = 1 + lnotab[++i];
+          column_end = 1 + lnotab[++i];
           break;
 
         default:
