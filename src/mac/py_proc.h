@@ -485,7 +485,7 @@ _py_proc__get_maps(py_proc_t * self) {
   cu_void * pd_mem = calloc(1, sizeof(struct proc_desc));
   if (!isvalid(pd_mem)) {
     log_ie("Cannot allocate memory for proc_desc");
-    FAIL;
+    FAIL;  // cppcheck-suppress [memleak]
   }
   struct proc_desc * pd = pd_mem;
 

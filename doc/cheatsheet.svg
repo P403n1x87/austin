@@ -9,7 +9,7 @@
    id="svg8"
    inkscape:version="1.1.2 (0a00cf5339, 2022-02-04)"
    sodipodi:docname="cheatsheet.svg"
-   inkscape:export-filename="/home/gabriele/Projects/austin/art/cheatsheet.png"
+   inkscape:export-filename="/home/gabriele/Projects/austin/doc/cheatsheet.png"
    inkscape:export-xdpi="191.99664"
    inkscape:export-ydpi="191.99664"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
@@ -757,8 +757,8 @@
      inkscape:pageopacity="1"
      inkscape:pageshadow="2"
      inkscape:zoom="1.4"
-     inkscape:cx="355"
-     inkscape:cy="520.71429"
+     inkscape:cx="355.35714"
+     inkscape:cy="-3878.5714"
      inkscape:document-units="mm"
      inkscape:current-layer="layer1"
      showgrid="false"
@@ -776,7 +776,6 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
