@@ -45,11 +45,10 @@
 #else
 #define DEFAULT_SAMPLING_INTERVAL    100
 #endif
-#define DEFAULT_INIT_RETRY_CNT       100
-#define DEFAULT_HEAP_SIZE            0
+#define DEFAULT_INIT_TIMEOUT_MS      500  // 0.5 seconds
+#define DEFAULT_HEAP_SIZE              0
 
 const char SAMPLE_FORMAT_NORMAL[]      = ";%s:%s:%d";
-const char SAMPLE_FORMAT_ALTERNATIVE[] = ";%s:%s;L%d";
 const char SAMPLE_FORMAT_WHERE[]       = "    \033[33;1m%2$s\033[0m (\033[36;1m%1$s\033[0m:\033[32;1m%3$d\033[0m)\n";
 #ifdef NATIVE
 const char SAMPLE_FORMAT_WHERE_NATIVE[]= "    \033[38;5;246m%2$s\033[0m (\033[38;5;248;1m%1$s\033[0m:\033[38;5;246m%3$d\033[0m)\n";
@@ -68,7 +67,7 @@ const char HEAD_FORMAT_WHERE[]         = "\n\n%3$s%4$s Process \033[35;1m%1$d\03
 // Globals for command line arguments
 parsed_args_t pargs = {
   /* t_sampling_interval */ DEFAULT_SAMPLING_INTERVAL,
-  /* timeout             */ DEFAULT_INIT_RETRY_CNT * 1000,
+  /* timeout             */ DEFAULT_INIT_TIMEOUT_MS * 1000,
   /* attach_pid          */ 0,
   /* where               */ 0,
   /* exclude_empty       */ 0,
@@ -221,10 +220,6 @@ static struct argp_option options[] = {
     "Start up wait time in milliseconds (default is 100). Accepted units: s, ms."
   },
   {
-    "alt-format",   'a', NULL,          0,
-    "Alternative collapsed stack sample format."
-  },
-  {
     "exclude-empty",'e', NULL,          0,
     "Do not output samples of threads with no frame stacks."
   },
@@ -338,13 +333,6 @@ parse_opt (int key, char *arg, struct argp_state *state)
     )
       argp_error(state, "timeout must be a positive integer");
     pargs.timeout *= 1000;
-    break;
-
-  case 'a':
-    pargs.format = (char *) SAMPLE_FORMAT_ALTERNATIVE;
-    #ifdef NATIVE
-    pargs.native_format = pargs.format;
-    #endif
     break;
 
   case 'b':
@@ -574,7 +562,6 @@ print(";")
 "data out of a running Python process (and all its children, if required) that\n"
 "requires no instrumentation and has practically no impact on the tracee.\n"
 "\n"
-"  -a, --alt-format           Alternative collapsed stack sample format.\n"
 "  -b, --binary               Emit data in the MOJO binary format. See\n"
 "                             https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format\n"
 "                             for more details.\n"
@@ -615,12 +602,12 @@ for line in check_output(["src/austin", "--usage"]).decode().splitlines():
   print(f'"{line}\\n"')
 print(";")
 ]]]*/
-"Usage: austin [-abCefgmPs?V] [-h n_mb] [-i n_us] [-o FILE] [-p PID] [-t n_ms]\n"
-"            [-w PID] [-x n_sec] [--alt-format] [--binary] [--children]\n"
-"            [--exclude-empty] [--full] [--gc] [--heap=n_mb] [--interval=n_us]\n"
-"            [--memory] [--output=FILE] [--pid=PID] [--pipe] [--sleepless]\n"
-"            [--timeout=n_ms] [--where=PID] [--exposure=n_sec] [--help]\n"
-"            [--usage] [--version] command [ARG...]\n"
+"Usage: austin [-bCefgmPs?V] [-h n_mb] [-i n_us] [-o FILE] [-p PID] [-t n_ms]\n"
+"            [-w PID] [-x n_sec] [--binary] [--children] [--exclude-empty]\n"
+"            [--full] [--gc] [--heap=n_mb] [--interval=n_us] [--memory]\n"
+"            [--output=FILE] [--pid=PID] [--pipe] [--sleepless] [--timeout=n_ms]\n"
+"            [--where=PID] [--exposure=n_sec] [--help] [--usage] [--version]\n"
+"            command [ARG...]\n"
 ;
 /*[[[end]]]*/
 
@@ -693,10 +680,6 @@ cb(const char opt, const char * arg) {
       arg_error("the timeout must be a positive integer");
     }
     pargs.timeout *= 1000;
-    break;
-
-  case 'a':
-    pargs.format = (char *) SAMPLE_FORMAT_ALTERNATIVE;
     break;
   
   case 'b':

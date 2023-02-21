@@ -312,7 +312,6 @@ Austin is a frame stack sampler for CPython that is used to extract profiling
 data out of a running Python process (and all its children, if required) that
 requires no instrumentation and has practically no impact on the tracee.
 
-  -a, --alt-format           Alternative collapsed stack sample format.
   -b, --binary               Emit data in the MOJO binary format. See
                              https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format
                              for more details.
@@ -378,14 +377,6 @@ In normal mode, the `[frame]` part of each emitted sample has the structure
 [frame] := <module>:<function>:<line number>
 ~~~
 
-If you want the flame graph to show the total time spent in each function, plus
-the finer detail of the time spent on each line, you can use the alternative
-format by passing the `-a` option. In this mode, `[frame]` has the structure
-
-~~~
-[frame] := <module>:<function>;L<line number>
-~~~
-
 Each line then ends with a single `[metric]`, i.e. the sampling time measured in
 microseconds.
 
@@ -410,6 +401,16 @@ MOJO file itself.
 More details about the [MOJO] binary format can be found in the [Wiki].
 
 *Since Austin 3.4.0*.
+
+
+## Column-level Location Information
+
+Since Python 3.11, code objects carry finer-grained location information at the
+column level. When using the binary MOJO format, Austin can extract this extra
+location information when profiling code running with versions of the
+interpreter that expose this data.
+
+*Since Austin 3.5.0*.
 
 
 ## Memory and Full Metrics

@@ -29,7 +29,7 @@
 #include "cache.h"
 #include "platform.h"
 
-#define MOJO_VERSION 1
+#define MOJO_VERSION 2
 
 enum {
   MOJO_RESERVED,
@@ -124,12 +124,15 @@ static inline void mojo_integer(mojo_int_t integer, int sign) {
   mojo_integer(pid, 0);      \
   mojo_fstring(FORMAT_TID, tid);
 
-#define mojo_frame(frame)      \
-  mojo_event(MOJO_FRAME);      \
-  mojo_integer(frame->key, 0); \
-  mojo_ref(frame->filename);   \
-  mojo_ref(frame->scope);      \
-  mojo_integer(frame->line, 0);
+#define mojo_frame(frame)           \
+  mojo_event(MOJO_FRAME);           \
+  mojo_integer(frame->key, 0);      \
+  mojo_ref(frame->filename);        \
+  mojo_ref(frame->scope);           \
+  mojo_integer(frame->line, 0);     \
+  mojo_integer(frame->line_end, 0); \
+  mojo_integer(frame->column, 0);   \
+  mojo_integer(frame->column_end, 0);
 
 #define mojo_frame_ref(frame) \
   mojo_event(MOJO_FRAME_REF); \

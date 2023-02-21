@@ -1,4 +1,6 @@
-from test.cunit.error import cglobal, error_get_msg, is_fatal
+from test.cunit.error import cglobal
+from test.cunit.error import error_get_msg
+from test.cunit.error import is_fatal
 
 import pytest
 

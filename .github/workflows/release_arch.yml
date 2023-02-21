@@ -5,7 +5,7 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 jobs:
   release-linux-archs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
         arch: ["armv7", "aarch64", "ppc64le"]
@@ -14,6 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         name: Checkout sources
+      
       - uses: uraimo/run-on-arch-action@v2.0.5
         name: Run tests on ${{ matrix.arch }}
         id: run-tests-on-arch
@@ -24,28 +25,7 @@ jobs:
           dockerRunArgs:  --volume "${GITHUB_WORKSPACE}/artifacts:/artifacts"
           setup: |
             mkdir -p ./artifacts
-          run: |
-            apt-get update
-            apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools zlib1g-dev
-
-            # Build austin
-            autoreconf --install
-            ./configure
-            make
-
-            export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
-
-            pushd src
-            tar -Jcf austin-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz austin
-            tar -Jcf austinp-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz austinp
-
-            musl-gcc -O3 -Os -s -Wall -pthread *.c -o austin -D__MUSL__
-            tar -Jcf austin-$VERSION-musl-linux-${{ matrix.arch }}.tar.xz austin
-
-            mv austin-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz /artifacts
-            mv austinp-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz /artifacts
-            mv austin-$VERSION-musl-linux-${{ matrix.arch }}.tar.xz /artifacts
-            popd
+          run: ARCH=${{ matrix.arch }} bash scripts/build_arch.sh
 
       - name: Show artifacts
         run: |

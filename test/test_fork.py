@@ -22,24 +22,22 @@
 
 import platform
 from pathlib import Path
-from test.utils import (
-    allpythons,
-    austin,
-    compress,
-    demojo,
-    has_pattern,
-    maps,
-    metadata,
-    mojo,
-    processes,
-    python,
-    samples,
-    sum_metric,
-    sum_metrics,
-    target,
-    threads,
-    variants,
-)
+from test.utils import allpythons
+from test.utils import austin
+from test.utils import compress
+from test.utils import demojo
+from test.utils import has_pattern
+from test.utils import maps
+from test.utils import metadata
+from test.utils import mojo
+from test.utils import processes
+from test.utils import python
+from test.utils import samples
+from test.utils import sum_metric
+from test.utils import sum_metrics
+from test.utils import target
+from test.utils import threads
+from test.utils import variants
 
 import pytest
 from flaky import flaky

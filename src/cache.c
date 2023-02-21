@@ -227,6 +227,7 @@ hash_table_new(int capacity) {
   hash_table_t *hash = (hash_table_t *) calloc(1, sizeof(hash_table_t));
 
   hash->capacity = capacity;
+  hash->load_factor = 0.75 * capacity;
   hash->chains = (chain_t **) calloc(hash->capacity, sizeof(chain_t *));
 
   #ifdef DEBUG
@@ -259,7 +260,15 @@ hash_table__get(hash_table_t *self, key_dt key) {
 }
 
 // ----------------------------------------------------------------------------
+int
+hash_table__is_full(hash_table_t *self) {
+  if (!isvalid(self))
+    return -1;
 
+  return self->size >= self->load_factor;
+}
+
+// ----------------------------------------------------------------------------
 void
 hash_table__set(hash_table_t *self, key_dt key, value_t value) {
   if (!isvalid(self))
@@ -450,6 +459,84 @@ lru_cache__destroy(lru_cache_t *self) {
 
   queue__destroy(self->queue);
   hash_table__destroy(self->hash);
+
+  free(self);
+}
+
+
+// -- Lookup ------------------------------------------------------------------
+
+// ----------------------------------------------------------------------------
+lookup_t *
+lookup_new(int size) {
+  lookup_t *lookup = (lookup_t *)calloc(1, sizeof(lookup_t));
+  if (!isvalid(lookup))
+    return NULL;
+
+  lookup->hash = hash_table_new(size);
+
+  return lookup;
+}
+
+// ----------------------------------------------------------------------------
+value_t
+lookup__get(lookup_t *self, key_dt key) {
+  if (!isvalid(self))
+    return NULL;
+
+  return hash_table__get(self->hash, key);
+}
+
+// ----------------------------------------------------------------------------
+void
+lookup__set(lookup_t *self, key_dt key, value_t value) {
+  if (!isvalid(self))
+    return;
+
+  if (hash_table__is_full(self->hash)) {
+    // Double the hash table and move the items across.
+    hash_table_t *new_hash = hash_table_new(self->hash->capacity << 1);
+    
+    hash_table__iteritems_start(self->hash, key_dt, _key, value_t, _value) {
+      hash_table__set(new_hash, _key, _value);
+    } hash_table__iter_stop(self->hash);
+
+    // Destroy the old hash table and replace it with the new one.
+    hash_table__destroy(self->hash);
+    self->hash = new_hash;
+  }
+
+  hash_table__set(self->hash, key, value);
+}
+
+// ----------------------------------------------------------------------------
+void
+lookup__del(lookup_t *self, key_dt key) {
+  if (!isvalid(self))
+    return;
+
+  hash_table__del(self->hash, key);
+}
+
+// ----------------------------------------------------------------------------
+void
+lookup__clear(lookup_t *self) {
+  if (!isvalid(self))
+    return;
+
+  size_t size = self->hash->capacity;
+  hash_table__destroy(self->hash);
+  self->hash = hash_table_new(size);
+}
+
+// ----------------------------------------------------------------------------
+void
+lookup__destroy(lookup_t *self) {
+  if (!isvalid(self))
+    return;
+
+  hash_table__destroy(self->hash);
+  self->hash = NULL;
 
   free(self);
 }

@@ -24,18 +24,31 @@ import importlib
 import os
 import platform
 from asyncio.subprocess import STDOUT
-from collections import Counter, defaultdict
-from io import BytesIO, StringIO
+from collections import Counter
+from collections import defaultdict
+from io import BytesIO
+from io import StringIO
 from pathlib import Path
 from shutil import rmtree
-from subprocess import PIPE, CompletedProcess, Popen, check_output, run
+from subprocess import PIPE
+from subprocess import CompletedProcess
+from subprocess import Popen
+from subprocess import check_output
+from subprocess import run
 from test import PYTHON_VERSIONS
 from time import sleep
 from types import ModuleType
-from typing import Iterator, TypeVar
+from typing import Iterator
+from typing import TypeVar
 
-import pytest
+
+try:
+    import pytest
+except ImportError:
+    pytest = None
+
 from austin.format.mojo import MojoFile
+
 
 HERE = Path(__file__).parent
 
@@ -63,7 +76,7 @@ if platform.system() == "Darwin":
 
 
 def python(version: str) -> list[str]:
-    match pl := platform.system():
+    match platform.system():
         case "Windows":
             py = ["py", f"-{version}"]
         case "Darwin" | "Linux":
@@ -122,7 +135,6 @@ EXEEXT = ".exe" if platform.system() == "Windows" else ""
 
 
 class Variant(str):
-
     ALL: list["Variant"] = []
 
     def __init__(self, name: str) -> None:
@@ -167,15 +179,19 @@ class Variant(str):
 austin = Variant("austin")
 austinp = Variant("austinp")
 
-variants = pytest.mark.parametrize("austin", Variant.ALL)
+
+def run_async(command: list[str], *args: tuple[str], env: dict | None = None) -> Popen:
+    return Popen(command + list(args), stdout=PIPE, stderr=PIPE, env=env)
 
 
-def run_async(command: list[str], *args: tuple[str]) -> Popen:
-    return Popen(command + list(args), stdout=PIPE, stderr=PIPE)
-
-
-def run_python(version, *args: tuple[str], sleep_after: float | None = None) -> Popen:
-    result = run_async(python(version), *args)
+def run_python(
+    version,
+    *args: tuple[str],
+    env: dict | None = None,
+    prefix: list[str] = [],
+    sleep_after: float | None = None,
+) -> Popen:
+    result = run_async(prefix + python(version), *args, env=env)
 
     if sleep_after is not None:
         sleep(sleep_after)
@@ -218,7 +234,7 @@ def metadata(data: str) -> dict[str, str]:
 
     for v in ("austin", "python"):
         if v in meta:
-            meta[v] = tuple(int(_) for _ in meta[v].split("."))
+            meta[v] = tuple(int(_.replace("?", "-1")) for _ in meta[v].split(".")[:3])
 
     return meta
 
@@ -284,18 +300,6 @@ def compress(data: str) -> str:
     return output
 
 
-match platform.system():
-    case "Windows":
-        requires_sudo = no_sudo = lambda f: f
-    case _:
-        requires_sudo = pytest.mark.skipif(
-            os.geteuid() != 0, reason="Requires superuser privileges"
-        )
-        no_sudo = pytest.mark.skipif(
-            os.geteuid() == 0, reason="Must not have superuser privileges"
-        )
-
-
 def demojo(data: bytes) -> str:
     result = StringIO()
 
@@ -303,9 +307,6 @@ def demojo(data: bytes) -> str:
         result.write(e.to_austin())
 
     return result.getvalue()
-
-
-mojo = pytest.mark.parametrize("mojo", [False, True])
 
 
 # Load from the utils scripts
@@ -319,3 +320,20 @@ def load_util(name: str) -> ModuleType:
     spec.loader.exec_module(module)
 
     return module
+
+
+if pytest is not None:
+    variants = pytest.mark.parametrize("austin", Variant.ALL)
+
+    match platform.system():
+        case "Windows":
+            requires_sudo = no_sudo = lambda f: f
+        case _:
+            requires_sudo = pytest.mark.skipif(
+                os.geteuid() != 0, reason="Requires superuser privileges"
+            )
+            no_sudo = pytest.mark.skipif(
+                os.geteuid() == 0, reason="Must not have superuser privileges"
+            )
+
+    mojo = pytest.mark.parametrize("mojo", [False, True])

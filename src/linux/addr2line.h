@@ -23,6 +23,9 @@
 // This source has been adapted from
 // https://github.com/bminor/binutils-gdb/blob/ce230579c65b9e04c830f35cb78ff33206e65db1/binutils/addr2line.c
 
+
+#define PACKAGE "austinp"  // https://github.com/P403n1x87/austin/issues/152
+
 #include <bfd.h>
 #include <ctype.h>
 #include <stdbool.h>
@@ -221,8 +224,8 @@ get_native_frame(const char *file_name, bfd_vma addr, key_dt frame_key)
     syms = NULL;
 
     frame_t *frame = isvalid(filename) && isvalid(name)
-                         ? frame_new(frame_key, strdup(filename), strdup(name), line)
-                         : NULL;
+        ? frame_new(frame_key, strdup(filename), strdup(name), line, 0, 0, 0)
+        : NULL;
 
     bfd_close(abfd);
 

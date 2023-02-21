@@ -1,7 +1,9 @@
 # Run as python3 scripts/benchmark.py from the repository root directory.
+# Ensure dependencies from requirements-bm.txt are installed.
 
 import re
 import sys
+import typing as t
 from argparse import ArgumentParser
 from itertools import product
 from math import floor, log
@@ -15,7 +17,7 @@ from test.utils import Variant, metadata, target
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
-VERSIONS = ("3.0.0", "3.1.0", "3.2.0", "3.3.0", "dev")
+VERSIONS = ("3.2.0", "3.3.0", "3.4.1", "dev")
 SCENARIOS = [
     *[
         (
@@ -49,26 +51,39 @@ SCENARIOS = [
         )
         for i in (1, 10, 100, 1000)
     ],
+    *[
+        (
+            "austin",
+            f"Multiprocess wall time [sampling interval: {i}]",
+            ["-CPfi", str(i), sys.executable, target("target_mp.py"), "16"],
+        )
+        for i in (1, 10, 100, 1000)
+    ],
 ]
 
 
-def get_stats(output: str) -> dict:
-    meta = metadata(output)
-    raw_saturation = meta["saturation"]
-    _, _, raw_samples = raw_saturation.partition("/")
+def get_stats(output: str) -> t.Optional[dict]:
+    try:
+        meta = metadata(output)
+        raw_saturation = meta["saturation"]
+        _, _, raw_samples = raw_saturation.partition("/")
 
-    duration = float(meta["duration"]) / 1e6
-    samples = int(raw_samples)
-    saturation = eval(raw_saturation)
-    error_rate = eval(meta["errors"])
-    sampling = int(meta["sampling"].split(",")[1])
+        duration = float(meta["duration"]) / 1e6
+        samples = int(raw_samples)
+        saturation = eval(raw_saturation)
+        error_rate = eval(meta["errors"])
+        sampling = int(meta["sampling"].split(",")[1])
 
-    return {
-        "Sample Rate": samples / duration,
-        "Saturation": saturation,
-        "Error Rate": error_rate,
-        "Sampling Speed": sampling,
-    }
+        return {
+            "Sample Rate": samples / duration,
+            "Saturation": saturation,
+            "Error Rate": error_rate,
+            "Sampling Speed": sampling,
+        }
+
+    except Exception:
+        # Failed to get stats
+        return None
 
 
 def download_release(version: str, dest: Path, variant_name: str = "austin") -> Variant:
@@ -152,10 +167,18 @@ def render(table):
 
 def main():
     argp = ArgumentParser()
+
     argp.add_argument(
         "-k",
         type=re.compile,
         help="Run benchmark scenarios that match the given regular expression",
+    )
+
+    argp.add_argument(
+        "-n",
+        type=int,
+        default=10,
+        help="Number of times to run each scenario",
     )
 
     opts = argp.parse_args()
@@ -180,7 +203,11 @@ def main():
                 print(f"WARNING: Could not download {variant} {version}")
                 continue
 
-            stats = [get_stats(austin(*args).stdout) for _ in range(10)]
+            stats = [
+                _
+                for _ in (get_stats(austin(*args).stdout) for _ in range(opts.n))
+                if _ is not None
+            ]
             table.append(
                 (
                     version,

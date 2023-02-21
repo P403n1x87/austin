@@ -30,20 +30,18 @@
 
 #include "../hints.h"
 #include "../py_thread.h"
+#include "../resources.h"
 
 
 // ----------------------------------------------------------------------------
 static int
 _py_thread__is_idle(py_thread_t * self) {
-  with_resources;
-
   char file_name[64];
   char buffer[2048] = "";
 
-  retval = -1;
-
   sprintf(file_name, "/proc/%d/task/" SIZE_FMT "/stat", self->proc->pid, self->tid);
-  int fd = open(file_name, O_RDONLY);
+  
+  cu_fd fd = open(file_name, O_RDONLY);
   if (fd == -1) {
     log_d("Cannot open %s", file_name);
     return -1;
@@ -51,22 +49,18 @@ _py_thread__is_idle(py_thread_t * self) {
 
   if (read(fd, buffer, 2047) == 0) {
     log_d("Cannot read %s", file_name);
-    goto release;
+    return -1;
   }
 
   char * p = strchr(buffer, ')');
   if (!isvalid(p)) {
     log_d("Invalid format for procfs file %s", file_name);
-    goto release;
+    return -1;
   }
 
   p+=2;
   if (*p == ' ')
     p++;
 
-  retval = (*p != 'R');
-
-release:
-  close(fd);
-  released;
+  return (*p != 'R');
 }

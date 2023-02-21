@@ -173,7 +173,7 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
     frame_t * frame     = lru_cache__maybe_hit(cache, frame_key);
 
     if (!isvalid(frame)) {
-      frame = _frame_from_code_raddr(self, py_frame.code, lasti, self->proc->py_v);
+      frame = _frame_from_code_raddr(self->proc, py_frame.code, lasti, self->proc->py_v);
       if (!isvalid(frame)) {
         log_ie("Failed to get frame from code object");
         // Truncate the stack to the point where we have successfully resolved.
@@ -513,8 +513,7 @@ py_thread__is_interrupted(py_thread_t * self) {
 
 int
 py_thread__save_kernel_stack(py_thread_t * self) {
-  char stack_path[48];
-  int  fd;
+  char  stack_path[48];
 
   if (!isvalid(_kstacks))
     FAIL;
@@ -522,17 +521,15 @@ py_thread__save_kernel_stack(py_thread_t * self) {
   sfree(_kstacks[self->tid]);
 
   sprintf(stack_path, "/proc/%d/task/" TID_FMT "/stack", self->proc->pid, self->tid);
-  fd = open(stack_path, O_RDONLY);
+  cu_fd fd = open(stack_path, O_RDONLY);
   if (fd == -1)
     FAIL;
 
   _kstacks[self->tid] = (char *) calloc(1, MAX_STACK_FILE_SIZE);
   if (read(fd, _kstacks[self->tid], MAX_STACK_FILE_SIZE) == -1) {
     log_e("stack: failed to read %s", stack_path);
-    close(fd);
     FAIL;
   };
-  close(fd);
 
   SUCCESS;
 }
@@ -686,7 +683,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
           }
         }
 
-        frame = frame_new(frame_key, filename, scope, offset);
+        frame = frame_new(frame_key, filename, scope, offset, 0, 0, 0);
         if (!isvalid(frame)) {
           log_ie("Failed to make native frame");
           FAIL;
@@ -808,10 +805,12 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
     }
     else if (
       likely(proc->extra->pthread_tid_offset)
-      && success(read_pthread_t(self->raddr.pref, (void *) self->tid
+      && success(read_pthread_t(self->proc, (void *) self->tid
     ))) {
       int o = proc->extra->pthread_tid_offset;
-      self->tid = o > 0 ? _pthread_buffer[o] : (pid_t) ((pid_t *) _pthread_buffer)[-o];
+      self->tid = o > 0
+        ? proc->extra->_pthread_buffer[o]
+        : (pid_t) ((pid_t *) proc->extra->_pthread_buffer)[-o];
       if (self->tid >= max_pid || self->tid == 0) {
         log_e("Invalid TID detected");
         self->tid = 0;

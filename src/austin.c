@@ -120,8 +120,8 @@ do_single_process(py_proc_t * py_proc) {
 // ----------------------------------------------------------------------------
 void
 do_child_processes(py_proc_t * py_proc) {
-  py_proc_list_t * list = py_proc_list_new(py_proc);
-  if (list == NULL)
+  cu_py_proc_list_t * list = py_proc_list_new(py_proc);
+  if (!isvalid(list))
     return;
 
   // If the parent process is not a Python process, its children might be, so we
@@ -150,7 +150,7 @@ do_child_processes(py_proc_t * py_proc) {
       set_error(EPROCNOCHILDREN);
       if (pargs.attach_pid == 0)
         py_proc__terminate(py_proc);
-      goto release;
+      return;
     }
   }
   else {
@@ -208,9 +208,6 @@ do_child_processes(py_proc_t * py_proc) {
     py_proc_list__update(list);
     py_proc_list__wait(list);
   }
-
-release:
-  py_proc_list__destroy(list);
 } /* do_child_processes */
 
 

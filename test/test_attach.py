@@ -20,23 +20,23 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 import platform
 from collections import Counter
+from shutil import rmtree
 from test.utils import allpythons as _allpythons
-from test.utils import (
-    austin,
-    austinp,
-    compress,
-    has_pattern,
-    metadata,
-    mojo,
-    requires_sudo,
-    run_python,
-    sum_metric,
-    target,
-    threads,
-    variants,
-)
+from test.utils import austin
+from test.utils import austinp
+from test.utils import compress
+from test.utils import has_pattern
+from test.utils import metadata
+from test.utils import mojo
+from test.utils import requires_sudo
+from test.utils import run_python
+from test.utils import sum_metric
+from test.utils import target
+from test.utils import threads
+from test.utils import variants
 from time import sleep
 
 import pytest
@@ -62,7 +62,7 @@ def allpythons():
 @allpythons()
 @variants
 def test_attach_wall_time(austin, py, mode, mode_meta, heap):
-    with run_python(py, target("sleepy.py")) as p:
+    with run_python(py, target("sleepy.py"), "1") as p:
         sleep(0.4)
 
         result = austin(mode, "2ms", *heap, "-p", str(p.pid))
@@ -160,3 +160,47 @@ def test_where_kernel(py):
         assert "<module>" in result.stdout, compress(result.stdout)
         assert "libc" in result.stdout, compress(result.stdout)
         assert "do_syscall" in result.stdout, compress(result.stdout)
+
+
+@pytest.mark.parametrize("prefix", [[], ["unshare", "-p", "-f", "-r"]])
+@pytest.mark.skipif(platform.system() != "Linux", reason="Linux only")
+@requires_sudo
+@_allpythons(min=(3,))
+def test_attach_container_like(py, tmp_path, prefix):
+    """Test in container-like conditions.
+
+    We test that we can still attach Austin to a running process even if we
+    don't have access to the binary files to determine the location of the
+    symbols. We also test against an interpreter started in a different PID
+    namespace to emulate a container as closely as possible.
+    """
+    venv_path = tmp_path / ".venv"
+    p = run_python(py, "-m", "venv", "--copies", str(venv_path))
+    p.wait(30)
+    assert 0 == p.returncode, "Virtual environment was created successfully"
+
+    env = os.environ.copy()
+    env["LD_LIBRARY_PATH"] = str(venv_path / "lib")
+    env["PATH"] = str(venv_path / "bin") + os.pathsep + env["PATH"]
+    with run_python(
+        py, target("sleepy.py"), "3", env=env, prefix=prefix, sleep_after=0.5
+    ) as p:
+        rmtree(venv_path)
+        sleep(0.5)
+
+        result = austin("-Cp", str(p.pid))
+        assert result.returncode == 0
+
+        ts = threads(result.stdout)
+        assert len(ts) == 1, compress(result.stdout)
+
+        assert has_pattern(result.stdout, "sleepy.py:<module>:"), compress(
+            result.stdout
+        )
+
+        meta = metadata(result.stdout)
+
+        a = sum_metric(result.stdout)
+        d = int(meta["duration"])
+
+        assert a <= d

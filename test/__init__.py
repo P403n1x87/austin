@@ -1,6 +1,7 @@
 import os
 import platform
 
+
 PY3_LATEST = 11
 
 try:

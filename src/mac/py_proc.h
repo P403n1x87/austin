@@ -40,6 +40,8 @@
 #include <unistd.h>
 
 #include "../hints.h"
+#include "../mem.h"
+#include "../resources.h"
 
 #define CHECK_HEAP
 #define DEREF_SYM
@@ -120,15 +122,38 @@ _py_proc__analyze_macho64(py_proc_t * self, void * base, void * map) {
   int                         cmd_cnt  = 0;
   struct segment_command_64 * cmd      = map + sizeof(struct mach_header_64);
 
+  mach_vm_size_t                 size       = 0;
+  mach_msg_type_number_t         count      = sizeof(vm_region_basic_info_data_64_t);
+  mach_vm_address_t              address    = (mach_vm_address_t) base;
+  vm_region_basic_info_data_64_t region_info;
+  mach_port_t                    object_name;
+
   for (register int i = 0; cmd_cnt < 2 && i < ncmds; i++) {
     switch (cmd->cmd) {
     case LC_SEGMENT_64:
-      if (strcmp(cmd->segname, "__TEXT") == 0) {
-        // NOTE: This is based on the assumption that we find this segment
-        // early enough to allow later computations to use the correct value.
-        base -= cmd->vmaddr;
-      }
-      else if (strcmp(cmd->segname, "__DATA") == 0) {
+      if (strcmp(cmd->segname, "__DATA") == 0) {
+        // Get the address of the data segment. This way we can compute the base
+        // address of the binary.
+        // NOTE: Here we are vulnerable to size collisions. Unfortunately, we
+        // can't check for the same byte content as the data section is not
+        // read-only.
+        while (cmd->filesize != size) {
+          address += size;
+          if (mach_vm_region(
+            self->proc_ref,
+            &address,
+            &size,
+            VM_REGION_BASIC_INFO_64,
+            (vm_region_info_t) &region_info,
+            &count,
+            &object_name
+          ) != KERN_SUCCESS) {
+            log_e("Cannot get any more VM maps.");
+            return 0;
+          }
+        }
+        base = (void *) address - cmd->vmaddr;
+
         int nsects = cmd->nsects;
         struct section_64 * sec = (struct section_64 *) ((void *) cmd + sizeof(struct segment_command_64));
         self->map.bss.size = 0;
@@ -153,12 +178,13 @@ _py_proc__analyze_macho64(py_proc_t * self, void * base, void * map) {
         struct nlist_64 * sym_tab = (struct nlist_64 *) (map + sw32(s, ((struct symtab_command *) cmd)->symoff));
         void            * str_tab = (void *)            (map + sw32(s, ((struct symtab_command *) cmd)->stroff));
 
-        // TODO: Assess quality
         if ((sym_tab[i].n_type & N_EXT) == 0)
           continue;
 
         char * sym_name = (char *) (str_tab + sym_tab[i].n_un.n_strx);
-        self->sym_loaded += _py_proc__check_sym(self, sym_name, (void *) (base + sym_tab[i].n_value));
+        if (_py_proc__check_sym(self, sym_name, (void *) (base + sym_tab[i].n_value))) {
+          self->sym_loaded++;
+        }
       }
       cmd_cnt++;
     } // switch
@@ -197,15 +223,38 @@ _py_proc__analyze_macho32(py_proc_t * self, void * base, void * map) {
   int                      cmd_cnt  = 0;
   struct segment_command * cmd      = map + sizeof(struct mach_header);
 
+  mach_vm_size_t              size       = 0;
+  mach_msg_type_number_t      count      = sizeof(vm_region_basic_info_data_t);
+  mach_vm_address_t           address    = (mach_vm_address_t) base;
+  vm_region_basic_info_data_t region_info;
+  mach_port_t                 object_name;
+
   for (register int i = 0; cmd_cnt < 2 && i < ncmds; i++) {
     switch (cmd->cmd) {
     case LC_SEGMENT:
-      if (strcmp(cmd->segname, "__TEXT") == 0) {
-        // NOTE: This is based on the assumption that we find this segment
-        // early enough to allow later computations to use the correct value.
-        base -= cmd->vmaddr;
-      }
-      else if (strcmp(cmd->segname, "__DATA") == 0) {
+      if (strcmp(cmd->segname, "__DATA") == 0) {
+        // Get the address of the data segment. This way we can compute the base
+        // address of the binary.
+        // NOTE: Here we are vulnerable to size collisions. Unfortunately, we
+        // can't check for the same byte content as the data section is not
+        // read-only.
+        while (cmd->filesize != size) {
+          address += size;
+          if (mach_vm_region(
+            self->proc_ref,
+            &address,
+            &size,
+            VM_REGION_BASIC_INFO,
+            (vm_region_info_t) &region_info,
+            &count,
+            &object_name
+          ) != KERN_SUCCESS) {
+            log_e("Cannot get any more VM maps.");
+            return 0;
+          }
+        }
+        base = (void *) address - cmd->vmaddr;
+
         int nsects = cmd->nsects;
         struct section * sec = (struct section *) ((void *) cmd + sizeof(struct segment_command));
         self->map.bss.size = 0;
@@ -230,12 +279,13 @@ _py_proc__analyze_macho32(py_proc_t * self, void * base, void * map) {
         struct nlist * sym_tab = (struct nlist *) (map + sw32(s, ((struct symtab_command *) cmd)->symoff));
         void         * str_tab = (void *)         (map + sw32(s, ((struct symtab_command *) cmd)->stroff));
 
-        // TODO: Assess quality
         if ((sym_tab[i].n_type & N_EXT) == 0)
           continue;
 
         char * sym_name = (char *) (str_tab + sym_tab[i].n_un.n_strx);
-        self->sym_loaded += _py_proc__check_sym(self, sym_name, (void *) (base + sym_tab[i].n_value));
+        if (_py_proc__check_sym(self, sym_name, (void *) (base + sym_tab[i].n_value))) {
+          self->sym_loaded++;
+        }
       }
       cmd_cnt++;
     } // switch
@@ -306,9 +356,7 @@ _py_proc__analyze_fat(py_proc_t * self, void * base, void * map) {
 // ----------------------------------------------------------------------------
 static bin_attr_t
 _py_proc__analyze_macho(py_proc_t * self, char * path, void * base, mach_vm_size_t size) {
-  bin_attr_t bin_attrs = 0;
-
-  int fd = open(path, O_RDONLY);
+  cu_fd fd = open(path, O_RDONLY);
   if (fd == -1) {
     log_e("Cannot open binary %s", path);
     return INVALID_ATTR;
@@ -316,56 +364,46 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * base, mach_vm_size
   
   log_d("Analysing binary %s", path);
   
-  with_resources;
-
   // This would cause problem if allocated in the stack frame
-  struct stat * fs  = (struct stat *) malloc(sizeof(struct stat));
-  void        * map = MAP_FAILED;
+  cu_void     * fs_buffer = malloc(sizeof(struct stat));
+  struct stat * fs        = (struct stat *) fs_buffer;
+  cu_map_t    * map       = NULL;
   if (fstat(fd, fs) == -1) {  // Get file size
     log_e("Cannot get size of binary %s", path);
-    NOK;
+    FAIL;  // cppcheck-suppress [memleak]
   }
 
-  map = mmap(NULL, fs->st_size, PROT_READ, MAP_SHARED, fd, 0);
-  if (map == MAP_FAILED) {
+  map = map_new(fd, fs->st_size, MAP_SHARED);
+  if (!isvalid(map)) {
     log_e("Cannot map binary %s", path);
-    NOK;
+    FAIL;  // cppcheck-suppress [memleak]
   }
 
-  log_t("Local Mach-O file mapping %p-%p\n", map, map+size);
+  void * map_addr = map->addr;
+  log_t("Local Mach-O file mapping %p-%p\n", map_addr, map_addr + size);
 
-  struct mach_header_64 * hdr = (struct mach_header_64 *) map;
+  struct mach_header_64 * hdr = (struct mach_header_64 *) map_addr;
   switch (hdr->magic) {
   case MH_MAGIC:
   case MH_CIGAM:
     log_d("Binary is Mach-O 32");
-    bin_attrs = _py_proc__analyze_macho32(self, base, map);
-    break;
+    return _py_proc__analyze_macho32(self, base, map_addr);
 
   case MH_MAGIC_64:
   case MH_CIGAM_64:
     log_d("Binary is Mach-O 64");
-    bin_attrs = _py_proc__analyze_macho64(self, base, map);
-    break;
+    return _py_proc__analyze_macho64(self, base, map_addr);
 
   case FAT_MAGIC:
   case FAT_CIGAM:
     log_d("Binary is fat");
-    bin_attrs = _py_proc__analyze_fat(self, base, map);
-    break;
+    return _py_proc__analyze_fat(self, base, map_addr);
 
   default:
     self->sym_loaded = 0;
   }
 
-release:
-  if (map != MAP_FAILED) munmap(map, fs->st_size);
-  sfree(fs);
-  close(fd);
-
-  retval = bin_attrs;
-
-  released;
+  return 0;
 } // _py_proc__analyze_macho
 
 
@@ -401,14 +439,14 @@ pid_to_task(pid_t pid) {
 
   if (fail(check_pid(pid))) {
     log_d("No such process: %d", pid);
-    FAIL;
+    return 0;
   }
 
   result = task_for_pid(mach_task_self(), pid, &task);
   if (result != KERN_SUCCESS) {
-    log_d("Call to task_for_pid failed: %s", mach_error_string(result));
+    log_d("Call to task_for_pid failed on PID %d: %s", pid, mach_error_string(result));
     set_error(EPROCPERM);
-    FAIL;
+    return 0;
   }
   return task;
 }
@@ -418,33 +456,55 @@ pid_to_task(pid_t pid) {
 static int
 _py_proc__get_maps(py_proc_t * self) {
   mach_vm_address_t              address = 0;
-  mach_vm_size_t                 size = 0;
+  mach_vm_size_t                 size    = 0;
+  mach_msg_type_number_t         count   = sizeof(vm_region_basic_info_data_64_t);
   vm_region_basic_info_data_64_t region_info;
-  mach_msg_type_number_t         count = sizeof(vm_region_basic_info_data_64_t);
   mach_port_t                    object_name;
 
-  char * path = (char *) calloc(MAXPATHLEN + 1, sizeof(char));
-  if (!isvalid(path))
-    FAIL;
-
-  with_resources;
-
+  #if defined PL_MACOS
   // NOTE: Mac OS X kernel bug. This also gives time to the VM maps to
   // stabilise.
-  usleep(50000);
+  usleep(50000); // 50ms
+  #endif
 
-  self->proc_ref = pid_to_task(self->pid);
-  if (self->proc_ref == 0)
-    NOK;
+  cu_char * prev_path   = NULL;
+  cu_char * needle_path = NULL;
+  cu_char * path        = (char *) calloc(MAXPATHLEN + 1, sizeof(char));
+  if (!isvalid(path))
+    FAIL;
 
   self->min_raddr = (void *) -1;
   self->max_raddr = NULL;
 
-  sfree(self->bin_path);
-  self->bin_path = NULL;
+  self->map.heap.base = NULL;
+  self->map.heap.size = 0;
 
+  sfree(self->bin_path);
   sfree(self->lib_path);
-  self->lib_path = NULL;
+
+  cu_void * pd_mem = calloc(1, sizeof(struct proc_desc));
+  if (!isvalid(pd_mem)) {
+    log_ie("Cannot allocate memory for proc_desc");
+    FAIL;  // cppcheck-suppress [memleak]
+  }
+  struct proc_desc * pd = pd_mem;
+
+  if (proc_pidpath(self->pid, pd->exe_path, sizeof(pd->exe_path)) < 0) {
+    log_w("Cannot get executable path for process %d", self->pid);
+  }
+  if (strlen(pd->exe_path) == 0) {
+    FAIL;
+  }
+  log_d("Executable path: '%s'", pd->exe_path);
+
+  self->proc_ref = pid_to_task(self->pid);
+  if (self->proc_ref == 0) {
+    log_ie("Cannot get task for PID");
+    FAIL;  // cppcheck-suppress [memleak]
+  }
+  set_error(EOK);
+
+  struct vm_map * map = NULL;
 
   while (mach_vm_region(
     self->proc_ref,
@@ -461,37 +521,90 @@ _py_proc__get_maps(py_proc_t * self) {
     if ((void *) address + size > self->max_raddr)
       self->max_raddr = (void *) address + size;
 
-    int len      = proc_regionfilename(self->pid, address, path, MAXPATHLEN);
-    int path_len = strlen(path);
+    int path_len = proc_regionfilename(self->pid, address, path, MAXPATHLEN);
 
-    if (size > 0 && len && !self->sym_loaded) {
-      path[len] = 0;
+    if (isvalid(prev_path) && strcmp(path, prev_path) == 0) { // Avoid analysing a binary multiple times
+      goto next;
+    }
+
+    sfree(prev_path);
+    prev_path = strndup(path, path_len);
+    if (!isvalid(prev_path)) {
+      log_ie("Cannot duplicate path name");
+      FAIL;
+    }
+
+    // The first memory map of the shared library (if any)
+    char * needle = strstr(path, "ython");
+
+    // The first memory map of the executable
+    if (!isvalid(pd->maps[MAP_BIN].path) && strcmp(pd->exe_path, path) == 0) {
+      map = &(pd->maps[MAP_BIN]);
+      map->path = strndup(path, strlen(path));
+      if (!isvalid(map->path)) {
+        log_ie("Cannot duplicate path name");
+        FAIL;
+      }
 
       bin_attr_t bin_attrs = _py_proc__analyze_macho(self, path, (void *) address, size);
+
+      map->file_size = size;
+      map->base = (void *) address;
+      map->size = size;
+      map->has_symbols = !!(bin_attrs & B_SYMBOLS);
+      if (map->has_symbols && bin_attrs & B_BSS) {
+        map->bss_base = self->map.bss.base;
+        map->bss_size = self->map.bss.size;
+      }
+
+      log_d("Binary map: %s (symbols %d)", map->path, map->has_symbols);
+    }
+
+    else if (!isvalid(pd->maps[MAP_LIBSYM].path) && isvalid(needle)) {
+      bin_attr_t bin_attrs = _py_proc__analyze_macho(self, path, (void *) address, size);
       if (bin_attrs & B_SYMBOLS) {
-        if (size < BINARY_MIN_SIZE) {
-          // We found the symbols in the binary but we are probably going to use the wrong base
-          // since the map is too small. So pretend we didin't find them.
-          self->sym_loaded = 0;
+        map = &(pd->maps[MAP_LIBSYM]);
+        map->path = strndup(path, strlen(path));
+        if (!isvalid(map->path)) {
+          log_ie("Cannot duplicate path name");
+          FAIL;
         }
-        else {
-          switch (BINARY_TYPE(bin_attrs)) {
-          case BT_EXEC:
-            if (self->bin_path == NULL) {
-              self->bin_path = strndup(path, path_len);
-              log_d("Candidate binary: %s", self->bin_path);
+        map->file_size = size;
+        map->base = (void *) address;
+        map->size = size;
+        map->has_symbols = TRUE;
+        map->bss_base = self->map.bss.base;
+        map->bss_size = self->map.bss.size;
+
+        log_d("Library map: %s (with symbols)", map->path);
+      }
+      
+      // The first memory map of a binary that contains "ythonX.Y" or "ython" 
+      // and "/X.Y"in its name.
+      else if (!isvalid(pd->maps[MAP_LIBNEEDLE].path)) {
+        if (isvalid(needle)) {
+          unsigned int v;
+          if (sscanf(needle, "ython%u.%u", &v, &v) == 2
+            || (isvalid(strstr(path, "/3.")) && sscanf(strstr(path, "/3."), "/3.%u", &v) == 1)
+            || (isvalid(strstr(path, "/2.")) && sscanf(strstr(path, "/2."), "/2.%u", &v) == 1)
+          ) {
+            map = &(pd->maps[MAP_LIBNEEDLE]);
+            map->path = needle_path = strndup(path, strlen(path));
+            if (!isvalid(map->path)) {
+              log_ie("Cannot duplicate path name");
+              FAIL;
             }
-            break;
-          case BT_LIB:
-            if (self->lib_path == NULL && size > BINARY_MIN_SIZE) {
-              self->lib_path = strndup(path, path_len);
-              log_d("Candidate library: %s", self->lib_path);
-            }
+            map->file_size = size;
+            map->base = (void *) address;
+            map->size = size;
+            map->has_symbols = FALSE;
+            log_d("Library map: %s (needle)", map->path);
           }
         }
       }
     }
 
+next:
     // Make a best guess for the heap boundary.
     if (self->map.heap.base == NULL)
       self->map.heap.base = (void *) address;
@@ -503,12 +616,33 @@ _py_proc__get_maps(py_proc_t * self) {
   log_d("BSS bounds  [%p - %p]", self->map.bss.base, self->map.bss.base + self->map.bss.size);
   log_d("HEAP bounds [%p - %p]", self->map.heap.base, self->map.heap.base + self->map.heap.size);
 
-  retval = !self->sym_loaded;
+  // If the library map is not valid, use the needle map
+  if (!isvalid(pd->maps[MAP_LIBSYM].path)) {
+    pd->maps[MAP_LIBSYM] = pd->maps[MAP_LIBNEEDLE];
+    pd->maps[MAP_LIBNEEDLE].path = needle_path = NULL;
+  }
 
-release:
-  free(path);
+  // Work out paths
+  self->bin_path = pd->maps[MAP_BIN].path;
+  self->lib_path = pd->maps[MAP_LIBSYM].path;
 
-  released;
+  // Work out binary map
+  for (int i = 0; i < MAP_COUNT; i++) {
+    map = &(pd->maps[i]);
+    if (map->has_symbols) {
+      self->map.elf.base = map->base;
+      self->map.elf.size = map->size;
+      self->sym_loaded = TRUE;
+      break;
+    }
+  }
+
+  // Work out BSS map
+  int map_index = isvalid(pd->maps[MAP_LIBSYM].path) ? MAP_LIBSYM : MAP_BIN;
+  self->map.bss.base = pd->maps[map_index].bss_base;
+  self->map.bss.size = pd->maps[map_index].bss_size;
+
+  return !self->sym_loaded;
 } // _py_proc__get_maps
 
 

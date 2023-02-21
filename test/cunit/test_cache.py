@@ -1,8 +1,14 @@
 from ctypes import c_void_p
 from test.cunit import C
-from test.cunit.cache import Chain, HashTable, LruCache, Queue, QueueItem
+from test.cunit.cache import Chain
+from test.cunit.cache import HashTable
+from test.cunit.cache import Lookup
+from test.cunit.cache import LruCache
+from test.cunit.cache import Queue
+from test.cunit.cache import QueueItem
 
 import pytest
+
 
 NULL = 0
 C.free.argtypes = [c_void_p]
@@ -128,3 +134,23 @@ def test_lru_cache_expand():
     # Check that we still have all the items
     for k, v in values:
         assert c.maybe_hit(k) == v
+
+
+def test_lookup():
+    lu = Lookup(8)
+
+    assert not lu.get(42)
+
+    for i in range(1000):
+        lu.set(42 + i, i + 1)
+
+    for i in range(1000):
+        assert lu.get(42 + i) == i + 1
+
+    getattr(lu, "del")(42)
+    assert not lu.get(42)
+
+    lu.clear()
+
+    for i in range(1000):
+        assert not lu.get(42 + i)

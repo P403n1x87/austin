@@ -5,7 +5,7 @@
 #
 # Austin is a Python frame stack sampler for CPython.
 #
-# Copyright (c) 2022 Gabriele N. Tornetta <phoenix1987@gmail.com>.
+# Copyright (c) 2023 Gabriele N. Tornetta <phoenix1987@gmail.com>.
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -20,27 +20,40 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from pathlib import Path
 from test.utils import allpythons
 from test.utils import austin
-from test.utils import compress
-from test.utils import has_pattern
 from test.utils import python
-from test.utils import samples
 from test.utils import target
 
-import pytest
+from austin.format.mojo import MojoFile, MojoFrame
 from flaky import flaky
 
 
 @flaky
-@pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
-@allpythons()
-def test_accuracy_fast_recursive(py, heap):
-    result = austin("-i", "1ms", "-P", *heap, *python(py), target("recursive.py"))
+@allpythons(min=(3, 11))
+def test_mojo_column_data(py, tmp_path: Path):
+    datafile = tmp_path / "test_mojo_column.austin"
+
+    result = austin(
+        "-i", "100", "-o", str(datafile), *python(py), target("column.py"), mojo=True
+    )
     assert result.returncode == 0, result.stderr or result.stdout
 
-    assert has_pattern(result.stdout, "sum_up_to"), compress(result.stdout)
+    def strip(f):
+        return (f.scope.string.value, f.line, f.line_end, f.column, f.column_end)
 
-    for _ in samples(result.stdout):
-        if "sum_up_to" in _ and "<module>" in _:
-            assert len(_.split(";")) <= 20 or has_pattern(_, ":INVALID:"), _
+    with datafile.open("rb") as f:
+        frames = {
+            strip(_)
+            for _ in MojoFile(f).parse()
+            if isinstance(_, MojoFrame)
+            and _.filename.string.value.endswith("column.py")
+        }
+
+        assert frames & {
+            ("<module>", 16, 19, 5, 2),
+            ("<listcomp>", 16, 19, 5, 2),
+            ("lazy", 6, 6, 9, 19),
+            ("<listcomp>", 17, 17, 5, 17),
+        }

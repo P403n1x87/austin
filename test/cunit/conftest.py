@@ -2,7 +2,8 @@ import os
 import sys
 import typing as t
 from pathlib import Path
-from subprocess import PIPE, run
+from subprocess import PIPE
+from subprocess import run
 from test.cunit import SRC
 from test.utils import bt
 from types import FunctionType
@@ -58,7 +59,8 @@ def cunit(
 
         raise CUnitTestFailure(
             f"\n{result.stdout.decode()}\n"
-            f"Process terminated with exit code {result.returncode} (expected {exit_code})"
+            f"Process terminated with exit code {result.returncode} "
+            "(expected {exit_code})"
         )
 
     return _

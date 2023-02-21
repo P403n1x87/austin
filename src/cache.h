@@ -159,6 +159,7 @@ typedef struct _chain_t {
 typedef struct hash_table_t {
     size_t capacity;
     size_t size;
+    size_t load_factor;
     chain_t **chains;
 
     #ifdef DEBUG
@@ -302,6 +303,18 @@ hash_table__get(hash_table_t *, key_dt);
 
 
 /**
+ * Check if the hash table has grown over the load factor.
+ * 
+ * @param self  the hash table
+ * 
+ * @return TRUE if the hash table has grown over the load factor, FALSE
+ * otherwise.
+*/
+int
+hash_table__is_full(hash_table_t *);
+
+
+/**
  * Set a value into the table.
  * 
  * If the key is not already present and the table is full, this method does
@@ -322,6 +335,18 @@ hash_table__set(hash_table_t *, key_dt, value_t);
             continue;                                                          \
         while (isvalid(chain->next)) {                                         \
             chain = chain->next;                                               \
+            valtype valvar = (valtype) chain->value;                           \
+            if (!isvalid(valvar))                                              \
+                continue;
+
+#define hash_table__iteritems_start(table, keytype, keyvar, valtype, valvar)   \
+    for (int __i = 0; __i < table->capacity; __i++) {                          \
+        chain_t * chain = table->chains[__i];                                  \
+        if (!isvalid(chain))                                                   \
+            continue;                                                          \
+        while (isvalid(chain->next)) {                                         \
+            chain = chain->next;                                               \
+            keytype keyvar = (keytype) chain->key;                             \
             valtype valvar = (valtype) chain->value;                           \
             if (!isvalid(valvar))                                              \
                 continue;
@@ -424,5 +449,96 @@ lru_cache__store(lru_cache_t *, key_dt, value_t);
  */
 void
 lru_cache__destroy(lru_cache_t *);
+
+
+// -- Lookup ------------------------------------------------------------------
+
+typedef struct {
+    hash_table_t *hash;
+
+    #ifdef DEBUG
+    const char * name;
+    #endif
+} lookup_t;
+
+
+/**
+ * Create a lookup object.
+ * 
+ * A lookup object is an expandable hash table that can be used to look up
+ * values by key. No ownership of the values is taken.
+ * 
+ * @param size  the initial size of the underlying hash map
+ * 
+ * @return a valid reference to a lookup, NULL otherwise.
+ */
+lookup_t *
+lookup_new(int);
+
+
+/**
+ * Look up a value.
+ * 
+ * Since this method returns NULL on a lookup failure, this only makes sense if
+ * all the objects stored within the lookup are non-NULL.
+ * 
+ * @param self  the lookup to use
+ * @param key   the key to search
+ * 
+ * @return the value associated to the key if the lookup succeeds, NULL
+ *         otherwise.
+ */
+value_t
+lookup__get(lookup_t *, key_dt);
+
+
+/**
+ * Associated a value with a key in the lookup.
+ * 
+ * @param self   the lookup to set into
+ * @param key    the key associated with the value
+ * @param value  the value to associated with the key
+ */
+void
+lookup__set(lookup_t *, key_dt, value_t);
+
+
+/**
+ * Delete a value from the lookup.
+ * 
+ * @param self  the lookup to use
+ * @param key   the key to delete
+ */
+void
+lookup__del(lookup_t *, key_dt);
+
+
+/**
+ * Clear the lookup.
+ * 
+ * @param self  the lookup to clear
+ */
+void
+lookup__clear(lookup_t *);
+
+
+/**
+ * Iterate over the lookup.
+*/
+#define lookup__iteritems_start(lu, keytype, keyvar, valtype, valvar) \
+    hash_table__iteritems_start((lu->hash), keytype, keyvar, valtype, valvar)
+
+
+#define lookup__iter_stop(lu) \
+    hash_table__iter_stop((lu->hash))
+
+
+/**
+ * Deallocate a lookup.
+ * 
+ * @param self  the lookup to deallocate
+ */
+void
+lookup__destroy(lookup_t *);
 
 #endif

@@ -10,10 +10,36 @@ on:
 concurrency: 
   group: ${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
+
 jobs:
+  build-linux:
+    runs-on: ubuntu-20.04    
+    name: Build Austin on Linux
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
+
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure --enable-debug-symbols true
+          make
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: austin-binaries
+          path: |
+            src/austin
+            src/austinp
+
   tests-linux:
-    runs-on: ubuntu-latest
-    
+    runs-on: ubuntu-20.04
+
+    needs: build-linux
+
     strategy:
       fail-fast: false
       matrix:
@@ -26,9 +52,12 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Install build dependencies
-        run: |
-          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
+      - uses: actions/download-artifact@v3
+        with:
+          name: austin-binaries
+          path: src
+
+      - run: chmod +x src/austin && chmod +x src/austinp
 
       - name: Install test dependencies
         run: |
@@ -46,12 +75,6 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Compile Austin
-        run: |
-          autoreconf --install
-          ./configure --enable-debug-symbols true
-          make
-
       - name: Run tests
         run: |
           ulimit -c unlimited
@@ -63,8 +86,41 @@ jobs:
           .venv/bin/pytest --pastebin=failed --no-flaky-report -sr a
           deactivate
 
+  build-osx-gcc:
+    runs-on: macos-latest
+
+    name: Build Austin on macOS (gcc)
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Compile Austin
+        run: gcc-11 -Wall -Werror -O3 -g src/*.c -o src/austin
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: austin-binary
+          path: |
+            src/austin
+
+  build-osx-clang:
+    runs-on: macos-latest
+
+    name: Build Austin on macOS (clang)
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Install automake
+        run: brew install automake
+
+      - run: |
+          autoreconf --install
+          ./configure
+          make
+
   tests-osx:
     runs-on: macos-latest
+    
+    needs: [build-osx-gcc, build-osx-clang]
 
     strategy:
       fail-fast: false
@@ -77,8 +133,13 @@ jobs:
     name: Tests on macOS with Python ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v2
-      - name: Compile Austin
-        run: gcc -Wall -Werror -O3 -g src/*.c -o src/austin
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: austin-binary
+          path: src
+
+      - run: chmod +x src/austin
 
       - name: Install Python
         uses: actions/setup-python@v4
@@ -105,8 +166,29 @@ jobs:
           sudo -E pytest --ignore=test/cunit --pastebin=failed --no-flaky-report -sr a
           deactivate
 
+  build-win:
+    runs-on: windows-latest
+
+    name: Build Austin on Windows
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Compile Austin
+        run: |
+          gcc.exe --version
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Werror
+          src\austin.exe --help
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: austin-binary
+          path: |
+            src/austin.exe
+
   tests-win:
     runs-on: windows-latest
+
+    needs: build-win
 
     strategy:
       fail-fast: false
@@ -120,11 +202,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Compile Austin
-        run: |
-          gcc.exe --version
-          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Werror
-          src\austin.exe --help
+      - uses: actions/download-artifact@v3
+        with:
+          name: austin-binary
+          path: src
 
       - name: Install Python
         uses: actions/setup-python@v4

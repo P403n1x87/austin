@@ -1,0 +1,53 @@
+name: Benchmarks
+
+on:
+  push:
+    branches:
+      - master
+      - devel
+  pull_request:
+
+jobs:
+  benchmarks:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
+
+      - name: Install Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure --enable-debug-symbols true
+          make
+
+      - name: Install runtime dependencies
+        run: |
+          python3.10 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-bm.txt
+          deactivate
+
+      - name: Run benchmarks
+        run: |
+          ulimit -c unlimited
+
+          source .venv/bin/activate
+          python scripts/benchmark.py | tee benchmarks.txt
+          deactivate
+
+          # Make it a code comment
+          sed -e $'1i\\\n~~~' -e $'$a\\\n~~~' benchmarks.txt > comment.txt
+
+      - name: Post results on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          path: comment.txt

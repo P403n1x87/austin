@@ -21,7 +21,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from subprocess import run
-from test.utils import allpythons, austin, python, requires_sudo, run_python, target
+from test.utils import allpythons
+from test.utils import austin
+from test.utils import python
+from test.utils import requires_sudo
+from test.utils import run_python
+from test.utils import target
 
 import pytest
 

@@ -9,9 +9,7 @@ on:
 
 jobs:
   check-manpage:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
+    runs-on: ubuntu-20.04
     name: Check manpage
     steps:
       - uses: actions/checkout@v2
@@ -32,9 +30,7 @@ jobs:
         run: git diff -I".* DO NOT MODIFY.*" -I"[.]TH AUSTIN.*" --exit-code src/austin.1
 
   cppcheck:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
+    runs-on: ubuntu-20.04
     name: Static code analysis
     steps:
       - uses: actions/checkout@v2
@@ -43,12 +39,10 @@ jobs:
         run: sudo apt-get -y install cppcheck
 
       - name: Check soure code
-        run: cppcheck -q -f --error-exitcode=1 src
+        run: cppcheck -q -f --error-exitcode=1 --inline-suppr src
 
   codespell:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
+    runs-on: ubuntu-20.04
     name: Codespell
     steps:
       - uses: actions/checkout@v2
@@ -64,9 +58,7 @@ jobs:
         run: codespell -I .github/workflows/wordlist.txt -S "src/python/*" src
 
   formatting-tests:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
+    runs-on: ubuntu-20.04
     name: Formatting (tests)
     steps:
       - uses: actions/checkout@v2
@@ -78,13 +70,27 @@ jobs:
       - name: Install black
         run: pip install black
 
-      - name: Check source code spelling
-        run: black --check test/
+      - name: Check formatting
+        run: black --check --exclude=test/targets test/
+
+  linting-tests:
+    runs-on: ubuntu-20.04
+    name: Linting (tests)
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: "actions/setup-python@v2"
+        with:
+          python-version: "3.10"
+
+      - name: Install flake8
+        run: pip install flake8
+
+      - name: Lint code
+        run: flake8 --config test/.flake8 test/
 
   coverage:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
+    runs-on: ubuntu-20.04
     name: Code coverage
     steps:
       - uses: actions/checkout@v2
@@ -101,7 +107,7 @@ jobs:
             valgrind \
             python2.7 \
             python3.{5..11} \
-            python3.10-full
+            python3.10-full python3.10-dev
 
       - name: Compile Austin
         run: |
@@ -131,9 +137,7 @@ jobs:
           verbose: true
 
   check-cog:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
+    runs-on: ubuntu-20.04
     name: Check cog output
     steps:
       - uses: actions/checkout@v2

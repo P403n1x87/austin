@@ -1,3 +1,15 @@
+2023-02-21 v3.5.0
+
+  Added support for fine-grained, column-level location information when
+  exporting samples in binary mode.
+
+  Improved multiprocess support.
+
+  Dropped the alternative output format.
+
+  Improved interpreter detection on all supported platforms.
+
+
 2022-10-26 v3.4.1
 
   Fixed a bug with the MOJO binary format.

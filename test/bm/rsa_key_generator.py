@@ -1,8 +1,7 @@
 # https://github.com/TheAlgorithms/Python/blob/98a4c2487814cdfe0822526e05c4e63ff6aef7d0/ciphers/rsa_key_generator.py
 
-import os
+
 import random
-import sys
 
 from . import cryptomath_module as cryptoMath  # noqa: N812
 from . import rabin_miller as rabinMiller  # noqa: N812

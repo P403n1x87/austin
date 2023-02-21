@@ -21,16 +21,14 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import platform
-from test.utils import (
-    allpythons,
-    austin,
-    has_pattern,
-    metadata,
-    mojo,
-    python,
-    samples,
-    target,
-)
+from test.utils import allpythons
+from test.utils import austin
+from test.utils import has_pattern
+from test.utils import metadata
+from test.utils import mojo
+from test.utils import python
+from test.utils import samples
+from test.utils import target
 
 import pytest
 

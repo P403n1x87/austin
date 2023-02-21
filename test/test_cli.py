@@ -21,7 +21,10 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import platform
-from test.utils import austin, no_sudo, run_python, target
+from test.utils import austin
+from test.utils import no_sudo
+from test.utils import run_python
+from test.utils import target
 
 import pytest
 
@@ -40,18 +43,13 @@ def test_cli_no_python():
         "-c",
         "sleep 1",
     )
-    if platform.system() == "Darwin":
-        # Darwin CI gives a different result than manual tests. We are accepting
-        # this for now.
-        assert result.returncode in (37, 39)
-        assert "Insufficient permissions" in result.stderr, result.stderr
-    else:
-        assert result.returncode == 39
-        assert "not a Python" in result.stderr or "Cannot launch" in result.stderr
+    assert result.returncode == 39
+    assert "not a Python" in result.stderr or "Cannot launch" in result.stderr
 
 
 def test_cli_invalid_command():
     result = austin("snafubar")
+    assert "[GCC" in result.stderr
     assert result.returncode == 33
     assert "Cannot launch" in (result.stderr or result.stdout)
 
