@@ -70,3 +70,14 @@ def test_cli_permissions():
         result = austin("-i", "1ms", "-p", str(p.pid))
         assert result.returncode == 37, result.stderr
         assert "Insufficient permissions" in result.stderr, result.stderr
+
+
+@pytest.mark.skipif(
+    platform.system() != "Darwin",
+    reason="Only Darwin requires sudo in all cases",
+)
+@no_sudo
+def test_cli_permissions_darwin():
+    result = austin("-i", "1ms", "python3.10", "-c", "from time import sleep; sleep(1)")
+    assert result.returncode == 37, result.stderr
+    assert "Insufficient permissions" in result.stderr, result.stderr
