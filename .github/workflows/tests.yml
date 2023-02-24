@@ -229,6 +229,7 @@ jobs:
             || (python${{ matrix.python-version }} -m pip install virtualenv && python${{ matrix.python-version }} -m virtualenv .venv)
           source .venv/bin/activate
           sudo -E pytest --ignore=test/cunit --pastebin=failed --no-flaky-report -sr a
+          pytest --ignore=test/cunit --pastebin=failed --no-flaky-report -sr a -k _darwin
           deactivate
 
   wheels-osx:
