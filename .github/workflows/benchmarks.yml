@@ -37,11 +37,8 @@ jobs:
           ulimit -c unlimited
 
           source .venv/bin/activate
-          python scripts/benchmark.py | tee benchmarks.txt
+          python scripts/benchmark.py --format markdown | tee comment.txt
           deactivate
-
-          # Make it a code comment
-          sed -e $'1i\\\n~~~' -e $'$a\\\n~~~' benchmarks.txt > comment.txt
 
       - name: Post results on PR
         uses: marocchino/sticky-pull-request-comment@v2

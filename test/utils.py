@@ -170,7 +170,7 @@ class Variant(str):
             # or using the "where" option.
             result.stdout = demojo(result.stdout)
         else:
-            result.stdout = result.stdout.decode()
+            result.stdout = result.stdout.decode(errors="ignore")
         result.stderr = result.stderr.decode()
 
         return result
