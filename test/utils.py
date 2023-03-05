@@ -149,7 +149,7 @@ class Variant(str):
         self.ALL.append(self)
 
     def __call__(
-        self, *args: str, timeout: int = 60, mojo: bool = False
+        self, *args: str, timeout: int = 60, mojo: bool = False, convert: bool = True
     ) -> CompletedProcess:
         if not self.path.is_file():
             pytest.skip(f"Variant '{self}' not available")
@@ -168,7 +168,8 @@ class Variant(str):
         if mojo and not ({"-o", "-w", "--output", "--where"} & set(args)):
             # We produce MOJO binary data only if we are not writing to file
             # or using the "where" option.
-            result.stdout = demojo(result.stdout)
+            if convert:
+                result.stdout = demojo(result.stdout)
         else:
             result.stdout = result.stdout.decode(errors="ignore")
         result.stderr = result.stderr.decode()
