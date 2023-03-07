@@ -225,3 +225,56 @@ jobs:
           python -m pip install -r test/requirements.txt
           python -m pytest --ignore=test\cunit --pastebin=failed --no-flaky-report -sr a
           deactivate
+
+  validation:
+    runs-on: ubuntu-20.04
+
+    needs: build-linux
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.5", "3.6", "3.7", "3.8", "3.9", "3.10", "3.11"]
+    
+    env:
+      AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
+
+    name: Data validation with Python ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}-dev
+
+      - name: Install Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure --enable-debug-symbols true
+          make
+
+      - name: Install runtime dependencies
+        run: |
+          python3.10 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-val.txt
+          deactivate
+
+      - name: Run data validation
+        run: |
+          ulimit -c unlimited
+
+          source .venv/bin/activate
+          python scripts/validation.py --ignore-errors
+          deactivate

@@ -7,19 +7,15 @@ import sys
 from textwrap import wrap
 import typing as t
 from argparse import ArgumentParser
-from itertools import product
 from math import floor, log
 from pathlib import Path
 
 from scipy.stats import ttest_ind
 
-sys.path.insert(0, str(Path(__file__).parent.parent))
+from common import download_release
 
-import tarfile
-from io import BytesIO
-from test.utils import Variant, metadata, target
-from urllib.error import HTTPError
-from urllib.request import urlopen
+from test.utils import metadata, target
+
 
 VERSIONS = ("3.4.1", "3.5.0", "dev")
 SCENARIOS = [
@@ -97,38 +93,6 @@ def get_stats(output: str) -> t.Optional[dict]:
     except Exception:
         # Failed to get stats
         return None
-
-
-def download_release(version: str, dest: Path, variant_name: str = "austin") -> Variant:
-    if version == "dev":
-        return Variant(f"src/{variant_name}")
-
-    binary_dest = dest / version
-    binary = binary_dest / variant_name
-
-    if not binary.exists():
-        prefix = "https://github.com/p403n1x87/austin/releases/download/"
-        for flavour, v in product({"-gnu", ""}, {"", "v"}):
-            try:
-                with urlopen(
-                    f"{prefix}v{version}/{variant_name}-{v}{version}{flavour}-linux-amd64.tar.xz"
-                ) as stream:
-                    buffer = BytesIO(stream.read())
-                    binary_dest.mkdir(parents=True, exist_ok=True)
-                    tar = tarfile.open(fileobj=buffer, mode="r:xz")
-                    tar.extract(variant_name, str(binary_dest))
-            except HTTPError:
-                continue
-            break
-        else:
-            raise RuntimeError(f"Could not download Austin version {version}")
-
-    variant = Variant(str(binary))
-
-    out = variant("-V").stdout
-    assert f"{variant_name} {version}" in out, (f"{variant_name} {version}", out)
-
-    return variant
 
 
 class Outcome:
