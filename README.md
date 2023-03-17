@@ -35,7 +35,10 @@
   </a>
 
   <br/>
-
+  <a href="https://badge.fury.io/py/austin-dist">
+    <img src="https://badge.fury.io/py/austin-dist.svg"
+         alt="PyPI version">
+  </a>
   <a href="https://chocolatey.org/packages/austin/">
     <img src="https://img.shields.io/chocolatey/v/austin"
          alt="Chocolatey Version" />
@@ -44,10 +47,10 @@
     <img src="https://img.shields.io/conda/vn/conda-forge/austin.svg"
          alt="Conda Version" />
   </a>
-  <a href="https://packages.debian.org/unstable/austin">
+  <!-- <a href="https://packages.debian.org/unstable/austin">
     <img src="https://badges.debian.net/badges/debian/unstable/austin/version.svg"
          alt="Debian package status" />
-  </a>
+  </a> -->
   <a href="https://formulae.brew.sh/formula/austin">
     <img src="https://img.shields.io/homebrew/v/austin"
          alt="homebrew" />
@@ -154,9 +157,20 @@ project.</i></br>🙏</p>
 
 # Installation
 
-Austin is available from the major software repositories of the most popular
-platforms. Check out the [latest release] page for pre-compiled binaries and
-installation packages.
+Austin is available to install from [PyPI](pypi) and from the major software
+repositories of the most popular platforms. Check out the [latest release] page
+for pre-compiled binaries and installation packages.
+
+On all supported platforms and architectures, Austin can be installed from PyPI
+with `pip` or `pipx` via the commands
+
+~~~
+pip install austin-dist
+~~~
+or
+~~~
+pipx install austin-dist
+~~~
 
 On Linux, it can be installed using `autotools` or as a snap from the [Snap
 Store](https://snapcraft.io/store). The latter will automatically perform the
@@ -171,7 +185,7 @@ On Windows, Austin can be easily installed from the command line using either
 On macOS, Austin can be easily installed from the command line using [Homebrew].
 Anaconda users can install Austin from [Conda Forge].
 
-For any other platform, compiling Austin from sources is as easy as cloning the
+For any other platforms, compiling Austin from sources is as easy as cloning the
 repository and running the C compiler. The [Releases][releases] page has many
 pre-compiled binaries that are ready to be uncompressed and used.
 
@@ -574,6 +588,7 @@ following platforms and architectures
 | ----------- | ------------------------- | ------------------------ | -------------------------- |
 | **x86_64**  | ✓                         | ✓                        | ✓                          |
 | **i686**    | ✓                         |                          | ✓                          |
+| **armv7**   | ✓                         |                          |                            |
 | **arm64**   | ✓                         |                          | ✓                          |
 | **ppc64le** | ✓                         |                          |                            |
 
@@ -871,6 +886,7 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 [MOJO]: https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format
 [pprof]: https://github.com/google/pprof
 [pyenv]: https://github.com/pyenv/pyenv
+[pypi]: https://pypi.org/project/austin-dist/
 [releases]: https://github.com/P403n1x87/austin/releases
 [Scoop]: https://scoop.sh/
 [Speedscope]: https://speedscope.app

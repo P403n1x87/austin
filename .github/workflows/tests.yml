@@ -35,10 +35,30 @@ jobs:
             src/austin
             src/austinp
 
+  build-linux-musl:
+    runs-on: ubuntu-20.04    
+    name: Build Austin on Linux (musl)
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get -y install musl-tools
+
+      - name: Compile Austin
+        run: |
+          musl-gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austin.musl -D__MUSL__
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: austin-binaries
+          path: |
+            src/austin.musl
+
   tests-linux:
     runs-on: ubuntu-20.04
 
-    needs: build-linux
+    needs: [build-linux, build-linux-musl]
 
     strategy:
       fail-fast: false
@@ -84,6 +104,48 @@ jobs:
           pip install -r test/requirements.txt
           sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed --no-flaky-report -sr a
           .venv/bin/pytest --pastebin=failed --no-flaky-report -sr a
+          deactivate
+
+  wheels-linux:
+    runs-on: ubuntu-20.04
+
+    needs: build-linux
+
+    name: Build Linux wheels
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: austin-binaries
+          path: src
+
+      - run: chmod +x src/austin && chmod +x src/austinp
+
+      - name: Install Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Build wheels
+        run: |
+          python3.10 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-bw.txt
+          
+          export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p");
+
+          python scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=manylinux_2_12_x86_64.manylinux2010_x86_64 \
+            --files austin:src/austin austinp:src/austinp
+
+          python scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=musllinux_1_1_x86_64 \
+            --files austin:src/austin.musl
+
           deactivate
 
   build-osx-gcc:
@@ -166,6 +228,43 @@ jobs:
           sudo -E pytest --ignore=test/cunit --pastebin=failed --no-flaky-report -sr a
           deactivate
 
+  wheels-osx:
+    runs-on: macos-latest
+    
+    needs: [build-osx-gcc, build-osx-clang]
+
+    name: Build macOS wheels
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: austin-binary
+          path: src
+
+      - run: chmod +x src/austin
+
+      - name: Install Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Build wheels
+        run: |
+          python3.10 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-bw.txt
+          
+          export VERSION=$(cat src/austin.h | sed -n -E "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
+
+          python scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=macosx_11_0_x86_64 \
+            --files austin:src/austin
+
+          deactivate
+
   build-win:
     runs-on: windows-latest
 
@@ -225,6 +324,38 @@ jobs:
           python -m pip install -r test/requirements.txt
           python -m pytest --ignore=test\cunit --pastebin=failed --no-flaky-report -sr a
           deactivate
+
+  wheels-win:
+    runs-on: windows-latest
+
+    needs: build-win
+
+    name: Build Windows wheels
+    steps:
+      - uses: actions/checkout@v2
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: austin-binary
+          path: src
+
+      - uses: actions/setup-python@v2
+        name: Install Python 3.10
+        with:
+          python-version: '3.10'
+
+      - name: Build wheels
+        shell: bash
+        run: |
+          py -3.10 -m pip install --upgrade pip
+          py -3.10 -m pip install -r scripts/requirements-bw.txt
+          
+          export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
+
+          py -3.10 scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=win_amd64 \
+            --files austin.exe:src/austin.exe
 
   validation:
     runs-on: ubuntu-20.04
