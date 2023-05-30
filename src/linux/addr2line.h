@@ -207,7 +207,6 @@ get_native_frame(const char *file_name, bfd_vma addr, key_dt frame_key)
 
     const char *name;
 
-
     name = functionname;
     if (name == NULL || *name == '\0')
         name = "<unnamed>";
