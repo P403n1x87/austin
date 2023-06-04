@@ -56,7 +56,7 @@ const char * MPERM =
 "installed in certain areas of the file system. In some cases, using a  virtual\n"
 "environment can provide a solution. See\n"
 #endif
-URL("https://github.com/P403n1x87/austin#on-macos")
+URL("https://github.com/P403n1x87/austin#on-macos-1")
 "for more details";
 #endif // PL_UNIX
 
