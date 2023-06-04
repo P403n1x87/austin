@@ -92,9 +92,57 @@ typedef struct {
 typedef struct _PyCode_DEF_311(1) PyCodeObject3_11;
 
 
+#define _PyCode_DEF_312(SIZE) {                                                \
+    PyObject_VAR_HEAD                                                          \
+                                                                               \
+    PyObject *co_consts;           /* list (constants used) */                 \
+    PyObject *co_names;            /* list of strings (names used) */          \
+    PyObject *co_exceptiontable;   /* Byte string encoding exception handling  \
+                                      table */                                 \
+    int co_flags;                  /* CO_..., see below */                     \
+                                                                               \
+    /* The rest are not so impactful on performance. */                        \
+    int co_argcount;              /* #arguments, except *args */               \
+    int co_posonlyargcount;       /* #positional only arguments */             \
+    int co_kwonlyargcount;        /* #keyword only arguments */                \
+    int co_stacksize;             /* #entries needed for evaluation stack */   \
+    int co_firstlineno;           /* first source line number */               \
+                                                                               \
+    /* redundant values (derived from co_localsplusnames and                   \
+       co_localspluskinds) */                                                  \
+    int co_nlocalsplus;           /* number of local + cell + free variables */ \
+    int co_framesize;             /* Size of frame in words */                 \
+    int co_nlocals;               /* number of local variables */              \
+    int co_ncellvars;             /* total number of cell variables */         \
+    int co_nfreevars;             /* number of free variables */               \
+    uint32_t co_version;          /* version number */                         \
+                                                                               \
+    PyObject *co_localsplusnames; /* tuple mapping offsets to names */         \
+    PyObject *co_localspluskinds; /* Bytes mapping to local kinds (one byte    \
+                                     per variable) */                          \
+    PyObject *co_filename;        /* unicode (where it was loaded from) */     \
+    PyObject *co_name;            /* unicode (name, for reference) */          \
+    PyObject *co_qualname;        /* unicode (qualname, for reference) */      \
+    PyObject *co_linetable;       /* bytes object that holds location info */  \
+    PyObject *co_weakreflist;     /* to support weakrefs to code objects */    \
+    void *co_executors;      /* executors from optimizer */                    \
+    void *_co_cached;      /* cached co_* attributes */                        \
+    uint64_t _co_instrumentation_version; /* current instrumentation version */  \
+    void *_co_monitoring; /* Monitoring data */                                \
+    int _co_firsttraceable;       /* index of first traceable instruction */   \
+    /* Scratch space for extra data relating to the code object.               \
+       Type is a void* to keep the format private in codeobject.c to force     \
+       people to go through the proper APIs. */                                \
+    void *co_extra;                                                            \
+    char co_code_adaptive[(SIZE)];                                             \
+}
+typedef struct _PyCode_DEF_312(1) PyCodeObject3_12;
+
+
 typedef union {
   PyCodeObject3_8  v3_8;
   PyCodeObject3_11 v3_11;
+  PyCodeObject3_12 v3_12;
 } PyCodeObject;
 
 #endif
