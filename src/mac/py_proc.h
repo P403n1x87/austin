@@ -653,7 +653,7 @@ _py_proc__get_resident_memory(py_proc_t * self) {
 	mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
 
   return task_info(
-    self->proc_ref, MACH_TASK_BASIC_INFO, (task_info_t) &info, &count
+    self->proc_ref, MACH_TASK_BASIC_INFO, (task_info_t) &info, &count  // cppcheck-suppress [uninitvar]
   ) == KERN_SUCCESS
     ? info.resident_size
     : -1;
