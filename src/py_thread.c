@@ -317,6 +317,16 @@ _py_thread__push_iframe_from_addr(py_thread_t * self, PyInterpreterFrame * ifram
     FAIL;
   }
 
+  if (V_MIN(3, 12) && V_FIELD_PTR(char, iframe, py_iframe, o_owner) == FRAME_OWNED_BY_CSTACK) {
+    // This is a shim frame that we can ignore
+    #ifdef NATIVE
+    // In native mode we take this as the marker for the beginning of the stack
+    // for a call to PyEval_EvalFrameDefault.
+    stack_py_push_cframe();
+    #endif
+    SUCCESS;
+  }
+
   stack_py_push(
     origin,
     code_raddr,

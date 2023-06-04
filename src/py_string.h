@@ -35,7 +35,7 @@
 
 #define MAGIC_TINY                            7
 #define MAGIC_BIG                       1000003
-#define p_ascii_data(raddr)                    (raddr + sizeof(PyASCIIObject))
+#define p_ascii_data(raddr, size)              (raddr + size)
 
 
 // ----------------------------------------------------------------------------
@@ -57,7 +57,7 @@ string__hash(char * string) {
 // ----------------------------------------------------------------------------
 static inline char *
 _string_from_raddr(proc_ref_t pref, void * raddr, python_v * py_v) {
-  PyUnicodeObject3   unicode;
+  PyUnicodeObject    unicode;
   char             * buffer = NULL;
   ssize_t            len = 0;
 
@@ -66,15 +66,22 @@ _string_from_raddr(proc_ref_t pref, void * raddr, python_v * py_v) {
     goto failed;
   }
 
-  PyASCIIObject ascii = unicode._base._base;
+  PyASCIIObject ascii = unicode.v3._base._base;
 
   if (ascii.state.kind != 1) {
     set_error(ECODEFMT);
     goto failed;
   }
-
-  void * data = ascii.state.compact ? p_ascii_data(raddr) : unicode._base.utf8;
-  len = ascii.state.compact ? ascii.length : unicode._base.utf8_length;
+  
+  // Because changes to PyASCIIObject are rare, we handle the version manually
+  // instead of using a version offset descriptor.
+  ssize_t ascii_size = V_MIN(3, 12) ? sizeof(unicode.v3_12._base._base) : sizeof(unicode.v3._base._base);
+  void * data = ascii.state.compact
+    ? p_ascii_data(raddr, ascii_size)
+    : (V_MIN(3, 12) ? unicode.v3_12._base.utf8 : unicode.v3._base.utf8);
+  len = ascii.state.compact
+    ? ascii.length
+    : (V_MIN(3, 12) ? unicode.v3_12._base.utf8_length : unicode.v3._base.utf8_length);
 
   if (len < 0 || len > 4096) {
     log_e("Invalid string length");
