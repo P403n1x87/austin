@@ -219,7 +219,7 @@ py_proc_list__update(py_proc_list_t * self) {
   for (;;) {
     // This code is inspired by the ps util
     ent = readdir(proc_dir);
-    if (!ent || !ent->d_name) break;
+    if (!ent) break;
     if ((*ent->d_name <= '0') || (*ent->d_name > '9')) continue;
 
     unsigned long pid = strtoul(ent->d_name, NULL, 10);

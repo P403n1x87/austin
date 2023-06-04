@@ -34,16 +34,50 @@ jobs:
   cppcheck:
     runs-on: ubuntu-20.04
     name: Static code analysis
+    env:
+      cppcheck-version: 2.10.3
+
     steps:
       - uses: actions/checkout@v2
 
-      - name: Install cppcheck
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install cppcheck
+          sudo apt-get -y install libpcre3-dev
+
+      - name: Restore cppcheck build
+        id: cppcheck-build-restore
+        uses: actions/cache/restore@v3
+        with:
+          path: |
+            ${{ github.workspace }}/cppcheck
+          key: ${{ runner.os }}-cppcheck-${{ env.cppcheck-version }}
+
+      - name: Check out cppcheck
+        uses: actions/checkout@v2
+        with:
+          repository: danmar/cppcheck
+          ref: ${{ env.cppcheck-version }}
+          path: ${{ github.workspace }}/cppcheck
+
+      - name: Compile cppcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install libpcre3-dev
+          cd cppcheck
+          make MATCHCOMPILER=yes FILESDIR=/usr/share/cppcheck HAVE_RULES=yes CXXFLAGS="-O2 -DNDEBUG -Wall -Wno-sign-compare -Wno-unused-function"
+          cd -
+
+      - name: Save cppcheck build
+        id: cppcheck-build-save
+        uses: actions/cache/save@v3
+        with:
+          path: |
+            ${{ github.workspace }}/cppcheck
+          key: ${{ runner.os }}-cppcheck-${{ env.cppcheck-version }}
 
       - name: Check soure code
-        run: cppcheck -q -f --error-exitcode=1 --inline-suppr src
+        run: ${{ github.workspace }}/cppcheck/cppcheck -q -f --error-exitcode=1 --inline-suppr src
 
   codespell:
     runs-on: ubuntu-20.04
