@@ -314,7 +314,7 @@ _py_thread__push_iframe_from_addr(py_thread_t * self, PyInterpreterFrame * ifram
   stack_py_push(
     origin,
     code_raddr,
-    ((int)(V_FIELD_PTR(void *, iframe, py_iframe, o_prev_instr) - code_raddr)) - py_v->py_code.o_code
+    (((int)(V_FIELD_PTR(void *, iframe, py_iframe, o_prev_instr) - code_raddr)) - py_v->py_code.o_code) / sizeof(_Py_CODEUNIT)
   );
 
   #ifdef NATIVE
