@@ -97,8 +97,11 @@ log_m(const char *, ...);  // metrics
  * they are a consequence of the error right above. A root cause is then an
  * unprefixed error/fatal log entry.
  */
+#ifdef TRACE
 #define log_ie(msg) log_e("> " msg)
-
+#else
+#define log_ie(msg);
+#endif
 
 #ifdef DEBUG
 void
