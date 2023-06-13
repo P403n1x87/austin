@@ -20,6 +20,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#undef DEBUG
+
 #include "platform.h"
 
 #if defined PL_LINUX
@@ -116,7 +118,7 @@ py_proc_list_new(py_proc_t * parent_py_proc) {
   if (!isvalid(list))
     return NULL;
 
-  log_t("Maximum number of PIDs: %d", list->pids);
+  //log_t("Maximum number of PIDs: %d", list->pids);
 
   list->py_proc_for_pid = lookup_new(256);
   if (!isvalid(list->py_proc_for_pid))

@@ -716,6 +716,12 @@ _infer_tid_field_offset(py_thread_t * py_thread) {
       py_thread->proc->extra->pthread_tid_offset = i;
       SUCCESS;
     }
+    else if (py_thread->raddr.pref < py_thread->proc->extra->_pthread_buffer[i]
+	     && py_thread->proc->extra->_pthread_buffer[i] < 4000000) {
+      log_d("Silent failure to reasonable TID value: %d", py_thread->proc->extra->_pthread_buffer[i]);
+      py_thread->proc->extra->pthread_tid_offset = i;
+      SUCCESS;
+    }
   }
 
   // Fall-back to smaller steps if we failed
@@ -730,7 +736,8 @@ _infer_tid_field_offset(py_thread_t * py_thread) {
     }
   }
 
-  FAIL;
+  // silent failure
+  SUCCESS;
 }
 
 #endif

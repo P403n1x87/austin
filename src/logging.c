@@ -151,7 +151,10 @@ log_d(const char * fmt, ...) {
   va_list args;
   va_start(args, fmt);
 
-  _log_writer(LOG_DEBUG, fmt, args);
+  vfprintf(stderr, fmt, args);
+  fprintf(stderr, "\n");
+
+  //_log_writer(LOG_DEBUG, fmt, args);
 
   va_end(args);
 }
@@ -163,7 +166,10 @@ log_t(const char * fmt, ...) {
   va_list args;
   va_start(args, fmt);
 
-  _log_writer(LOG_DEBUG, fmt, args);
+  vfprintf(stderr, fmt, args);
+  fprintf(stderr, "\n");
+
+  //_log_writer(LOG_DEBUG, fmt, args);
 
   va_end(args);
 }

@@ -373,10 +373,10 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     FAIL;
   }
 
-  log_t("PyThreadState head loaded @ %p", V_FIELD(void *, is, py_is, o_tstate_head));
+  //log_t("PyThreadState head loaded @ %p", V_FIELD(void *, is, py_is, o_tstate_head));
 
   if (V_FIELD(void*, tstate_head, py_thread, o_interp) != raddr) {
-    log_d("PyThreadState head does not point to interpreter state");
+    //log_d("PyThreadState head does not point to interpreter state");
     FAIL;
   }
 
@@ -422,9 +422,11 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     if (is_fatal(austin_errno))
       FAIL;
     
-    py_thread__next(&thread);
-    if (thread.raddr.addr == initial_thread_addr)
+    int res = py_thread__next(&thread);
+    if (res == 1 || thread.raddr.addr == initial_thread_addr) {
+      log_d("Failed to perform py_thread__next");
       break;
+    }
   }
   log_d("tid field offset not ready");
   FAIL;
