@@ -206,7 +206,6 @@ get_native_frame(const char *file_name, bfd_vma addr, key_dt frame_key)
     bfd_map_over_sections(abfd, find_address_in_section, NULL);
 
     const char *name;
-    char *alloc = NULL;
 
     name = functionname;
     if (name == NULL || *name == '\0')
@@ -214,7 +213,7 @@ get_native_frame(const char *file_name, bfd_vma addr, key_dt frame_key)
 #ifdef HAVE_LIBERTY
     else
     {
-        alloc = bfd_demangle(abfd, name, DMGL_PARAMS | DMGL_ANSI);
+        char *alloc = bfd_demangle(abfd, name, DMGL_PARAMS | DMGL_ANSI);
         if (alloc != NULL)
             name = alloc;
     }
