@@ -20,6 +20,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from subprocess import check_output
+
 from test.utils import allpythons
 from test.utils import austin
 from test.utils import compress
@@ -115,3 +117,18 @@ def test_pipe_wall_time_multiprocess_output(py, tmp_path):
         d = int(meta["duration"])
 
         assert 0 < 0.8 * d < a < 2.2 * d
+
+
+@allpythons(min=(3, 11))
+def test_python_version(py):
+    result = austin("-Pi", "1s", *python(py), target())
+    assert result.returncode == 0
+
+    meta = metadata(result.stdout)
+
+    reported_version = ".".join((str(_) for _ in meta["python"]))
+    actual_version = (
+        check_output([*python(py), "-V"]).decode().strip().partition(" ")[-1]
+    )
+
+    assert reported_version == actual_version, meta
