@@ -39,17 +39,17 @@ enum {
 #ifdef PY_PROC_C
 
 #ifdef PL_MACOS
-  #define SYM_PREFIX "__"
-#else
   #define SYM_PREFIX "_"
+#else
+  #define SYM_PREFIX ""
 #endif
 
 
 static const char * _dynsym_array[] = {
-  SYM_PREFIX "PyThreadState_Current",
-  SYM_PREFIX "PyRuntime",
+  SYM_PREFIX "_PyThreadState_Current",
+  SYM_PREFIX "_PyRuntime",
   "interp_head",
-  "Py_Version",
+  SYM_PREFIX "Py_Version",
 };
 
 static long _dynsym_hash_array[DYNSYM_COUNT] = {0};
