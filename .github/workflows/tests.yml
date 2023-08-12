@@ -97,16 +97,20 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
-
-      - name: Run tests
+      - name: Install test dependencies
         run: |
-          ulimit -c unlimited
           python3.10 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r test/requirements.txt
-          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed --no-flaky-report -sr a
-          .venv/bin/pytest --pastebin=failed --no-flaky-report -sr a
+          deactivate
+
+      - name: Run tests
+        run: |
+          ulimit -c unlimited
+          source .venv/bin/activate
+          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed --no-flaky-report -svr a
+          .venv/bin/pytest --pastebin=failed --no-flaky-report -svr a
           deactivate
 
   wheels-linux:
@@ -221,15 +225,18 @@ jobs:
           codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/bin/python3 || true
           codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/Resources/Python.app/Contents/MacOS/Python || true
 
-      - name: Run tests
+      - name: Install test dependencies
         run: |
           python3.10 -m pip install --upgrade pip
           python3.10 -m pip install -r test/requirements.txt
           python${{ matrix.python-version }} -m venv .venv \
             || (python${{ matrix.python-version }} -m pip install virtualenv && python${{ matrix.python-version }} -m virtualenv .venv)
+      
+      - name: Run tests
+        run: |
           source .venv/bin/activate
-          sudo -E pytest --ignore=test/cunit --pastebin=failed --no-flaky-report -sr a
-          pytest --ignore=test/cunit --pastebin=failed --no-flaky-report -sr a -k _darwin
+          sudo -E pytest --ignore=test/cunit --pastebin=failed --no-flaky-report -svr a
+          pytest --ignore=test/cunit --pastebin=failed --no-flaky-report -svr a -k _darwin
           deactivate
 
   wheels-osx:
@@ -320,13 +327,18 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Run tests
+      - name: Install test dependencies
         run: |
           py -3.10 -m venv venv
           venv\Scripts\Activate.ps1
           python -m pip install --upgrade pip
           python -m pip install -r test/requirements.txt
-          python -m pytest --ignore=test\cunit --pastebin=failed --no-flaky-report -sr a
+          deactivate
+
+      - name: Run tests
+        run: |
+          venv\Scripts\Activate.ps1
+          python -m pytest --ignore=test\cunit --pastebin=failed --no-flaky-report -svr a
           deactivate
 
   wheels-win:
