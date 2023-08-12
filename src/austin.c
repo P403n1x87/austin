@@ -219,6 +219,14 @@ int main(int argc, char ** argv) {
   py_proc_t * py_proc        = NULL;
   int         exec_arg       = parse_args(argc, argv);
 
+#if defined PL_MACOS
+  // On MacOS, we need to be root to use Austin.
+  if (geteuid() != 0) {
+    _msg(MPERM);
+    return EPROCPERM;
+  }
+#endif
+
   logger_init();
   if (!pargs.pipe)
     log_header();
