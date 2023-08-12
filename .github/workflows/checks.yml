@@ -31,9 +31,9 @@ jobs:
       - name: Check manpage
         run: git diff -I".* DO NOT MODIFY.*" -I"[.]TH AUSTIN.*" --exit-code src/austin.1
 
-  cppcheck:
+  cppcheck-linux:
     runs-on: ubuntu-20.04
-    name: Static code analysis
+    name: Static code analysis (Linux)
     env:
       cppcheck-version: 2.10.3
 
@@ -76,8 +76,20 @@ jobs:
             ${{ github.workspace }}/cppcheck
           key: ${{ runner.os }}-cppcheck-${{ env.cppcheck-version }}
 
-      - name: Check soure code
+      - name: Check source code
         run: ${{ github.workspace }}/cppcheck/cppcheck -q -f --error-exitcode=1 --inline-suppr src
+
+  cppcheck-macos:
+    name: Static code analysis (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Install cppcheck
+        run: brew install cppcheck
+      
+      - name: Check source code
+        run: cppcheck -q -f --error-exitcode=1 --inline-suppr src
 
   codespell:
     runs-on: ubuntu-20.04
