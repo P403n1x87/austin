@@ -144,7 +144,7 @@ _py_proc__analyze_macho64(py_proc_t * self, void * base, void * map) {
             &address,
             &size,
             VM_REGION_BASIC_INFO_64,
-            (vm_region_info_t) &region_info,
+            (vm_region_info_t) &region_info,  // cppcheck-suppress [uninitvar]
             &count,
             &object_name
           ) != KERN_SUCCESS) {
@@ -245,7 +245,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * base, void * map) {
             &address,
             &size,
             VM_REGION_BASIC_INFO,
-            (vm_region_info_t) &region_info,
+            (vm_region_info_t) &region_info,  // cppcheck-suppress [uninitvar]
             &count,
             &object_name
           ) != KERN_SUCCESS) {
@@ -493,7 +493,7 @@ _py_proc__get_maps(py_proc_t * self) {
     log_w("Cannot get executable path for process %d", self->pid);
   }
   if (strlen(pd->exe_path) == 0) {
-    FAIL;
+    FAIL;  // cppcheck-suppress [memleak]
   }
   log_d("Executable path: '%s'", pd->exe_path);
 
@@ -511,7 +511,7 @@ _py_proc__get_maps(py_proc_t * self) {
     &address,
     &size,
     VM_REGION_BASIC_INFO_64,
-    (vm_region_info_t) &region_info,
+    (vm_region_info_t) &region_info,  // cppcheck-suppress [uninitvar]
     &count,
     &object_name
   ) == KERN_SUCCESS) {

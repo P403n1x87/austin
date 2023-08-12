@@ -553,7 +553,7 @@ _handle_opts(arg_option * opts, arg_callback cb, int * argi, int argc, char ** a
 static const char * help_msg = \
 /*[[[cog
 from subprocess import check_output
-for line in check_output(["src/austin", "--help"]).decode().splitlines():
+for line in check_output(["src/austin", "--help"]).decode().strip().splitlines():
   print(f'"{line}\\n"')
 print(";")
 ]]]*/
@@ -598,7 +598,7 @@ print(";")
 static const char * usage_msg = \
 /*[[[cog
 from subprocess import check_output
-for line in check_output(["src/austin", "--usage"]).decode().splitlines():
+for line in check_output(["src/austin", "--usage"]).decode().strip().splitlines():
   print(f'"{line}\\n"')
 print(";")
 ]]]*/
