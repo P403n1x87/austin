@@ -38,6 +38,7 @@ stamp-h1
 src/austin
 src/austinp
 src/austin.exe
+src/austin.dSYM*
 
 
 # -----------------------------------------------------------------------------
