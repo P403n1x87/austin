@@ -49,7 +49,6 @@
 #include "../version.h"
 
 
-#define CHECK_HEAP
 #define DEREF_SYM
 
 

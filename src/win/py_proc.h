@@ -30,7 +30,6 @@
 #include "../resources.h"
 
 
-#define CHECK_HEAP
 #define DEREF_SYM
 
 

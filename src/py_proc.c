@@ -155,7 +155,7 @@ _get_version_from_filename(char * filename, const char * needle, int * major, in
   }
 
   #elif defined PL_WIN                                                 /* WIN */
-  // Assume the library path is of the form *.python[23][0-9]+[.]dll
+  // Assume the library path is of the form *.python3[0-9]+[.]dll
   int n = strlen(filename);
   if (n < 10) {
     FAIL;
@@ -165,7 +165,7 @@ _get_version_from_filename(char * filename, const char * needle, int * major, in
   while (*(p--) != 'n' && p > filename);
   p++;
   *major = *(p++) - '0';
-  if (*major != 2 && *major != 3) {
+  if (*major != 3) {
     FAIL;
   }
 
@@ -175,7 +175,6 @@ _get_version_from_filename(char * filename, const char * needle, int * major, in
 
   #elif defined PL_MACOS                                               /* MAC */
   char * ver_needle = strstr(filename, "3.");
-  if (ver_needle == NULL) ver_needle = strstr(filename, "2.");
   if (ver_needle != NULL && sscanf(ver_needle, "%d.%d", major, minor) == 2) {
     SUCCESS;
   }  
@@ -323,30 +322,6 @@ from_filename:
 set_version:
   self->py_v = get_version_descriptor(major, minor, patch);
   SUCCESS;
-
-  // Scan the rodata section for something that looks like the Python version.
-  // There are good chances this is at the very beginning of the section so
-  // it shouldn't take too long to find a match. This is more reliable than
-  // waiting until the version appears in the bss section at run-time.
-  // NOTE: This method is not guaranteed to find a valid Python version.
-  //       If this causes problems then another method is required.
-  // char * p_ver = (char *) map + (Elf64_Addr) self->map.rodata.base;
-  // for (register int i = 0; i < self->map.rodata.size; i++) {
-  //   if (
-  //     p_ver[i]   == '.' &&
-  //     p_ver[i+1] != '.' &&
-  //     p_ver[i+2] == '.' &&
-  //     p_ver[i-2] == 0
-  //   ) {
-  //     if (
-  //       sscanf(p_ver + i - 1, "%d.%d.%d", &major, &minor, &patch) == 3 &&
-  //       (major == 2 || major == 3)
-  //     ) {
-  //       log_i("Python version: %s", p_ver + i - 1, p_ver);
-  //       // break;
-  //     }
-  //   }
-  // }
 }
 
 
@@ -434,57 +409,6 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
   SUCCESS;
 }
 
-
-#ifdef CHECK_HEAP
-// ----------------------------------------------------------------------------
-static int
-_py_proc__is_heap_raddr(py_proc_t * self, void * raddr) {
-  if (!isvalid(self) || !isvalid(raddr) || !isvalid(self->map.heap.base))
-    return FALSE;
-
-  return (
-    raddr >= self->map.heap.base &&
-    raddr < self->map.heap.base + self->map.heap.size
-  );
-}
-
-
-// ----------------------------------------------------------------------------
-static int
-_py_proc__is_raddr_within_max_range(py_proc_t * self, void * raddr) {
-  if (!isvalid(self) || !isvalid(raddr) || !isvalid(self->map.heap.base))
-    return FALSE;
-
-  return (raddr >= self->min_raddr && raddr < self->max_raddr);
-}
-
-
-// ----------------------------------------------------------------------------
-static int
-_py_proc__scan_heap(py_proc_t * self) {
-  log_d("Scanning HEAP");
-  // NOTE: This seems to be required by Python 2.7 on i386 Linux.
-  void * upper_bound = self->map.heap.base + self->map.heap.size;
-  for (
-    register void ** raddr = (void **) self->map.heap.base;
-    (void *) raddr < upper_bound;
-    raddr++
-  ) {
-    switch (_py_proc__check_interp_state(self, raddr)) {
-    case 0:
-      self->is_raddr = raddr;
-      SUCCESS;
-
-    case OUT_OF_BOUND:
-      return OUT_OF_BOUND;
-    }
-  }
-
-  FAIL;
-}
-#endif
-
-
 // ----------------------------------------------------------------------------
 static int
 _py_proc__scan_bss(py_proc_t * self) {
@@ -531,11 +455,6 @@ _py_proc__scan_bss(py_proc_t * self) {
     ) {
       if (
         (!shift &&
-        #ifdef CHECK_HEAP
-        (isvalid(self->lib_path)
-          ? _py_proc__is_raddr_within_max_range(self, *raddr)
-          : _py_proc__is_heap_raddr(self, *raddr)) &&
-        #endif
         success(_py_proc__check_interp_state(self, *raddr)))
         ||(shift && success(_py_proc__check_interp_state(self, (void*) raddr - self->bss + base)))
       ) {
@@ -754,22 +673,6 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 
   if (self->child)
     FAIL;
-
-  #ifdef CHECK_HEAP
-  log_w("BSS scan unsuccessful so we scan the heap directly ...");
-
-  // TODO: Consider copying heap over and check for pointers
-  TIMER_SET(100)
-  TIMER_START
-    switch (_py_proc__scan_heap(self)) {
-    case 0:
-      SUCCESS;
-
-    case OUT_OF_BOUND:
-      TIMER_STOP
-    }
-  TIMER_END
-  #endif
 
   set_error(EPROCISTIMEOUT);
   FAIL;

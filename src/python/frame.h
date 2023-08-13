@@ -33,24 +33,6 @@
 
 // ---- frameobject.h ---------------------------------------------------------
 
-typedef struct _frame2_3 {
-    PyObject_VAR_HEAD
-    struct _frame2_3 *f_back;   /* previous frame, or NULL */
-    PyCodeObject *f_code;       /* code segment */
-    PyObject *f_builtins;       /* builtin symbol table (PyDictObject) */
-    PyObject *f_globals;        /* global symbol table (PyDictObject) */
-    PyObject *f_locals;         /* local symbol table (any mapping) */
-    PyObject **f_valuestack;    /* points after the last local */
-    PyObject **f_stacktop;
-    PyObject *f_trace;          /* Trace function */
-
-    PyObject *f_exc_type, *f_exc_value, *f_exc_traceback;
-    PyObject *f_gen;
-
-    int f_lasti;                /* Last instruction if called */
-    int f_lineno;               /* Current line number */
-} PyFrameObject2;
-
 typedef struct _frame3_7 {
     PyObject_VAR_HEAD
     struct _frame3_7 *f_back;   /* previous frame, or NULL */
@@ -90,7 +72,6 @@ typedef struct _frame3_10 {
 } PyFrameObject3_10;
 
 typedef union {
-  PyFrameObject2    v2;
   PyFrameObject3_7  v3_7;
   PyFrameObject3_10 v3_10;
 } PyFrameObject;
