@@ -40,106 +40,10 @@ struct _frame;
 typedef int (*Py_tracefunc)(PyObject *, struct _frame *, int, PyObject *);
 
 
-typedef struct _ts2 {
-    struct _ts2 *next;
-    PyInterpreterState *interp;
-
-    struct _frame *frame;
-    int recursion_depth;
-    char overflowed;
-    char recursion_critical;
-    int tracing;
-    int use_tracing;
-
-    Py_tracefunc c_profilefunc;
-    Py_tracefunc c_tracefunc;
-    PyObject *c_profileobj;
-    PyObject *c_traceobj;
-
-    PyObject *curexc_type;
-    PyObject *curexc_value;
-    PyObject *curexc_traceback;
-
-    PyObject *exc_type;
-    PyObject *exc_value;
-    PyObject *exc_traceback;
-
-    PyObject *dict;  /* Stores per-thread state */
-
-    int tick_counter;
-
-    int gilstate_counter;
-
-    PyObject *async_exc; /* Asynchronous exception to raise */
-    long thread_id; /* Thread id where this tstate was created */
-} PyThreadState2;
-
-
-typedef struct _ts3_4 {
-    struct _ts3_4 *prev;
-    struct _ts3_4 *next;
-    PyInterpreterState *interp;
-
-    struct _frame *frame;
-    int recursion_depth;
-    char overflowed;
-    char recursion_critical;
-    int tracing;
-    int use_tracing;
-
-    Py_tracefunc c_profilefunc;
-    Py_tracefunc c_tracefunc;
-    PyObject *c_profileobj;
-    PyObject *c_traceobj;
-
-    PyObject *curexc_type;
-    PyObject *curexc_value;
-    PyObject *curexc_traceback;
-
-    PyObject *exc_type;
-    PyObject *exc_value;
-    PyObject *exc_traceback;
-
-    PyObject *dict;  /* Stores per-thread state */
-
-    int gilstate_counter;
-
-    PyObject *async_exc; /* Asynchronous exception to raise */
-    long thread_id; /* Thread id where this tstate was created */
-} PyThreadState3_4;
-
-
-
 typedef struct _err_stackitem3_7 {
     PyObject *exc_type, *exc_value, *exc_traceback;
     struct _err_stackitem3_7 *previous_item;
 } _PyErr_StackItem3_7;
-
-typedef struct _ts_3_7 {
-    struct _ts *prev;
-    struct _ts *next;
-    PyInterpreterState *interp;
-    struct _frame *frame;
-    int recursion_depth;
-    char overflowed;
-    char recursion_critical;
-    int stackcheck_counter;
-    int tracing;
-    int use_tracing;
-    Py_tracefunc c_profilefunc;
-    Py_tracefunc c_tracefunc;
-    PyObject *c_profileobj;
-    PyObject *c_traceobj;
-    PyObject *curexc_type;
-    PyObject *curexc_value;
-    PyObject *curexc_traceback;
-    _PyErr_StackItem3_7 exc_state;
-    _PyErr_StackItem3_7 *exc_info;
-    PyObject *dict;  /* Stores per-thread state */
-    int gilstate_counter;
-    PyObject *async_exc; /* Asynchronous exception to raise */
-    unsigned long thread_id; /* Thread id where this tstate was created */
-} PyThreadState3_7;
 
 
 typedef struct _ts3_8 {
@@ -249,8 +153,6 @@ typedef struct _ts3_11 {
 
 
 typedef union {
-  PyThreadState2    v2;
-  PyThreadState3_4  v3_4;
   PyThreadState3_8  v3_8;
   PyThreadState3_11 v3_11;
 } PyThreadState;
