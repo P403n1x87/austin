@@ -42,16 +42,6 @@ typedef uint8_t Py_UCS1;
 
 typedef PY_UNICODE_TYPE Py_UNICODE;
 
-
-typedef struct {
-    PyObject_HEAD
-    Py_ssize_t length;          /* Length of raw Unicode data in buffer */
-    Py_UNICODE *str;            /* Raw Unicode buffer */
-    long hash;                  /* Hash value; -1 if not set */
-    PyObject *defenc;           /* (Default) Encoded version as Python string */
-} PyUnicodeObject2;
-
-
 typedef Py_ssize_t Py_hash_t;
 
 typedef struct {
@@ -91,7 +81,6 @@ typedef struct {
 
 
 typedef union {
-  PyUnicodeObject2 v2;
   PyUnicodeObject3 v3;
 } PyUnicodeObject;
 

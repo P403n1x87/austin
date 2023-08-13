@@ -34,29 +34,6 @@
 #include "misc.h"
 #include "thread.h"
 
-// ---- internal/pystate.h ----------------------------------------------------
-
-typedef struct pyruntimestate3_7 {
-    int initialized;
-    int core_initialized;
-    PyThreadState *finalizing;
-
-    struct pyinterpreters3_7 {
-        PyThread_type_lock mutex;
-        PyInterpreterState *head;
-        PyInterpreterState *main;
-        int64_t next_id;
-    } interpreters;
-#define NEXITFUNCS 32
-    void (*exitfuncs[NEXITFUNCS])(void);
-    int nexitfuncs;
-
-    struct _gc_runtime_state3_7 gc;
-    // struct _warnings_runtime_state warnings;
-    // struct _ceval_runtime_state ceval;
-    // struct _gilstate_runtime_state gilstate;
-} _PyRuntimeState3_7;
-
 // ---- internal/pycore_pystate.h ---------------------------------------------
 
 typedef struct pyruntimestate3_8 {
@@ -125,7 +102,6 @@ typedef struct pyruntimestate3_11 {
 
 
 typedef union {
-  _PyRuntimeState3_7  v3_7;
   _PyRuntimeState3_8  v3_8;
   _PyRuntimeState3_11 v3_11;
 } _PyRuntimeState;
