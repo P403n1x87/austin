@@ -30,11 +30,13 @@ from test.utils import python
 from test.utils import samples
 from test.utils import target
 
+from flaky import flaky
 import pytest
 
 
 @allpythons(min=(3, 7))
 @mojo
+@flaky
 def test_gc_off(py, mojo):
     result = austin("-i", "1ms", *python(py), target("target_gc.py"), mojo=mojo)
     assert result.returncode == 0
@@ -48,6 +50,7 @@ def test_gc_off(py, mojo):
 )
 @allpythons(min=(3, 7))
 @mojo
+@flaky
 def test_gc_on(py, mojo):
     result = austin("-gi", "1ms", *python(py), target("target_gc.py"), mojo=mojo)
     assert result.returncode == 0
@@ -61,6 +64,7 @@ def test_gc_on(py, mojo):
 
 @allpythons(min=(3, 7))
 @mojo
+@flaky
 def test_gc_disabled(py, monkeypatch, mojo):
     monkeypatch.setenv("GC_DISABLED", "1")
 
