@@ -334,7 +334,7 @@ _py_thread__push_iframe_from_addr(py_thread_t * self, PyInterpreterFrame * ifram
   );
 
   #ifdef NATIVE
-  if (V_MIN(3, 11) && V_FIELD_PTR(int, iframe, py_iframe, o_is_entry)) {
+  if (V_EQ(3, 11) && V_FIELD_PTR(int, iframe, py_iframe, o_is_entry)) {
     // This marks the end of a CFrame
     stack_py_push_cframe();
   }
