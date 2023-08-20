@@ -45,7 +45,7 @@
 #else
 #define DEFAULT_SAMPLING_INTERVAL    100
 #endif
-#define DEFAULT_INIT_TIMEOUT_MS     1000  // 1 seconds
+#define DEFAULT_INIT_TIMEOUT_MS     1000  // 1 second
 #define DEFAULT_HEAP_SIZE              0
 
 const char SAMPLE_FORMAT_NORMAL[]      = ";%s:%s:%d";

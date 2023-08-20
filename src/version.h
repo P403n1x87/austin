@@ -135,6 +135,7 @@ typedef struct {
   offset_t o_thread_id;
   offset_t o_native_thread_id;
   offset_t o_stack;
+  offset_t o_status;
 } py_thread_v;
 
 
@@ -162,6 +163,7 @@ typedef struct {
   offset_t o_next;
   offset_t o_tstate_head;
   offset_t o_gc;
+  offset_t o_gil_state;
 } py_is_v;
 
 
@@ -264,6 +266,18 @@ typedef struct {
   offsetof(s, datastack_chunk),         \
 }
 
+#define PY_THREAD_312(s) {              \
+  sizeof(s),                            \
+  offsetof(s, prev),                    \
+  offsetof(s, next),                    \
+  offsetof(s, interp),                  \
+  offsetof(s, cframe),                  \
+  offsetof(s, thread_id),               \
+  offsetof(s, native_thread_id),        \
+  offsetof(s, datastack_chunk),         \
+  offsetof(s, _status)                  \
+}
+
 #define PY_UNICODE(n) {                 \
   n                                     \
 }
@@ -298,6 +312,13 @@ typedef struct {
   offsetof(s, gc),                      \
 }
 
+#define PY_IS_312(s) {                  \
+  sizeof(s),                            \
+  offsetof(s, next),                    \
+  offsetof(s, threads.head),            \
+  offsetof(s, gc),                      \
+  offsetof(s, ceval.gil),               \
+}
 
 #define PY_GC(s) {                      \
   sizeof(s),                            \
@@ -356,8 +377,8 @@ python_v python_v3_11 = {
 python_v python_v3_12 = {
   PY_CODE_311     (PyCodeObject3_12),
   PY_FRAME        (PyFrameObject3_10),  // Irrelevant
-  PY_THREAD_311   (PyThreadState3_12),
-  PY_IS_311       (PyInterpreterState3_12),
+  PY_THREAD_312   (PyThreadState3_12),
+  PY_IS_312       (PyInterpreterState3_12),
   PY_RUNTIME_311  (_PyRuntimeState3_12),
   PY_GC           (struct _gc_runtime_state3_12),
   PY_CFRAME_311   (_PyCFrame3_12),

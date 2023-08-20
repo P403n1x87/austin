@@ -61,6 +61,8 @@ typedef struct thread {
   /* The per-thread datastack was introduced in Python 3.11 */
   void           * stack;
   size_t           stack_size;
+
+  tstate_status_t  status;
 } py_thread_t;
 
 

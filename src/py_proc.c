@@ -1157,13 +1157,25 @@ py_proc__sample(py_proc_t * self) {
 
     if (pargs.memory) {
       // Use the current thread to determine which thread is manipulating memory
-      current_thread = _py_proc__get_current_thread_state_raddr(self);
+      if (V_MIN(3, 12)) {
+        void * gil_state_raddr = V_FIELD(void *, is, py_is, o_gil_state);
+        if (!isvalid(gil_state_raddr))
+          SUCCESS;
+        gil_state_t gil_state;
+        if (fail(copy_datatype(self->proc_ref, gil_state_raddr, gil_state))) {
+          log_ie("Failed to copy GIL state");
+          FAIL;
+        }
+        current_thread = (void *) gil_state.last_holder._value;
+      }
+      else
+        current_thread = _py_proc__get_current_thread_state_raddr(self);
     }
 
     do {
       if (pargs.memory) {
         mem_delta = 0;
-        if (self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void *) -1) {
+        if (V_MAX(3, 11) && self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void *) -1) {
           if (_py_proc__find_current_thread_offset(self, py_thread.raddr.addr))
             continue;
           else
