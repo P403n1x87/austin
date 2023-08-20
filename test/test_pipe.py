@@ -20,6 +20,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from itertools import takewhile
 from subprocess import check_output
 
 from test.utils import allpythons
@@ -127,8 +128,14 @@ def test_python_version(py):
     meta = metadata(result.stdout)
 
     reported_version = ".".join((str(_) for _ in meta["python"]))
-    actual_version = (
-        check_output([*python(py), "-V"]).decode().strip().partition(" ")[-1]
+
+    # Take the version from the interpreter itself, discarding anything after
+    # the patchlevel.
+    actual_version = "".join(
+        takewhile(
+            lambda _: _.isdigit() or _ == ".",
+            (check_output([*python(py), "-V"]).decode().strip().partition(" ")[-1]),
+        )
     )
 
     assert reported_version == actual_version, meta
