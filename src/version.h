@@ -81,6 +81,7 @@
  */
 #define V_MIN(M, m) (((py_v->major << 8) | py_v->minor) >= ((M << 8) | m))
 #define V_MAX(M, m) (((py_v->major << 8) | py_v->minor) <= ((M << 8) | m))
+#define V_EQ(M, m)  (((py_v->major << 8) | py_v->minor) == ((M << 8) | m))
 
 typedef unsigned long offset_t;
 
