@@ -807,7 +807,9 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   self->raddr = *raddr;
   
   self->top_frame = V_FIELD(void*, ts, py_thread, o_frame);
-   
+
+  self->status = V_FIELD(tstate_status_t, ts, py_thread, o_status);
+
   self->next_raddr = (raddr_t) {
     raddr->pref,
     V_FIELD(void*, ts, py_thread, o_next) == raddr->addr \

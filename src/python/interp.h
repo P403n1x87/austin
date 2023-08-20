@@ -149,7 +149,7 @@ typedef struct {
         size_t stacksize;
     } threads;
 
-    struct pyruntimestate *runtime;
+    void *runtime;
 
     _Py_atomic_address _finalizing;
 
@@ -160,6 +160,14 @@ typedef struct {
 
     // Dictionary of the builtins module
     PyObject *builtins;
+
+    struct {
+        _Py_atomic_int eval_breaker;
+        _Py_atomic_int gil_drop_request;
+        int recursion_limit;
+        void *gil;
+        // ...
+    } ceval;
 } PyInterpreterState3_12;
 
 

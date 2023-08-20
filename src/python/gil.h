@@ -42,15 +42,8 @@ struct _gil_runtime_state3_11 {
   unsigned long interval;
   _Py_atomic_address last_holder;
   _Py_atomic_int locked;
-  unsigned long switch_number;
-  PyCOND_T cond;
-  PyMUTEX_T mutex;
-#ifdef FORCE_SWITCHING
-  /* This condition variable helps the GIL-releasing thread wait for
-     a GIL-awaiting thread to be scheduled and take the GIL. */
-  PyCOND_T switch_cond;
-  PyMUTEX_T switch_mutex;
-#endif
 };
+
+typedef struct _gil_runtime_state3_11 gil_state_t;
 
 #endif
