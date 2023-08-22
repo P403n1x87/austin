@@ -49,16 +49,11 @@
 #include "../version.h"
 
 
-#define DEREF_SYM
-
-
 #define BIN_MAP                  (1 << 0)
 #define DYNSYM_MAP               (1 << 1)
 #define RODATA_MAP               (1 << 2)
 #define HEAP_MAP                 (1 << 3)
 #define BSS_MAP                  (1 << 4)
-
-#define SYMBOLS                        3
 
 
 // Get the offset of the ith section header
@@ -138,16 +133,6 @@ _py_proc__analyze_elf64(py_proc_t * self, void * elf_map, void * elf_base) {
       ) {
         p_dynsym = p_shdr;
       }
-      // NOTE: This might be required if the Python version must be retrieved
-      //       from the RO data section
-      // else if (
-      //   p_shdr->sh_type == SHT_PROGBITS &&
-      //   strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
-      // ) {
-      //   self->map.rodata.base = (void *) p_shdr->sh_offset;
-      //   self->map.rodata.size = p_shdr->sh_size;
-      //   map_flag |= RODATA_MAP;
-      // }
       else if (strcmp(sh_name_base + p_shdr->sh_name, ".bss") == 0) {
         bss_base = elf_base + (p_shdr->sh_addr - base);
         bss_size = p_shdr->sh_size;
@@ -166,15 +151,18 @@ _py_proc__analyze_elf64(py_proc_t * self, void * elf_map, void * elf_base) {
           Elf64_Sym * sym      = (Elf64_Sym *) (elf_map + tab_off);
           char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
           void      * value    = elf_base + (sym->st_value - base);
-          if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= SYMBOLS)
+          if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= DYNSYM_COUNT) {
+            // We have found all the symbols. No need to look further
             break;
+          }
         }
       }
     }
   }
 
-  if (!symbols) {
-    log_e("ELF binary has no Python symbols");
+  if (symbols < DYNSYM_MANDATORY) {
+    log_e("ELF binary has not all the mandatory Python symbols");
+    set_error(ESYM);
     FAIL;
   }
 
@@ -234,16 +222,6 @@ _py_proc__analyze_elf32(py_proc_t * self, void * elf_map, void * elf_base) {
       ) {
         p_dynsym = p_shdr;
       }
-      // NOTE: This might be required if the Python version must be retrieved
-      //       from the RO data section
-      // else if (
-      //   p_shdr->sh_type == SHT_PROGBITS &&
-      //   strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
-      // ) {
-      //   self->map.rodata.base = (void *) p_shdr->sh_offset;
-      //   self->map.rodata.size = p_shdr->sh_size;
-      //   map_flag |= RODATA_MAP;
-      // }
       else if (strcmp(sh_name_base + p_shdr->sh_name, ".bss") == 0) {
         bss_base = elf_base + (p_shdr->sh_addr - base);
         bss_size = p_shdr->sh_size;
@@ -262,15 +240,18 @@ _py_proc__analyze_elf32(py_proc_t * self, void * elf_map, void * elf_base) {
           Elf32_Sym * sym      = (Elf32_Sym *) (elf_map + tab_off);
           char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
           void      * value    = elf_base + (sym->st_value - base);
-          if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= SYMBOLS)
+          if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= DYNSYM_COUNT) {
+            // We have found all the symbols. No need to look further
             break;
+          }
         }
       }
     }
   }
 
-  if (!symbols) {
-    log_e("ELF binary has no Python symbols");
+  if (symbols < DYNSYM_MANDATORY) {
+    log_e("ELF binary has not all the mandatory Python symbols");
+    set_error(ESYM);
     FAIL;
   }
 
@@ -296,6 +277,7 @@ _py_proc__analyze_elf(py_proc_t * self, char * path, void * elf_base) {
   cu_fd fd = open(path, O_RDONLY);
   if (fd == -1) {
     log_e("Cannot open binary file %s", path);
+    set_error(EPROC);
     FAIL;
   }
 
@@ -305,6 +287,7 @@ _py_proc__analyze_elf(py_proc_t * self, char * path, void * elf_base) {
 
   if (fstat(fd, &s) == -1) {
     log_ie("Cannot determine size of binary file");
+    set_error(EPROC);
     FAIL;
   }
 
@@ -313,6 +296,7 @@ _py_proc__analyze_elf(py_proc_t * self, char * path, void * elf_base) {
   binary_map = map_new(fd, binary_size, MAP_PRIVATE);
   if (!isvalid(binary_map)) {
     log_ie("Cannot map binary file to memory");
+    set_error(EPROC);
     FAIL;
   }
 
@@ -321,6 +305,7 @@ _py_proc__analyze_elf(py_proc_t * self, char * path, void * elf_base) {
 
   if (fail(_elf_check(ehdr))) {
     log_e("Bad ELF header");
+    set_error(EPROC);
     FAIL;
   }
 
@@ -336,6 +321,7 @@ _py_proc__analyze_elf(py_proc_t * self, char * path, void * elf_base) {
 
   default:
     log_e("%s has invalid ELF class", path);
+    set_error(EPROC);
     FAIL;
   }
 } /* _py_proc__analyze_elf */
@@ -383,12 +369,14 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   cu_void * pd_mem = calloc(1, sizeof(struct proc_desc));
   if (!isvalid(pd_mem)) {
     log_ie("Cannot allocate memory for proc_desc");
+    set_error(EPROC);
     FAIL;
   }
   struct proc_desc * pd = pd_mem;
 
   if (readlink(file_name, pd->exe_path, sizeof(pd->exe_path)) == -1) {
     log_e("Cannot readlink %s", file_name);
+    set_error(EPROC);
     FAIL;  // cppcheck-suppress [resourceLeak]
   }
   if (strcmp(pd->exe_path + (strlen(pd->exe_path) - 10), " (deleted)") == 0) {
@@ -449,6 +437,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     prev_path = strndup(pathname, strlen(pathname));
     if (!isvalid(prev_path)) {
       log_ie("Cannot duplicate path name");
+      set_error(EPROC);
       FAIL;
     }
 
@@ -458,6 +447,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
       map->path = strndup(pathname, strlen(pathname));
       if (!isvalid(map->path)) {
         log_ie("Cannot duplicate path name");
+        set_error(EPROC);
         FAIL;
       }
       map->file_size = _file_size(pathname);
@@ -481,6 +471,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
         map->path = strndup(pathname, strlen(pathname));
         if (!isvalid(map->path)) {
           log_ie("Cannot duplicate path name");
+          set_error(EPROC);
           FAIL;
         }
         map->file_size = _file_size(pathname);
@@ -504,6 +495,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
             map->path = needle_path = strndup(pathname, strlen(pathname));
             if (!isvalid(map->path)) {
               log_ie("Cannot duplicate path name");
+              set_error(EPROC);
               FAIL;
             }
             map->file_size = _file_size(pathname);
@@ -599,6 +591,7 @@ _py_proc__get_vm_maps(py_proc_t * self) {
 
   fp = _procfs(self->pid, "maps");
   if (!isvalid(fp)) {
+    set_error(EPROC);
     FAIL;
   }
 
@@ -640,10 +633,10 @@ _py_proc__get_vm_maps(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t * self) {
-  if (
-   !isvalid(self)
-  ||fail   (_py_proc__parse_maps_file(self))
-  ) FAIL;
+  if (!isvalid(self) || fail(_py_proc__parse_maps_file(self))) {
+    set_error(EPROC);
+    FAIL;
+  }
 
   self->extra->page_size = getpagesize();
   log_d("Page size: %u", self->extra->page_size);
@@ -729,6 +722,7 @@ _infer_tid_field_offset(py_thread_t * py_thread) {
     }
   }
 
+  set_error(ETHREAD);
   FAIL;
 }
 

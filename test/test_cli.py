@@ -21,12 +21,14 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import platform
+import sys
+
+import pytest
+
 from test.utils import austin
 from test.utils import no_sudo
 from test.utils import run_python
 from test.utils import target
-
-import pytest
 
 
 def test_cli_no_arguments():
@@ -39,9 +41,10 @@ def test_cli_no_arguments():
 def test_cli_no_python():
     result = austin(
         "-C",
-        "powershell" if platform.system() == "Windows" else "bash",
+        "src\\austin.exe" if platform.system() == "Windows" else "src/austin",
+        sys.executable,
         "-c",
-        "sleep 1",
+        "from time import sleep;sleep(2)",
     )
     assert result.returncode == 39
     assert "not a Python" in result.stderr or "Cannot launch" in result.stderr

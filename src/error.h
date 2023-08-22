@@ -35,6 +35,7 @@
 #define ENOVERSION            3
 #define ENULLDEV              4
 #define ECMDLINE              5
+#define ESYM                  6
 
 // PyCodeObject
 #define ECODE                 ((1 << 3) + 0)
