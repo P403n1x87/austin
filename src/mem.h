@@ -174,8 +174,12 @@ copy_memory(proc_ref_t proc_ref, void * addr, ssize_t len, void * buf) {
     // the PID that was used must have been valid. Therefore this call can only
     // fail if the process no longer exists. However, if the return value is
     // MACH_SEND_INVALID_DEST, we probably tried an invalid memory area.
-    if (kr != MACH_SEND_INVALID_DEST)
+    if (kr != MACH_SEND_INVALID_DEST) {
       set_error(EPROCNPID);
+    }
+    else {
+      set_error(EMEMCOPY);
+    }
     FAIL;
   }
 

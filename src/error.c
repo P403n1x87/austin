@@ -39,7 +39,7 @@ const char * _error_msg_tab[MAXERROR] = {
   "Cannot determine Python version",
   "Cannot redirect STDOUT to " NULL_DEVICE,
   "No command nor valid PID",
-  NULL,
+  "Binary has no symbols",
   NULL,
 
   // PyCodeObject
