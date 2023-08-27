@@ -29,10 +29,8 @@ from test.utils import samples
 from test.utils import target
 
 import pytest
-from flaky import flaky
 
 
-@flaky
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @allpythons()
 def test_accuracy_fast_recursive(py, heap):

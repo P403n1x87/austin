@@ -30,7 +30,7 @@ def test_error_unknown():
         (0, False),
         (1, True),
         (8, False),
-        (32, True),
+        (32, False),
         (1000, False),
     ],
 )

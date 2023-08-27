@@ -287,7 +287,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * base, void * map) {
     next_lc(cmd);
   }
 
-  if (self->sym_loaded > 0)
+  if (self->sym_loaded)
     bin_attrs |= B_SYMBOLS;
 
   return bin_attrs;
@@ -396,7 +396,7 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * base, mach_vm_size
     return _py_proc__analyze_fat(self, base, map_addr);
 
   default:
-    self->sym_loaded = 0;
+    self->sym_loaded = FALSE;
   }
 
   return 0;
@@ -434,8 +434,7 @@ pid_to_task(pid_t pid) {
   kern_return_t result;
 
   if (fail(check_pid(pid))) {
-    log_d("No such process: %d", pid);
-    set_error(EPROCNPID);
+    log_d("Process ID %d is not valid", pid);
     return 0;
   }
 
@@ -472,9 +471,6 @@ _py_proc__get_maps(py_proc_t * self) {
 
   self->min_raddr = (void *) -1;
   self->max_raddr = NULL;
-
-  self->map.heap.base = NULL;
-  self->map.heap.size = 0;
 
   sfree(self->bin_path);
   sfree(self->lib_path);
@@ -607,16 +603,10 @@ _py_proc__get_maps(py_proc_t * self) {
     }
 
 next:
-    // Make a best guess for the heap boundary.
-    if (self->map.heap.base == NULL)
-      self->map.heap.base = (void *) address;
-    self->map.heap.size += size;
-
     address += size;
   }
 
   log_d("BSS bounds  [%p - %p]", self->map.bss.base, self->map.bss.base + self->map.bss.size);
-  log_d("HEAP bounds [%p - %p]", self->map.heap.base, self->map.heap.base + self->map.heap.size);
 
   // If the library map is not valid, use the needle map
   if (!isvalid(pd->maps[MAP_LIBSYM].path)) {
@@ -632,8 +622,8 @@ next:
   for (int i = 0; i < MAP_COUNT; i++) {
     map = &(pd->maps[i]);
     if (map->has_symbols) {
-      self->map.elf.base = map->base;
-      self->map.elf.size = map->size;
+      self->map.exe.base = map->base;
+      self->map.exe.size = map->size;
       self->sym_loaded = TRUE;
       break;
     }
@@ -644,7 +634,12 @@ next:
   self->map.bss.base = pd->maps[map_index].bss_base;
   self->map.bss.size = pd->maps[map_index].bss_size;
 
-  return !self->sym_loaded;
+  if (!self->sym_loaded) {
+    set_error(EPROC);
+    FAIL;
+  }
+
+  SUCCESS;
 } // _py_proc__get_maps
 
 

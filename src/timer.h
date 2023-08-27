@@ -41,6 +41,6 @@ yield() {
 }
 
 
-#define TIMER_START(d) {ctime_t _e=(gettime()+d);while(gettime()<=_e){
-#define TIMER_END      yield();}_s:}
+#define TIMER_START(d) {__label__ _s;ctime_t _e=(gettime()+d);while(gettime()<=_e){
+#define TIMER_END      yield();}_s:;}
 #define TIMER_STOP     goto _s;

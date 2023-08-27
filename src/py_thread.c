@@ -198,6 +198,7 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
 static inline int
 _py_thread__push_frame_from_addr(py_thread_t * self, PyFrameObject * frame_obj, void ** prev) {
   if (!isvalid(self)) {
+    log_e("Not pushing frame from invalid thread");
     set_error(ETHREAD);
     FAIL;
   }
@@ -475,6 +476,7 @@ py_thread__set_idle(py_thread_t * self) {
   size_t        index = self->tid >> 3;
 
   if (index > (max_pid >> 3)) {
+    log_e("Invalid TID");
     set_error(ETHREAD);
     FAIL;
   }
@@ -523,6 +525,7 @@ py_thread__save_kernel_stack(py_thread_t * self) {
   char  stack_path[48];
 
   if (!isvalid(_kstacks)) {
+    log_e("Invalid kernel stack");
     set_error(ETHREAD);
     FAIL;
   }
@@ -532,6 +535,7 @@ py_thread__save_kernel_stack(py_thread_t * self) {
   sprintf(stack_path, "/proc/%d/task/" TID_FMT "/stack", self->proc->pid, self->tid);
   cu_fd fd = open(stack_path, O_RDONLY);
   if (fd == -1) {
+    log_e("Failed to open %s", stack_path);
     set_error(ETHREAD);
     FAIL;
   }
@@ -618,6 +622,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
   }
 
   if (fail(wait_unw_init_remote(&cursor, self->proc->unwind.as, context))) {
+    log_e("libunwind: failed to initialize remote cursor");
     set_error(ETHREAD);
     FAIL;
   }
@@ -754,6 +759,7 @@ _py_thread__seize(py_thread_t * self) {
 int
 py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc) {
   if (!isvalid(self)) {
+    log_e("Cannot fill invalid thread");
     set_error(ETHREAD);
     FAIL;
   }
@@ -856,10 +862,18 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
 // ----------------------------------------------------------------------------
 int
 py_thread__next(py_thread_t * self) {
-  if (self->invalid || !isvalid(self->next_raddr.addr)) {
-    set_error(ETHREAD);
+  if (self->invalid) {
+    log_e("Invalid thread or no address for next thread: %p", self);
+    set_error(ETHREADINV);
     FAIL;
   }
+
+  if (!isvalid(self->next_raddr.addr)) {
+    austin_errno = ETHREADNONEXT;
+    FAIL;
+  }
+
+  log_t("Found next thread");
 
   return py_thread__fill_from_raddr(self, &(self->next_raddr), self->proc);
 }
@@ -996,7 +1010,7 @@ py_thread__emit_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t 
   }
   if (!stack_is_empty()) {
     log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
-    austin_errno = ETHREADINV;
+    set_error(ETHREADINV);
     #ifdef DEBUG
     emit_frames_left(stack_pointer());
     #endif

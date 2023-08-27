@@ -24,7 +24,7 @@ import os
 import platform
 from collections import Counter
 from shutil import rmtree
-from test.utils import allpythons as _allpythons
+from test.utils import allpythons
 from test.utils import austin
 from test.utils import austinp
 from test.utils import compress
@@ -40,20 +40,8 @@ from test.utils import variants
 from time import sleep
 
 import pytest
-from flaky import flaky
 
 
-def allpythons():
-    # Attach tests fail on Windows for Python < 3.7 and on MacOS for Python < 3
-    match platform.system():
-        case "Windows":
-            return _allpythons(min=(3, 7))
-        case "Darwin":
-            return _allpythons(min=(3,))
-    return _allpythons()
-
-
-@flaky(max_runs=6)
 @requires_sudo
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @pytest.mark.parametrize(
@@ -85,7 +73,6 @@ def test_attach_wall_time(austin, py, mode, mode_meta, heap):
         assert a <= d
 
 
-@flaky
 @requires_sudo
 @pytest.mark.parametrize("exposure", [1, 2])
 @allpythons()
@@ -121,7 +108,6 @@ def test_where(py, mojo):
         assert "<module>" in result.stdout
 
 
-@flaky
 @requires_sudo
 @pytest.mark.xfail(platform.system() == "Windows", reason="Does not pass in Windows CI")
 @allpythons()
@@ -165,7 +151,7 @@ def test_where_kernel(py):
 @pytest.mark.parametrize("prefix", [[], ["unshare", "-p", "-f", "-r"]])
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux only")
 @requires_sudo
-@_allpythons(min=(3,))
+@allpythons()
 def test_attach_container_like(py, tmp_path, prefix):
     """Test in container-like conditions.
 
@@ -203,4 +189,4 @@ def test_attach_container_like(py, tmp_path, prefix):
         a = sum_metric(result.stdout)
         d = int(meta["duration"])
 
-        assert a <= d
+        assert abs(a - d) <= (a + d) * 0.1

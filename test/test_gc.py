@@ -20,7 +20,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import platform
 from test.utils import allpythons
 from test.utils import austin
 from test.utils import has_pattern
@@ -30,13 +29,9 @@ from test.utils import python
 from test.utils import samples
 from test.utils import target
 
-from flaky import flaky
-import pytest
 
-
-@allpythons(min=(3, 7))
+@allpythons()
 @mojo
-@flaky
 def test_gc_off(py, mojo):
     result = austin("-i", "1ms", *python(py), target("target_gc.py"), mojo=mojo)
     assert result.returncode == 0
@@ -44,13 +39,8 @@ def test_gc_off(py, mojo):
     assert not has_pattern(":GC:", result.stdout)
 
 
-@pytest.mark.xfail(
-    platform.system() != "Linux",
-    reason="GC sampling seems to work reliably only on Linux",
-)
-@allpythons(min=(3, 7))
+@allpythons()
 @mojo
-@flaky
 def test_gc_on(py, mojo):
     result = austin("-gi", "1ms", *python(py), target("target_gc.py"), mojo=mojo)
     assert result.returncode == 0
@@ -62,9 +52,8 @@ def test_gc_on(py, mojo):
     assert len(gcs) > 10
 
 
-@allpythons(min=(3, 7))
+@allpythons()
 @mojo
-@flaky
 def test_gc_disabled(py, monkeypatch, mojo):
     monkeypatch.setenv("GC_DISABLED", "1")
 

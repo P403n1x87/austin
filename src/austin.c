@@ -138,7 +138,7 @@ do_child_processes(py_proc_t * py_proc) {
     // enough so we can try to attach to child processes straight away.
     // TODO: In the future, we might want to consider adding the option to wait
     // for child processes, as they might be spawned only much later.
-    pargs.timeout = 1;
+    pargs.timeout = 100000;  // 0.1s
 
     // Store the PID before it gets deleted by the update.
     pid_t ppid = py_proc->pid;
@@ -215,8 +215,13 @@ do_child_processes(py_proc_t * py_proc) {
 static inline int
 handle_error() {
   int retval = 0;
+  
   log_d("Last error: %d :: %s", austin_errno, get_last_error());
-  if (is_fatal(austin_errno)) {
+  
+  if (interrupt == SIGTERM) {
+    retval = SIGTERM;
+  }
+  else {
     retval = austin_errno;
 
     switch(retval) {
@@ -254,9 +259,6 @@ handle_error() {
       _msg(MERROR);
     }
   }
-
-  if (interrupt == SIGTERM)
-    retval = SIGTERM;
 
   return retval;
 } /* handle_error */

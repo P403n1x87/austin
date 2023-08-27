@@ -40,14 +40,24 @@ def test_cli_no_arguments():
 
 def test_cli_no_python():
     result = austin(
-        "-C",
-        "src\\austin.exe" if platform.system() == "Windows" else "src/austin",
+        "cmd.exe" if platform.system() == "Windows" else "src/austin",
         sys.executable,
         "-c",
         "from time import sleep;sleep(2)",
     )
-    assert result.returncode == 39
+    assert result.returncode == 32
     assert "not a Python" in result.stderr or "Cannot launch" in result.stderr
+
+
+def test_cli_short_lived():
+    result = austin(
+        "src\\austin.exe" if platform.system() == "Windows" else "src/austin",
+        sys.executable,
+        "-c",
+        "print('Hello World')",
+    )
+    assert result.returncode == 33
+    assert "too quickly" in result.stderr
 
 
 def test_cli_invalid_command():
