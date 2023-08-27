@@ -27,10 +27,8 @@ from test.utils import python
 from test.utils import target
 
 from austin.format.mojo import MojoFile, MojoFrame
-from flaky import flaky
 
 
-@flaky
 @allpythons(min=(3, 11))
 def test_mojo_column_data(py, tmp_path: Path):
     datafile = tmp_path / "test_mojo_column.austin"

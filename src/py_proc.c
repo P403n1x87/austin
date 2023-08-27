@@ -334,7 +334,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   if (py_proc__get_type(self, raddr, is)) {
     log_ie("Cannot get remote interpreter state");
-    return OUT_OF_BOUND;
+    FAIL;
   }
 
   if (fail(py_proc__get_type(self, V_FIELD(void *, is, py_is, o_tstate_head), tstate_head))) {
@@ -355,7 +355,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   log_d(
     "Found possible interpreter state @ %p (offset %p).",
-    raddr, raddr - self->map.elf.base
+    raddr, raddr - self->map.exe.base
   );
 
   log_t(
@@ -395,7 +395,11 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     if (is_fatal(austin_errno))
       FAIL;
     
-    py_thread__next(&thread);
+    if (fail(py_thread__next(&thread))) {
+      log_d("Failed to get next thread while inferring TID field offset");
+      FAIL;
+    }
+
     if (thread.raddr.addr == initial_thread_addr)
       break;
   }
@@ -423,6 +427,13 @@ _py_proc__scan_bss(py_proc_t * self) {
     FAIL;
   }
 
+  cu_void * bss = malloc(self->map.bss.size);
+  if (!isvalid(bss)) {
+    log_e("Cannot allocate memory for BSS scan (pid: %d)", self->pid);
+    set_error(EPROC);
+    FAIL;
+  }
+
   int    shift = 0;
   size_t step  = self->map.bss.size > 0x10000 ? 0x10000 : self->map.bss.size;
   
@@ -430,32 +441,36 @@ _py_proc__scan_bss(py_proc_t * self) {
   
   while (!(shift && V_MAX(3, 10))) {
     void * base = self->map.bss.base - (shift * step);
-    if (fail(py_proc__memcpy(self, base, self->map.bss.size, self->bss))) {
+    if (fail(py_proc__memcpy(self, base, self->map.bss.size, bss))) {
       log_ie("Failed to copy BSS section");
       FAIL;
     }
 
     log_d("Scanning the BSS section @ %p (shift %d)", base, shift);
 
-    void * upper_bound = self->bss + (shift ? step : self->map.bss.size);
+    void * upper_bound = bss + (shift ? step : self->map.bss.size);
     for (
-      register void ** raddr = (void **) self->bss;
+      register void ** raddr = (void **) bss;
       (void *) raddr < upper_bound;
       raddr++
     ) {
       if (
         (!shift &&
         success(_py_proc__check_interp_state(self, *raddr)))
-        ||(shift && success(_py_proc__check_interp_state(self, (void*) raddr - self->bss + base)))
+        ||(shift && success(_py_proc__check_interp_state(self, (void*) raddr - bss + base)))
       ) {
         log_d(
           "Possible interpreter state referenced by BSS @ %p (offset %x)",
-          (void *) raddr - (void *) self->bss + (void *) base,
-          (void *) raddr - (void *) self->bss
+          (void *) raddr - (void *) bss + (void *) base,
+          (void *) raddr - (void *) bss
         );
-        self->is_raddr = shift ? (void*) raddr - self->bss + base : *raddr;
+        self->is_raddr = shift ? (void*) raddr - bss + base : *raddr;
         SUCCESS;
       }
+      
+      // If we don't have symbols we tolerate memory copy errors.
+      if (austin_errno == EPROCNPID || (self->sym_loaded && austin_errno == EMEMCOPY))
+        FAIL;
     }
     #if defined PL_WIN
     break;
@@ -495,6 +510,8 @@ _py_proc__deref_interp_head(py_proc_t * self) {
     log_d("GC runtime state @ %p", self->gc_state_raddr);
   }
 
+  log_d("Found possible interpreter state from runtime symbol at %p", interp_head_raddr);
+
   if (fail(_py_proc__check_interp_state(self, interp_head_raddr))) {
     log_d("Interpreter state check failed while dereferencing symbol");
     FAIL;
@@ -527,61 +544,12 @@ _py_proc__get_current_thread_state_raddr(py_proc_t * self) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__find_interpreter_state(py_proc_t * self) {
-  if (!isvalid(self)) {
-    set_error(EPROC);
-    FAIL;
-  }
-
-  V_DESC(self->py_v);
-  
-  PyThreadState   tstate_current;
-  void          * tstate_current_raddr;
-
-  // First try to de-reference interpreter head as the most reliable method
-  if (fail(_py_proc__deref_interp_head(self))) {
-    log_d("Cannot dereference PyInterpreterState head from symbols (pid: %d)", self->pid);
-    // If that fails try to get the current thread state (can be NULL during idle)
-    tstate_current_raddr = _py_proc__get_current_thread_state_raddr(self);
-    if (tstate_current_raddr == NULL || tstate_current_raddr == (void *) -1) {
-      // Idle or unable to dereference
-      set_error(EPROC);
-      FAIL;
-    }
-    else {
-      if (fail(py_proc__get_type(self, tstate_current_raddr, tstate_current)))
-        FAIL;
-
-      if (fail(_py_proc__check_interp_state(
-        self, V_FIELD(void*, tstate_current, py_thread, o_interp)
-      ))) FAIL;
-
-      self->is_raddr = V_FIELD(void*, tstate_current, py_thread, o_interp);
-      log_d("Interpreter head de-referenced from current thread state symbol.");
-    }
-  } else {
-    log_d("✨ Interpreter head de-referenced from symbols ✨ ");
-  }
-
-  SUCCESS;
-}
-
-
-// ----------------------------------------------------------------------------
-static int
 _py_proc__wait_for_interp_state(py_proc_t * self) {
   #ifdef DEBUG
   register int attempts = 0;
   #endif
 
   self->is_raddr = NULL;
-
-  self->bss = realloc(self->bss, self->map.bss.size);
-  if (!isvalid(self->bss)) {
-    log_e("Cannot allocate memory for BSS scan (pid: %d)", self->pid);
-    set_error(EPROC);
-    FAIL;
-  }
 
   TIMER_START(pargs.timeout)
     if (!py_proc__is_running(self)) {
@@ -594,23 +562,20 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
     attempts++;
     #endif
 
-    if (success(_py_proc__find_interpreter_state(self)))
+    if (success(_py_proc__deref_interp_head(self))) {
+      log_d("✨ Interpreter head de-referenced from symbols ✨ ");
       TIMER_STOP
-
-    if (is_fatal(austin_errno)) {
-      log_d(
-        "Terminating _py_proc__wait_for_interp_state loop because of fatal error code %d",
-        austin_errno
-      );
-      FAIL;
     }
+    
+    log_d("Cannot dereference PyInterpreterState head from symbols (pid: %d)", self->pid);
 
-    switch (_py_proc__scan_bss(self)) {
-    case 0:
-      log_d("Interpreter state located from BSS scan.");
-
-    case OUT_OF_BOUND:
-      TIMER_STOP
+    if (austin_errno == EPROCNPID) {
+      log_d(
+        "Stop waiting for interpreter state: process %ld is not running",
+        self->pid
+      );
+      self->is_raddr = NULL;
+      FAIL;
     }
 
     // Try once for child processes.
@@ -619,9 +584,7 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 
   TIMER_END
 
-  sfree(self->bss);
-
-  if (self->is_raddr != NULL) {
+  if (isvalid(self->is_raddr)) {
     log_d("Interpreter State de-referenced @ raddr: %p after %d attempts",
       self->is_raddr,
       attempts
@@ -642,8 +605,6 @@ _py_proc__wait_for_interp_state(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__run(py_proc_t * self) {
-  austin_errno = EOK;
-
   int try_once = self->child;
   int init = FALSE;
   #ifdef DEBUG
@@ -655,13 +616,14 @@ _py_proc__run(py_proc_t * self) {
 
   TIMER_START(pargs.timeout)
     if (!py_proc__is_running(self)) {
+      log_e("Process %d is not running.", self->pid);
       set_error(EPROCNPID);
       FAIL;
     }
 
     sfree(self->bin_path);
     sfree(self->lib_path);
-    self->sym_loaded = 0;
+    self->sym_loaded = FALSE;
 
     if (success(_py_proc__init(self))) {
       log_d("Process is ready");
@@ -707,8 +669,28 @@ _py_proc__run(py_proc_t * self) {
   if (fail(_py_proc__infer_python_version(self)))
     FAIL;
 
-  if (_py_proc__wait_for_interp_state(self))
-    FAIL;
+  if (self->sym_loaded) {
+    if (fail(_py_proc__wait_for_interp_state(self))) {
+      if (fail(_py_proc__scan_bss(self))) {
+        log_d("BSS scan failed");
+        FAIL;
+      }
+      log_d("Interpreter state located from BSS scan");
+    }
+  } else {
+    int found = FALSE;
+    TIMER_START(pargs.timeout)
+      if (success(_py_proc__scan_bss(self))) {
+        log_d("Interpreter state located from BSS scan (no symbols available)");
+        found = TRUE;
+        TIMER_STOP
+      }
+    TIMER_END
+    if (!found) {
+      log_d("BSS scan failed (no symbols available)");
+      FAIL;
+    }
+  }
 
   self->timestamp = gettime();
 
@@ -928,7 +910,6 @@ py_proc__start(py_proc_t * self, const char * exec, char * argv[]) {
   if (fail(_py_proc__run(self))) {
     if (austin_errno == EPROCNPID)
       set_error(EPROCFORK);
-    log_ie("Cannot start new process");
     FAIL;
   }
 
@@ -1105,7 +1086,12 @@ _py_proc__interrupt_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
     
     log_t("ptrace: thread %d interrupted", py_thread.tid);
   } while (success(py_thread__next(&py_thread)));
-  
+
+  if (austin_errno != ETHREADNONEXT) {
+    log_ie("Failed to iterate over threads while interrupting threads");
+    FAIL;
+  }
+
   SUCCESS;
 }
 
@@ -1133,6 +1119,11 @@ _py_proc__resume_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
       }
     }
   } while (success(py_thread__next(&py_thread)));
+
+  if (austin_errno != ETHREADNONEXT) {
+    log_ie("Failed to iterate over threads while resuming threads");
+    FAIL;
+  }
 
   SUCCESS;
 }
@@ -1201,6 +1192,12 @@ py_proc__sample(py_proc_t * self) {
         mem_delta
       );
     } while (success(py_thread__next(&py_thread)));
+
+    if (austin_errno != ETHREADNONEXT) {
+      log_ie("Failed to iterate over threads while sampling");
+      FAIL;
+    }
+
     #ifdef NATIVE
     self->timestamp = gettime();
     if (fail(_py_proc__resume_threads(self, &raddr))) {
@@ -1279,7 +1276,6 @@ py_proc__destroy(py_proc_t * self) {
 
   sfree(self->bin_path);
   sfree(self->lib_path);
-  sfree(self->bss);
   sfree(self->extra);
 
   lru_cache__destroy(self->string_cache);

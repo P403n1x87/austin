@@ -109,8 +109,8 @@ jobs:
         run: |
           ulimit -c unlimited
           source .venv/bin/activate
-          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed --no-flaky-report -svr a
-          .venv/bin/pytest --pastebin=failed --no-flaky-report -svr a
+          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a
+          .venv/bin/pytest --pastebin=failed -svr a
           deactivate
 
   wheels-linux:
@@ -235,8 +235,8 @@ jobs:
       - name: Run tests
         run: |
           source .venv/bin/activate
-          sudo -E pytest --ignore=test/cunit --pastebin=failed --no-flaky-report -svr a
-          pytest --ignore=test/cunit --pastebin=failed --no-flaky-report -svr a -k _darwin
+          sudo -E pytest --ignore=test/cunit --pastebin=failed -svr a
+          pytest --ignore=test/cunit --pastebin=failed -svr a -k _darwin
           deactivate
 
   wheels-osx:
@@ -338,7 +338,7 @@ jobs:
       - name: Run tests
         run: |
           venv\Scripts\Activate.ps1
-          python -m pytest --ignore=test\cunit --pastebin=failed --no-flaky-report -svr a
+          python -m pytest --ignore=test\cunit --pastebin=failed -svr a
           deactivate
 
   wheels-win:

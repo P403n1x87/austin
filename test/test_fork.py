@@ -40,10 +40,8 @@ from test.utils import threads
 from test.utils import variants
 
 import pytest
-from flaky import flaky
 
 
-@flaky(max_runs=10)
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @allpythons()
 @variants
@@ -76,7 +74,6 @@ def test_fork_wall_time(austin, py, heap, mojo):
         assert [_ for _ in ms if "python" in _], ms
 
 
-@flaky
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @allpythons()
 @variants
@@ -100,7 +97,6 @@ def test_fork_cpu_time_cpu_bound(py, heap, austin, mojo):
     assert 0 < a < 2.1 * d
 
 
-@flaky(max_runs=6)
 @allpythons()
 @variants
 def test_fork_cpu_time_idle(py, austin):
@@ -117,7 +113,6 @@ def test_fork_cpu_time_idle(py, austin):
     assert a < 1.1 * d
 
 
-@flaky
 @allpythons()
 @mojo
 def test_fork_memory(py, mojo):
@@ -168,9 +163,8 @@ def test_fork_output(py, tmp_path: Path, mojo):
 
 # Support for multiprocess is attach-like and seems to suffer from the same
 # issues as attach tests on Windows.
-@flaky
 @pytest.mark.xfail(platform.system() == "Windows", reason="Does not pass in Windows CI")
-@allpythons(min=(3, 7) if platform.system() == "Windows" else None)
+@allpythons()
 @mojo
 def test_fork_multiprocess(py, mojo):
     result = austin("-Ci", "1ms", *python(py), target("target_mp.py"), mojo=mojo)
@@ -187,7 +181,6 @@ def test_fork_multiprocess(py, mojo):
     assert has_pattern(result.stdout, "target_mp.py:fact:31 "), compress(result.stdout)
 
 
-@flaky
 @allpythons()
 @mojo
 def test_fork_full_metrics(py, mojo):
@@ -213,7 +206,6 @@ def test_fork_full_metrics(py, mojo):
     assert alloc * dealloc
 
 
-@flaky
 @pytest.mark.parametrize("exposure", [1, 2])
 @allpythons()
 def test_fork_exposure(py, exposure):

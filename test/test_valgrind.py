@@ -44,8 +44,6 @@ def valgrind(python_args: list[str], mode: str):
                 str(austin.path),
                 f"-{mode}i",
                 "1ms",
-                "-t",
-                "1s",
                 "-o",
                 "/dev/null",
                 *python_args,

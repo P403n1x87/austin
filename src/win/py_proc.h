@@ -122,7 +122,12 @@ _py_proc__analyze_pe(py_proc_t * self, char * path, void * base) {
     }
   }
 
-  return !self->sym_loaded;
+  if (!self->sym_loaded) {
+    set_error(EPROC);
+    FAIL;
+  }
+
+  SUCCESS;
 }
 
 
@@ -348,8 +353,8 @@ _py_proc__get_modules(py_proc_t * self) {
   for (int i = 0; i < MAP_COUNT; i++) {
     map = &(pd->maps[i]);
     if (map->has_symbols) {
-      self->map.elf.base = map->base;
-      self->map.elf.size = map->size;
+      self->map.exe.base = map->base;
+      self->map.exe.size = map->size;
       break;
     }
   }
@@ -362,7 +367,12 @@ _py_proc__get_modules(py_proc_t * self) {
   log_d("BSS map %d from %s @ %p", map_index, pd->maps[map_index].path, self->map.bss.base);
   log_d("VM maps parsing result: bin=%s lib=%s symbols=%d", self->bin_path, self->lib_path, self->sym_loaded);
 
-  return !self->sym_loaded;
+  if (!self->sym_loaded) {
+    set_error(EPROC);
+    FAIL;
+  }
+
+  SUCCESS;
 }
 
 

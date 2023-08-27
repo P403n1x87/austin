@@ -52,8 +52,7 @@
 #define BIN_MAP                  (1 << 0)
 #define DYNSYM_MAP               (1 << 1)
 #define RODATA_MAP               (1 << 2)
-#define HEAP_MAP                 (1 << 3)
-#define BSS_MAP                  (1 << 4)
+#define BSS_MAP                  (1 << 3)
 
 
 // Get the offset of the ith section header
@@ -361,8 +360,8 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   sfree(self->bin_path);
   sfree(self->lib_path);
 
-  self->map.elf.base = NULL;
-  self->map.elf.size = 0;
+  self->map.exe.base = NULL;
+  self->map.exe.size = 0;
 
   sprintf(file_name, "/proc/%d/exe", self->pid);
 
@@ -403,6 +402,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
       size_t page_size = getpagesize();
       map->bss_base = (void *) lower - page_size;
       map->bss_size = upper - lower + page_size;
+      maps_flag |= BSS_MAP;
       log_d("Inferred BSS for %s: %lx-%lx", map->path, lower, upper);
     }
 
@@ -414,16 +414,6 @@ _py_proc__parse_maps_file(py_proc_t * self) {
       // ridiculous values.
       if ((void *) lower < self->min_raddr) self->min_raddr = (void *) lower;
       if ((void *) upper > self->max_raddr) self->max_raddr = (void *) upper;
-    }
-
-    if ((maps_flag & HEAP_MAP) == 0 && strstr(line, "[heap]\n") != NULL) {
-      self->map.heap.base = (void *) lower;
-      self->map.heap.size = upper - lower;
-
-      maps_flag |= HEAP_MAP;
-
-      log_d("HEAP bounds " ADDR_FMT "-" ADDR_FMT, lower, upper);
-      continue;
     }
 
     if (pathname[0] == '[')
@@ -524,10 +514,23 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   for (int i = 0; i < MAP_COUNT; i++) {
     map = &(pd->maps[i]);
     if (map->has_symbols) {
-      self->map.elf.base = map->base;
-      self->map.elf.size = map->size;
+      self->map.exe.base = map->base;
+      self->map.exe.size = map->size;
       maps_flag |= BIN_MAP;
+      self->sym_loaded = TRUE;
       break;
+    }
+  }
+
+  if (!(maps_flag & BIN_MAP) && !isvalid(pd->maps[MAP_LIBNEEDLE].path)) {
+    // We don't have symbols and we don't have a needle path so it's quite
+    // unlikely that we can work out a Python version in this case.
+    if (isvalid(pd->maps[MAP_BIN].path) && strstr(pd->maps[MAP_BIN].path, "python")) {
+      log_d("No symbols but binary seems to be Python.");
+      maps_flag |= BIN_MAP;
+    } else {
+      log_d("No symbols and no needle path. Giving up.");
+      FAIL;
     }
   }
 
@@ -539,7 +542,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   log_d("BSS map %d from %s @ %p", map_index, pd->maps[map_index].path, self->map.bss.base);
   log_d("VM maps parsing result: bin=%s lib=%s flags=%d", self->bin_path, self->lib_path, maps_flag);
 
-  return maps_flag != (BIN_MAP | HEAP_MAP);
+  return !(maps_flag & (BIN_MAP | BSS_MAP));
 } /* _py_proc__parse_maps_file */
 
 

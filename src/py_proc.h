@@ -48,8 +48,7 @@ typedef struct {
 
 typedef struct {
   proc_vm_map_block_t bss;
-  proc_vm_map_block_t heap;
-  proc_vm_map_block_t elf;
+  proc_vm_map_block_t exe;
   proc_vm_map_block_t dynsym;
   proc_vm_map_block_t rodata;
 } proc_vm_map_t;
@@ -67,8 +66,6 @@ typedef struct {
   proc_vm_map_t   map;
   void          * min_raddr;
   void          * max_raddr;
-
-  void          * bss;  // local copy of the remote bss section
 
   int             sym_loaded;
   python_v      * py_v;
