@@ -22,13 +22,12 @@
 
 import platform
 import sys
-
-import pytest
-
 from test.utils import austin
 from test.utils import no_sudo
 from test.utils import run_python
 from test.utils import target
+
+import pytest
 
 
 def test_cli_no_arguments():
@@ -44,6 +43,7 @@ def test_cli_no_python():
         sys.executable,
         "-c",
         "from time import sleep;sleep(2)",
+        expect_fail=True,
     )
     assert result.returncode == 32
     assert "not a Python" in result.stderr or "Cannot launch" in result.stderr
@@ -55,20 +55,21 @@ def test_cli_short_lived():
         sys.executable,
         "-c",
         "print('Hello World')",
+        expect_fail=True,
     )
     assert result.returncode == 33
     assert "too quickly" in result.stderr
 
 
 def test_cli_invalid_command():
-    result = austin("snafubar")
+    result = austin("snafubar", expect_fail=True)
     assert "[GCC" in result.stderr
     assert result.returncode == 33
     assert "Cannot launch" in (result.stderr or result.stdout)
 
 
 def test_cli_invalid_pid():
-    result = austin("-p", "9999999")
+    result = austin("-p", "9999999", expect_fail=True)
 
     assert result.returncode == 36
     assert "Cannot attach" in result.stderr
@@ -80,7 +81,7 @@ def test_cli_invalid_pid():
 @no_sudo
 def test_cli_permissions():
     with run_python("3", target("sleepy.py")) as p:
-        result = austin("-i", "1ms", "-p", str(p.pid))
+        result = austin("-i", "1ms", "-p", str(p.pid), expect_fail=True)
         assert result.returncode == 37, result.stderr
         assert "Insufficient permissions" in result.stderr, result.stderr
 
@@ -91,6 +92,13 @@ def test_cli_permissions():
 )
 @no_sudo
 def test_cli_permissions_darwin():
-    result = austin("-i", "1ms", "python3.10", "-c", "from time import sleep; sleep(1)")
+    result = austin(
+        "-i",
+        "1ms",
+        "python3.10",
+        "-c",
+        "from time import sleep; sleep(1)",
+        expect_fail=True,
+    )
     assert result.returncode == 37, result.stderr
     assert "Insufficient permissions" in result.stderr, result.stderr
