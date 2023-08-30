@@ -81,7 +81,10 @@ AM_CONDITIONAL([COVERAGE], [test x$coverage = xtrue])
 AC_ARG_ENABLE([debug-symbols], [
   --enable-debug-symbols    Include debug symbols], [
 case "${enableval}" in
-    yes) debugsymbols=true ;;
+    yes)
+        debugsymbols=true
+        AUSTINP_LDADD+=" -lm"
+        ;;
     no)  debugsymbols=false ;;
     *) AC_MSG_ERROR([bad value ${enableval} for --enable-debug-symbols]) ;;
 esac], [debugsymbols=false])

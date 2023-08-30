@@ -31,14 +31,16 @@ from io import StringIO
 from pathlib import Path
 from shutil import rmtree
 from subprocess import PIPE
+from subprocess import CalledProcessError
 from subprocess import CompletedProcess
 from subprocess import Popen
+from subprocess import TimeoutExpired
 from subprocess import check_output
-from subprocess import run
 from test import PYTHON_VERSIONS
 from time import sleep
 from types import ModuleType
 from typing import Iterator
+from typing import List
 from typing import TypeVar
 
 
@@ -131,7 +133,58 @@ def bt(binary: Path) -> str:
     return "No core dump available."
 
 
+def collect_logs(variant: str, pid: int) -> List[str]:
+    match platform.system():
+        case "Linux":
+            with Path("/var/log/syslog").open() as logfile:
+                needle = f"{variant}[{pid}]"
+                return [_.strip() for _ in logfile.readlines() if needle in _]
+        case _:
+            return []
+
+
 EXEEXT = ".exe" if platform.system() == "Windows" else ""
+
+
+# Taken from the subprocess module
+def run(
+    *popenargs, input=None, capture_output=False, timeout=None, check=False, **kwargs
+):
+    if input is not None:
+        if kwargs.get("stdin") is not None:
+            raise ValueError("stdin and input arguments may not both be used.")
+        kwargs["stdin"] = PIPE
+
+    if capture_output:
+        if kwargs.get("stdout") is not None or kwargs.get("stderr") is not None:
+            raise ValueError(
+                "stdout and stderr arguments may not be used " "with capture_output."
+            )
+        kwargs["stdout"] = PIPE
+        kwargs["stderr"] = PIPE
+
+    with Popen(*popenargs, **kwargs) as process:
+        try:
+            stdout, stderr = process.communicate(input, timeout=timeout)
+        except TimeoutExpired as exc:
+            process.kill()
+            if platform.system() == "Windows":
+                exc.stdout, exc.stderr = process.communicate()
+            else:
+                process.wait()
+            raise
+        except:  # noqa
+            process.kill()
+            raise
+        retcode = process.poll()
+        if check and retcode:
+            raise CalledProcessError(
+                retcode, process.args, output=stdout, stderr=stderr
+            )
+    result = CompletedProcess(process.args, retcode, stdout, stderr)
+    result.pid = process.pid
+
+    return result
 
 
 class Variant(str):
@@ -144,12 +197,18 @@ class Variant(str):
         if not path.is_file():
             path = Path(name).with_suffix(EXEEXT)
 
+        self.name = name
         self.path = path
 
         self.ALL.append(self)
 
     def __call__(
-        self, *args: str, timeout: int = 60, mojo: bool = False, convert: bool = True
+        self,
+        *args: str,
+        timeout: int = 60,
+        mojo: bool = False,
+        convert: bool = True,
+        expect_fail: bool = False,
     ) -> CompletedProcess:
         if not self.path.is_file():
             pytest.skip(f"Variant '{self}' not available")
@@ -173,6 +232,16 @@ class Variant(str):
         else:
             result.stdout = result.stdout.decode(errors="ignore")
         result.stderr = result.stderr.decode()
+
+        if (
+            result.returncode
+            and (logs := collect_logs(self.name, result.pid))
+            and not expect_fail
+        ):
+            print(f" logs for {result.pid} ".center(80, "="))
+            for log in logs:
+                print(log)
+            print(f" end of logs for {result.pid} ".center(80, "="))
 
         return result
 
