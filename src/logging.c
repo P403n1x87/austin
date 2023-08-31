@@ -22,6 +22,7 @@
 
 #define _DEFAULT_SOURCE
 
+#include "austin.h"
 #include "events.h"
 #include "mem.h"
 #include "platform.h"
@@ -84,7 +85,7 @@ logger_init(void) {
   if (!logging) return;
   #ifdef PL_UNIX
   setlogmask (LOG_UPTO (LOG_DEBUG));
-  openlog ("austin", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
+  openlog (PROGRAM_NAME, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
 
   #else
   if (logfile == NULL) {

@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "futils.h"
 #include "../mem.h"
 #include "../resources.h"
 
@@ -354,6 +355,11 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     FAIL;
   }
 
+  // Save the file hash and the modified time. We'll use them to detect if the
+  // content has changed since the last time we read it.
+  crc32_t file_hash = fhash(fp);
+  long modified_time = fmtime_ns(fp);
+
   self->min_raddr = (void *) -1;
   self->max_raddr = NULL;
 
@@ -402,7 +408,6 @@ _py_proc__parse_maps_file(py_proc_t * self) {
       size_t page_size = getpagesize();
       map->bss_base = (void *) lower - page_size;
       map->bss_size = upper - lower + page_size;
-      maps_flag |= BSS_MAP;
       log_d("Inferred BSS for %s: %lx-%lx", map->path, lower, upper);
     }
 
@@ -539,10 +544,28 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   self->map.bss.base = pd->maps[map_index].bss_base;
   self->map.bss.size = pd->maps[map_index].bss_size;
   
+  if (!isvalid(self->map.bss.base)) {
+    log_e("Cannot find valid BSS map");
+    set_error(EPROCVM);
+    FAIL;
+  }
+
+  if (!(maps_flag & (BIN_MAP))) {
+    log_e("No usable Python binary found");
+    set_error(EPROC);
+    FAIL;
+  }
+
+  if (!(modified_time == fmtime_ns(fp) && file_hash == fhash(fp))) {
+    log_e("VM maps file has changed since last read");
+    set_error(EPROCVM);
+    FAIL;
+  }
+
   log_d("BSS map %d from %s @ %p", map_index, pd->maps[map_index].path, self->map.bss.base);
   log_d("VM maps parsing result: bin=%s lib=%s flags=%d", self->bin_path, self->lib_path, maps_flag);
 
-  return !(maps_flag & (BIN_MAP | BSS_MAP));
+  SUCCESS;
 } /* _py_proc__parse_maps_file */
 
 

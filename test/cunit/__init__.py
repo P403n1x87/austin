@@ -28,11 +28,6 @@ ROOT = TEST.parent
 SRC = ROOT / "src"
 
 
-# Remove any existing shared objects
-for so in SRC.glob("*.so"):
-    so.unlink(missing_ok=True)
-
-
 restrict_re = re.compile(r"__restrict \w+")
 
 _header_head = r"""

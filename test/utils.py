@@ -42,6 +42,7 @@ from types import ModuleType
 from typing import Iterator
 from typing import List
 from typing import TypeVar
+from typing import Union
 
 
 try:
@@ -137,8 +138,12 @@ def collect_logs(variant: str, pid: int) -> List[str]:
     match platform.system():
         case "Linux":
             with Path("/var/log/syslog").open() as logfile:
-                needle = f"{variant}[{pid}]"
-                return [_.strip() for _ in logfile.readlines() if needle in _]
+                needles = (f"{variant}[{pid}]", f"systemd-coredump[{pid}]")
+                return [
+                    line.strip().replace("#012", "\n")
+                    for line in logfile.readlines()
+                    if any(needle in line for needle in needles)
+                ]
         case _:
             return []
 
@@ -208,7 +213,7 @@ class Variant(str):
         timeout: int = 60,
         mojo: bool = False,
         convert: bool = True,
-        expect_fail: bool = False,
+        expect_fail: Union[bool, int] = False,
     ) -> CompletedProcess:
         if not self.path.is_file():
             pytest.skip(f"Variant '{self}' not available")
@@ -233,15 +238,17 @@ class Variant(str):
             result.stdout = result.stdout.decode(errors="ignore")
         result.stderr = result.stderr.decode()
 
-        if (
-            result.returncode
-            and (logs := collect_logs(self.name, result.pid))
-            and not expect_fail
-        ):
-            print(f" logs for {result.pid} ".center(80, "="))
-            for log in logs:
-                print(log)
-            print(f" end of logs for {result.pid} ".center(80, "="))
+        logs = collect_logs(self.name, result.pid)
+        result.logs = logs
+
+        if result.returncode != int(expect_fail):
+            if logs:
+                print(f" logs for {self.name}[{result.pid}] ".center(80, "="))
+                for log in logs:
+                    print(log)
+                print(f" end of logs for {self.name}[{result.pid}] ".center(80, "="))
+            else:
+                print(f"<< no logs for {self.name}[{result.pid}] >>")
 
         return result
 

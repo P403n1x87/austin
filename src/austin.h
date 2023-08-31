@@ -23,6 +23,8 @@
 #ifndef AUSTIN_H
 #define AUSTIN_H
 
+#include "platform.h"
+
 #ifdef NATIVE
 #define PROGRAM_NAME                    "austinp"
 #else

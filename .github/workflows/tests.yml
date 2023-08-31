@@ -86,7 +86,8 @@ jobs:
           sudo apt-get update
           sudo apt-get -y install \
             valgrind \
-            gdb
+            gdb \
+            systemd-coredump
 
       - name: Install Python
         uses: actions/setup-python@v4
@@ -105,11 +106,17 @@ jobs:
           pip install -r test/requirements.txt
           deactivate
 
-      - name: Run tests
+      - name: Run tests (with sudo)
         run: |
           ulimit -c unlimited
           source .venv/bin/activate
           sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a
+          deactivate
+
+      - name: Run tests (without sudo)
+        run: |
+          ulimit -c unlimited
+          source .venv/bin/activate
           .venv/bin/pytest --pastebin=failed -svr a
           deactivate
 
@@ -338,7 +345,7 @@ jobs:
       - name: Run tests
         run: |
           venv\Scripts\Activate.ps1
-          python -m pytest --ignore=test\cunit --pastebin=failed -svr a
+          python -m pytest --full-trace --ignore=test\cunit --pastebin=failed -svr a
           deactivate
 
   wheels-win:

@@ -541,80 +541,65 @@ _py_proc__get_current_thread_state_raddr(py_proc_t * self) {
   return (void *) -1;
 }
 
-
 // ----------------------------------------------------------------------------
 static int
-_py_proc__wait_for_interp_state(py_proc_t * self) {
-  #ifdef DEBUG
-  register int attempts = 0;
-  #endif
-
-  self->is_raddr = NULL;
-
-  TIMER_START(pargs.timeout)
-    if (!py_proc__is_running(self)) {
-      log_e("Process %d is not running.", self->pid);
-      set_error(EPROCNPID);
-      FAIL;
-    }
-
-    #ifdef DEBUG
-    attempts++;
-    #endif
-
-    if (success(_py_proc__deref_interp_head(self))) {
-      log_d("✨ Interpreter head de-referenced from symbols ✨ ");
-      TIMER_STOP
-    }
-    
-    log_d("Cannot dereference PyInterpreterState head from symbols (pid: %d)", self->pid);
-
-    if (austin_errno == EPROCNPID) {
-      log_d(
-        "Stop waiting for interpreter state: process %ld is not running",
-        self->pid
-      );
-      self->is_raddr = NULL;
-      FAIL;
-    }
-
-    // Try once for child processes.
-    if (self->child)
-      TIMER_STOP
-
-  TIMER_END
-
-  if (isvalid(self->is_raddr)) {
-    log_d("Interpreter State de-referenced @ raddr: %p after %d attempts",
-      self->is_raddr,
-      attempts
-    );
-    SUCCESS;
-  }
-
-  if (self->child) {
+_py_proc__find_interpreter_state(py_proc_t * self) {
+  if (!isvalid(self)) {
     set_error(EPROC);
     FAIL;
   }
 
-  set_error(EPROCISTIMEOUT);
-  FAIL;
-} // _py_proc__wait_for_interp_state
+  if (fail(_py_proc__init(self)))
+    FAIL;
 
+  // Determine and set version
+  if (fail(_py_proc__infer_python_version(self)))
+    FAIL;
+
+  if (self->sym_loaded) {
+    // Try to resolve the symbols if we have them
+
+    self->is_raddr = NULL;
+
+    if (fail(_py_proc__deref_interp_head(self))) {
+      log_d("Cannot dereference PyInterpreterState head from symbols (pid: %d)", self->pid);
+      FAIL;
+    }
+    
+    log_d("✨ Interpreter head de-referenced from symbols ✨ ");
+  } else {
+    // Attempt a BSS scan if we don't have symbols
+    if (fail(_py_proc__scan_bss(self))) {
+      log_d("BSS scan failed (no symbols available)");
+      FAIL;
+    }
+    
+    log_d("Interpreter state located from BSS scan (no symbols available)");
+  }
+
+  SUCCESS;
+}
 
 // ----------------------------------------------------------------------------
 static int
 _py_proc__run(py_proc_t * self) {
   int try_once = self->child;
   int init = FALSE;
+  int attempts = 0;
+
   #ifdef DEBUG
-  if (try_once == FALSE)
+  if (!try_once)
     log_d("Start up timeout: %d ms", pargs.timeout / 1000);
   else
     log_d("Single attempt to attach to process %d", self->pid);
   #endif
 
   TIMER_START(pargs.timeout)
+    if (try_once && ++attempts > 1) {
+      log_d("Cannot attach to process %d with a single attempt.", self->pid);
+      FAIL;
+    }
+
     if (!py_proc__is_running(self)) {
       log_e("Process %d is not running.", self->pid);
       set_error(EPROCNPID);
@@ -625,30 +610,35 @@ _py_proc__run(py_proc_t * self) {
     sfree(self->lib_path);
     self->sym_loaded = FALSE;
 
-    if (success(_py_proc__init(self))) {
-      log_d("Process is ready");
+    if (success(_py_proc__find_interpreter_state(self))) {
       init = TRUE;
+
+      log_d("Interpreter State de-referenced @ raddr: %p after %d attempts",
+        self->is_raddr,
+        attempts
+      );
+
       TIMER_STOP;
     }
 
-    log_d("Process is not ready");
-
-    if (try_once)
-      TIMER_STOP
   TIMER_END
+
   log_d("_py_proc__init timer loop terminated");
 
   if (!init) {
-    if (try_once)
-      log_d("Cannot attach to process %d with a single attempt.", self->pid);
-    FAIL;
+    log_d("Interpreter state search timed out");
+
+    // Scan the BSS section as a last resort
+    if (fail(_py_proc__scan_bss(self))) {
+      log_d("BSS scan failed");
+      FAIL;
+    }
+
+    log_d("Interpreter state located from BSS scan");
   }
 
   if (!(isvalid(self->bin_path) || isvalid(self->lib_path)))
     log_w("No Python binary files detected");
-
-  if (self->map.bss.size == 0 || self->map.bss.base == NULL)
-    log_e("Unable to fully locate the BSS section.");
 
   if (self->min_raddr > self->max_raddr)
     log_w("Invalid remote VM maximal bounds.");
@@ -664,33 +654,6 @@ _py_proc__run(py_proc_t * self) {
   if (self->lib_path != NULL) log_d("Python library: %s", self->lib_path);
   log_d("Maximal VM address space: %p-%p", self->min_raddr, self->max_raddr);
   #endif
-
-  // Determine and set version
-  if (fail(_py_proc__infer_python_version(self)))
-    FAIL;
-
-  if (self->sym_loaded) {
-    if (fail(_py_proc__wait_for_interp_state(self))) {
-      if (fail(_py_proc__scan_bss(self))) {
-        log_d("BSS scan failed");
-        FAIL;
-      }
-      log_d("Interpreter state located from BSS scan");
-    }
-  } else {
-    int found = FALSE;
-    TIMER_START(pargs.timeout)
-      if (success(_py_proc__scan_bss(self))) {
-        log_d("Interpreter state located from BSS scan (no symbols available)");
-        found = TRUE;
-        TIMER_STOP
-      }
-    TIMER_END
-    if (!found) {
-      log_d("BSS scan failed (no symbols available)");
-      FAIL;
-    }
-  }
 
   self->timestamp = gettime();
 
