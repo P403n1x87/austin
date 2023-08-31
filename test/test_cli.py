@@ -38,13 +38,14 @@ def test_cli_no_arguments():
 
 
 def test_cli_no_python():
-    result = austin(
-        "cmd.exe" if platform.system() == "Windows" else "src/austin",
-        sys.executable,
-        "-c",
-        "from time import sleep;sleep(2)",
-        expect_fail=True,
-    )
+    match platform.system():
+        case "Windows":
+            cmd = ["cmd.exe", "/c", "sleep 2"]
+        case _:
+            cmd = ["bash", "-c", "sleep 2"]
+
+    result = austin(*cmd, expect_fail=32)
+
     assert result.returncode == 32
     assert "not a Python" in result.stderr or "Cannot launch" in result.stderr
 
@@ -55,21 +56,21 @@ def test_cli_short_lived():
         sys.executable,
         "-c",
         "print('Hello World')",
-        expect_fail=True,
+        expect_fail=33,
     )
     assert result.returncode == 33
     assert "too quickly" in result.stderr
 
 
 def test_cli_invalid_command():
-    result = austin("snafubar", expect_fail=True)
+    result = austin("snafubar", expect_fail=33)
     assert "[GCC" in result.stderr
     assert result.returncode == 33
     assert "Cannot launch" in (result.stderr or result.stdout)
 
 
 def test_cli_invalid_pid():
-    result = austin("-p", "9999999", expect_fail=True)
+    result = austin("-p", "9999999", expect_fail=36)
 
     assert result.returncode == 36
     assert "Cannot attach" in result.stderr
@@ -81,7 +82,7 @@ def test_cli_invalid_pid():
 @no_sudo
 def test_cli_permissions():
     with run_python("3", target("sleepy.py")) as p:
-        result = austin("-i", "1ms", "-p", str(p.pid), expect_fail=True)
+        result = austin("-i", "1ms", "-p", str(p.pid), expect_fail=37)
         assert result.returncode == 37, result.stderr
         assert "Insufficient permissions" in result.stderr, result.stderr
 
@@ -98,7 +99,7 @@ def test_cli_permissions_darwin():
         "python3.10",
         "-c",
         "from time import sleep; sleep(1)",
-        expect_fail=True,
+        expect_fail=37,
     )
     assert result.returncode == 37, result.stderr
     assert "Insufficient permissions" in result.stderr, result.stderr
