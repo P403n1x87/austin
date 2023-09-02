@@ -175,7 +175,7 @@ _get_version_from_filename(char * filename, const char * needle, int * major, in
 
 #if defined PL_MACOS
 static int
-_find_version_in_binary(char * path) {
+_find_version_in_binary(char * path, int * version) {
   size_t      binary_size = 0;
   struct stat s;
 
@@ -203,26 +203,26 @@ _find_version_in_binary(char * path) {
     FAIL;
   }
 
-  for (char m = '3'; m >= '2'; --m) {
-    char     needle[3]    = {0x00, m, '.'};
-    size_t   current_size = binary_size;
-    char   * current_pos  = binary_map->addr;
-    int      major, minor, patch;
-    major = 0;
-    while (TRUE) {
-      char * p = memmem(current_pos, current_size, needle, sizeof(needle));
-      if (!isvalid(p)) break;
-      if (sscanf(++p, "%d.%d.%d", &major, &minor, &patch) == 3) break;
-      current_size -= p - current_pos + sizeof(needle);
-      current_pos = p + sizeof(needle);
-    }
-
-    if (major > 0) {
-      return PYVERSION(major, minor, patch);
-    }
+  char     needle[3]    = {0x00, '3', '.'};
+  size_t   current_size = binary_size;
+  char   * current_pos  = binary_map->addr;
+  int      major, minor, patch;
+  major = 0;
+  while (TRUE) {
+    char * p = memmem(current_pos, current_size, needle, sizeof(needle));
+    if (!isvalid(p)) break;
+    if (sscanf(++p, "%d.%d.%d", &major, &minor, &patch) == 3) break;
+    current_size -= p - current_pos + sizeof(needle);
+    current_pos = p + sizeof(needle);
   }
 
-  return NOVERSION;
+  if (major >= 3) {
+    *version = PYVERSION(major, minor, patch);
+    SUCCESS;
+  }
+
+  set_error(EPROC);
+  FAIL;
 } /* _find_version_in_binary */
 #endif
 
@@ -248,7 +248,7 @@ _py_proc__infer_python_version(py_proc_t * self) {
     
     if (fail(py_proc__memcpy(self, self->symbols[DYNSYM_HEX_VERSION], sizeof(py_version), &py_version))) {
       log_e("Failed to dereference remote Py_Version symbol");
-      return NOVERSION;
+      FAIL;
     }
     
     major = (py_version>>24) & 0xFF;
@@ -293,8 +293,8 @@ _py_proc__infer_python_version(py_proc_t * self) {
   if (major == 0) {
     // We still haven't found a Python version so we look at the binary
     // content for clues
-    int version = NOVERSION;
-    if (isvalid(self->bin_path) && (version = _find_version_in_binary(self->bin_path))) {
+    int version;
+    if (isvalid(self->bin_path) && (success(_find_version_in_binary(self->bin_path, &version)))) {
       log_d("Python version (from binary content): %d.%d.%d", major, minor, patch);
       self->py_v = get_version_descriptor(MAJOR(version), MINOR(version), PATCH(version));
       SUCCESS;
@@ -337,10 +337,12 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     FAIL;
   }
 
-  if (fail(py_proc__get_type(self, V_FIELD(void *, is, py_is, o_tstate_head), tstate_head))) {
+  void * tstate_head_addr = V_FIELD(void *, is, py_is, o_tstate_head);
+
+  if (fail(py_proc__get_type(self, tstate_head_addr, tstate_head))) {
     log_e(
       "Cannot copy PyThreadState head at %p from PyInterpreterState instance",
-      V_FIELD(void *, is, py_is, o_tstate_head)
+      tstate_head_addr
     );
     FAIL;
   }
@@ -434,12 +436,9 @@ _py_proc__scan_bss(py_proc_t * self) {
     FAIL;
   }
 
-  int    shift = 0;
-  size_t step  = self->map.bss.size > 0x10000 ? 0x10000 : self->map.bss.size;
+  size_t step = self->map.bss.size > 0x10000 ? 0x10000 : self->map.bss.size;
   
-  V_DESC(self->py_v);
-  
-  while (!(shift && V_MAX(3, 10))) {
+  for (int shift = 0; shift < 1; shift++) {
     void * base = self->map.bss.base - (shift * step);
     if (fail(py_proc__memcpy(self, base, self->map.bss.size, bss))) {
       log_ie("Failed to copy BSS section");
@@ -475,7 +474,6 @@ _py_proc__scan_bss(py_proc_t * self) {
     #if defined PL_WIN
     break;
     #endif
-    shift++;
   }
 
   set_error(EPROC);
@@ -486,34 +484,62 @@ _py_proc__scan_bss(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__deref_interp_head(py_proc_t * self) {
-  if (!isvalid(self) || !isvalid(self->symbols[DYNSYM_RUNTIME])) {
+  if (
+    !isvalid(self)
+    || !(isvalid(self->symbols[DYNSYM_RUNTIME]) || isvalid(self->map.runtime.base))
+  ) {
     set_error(EPROC);
     FAIL;
   }
 
   V_DESC(self->py_v);
   
-  void * interp_head_raddr;
+  void * interp_head_raddr = NULL;
 
   _PyRuntimeState py_runtime;
-  if (py_proc__get_type(self, self->symbols[DYNSYM_RUNTIME], py_runtime)) {
-    log_d(
-      "Cannot copy _PyRuntimeState structure from remote address %p",
-      self->symbols[DYNSYM_RUNTIME]
-    );
-    FAIL;
+  void * runtime_addr = self->symbols[DYNSYM_RUNTIME];
+  #if defined PL_LINUX
+  const size_t size = getpagesize();
+  #else
+  const size_t size = 0;
+  #endif
+
+  void * lower = isvalid(runtime_addr) ? runtime_addr : self->map.runtime.base;
+  void * upper = isvalid(runtime_addr) ? runtime_addr : lower + size;
+
+  #ifdef DEBUG
+  if (isvalid(runtime_addr)) {
+    log_d("Using runtime state symbol @ %p", runtime_addr);
   }
-  
-  interp_head_raddr = V_FIELD(void *, py_runtime, py_runtime, o_interp_head);
-  if (V_MAX(3, 8)) {
-    self->gc_state_raddr = self->symbols[DYNSYM_RUNTIME] + py_v->py_runtime.o_gc;
-    log_d("GC runtime state @ %p", self->gc_state_raddr);
+  else {
+    log_d("Using runtime state section @ %p-%p", lower, upper);
+  }
+  #endif
+
+  for (void * current_addr = lower; current_addr <= upper; current_addr += sizeof(void *)) {
+    if (py_proc__get_type(self, current_addr, py_runtime)) {
+      log_d(
+        "Cannot copy runtime state structure from remote address %p",
+        current_addr
+      );
+      continue;
+    }
+    
+    interp_head_raddr = V_FIELD(void *, py_runtime, py_runtime, o_interp_head);
+    if (V_MAX(3, 8)) {
+      self->gc_state_raddr = current_addr + py_v->py_runtime.o_gc;
+      log_d("GC runtime state @ %p", self->gc_state_raddr);
+    }
+
+    if (fail(_py_proc__check_interp_state(self, interp_head_raddr))) {
+      log_d("Interpreter state check failed while dereferencing runtime state");
+      interp_head_raddr = NULL;
+      continue;
+    }
   }
 
-  log_d("Found possible interpreter state from runtime symbol at %p", interp_head_raddr);
-
-  if (fail(_py_proc__check_interp_state(self, interp_head_raddr))) {
-    log_d("Interpreter state check failed while dereferencing symbol");
+  if (!isvalid(interp_head_raddr)) {
+    log_d("Cannot dereference PyInterpreterState head from runtime state");
     FAIL;
   }
 
@@ -556,8 +582,8 @@ _py_proc__find_interpreter_state(py_proc_t * self) {
   if (fail(_py_proc__infer_python_version(self)))
     FAIL;
 
-  if (self->sym_loaded) {
-    // Try to resolve the symbols if we have them
+  if (self->sym_loaded || isvalid(self->map.runtime.base)) {
+    // Try to resolve the symbols or the runtime section, if we have them
 
     self->is_raddr = NULL;
 

@@ -156,7 +156,13 @@ _py_proc__analyze_macho64(py_proc_t * self, void * base, void * map) {
             self->map.bss.base = base + sec[j].addr;
             self->map.bss.size = sec[j].size;
             bin_attrs |= B_BSS;
-            break;
+            continue;
+          }
+          // This section was added in Python 3.11
+          if (strcmp(sec[j].sectname, "PyRuntime") == 0) {
+            self->map.runtime.base = base + sec[j].addr;
+            self->map.runtime.size = sec[j].size;
+            continue;
           }
         }
         cmd_cnt++;
@@ -257,7 +263,13 @@ _py_proc__analyze_macho32(py_proc_t * self, void * base, void * map) {
             self->map.bss.base = base + sec[j].addr;
             self->map.bss.size = sec[j].size;
             bin_attrs |= B_BSS;
-            break;
+            continue;
+          }
+          // This section was added in Python 3.11
+          if (strcmp(sec[j].sectname, "PyRuntime") == 0) {
+            self->map.runtime.base = base + sec[j].addr;
+            self->map.runtime.size = sec[j].size;
+            continue;
           }
         }
         cmd_cnt++;
