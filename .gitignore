@@ -40,6 +40,7 @@ src/austinp
 src/austin.exe
 src/austin.dSYM*
 
+.libs/
 
 # -----------------------------------------------------------------------------
 # --  PYTHON SOURCES

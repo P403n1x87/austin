@@ -26,7 +26,7 @@ jobs:
           pip install -r scripts/requirements-bw.txt
           
           sudo apt-get update
-          sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools zlib1g-dev
+          sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools zlib1g-dev libtool
 
           # Build austin
           autoreconf --install
@@ -38,6 +38,10 @@ jobs:
           pushd src
           tar -Jcf austin-$VERSION-gnu-linux-amd64.tar.xz austin
           tar -Jcf austinp-$VERSION-gnu-linux-amd64.tar.xz austinp
+
+          cp ../include/libaustin.h .
+          cp .libs/libaustin.{a,so.*.*} .
+          tar -Jcf libaustin-$VERSION-gnu-linux-amd64.tar.xz libaustin.*
           popd
 
           # Build gnu wheel
@@ -47,7 +51,7 @@ jobs:
             --files austin:src/austin austinp:src/austinp
 
           # Build with musl
-          musl-gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austin -D__MUSL__
+          musl-gcc -O3 -Os -s -Wall -pthread src/*.c -Iinclude -o src/austin -D__MUSL__
           pushd src
           tar -Jcf austin-$VERSION-musl-linux-amd64.tar.xz austin
           popd
@@ -64,7 +68,7 @@ jobs:
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: src/austin*.tar.xz
+          file: src/*austin*.tar.xz
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true

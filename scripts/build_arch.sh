@@ -12,7 +12,8 @@ apt-get -y install \
     binutils-dev \
     libiberty-dev \
     musl-tools \
-    zlib1g-dev
+    zlib1g-dev \
+    libtool
 
 # Build Austin
 autoreconf --install
@@ -28,12 +29,17 @@ pushd src
     cp austin  /artifacts/austin
     cp austinp /artifacts/austinp
 
-    musl-gcc -O3 -Os -s -Wall -pthread *.c -o austin -D__MUSL__
+    musl-gcc -O3 -Os -s -Wall -pthread *.c -I../include -o austin -D__MUSL__
     tar -Jcf austin-$VERSION-musl-linux-$ARCH.tar.xz austin
 
     cp austin /artifacts/austin.musl
 
+    cp ../include/libaustin.h .
+    cp .libs/libaustin.{a,so.*.*} .
+    tar -Jcf libaustin-$VERSION-gnu-linux-$ARCH.tar.xz libaustin.*
+
     mv austin-$VERSION-gnu-linux-$ARCH.tar.xz /artifacts
     mv austinp-$VERSION-gnu-linux-$ARCH.tar.xz /artifacts
     mv austin-$VERSION-musl-linux-$ARCH.tar.xz /artifacts
+    mv libaustin-$VERSION-gnu-linux-$ARCH.tar.xz /artifacts
 popd

@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef STATS_H
-#define STATS_H
+#pragma once
 
 
 typedef unsigned long ctime_t;  /* Forward */
@@ -52,6 +51,7 @@ extern ctime_t _gc_time;
 ctime_t
 gettime();
 
+#if !defined LIBAUSTIN
 
 /**
  * Reset the statistics. Call this every time a new run is started.
@@ -81,6 +81,18 @@ stats_get_min_sampling_time();
 ctime_t
 stats_get_avg_sampling_time();
 
+#endif // LIBAUSTIN
+
+#if defined LIBAUSTIN
+
+// Make the stats macros no-ops for libaustin.
+
+#define stats_count_sample() {}
+#define stats_count_error() {}
+#define stats_gc_time(delta) {}
+#define stats_check_duration(delta) {}
+
+#else
 
 /**
  * Increase the sample counter.
@@ -116,6 +128,9 @@ stats_get_avg_sampling_time();
   _avg_sampling_time += delta;                           \
 }
 
+#endif // LIBAUSTIN
+
+#if !defined LIBAUSTIN
 
 /**
  * Log the current statistics. Usually called at the end of a sampling run.
@@ -137,4 +152,4 @@ stats_start();
 ctime_t
 stats_duration();
 
-#endif
+#endif // LIBAUSTIN

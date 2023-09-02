@@ -293,19 +293,19 @@ git clone --depth=1 https://github.com/P403n1x87/austin.git
 On Linux, one can then use the command
 
 ~~~ console
-gcc -O3 -Os -Wall -pthread src/*.c -o src/austin
+gcc -O3 -Os -Wall -pthread src/*.c -Iinclude -o src/austin
 ~~~
 
 whereas on macOS it is enough to run
 
 ~~~ console
-gcc -O3 -Os -Wall src/*.c -o src/austin
+gcc -O3 -Os -Wall src/*.c -Iinclude -o src/austin
 ~~~
 
 On Windows, the `-lpsapi -lntdll` switches are needed
 
 ~~~ console
-gcc -O3 -Os -Wall -lpsapi -lntdll src/*.c -o src/austin
+gcc -O3 -Os -Wall -lpsapi -lntdll src/*.c -Iinclude -o src/austin
 ~~~
 
 Add `-DDEBUG` if you need a more verbose log. This is useful if you encounter a
@@ -521,7 +521,7 @@ sudo apt install libunwind-dev binutils-dev
 and compile with
 
 ~~~ console
-gcc -O3 -Os -Wall -pthread src/*.c -DAUSTINP -lunwind-ptrace -lunwind-generic -lbfd -o src/austinp
+gcc -O3 -Os -Wall -pthread src/*.c -Iinclude -DAUSTINP -lunwind-ptrace -lunwind-generic -lbfd -o src/austinp
 ~~~
 
 then use as per normal. The extra `-k/--kernel` option is available with
@@ -555,6 +555,70 @@ show both native and Python frames. Highlighting helps tell frames apart. The
 
 > **NOTE** If you have installed Austin from the Snap Store, the `austinp`
 > executable will be available as `austin.p` from the command line.
+
+
+## libaustin
+
+The code base can also be used to generate a library to embed Austin in your
+projects to unwind Python stacks or extract frame information from a running
+Python process.
+
+A shared library on Linux can be obtained with
+
+~~~ console
+gcc -O3 -Wall -pthread src/*.c -Iinclude -o src/libaustin.so -shared -fPIC -DLIBAUSTIN
+~~~
+
+The required headers are in the `include/` subfolder. More information on how
+to use the library can be found in the `libaustin.h` header file.
+
+At a glance, this is a typical use. The library needs to be initialised at
+runtime before it can be used. Hence, before you call any other of the exported
+functions, you must do
+
+~~~ c
+#include <libaustin.h>
+
+...
+
+{
+  ...
+
+  austin_up();
+
+  ...
+}
+~~~
+
+After this call, you can attach any Python process with
+
+~~~ c
+pid_t pid = ...;
+...
+austin_handle_t proc_handle = austin_attach(pid);
+~~~
+
+When you want to sample the call stack of an attached process, call
+
+~~~ c
+austin_sample(proc_handle, cb);
+~~~
+
+where `cb` is a callback function with signature `void ()(pid_t pid, pid_t tid)`
+that gets called once a thread stack is ready to be retrieved. To get the frames
+from the sampled stack, call `austin_pop_frame()` until it returns `NULL`.
+
+To sample a single thread, use `austin_sample_thread(proc_handle, tid)` instead.
+Then retrieve the sampled stack with `austin_pop_frame()` as above.
+
+Once you are done with the process, you should detach it with
+
+~~~ c
+austin_detach(proc_handle);
+~~~
+
+Once you are done with libaustin entirely, make sure to release resources with
+`austin_down()`.
 
 
 ## Logging

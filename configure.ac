@@ -16,6 +16,9 @@ AM_INIT_AUTOMAKE
 AC_PROG_CC_C99
 AC_PROG_CPP
 
+# Use libtool for libaustin.
+LT_INIT
+
 # Use the C language and compiler for the following checks
 AC_LANG([C])
 

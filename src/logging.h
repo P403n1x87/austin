@@ -29,6 +29,7 @@
 
 #include "argparse.h"
 #include "austin.h"
+#include "error.h"
 
 
 #define META_HEAD "# "
@@ -70,6 +71,18 @@
 void
 logger_init(void);
 
+#if defined LIBAUSTIN && !defined DEBUG
+
+// Make logging a no-op when using non-debug libaustin
+
+#define log_f(f, args...) {}
+#define log_e(f, args...) {}
+#define log_w(f, args...) {}
+#define log_i(f, args...) {}
+#define log_m(f, args...) {}
+
+#else
+
 /**
  * Log an entry at the various supported levels.
  */
@@ -88,6 +101,7 @@ log_i(const char *, ...);
 void
 log_m(const char *, ...);  // metrics
 
+#endif  // LIBAUSTIN && !DEBUG
 
 /**
  * Log indirect error.
@@ -125,5 +139,13 @@ logger_close(void);
 
 void
 log_meta_header(void);
+
+/**
+ * Log the last error
+ */
+#define log_error() { \
+  ( is_fatal(austin_errno) ? log_f(get_last_error()) : log_e(get_last_error()) ); \
+}
+
 
 #endif // LOGGING_H

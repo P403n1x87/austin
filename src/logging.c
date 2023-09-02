@@ -95,6 +95,7 @@ logger_init(void) {
   #endif
 }
 
+#if !defined LIBAUSTIN && !defined DEBUG
 
 void
 log_f(const char * fmt, ...) {
@@ -144,6 +145,7 @@ log_m(const char * fmt, ...) {
     fflush(stderr);
   va_end(args);
 }
+#endif  // !defined LIBAUSTIN && !defined DEBUG
 
 #ifdef DEBUG
 void

@@ -25,9 +25,6 @@
 
 #include <errno.h>
 
-#include "logging.h"
-
-
 // generic messages
 #define EOK                   0
 #define EMMAP                 1
@@ -106,15 +103,6 @@ error_get_msg(error_t);
 const int
 is_fatal(error_t);
 
-
-/**
- * Log the last error
- */
-#define log_error() { \
-  ( is_fatal(austin_errno) ? log_f(get_last_error()) : log_e(get_last_error()) ); \
-}
-
-
 /**
  * Set and log the given error.
  *
@@ -122,7 +110,6 @@ is_fatal(error_t);
  */
 #define set_error(x) { \
   austin_errno = (x); \
-  log_error(); \
 }
 
 #endif // ERROR_H

@@ -30,7 +30,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "argparse.h"
 #include "austin.h"
 #include "error.h"
 #include "events.h"
@@ -45,9 +44,76 @@
 #include "timing.h"
 #include "version.h"
 
-#include "py_proc.h"
 #include "py_proc_list.h"
 #include "py_thread.h"
+
+
+#if defined LIBAUSTIN
+
+#include "libaustin.h"
+
+int
+austin_up() {
+  return py_thread_allocate();
+}
+
+void
+austin_down() {
+  py_thread_free();
+}
+
+austin_handle_t
+austin_attach(pid_t pid) {
+  py_proc_t * proc = py_proc_new(pid);
+  if (!isvalid(proc))
+    return NULL;
+
+  if (fail(py_proc__attach(proc, pid)))
+    goto failed;
+
+  return (austin_handle_t) proc;
+
+failed:
+  py_proc__destroy(proc);
+  return NULL;
+}
+
+
+void
+austin_detach(austin_handle_t proc) {
+  py_proc__destroy((py_proc_t *) proc);
+}
+
+int
+austin_sample(austin_handle_t proc, austin_callback_t callback) {
+  if (fail(py_proc__sample_cb((py_proc_t *) proc, callback)))
+    FAIL;
+
+  SUCCESS;
+}
+
+extern int
+austin_sample_thread(austin_handle_t proc, pid_t tid) {
+  if (fail(py_proc__sample_thread((py_proc_t *) proc, tid)))
+    FAIL;
+
+  SUCCESS;
+}
+
+austin_frame_t *
+austin_pop_frame() {
+  return (austin_frame_t *) py_thread_pop_frame();
+}
+
+
+austin_frame_t *
+austin_read_frame(austin_handle_t proc, void * frame_remote_address) {
+  return (austin_frame_t *) py_proc__read_frame((py_proc_t *) proc, frame_remote_address);
+} 
+
+#else /* LIBAUSTIN */
+
+#include "argparse.h"
 
 
 // ---- SIGNAL HANDLING -------------------------------------------------------
@@ -410,4 +476,6 @@ release:
   return retval;
 } /* main */
 
-#endif
+#endif /* LIBAUSTIN */
+
+#endif /* AUSTIN_C */
