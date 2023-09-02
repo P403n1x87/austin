@@ -98,7 +98,10 @@ _py_proc__analyze_pe(py_proc_t * self, char * path, void * base) {
     if (strcmp(".data", (const char *) s_hdr[i].Name) == 0) {
       self->map.bss.base = base + s_hdr[i].VirtualAddress;
       self->map.bss.size = s_hdr[i].Misc.VirtualSize;
-      break;
+    }
+    else if (strcmp("PyRuntime", (const char *) s_hdr[i].Name) == 0) {
+      self->map.runtime.base = base + s_hdr[i].VirtualAddress;
+      self->map.runtime.size = s_hdr[i].Misc.VirtualSize;
     }
   }
 

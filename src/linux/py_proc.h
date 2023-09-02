@@ -86,6 +86,12 @@ _file_size(char * file) {
 }
 
 
+/*[[[cog
+from pathlib import Path
+analyze_elf = Path("src/linux/analyze_elf.h").read_text()
+print(analyze_elf)
+print(analyze_elf.replace("64", "32"))
+]]]*/
 // ----------------------------------------------------------------------------
 static Elf64_Addr
 _get_base_64(Elf64_Ehdr * ehdr, void * elf_map)
@@ -97,7 +103,6 @@ _get_base_64(Elf64_Ehdr * ehdr, void * elf_map)
   }
   return UINT64_MAX;
 } /* _get_base_64 */
-
 
 static int
 _py_proc__analyze_elf64(py_proc_t * self, void * elf_map, void * elf_base) {
@@ -137,6 +142,10 @@ _py_proc__analyze_elf64(py_proc_t * self, void * elf_map, void * elf_base) {
         bss_base = elf_base + (p_shdr->sh_addr - base);
         bss_size = p_shdr->sh_size;
       }
+      else if (strcmp(sh_name_base + p_shdr->sh_name, ".PyRuntime") == 0) {
+        self->map.runtime.base = elf_base + (p_shdr->sh_addr - base);
+        self->map.runtime.size = p_shdr->sh_size;
+      }
     }
 
     if (p_dynsym != NULL) {
@@ -174,7 +183,6 @@ _py_proc__analyze_elf64(py_proc_t * self, void * elf_map, void * elf_base) {
   SUCCESS;
 } /* _py_proc__analyze_elf64 */
 
-
 // ----------------------------------------------------------------------------
 static Elf32_Addr
 _get_base_32(Elf32_Ehdr * ehdr, void * elf_map)
@@ -186,7 +194,6 @@ _get_base_32(Elf32_Ehdr * ehdr, void * elf_map)
   }
   return UINT32_MAX;
 } /* _get_base_32 */
-
 
 static int
 _py_proc__analyze_elf32(py_proc_t * self, void * elf_map, void * elf_base) {
@@ -226,6 +233,10 @@ _py_proc__analyze_elf32(py_proc_t * self, void * elf_map, void * elf_base) {
         bss_base = elf_base + (p_shdr->sh_addr - base);
         bss_size = p_shdr->sh_size;
       }
+      else if (strcmp(sh_name_base + p_shdr->sh_name, ".PyRuntime") == 0) {
+        self->map.runtime.base = elf_base + (p_shdr->sh_addr - base);
+        self->map.runtime.size = p_shdr->sh_size;
+      }
     }
 
     if (p_dynsym != NULL) {
@@ -263,6 +274,7 @@ _py_proc__analyze_elf32(py_proc_t * self, void * elf_map, void * elf_base) {
   SUCCESS;
 } /* _py_proc__analyze_elf32 */
 
+//[[[end]]]
 
 // ----------------------------------------------------------------------------
 static int
@@ -391,8 +403,8 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
   while (getline(&line, &len, fp) != -1) {
     ssize_t lower, upper;
-    char    pathname[1024];
-    char    perms[5];
+    char    pathname[1024] = {0};
+    char    perms[5] = {0};
 
     int field_count = sscanf(line, ADDR_FMT "-" ADDR_FMT " %s %*x %*x:%*x %*x %s\n",
       &lower, &upper, // Map bounds
@@ -408,11 +420,19 @@ _py_proc__parse_maps_file(py_proc_t * self) {
       size_t page_size = getpagesize();
       map->bss_base = (void *) lower - page_size;
       map->bss_size = upper - lower + page_size;
-      log_d("Inferred BSS for %s: %lx-%lx", map->path, lower, upper);
+      log_d("BSS section inferred from VM maps for %s: %lx-%lx", map->path, lower, upper);
     }
 
     if (field_count <= 0)
       continue;
+
+    if (!isvalid(self->map.runtime.base) && strcmp(perms, "rw-p") == 0 && strcmp(map->path, pathname) == 0) {
+      // This is likely the PyRuntime section.
+      size_t page_size = getpagesize();
+      self->map.runtime.base = (void *) lower - page_size;
+      self->map.runtime.size = upper - lower + page_size;
+      log_d("PyRuntime section inferred from VM maps for %s: %lx-%lx", map->path, lower, upper);
+    }
 
     if (field_count == 0 || strstr(pathname, "[v") == NULL) {
       // Skip meaningless addresses like [vsyscall] which would give

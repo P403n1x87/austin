@@ -140,9 +140,13 @@ def collect_logs(variant: str, pid: int) -> List[str]:
             with Path("/var/log/syslog").open() as logfile:
                 needles = (f"{variant}[{pid}]", f"systemd-coredump[{pid}]")
                 return [
-                    line.strip().replace("#012", "\n")
-                    for line in logfile.readlines()
-                    if any(needle in line for needle in needles)
+                    f" logs for {variant}[{pid}] ".center(80, "="),
+                    *(
+                        line.strip().replace("#012", "\n")
+                        for line in logfile.readlines()
+                        if any(needle in line for needle in needles)
+                    ),
+                    f" end of logs for {variant}[{pid}] ".center(80, "="),
                 ]
         case _:
             return []
@@ -172,24 +176,36 @@ def run(
         try:
             stdout, stderr = process.communicate(input, timeout=timeout)
         except TimeoutExpired as exc:
+            exc.pid = process.pid
             process.kill()
             if platform.system() == "Windows":
                 exc.stdout, exc.stderr = process.communicate()
             else:
                 process.wait()
             raise
-        except:  # noqa
+        except Exception as e:
+            e.pid = process.pid
             process.kill()
             raise
         retcode = process.poll()
         if check and retcode:
-            raise CalledProcessError(
+            exc = CalledProcessError(
                 retcode, process.args, output=stdout, stderr=stderr
             )
+            exc.pid = process.pid
+            raise exc
     result = CompletedProcess(process.args, retcode, stdout, stderr)
     result.pid = process.pid
 
     return result
+
+
+def print_logs(logs: List[str]) -> None:
+    if logs:
+        for log in logs:
+            print(log)
+    else:
+        print("<< no logs available >>")
 
 
 class Variant(str):
@@ -220,11 +236,16 @@ class Variant(str):
 
         mojo_args = ["-b"] if mojo else []
 
-        result = run(
-            [str(self.path)] + mojo_args + list(args),
-            capture_output=True,
-            timeout=timeout,
-        )
+        try:
+            result = run(
+                [str(self.path)] + mojo_args + list(args),
+                capture_output=True,
+                timeout=timeout,
+            )
+        except Exception as exc:
+            if pid := getattr(exc, "pid", None) is not None:
+                print_logs(collect_logs(self.name, pid))
+            raise
 
         if result.returncode in (-11, 139):  # SIGSEGV
             print(bt(self.path))
@@ -242,13 +263,7 @@ class Variant(str):
         result.logs = logs
 
         if result.returncode != int(expect_fail):
-            if logs:
-                print(f" logs for {self.name}[{result.pid}] ".center(80, "="))
-                for log in logs:
-                    print(log)
-                print(f" end of logs for {self.name}[{result.pid}] ".center(80, "="))
-            else:
-                print(f"<< no logs for {self.name}[{result.pid}] >>")
+            print_logs(logs)
 
         return result
 

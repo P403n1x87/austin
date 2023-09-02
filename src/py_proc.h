@@ -51,6 +51,7 @@ typedef struct {
   proc_vm_map_block_t exe;
   proc_vm_map_block_t dynsym;
   proc_vm_map_block_t rodata;
+  proc_vm_map_block_t runtime; // Added in Python 3.11
 } proc_vm_map_t;
 
 typedef struct _proc_extra_info proc_extra_info;  // Forward declaration.
