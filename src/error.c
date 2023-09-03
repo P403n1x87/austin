@@ -39,7 +39,7 @@ const char * _error_msg_tab[MAXERROR] = {
   "Cannot determine Python version",
   "Cannot redirect STDOUT to " NULL_DEVICE,
   "No command nor valid PID",
-  NULL,
+  "Binary has no symbols",
   NULL,
 
   // PyCodeObject
@@ -66,7 +66,7 @@ const char * _error_msg_tab[MAXERROR] = {
   "Failed to create thread object",
   "Failed to get top frame for thread",
   "Invalid thread",
-  NULL,
+  "No next thread",
   NULL,
   NULL,
   NULL,
@@ -88,7 +88,7 @@ const int _fatal_error_tab[MAXERROR] = {
   // generic error messages
   0,
   1,
-  0,
+  1,
   1,
   0,
   1,
@@ -126,7 +126,7 @@ const int _fatal_error_tab[MAXERROR] = {
   0,
 
   // py_proc_t
-  1,
+  0,
   1,
   1,
   1,

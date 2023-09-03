@@ -5,7 +5,7 @@
 //
 // Austin is a Python frame stack sampler for CPython.
 //
-// Copyright (c) 2022 Gabriele N. Tornetta <phoenix1987@gmail.com>.
+// Copyright (c) 2023 Gabriele N. Tornetta <phoenix1987@gmail.com>.
 // All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -20,52 +20,27 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef PY_SYMBOLS_H
-#define PY_SYMBOLS_H
+#pragma once
 
-#include "../platform.h"
-#include "../py_string.h"
+#include "stats.h"
 
-#define DYNSYM_MANDATORY 1
-
-enum {
-  // Mandatory symbols
-  DYNSYM_RUNTIME,
-  // Optional symbols
-  DYNSYM_HEX_VERSION,
-  // Count
-  DYNSYM_COUNT
-};
-
-
-#ifdef PY_PROC_C
-
-#ifdef PL_MACOS
-  #define SYM_PREFIX "_"
+#if defined PL_UNIX
+#include <sched.h>
 #else
-  #define SYM_PREFIX ""
+#include <windows.h>
 #endif
 
 
-static const char * _dynsym_array[] = {
-  SYM_PREFIX "_PyRuntime",
-  SYM_PREFIX "Py_Version",
-};
-
-static long _dynsym_hash_array[DYNSYM_COUNT] = {0};
-
-#define symcmp(name, i) ((string__hash(name) != _dynsym_hash_array[i] || strcmp(name, _dynsym_array[i])))
-
 static inline void
-_prehash_symbols(void) {
-  if (_dynsym_hash_array[0] == 0) {
-    for (register int i = 0; i < DYNSYM_COUNT; i++) {
-      _dynsym_hash_array[i] = string__hash((char *) _dynsym_array[i]);
-    }
-  }
+yield() {
+#if defined PL_UNIX
+    sched_yield();
+#else
+    Sleep(0);
+#endif
 }
 
-#endif  // PY_PROC_C
 
-
-#endif  // PY_SYMBOLS_H
+#define TIMER_START(d) {__label__ _s;ctime_t _e=(gettime()+d);while(gettime()<=_e){
+#define TIMER_END      yield();}_s:;}
+#define TIMER_STOP     goto _s;

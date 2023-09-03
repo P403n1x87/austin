@@ -52,8 +52,6 @@
 #include "error.h"
 #include "logging.h"
 
-#define OUT_OF_BOUND                  -1
-
 
 /**
  * Copy a data structure from the given remote address structure.
@@ -174,8 +172,16 @@ copy_memory(proc_ref_t proc_ref, void * addr, ssize_t len, void * buf) {
     // the PID that was used must have been valid. Therefore this call can only
     // fail if the process no longer exists. However, if the return value is
     // MACH_SEND_INVALID_DEST, we probably tried an invalid memory area.
-    if (kr != MACH_SEND_INVALID_DEST)
-      set_error(EPROCNPID);
+    switch(kr) {
+      case KERN_PROTECTION_FAILURE:
+        set_error(EPROCPERM);
+        break;
+      case KERN_INVALID_ARGUMENT:
+        set_error(EPROCNPID);
+        break;
+      default:
+        set_error(EMEMCOPY);
+    }
     FAIL;
   }
 

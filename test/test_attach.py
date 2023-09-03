@@ -24,7 +24,8 @@ import os
 import platform
 from collections import Counter
 from shutil import rmtree
-from test.utils import allpythons as _allpythons
+import time
+from test.utils import allpythons
 from test.utils import austin
 from test.utils import austinp
 from test.utils import compress
@@ -39,21 +40,10 @@ from test.utils import threads
 from test.utils import variants
 from time import sleep
 
-import pytest
 from flaky import flaky
+import pytest
 
 
-def allpythons():
-    # Attach tests fail on Windows for Python < 3.7 and on MacOS for Python < 3
-    match platform.system():
-        case "Windows":
-            return _allpythons(min=(3, 7))
-        case "Darwin":
-            return _allpythons(min=(3,))
-    return _allpythons()
-
-
-@flaky(max_runs=6)
 @requires_sudo
 @pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @pytest.mark.parametrize(
@@ -62,8 +52,8 @@ def allpythons():
 @allpythons()
 @variants
 def test_attach_wall_time(austin, py, mode, mode_meta, heap):
-    with run_python(py, target("sleepy.py"), "1") as p:
-        sleep(0.4)
+    with run_python(py, target("sleepy.py"), "2") as p:
+        sleep(0.5)
 
         result = austin(mode, "2ms", *heap, "-p", str(p.pid))
         assert result.returncode == 0
@@ -85,7 +75,6 @@ def test_attach_wall_time(austin, py, mode, mode_meta, heap):
         assert a <= d
 
 
-@flaky
 @requires_sudo
 @pytest.mark.parametrize("exposure", [1, 2])
 @allpythons()
@@ -127,7 +116,8 @@ def test_where(py, mojo):
 @allpythons()
 def test_where_multiprocess(py):
     with run_python(py, target("target_mp.py")) as p:
-        while p.returncode is None:
+        end = time.time() + 60
+        while p.returncode is None and time.time() < end:
             sleep(0.2)
             result = austin("-Cw", str(p.pid))
             assert result.returncode == 0
@@ -137,7 +127,7 @@ def test_where_multiprocess(py):
             if sum(c for line, c in lines.items() if "Process" in line) >= 3:
                 break
         else:
-            assert False, compress(result.stdout)
+            raise AssertionError(compress(result.stdout))
 
         assert sum(c for line, c in lines.items() if "fact" in line) == 2, compress(
             result.stdout
@@ -165,7 +155,7 @@ def test_where_kernel(py):
 @pytest.mark.parametrize("prefix", [[], ["unshare", "-p", "-f", "-r"]])
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux only")
 @requires_sudo
-@_allpythons(min=(3,))
+@allpythons()
 def test_attach_container_like(py, tmp_path, prefix):
     """Test in container-like conditions.
 
@@ -203,4 +193,4 @@ def test_attach_container_like(py, tmp_path, prefix):
         a = sum_metric(result.stdout)
         d = int(meta["duration"])
 
-        assert a <= d
+        assert abs(a - d) <= (a + d) * 0.25

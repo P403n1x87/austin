@@ -30,9 +30,6 @@
 #include "../resources.h"
 
 
-#define DEREF_SYM
-
-
 #define MODULE_CNT                     2
 #define SYMBOLS                        2
 
@@ -91,15 +88,20 @@ _py_proc__analyze_pe(py_proc_t * self, char * path, void * base) {
   IMAGE_NT_HEADERS     * nt_hdr  = (IMAGE_NT_HEADERS *)     (pMapping + dos_hdr->e_lfanew);
   IMAGE_SECTION_HEADER * s_hdr   = (IMAGE_SECTION_HEADER *) (pMapping + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
 
-  if (nt_hdr->Signature != IMAGE_NT_SIGNATURE)
+  if (nt_hdr->Signature != IMAGE_NT_SIGNATURE) {
+    set_error(EPROC);
     FAIL;
+  }
 
   // ---- Find the .data section ----
   for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
     if (strcmp(".data", (const char *) s_hdr[i].Name) == 0) {
       self->map.bss.base = base + s_hdr[i].VirtualAddress;
       self->map.bss.size = s_hdr[i].Misc.VirtualSize;
-      break;
+    }
+    else if (strcmp("PyRuntime", (const char *) s_hdr[i].Name) == 0) {
+      self->map.runtime.base = base + s_hdr[i].VirtualAddress;
+      self->map.runtime.size = s_hdr[i].Misc.VirtualSize;
     }
   }
 
@@ -123,7 +125,12 @@ _py_proc__analyze_pe(py_proc_t * self, char * path, void * base) {
     }
   }
 
-  return !self->sym_loaded;
+  if (!self->sym_loaded) {
+    set_error(EPROC);
+    FAIL;
+  }
+
+  SUCCESS;
 }
 
 
@@ -141,6 +148,7 @@ _py_proc__try_child_proc(py_proc_t * self) {
   cu_HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (h == INVALID_HANDLE_VALUE) {
     log_e("Cannot inspect processes details");
+    set_error(EPROC);
     FAIL;
   }
 
@@ -193,6 +201,7 @@ rollback:
   self->pid      = orig_pid;
   self->proc_ref = orig_hproc;
   
+  set_error(EPROC);
   FAIL;
 }
 
@@ -202,8 +211,10 @@ static int
 _py_proc__get_modules(py_proc_t * self) {
   cu_HANDLE mod_hdl;
   mod_hdl = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, self->pid);
-  if (mod_hdl == INVALID_HANDLE_VALUE)
+  if (mod_hdl == INVALID_HANDLE_VALUE) {
+    set_error(EPROC);
     FAIL;
+  }
 
   MODULEENTRY32 module;
   module.dwSize = sizeof(module);
@@ -217,6 +228,7 @@ _py_proc__get_modules(py_proc_t * self) {
   cu_void * pd_mem = calloc(1, sizeof(struct proc_desc));
   if (!isvalid(pd_mem)) {
     log_ie("Cannot allocate memory for proc_desc");
+    set_error(EPROC);
     FAIL;
   }
   struct proc_desc * pd          = pd_mem;
@@ -226,12 +238,14 @@ _py_proc__get_modules(py_proc_t * self) {
 
   if (GetModuleFileNameEx(self->proc_ref, NULL, pd->exe_path, sizeof(pd->exe_path)) == 0) {
     log_ie("Cannot get executable path");
+    set_error(EPROC);
     FAIL;
   }
   log_d("Executable path: %s", pd->exe_path);
 
   if (!Module32First(mod_hdl, &module)) {
     log_ie("Cannot get first module");
+    set_error(EPROC);
     FAIL;
   }
   do {
@@ -249,6 +263,7 @@ _py_proc__get_modules(py_proc_t * self) {
     prev_path = strdup(module.szExePath);
     if (!isvalid(prev_path)) {
       log_ie("Cannot duplicate path name");
+      set_error(EPROC);
       FAIL;
     }
 
@@ -264,6 +279,7 @@ _py_proc__get_modules(py_proc_t * self) {
       map->path = strdup(module.szExePath);
       if (!isvalid(map->path)) {
         log_ie("Cannot duplicate path name");
+        set_error(EPROC);
         FAIL;
       }
       map->file_size = module.modBaseSize;
@@ -287,6 +303,7 @@ _py_proc__get_modules(py_proc_t * self) {
         map->path = strdup(module.szExePath);
         if (!isvalid(map->path)) {
           log_ie("Cannot duplicate path name");
+          set_error(EPROC);
           FAIL;
         }
         map->file_size = module.modBaseSize;
@@ -310,6 +327,7 @@ _py_proc__get_modules(py_proc_t * self) {
             map->path = needle_path = strdup(module.szExePath);
             if (!isvalid(map->path)) {
               log_ie("Cannot duplicate path name");
+              set_error(EPROC);
               FAIL;
             }
             map->file_size = module.modBaseSize;
@@ -338,8 +356,8 @@ _py_proc__get_modules(py_proc_t * self) {
   for (int i = 0; i < MAP_COUNT; i++) {
     map = &(pd->maps[i]);
     if (map->has_symbols) {
-      self->map.elf.base = map->base;
-      self->map.elf.size = map->size;
+      self->map.exe.base = map->base;
+      self->map.exe.size = map->size;
       break;
     }
   }
@@ -352,7 +370,12 @@ _py_proc__get_modules(py_proc_t * self) {
   log_d("BSS map %d from %s @ %p", map_index, pd->maps[map_index].path, self->map.bss.base);
   log_d("VM maps parsing result: bin=%s lib=%s symbols=%d", self->bin_path, self->lib_path, self->sym_loaded);
 
-  return !self->sym_loaded;
+  if (!self->sym_loaded) {
+    set_error(EPROC);
+    FAIL;
+  }
+
+  SUCCESS;
 }
 
 
@@ -369,8 +392,10 @@ static ssize_t _py_proc__get_resident_memory(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t * self) {
-  if (!isvalid(self))
+  if (!isvalid(self)) {
+    set_error(EPROC);
     FAIL;
+  }
 
   if (fail(_py_proc__get_modules(self))) {
     log_d("Process does not seem to be Python; look for single child process");

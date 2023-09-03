@@ -178,6 +178,7 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
         log_ie("Failed to get frame from code object");
         // Truncate the stack to the point where we have successfully resolved.
         _stack->pointer = i;
+        set_error(ETHREAD);
         FAIL;
       }
       lru_cache__store(cache, frame_key, frame);
@@ -196,8 +197,11 @@ _py_thread__resolve_py_stack(py_thread_t * self) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__push_frame_from_addr(py_thread_t * self, PyFrameObject * frame_obj, void ** prev) {
-  if (!isvalid(self))
+  if (!isvalid(self)) {
+    log_e("Not pushing frame from invalid thread");
+    set_error(ETHREAD);
     FAIL;
+  }
   
   V_DESC(self->proc->py_v);
   
@@ -206,6 +210,7 @@ _py_thread__push_frame_from_addr(py_thread_t * self, PyFrameObject * frame_obj, 
   *prev = V_FIELD_PTR(void *, frame_obj, py_frame, o_back);
   if (unlikely(origin == *prev)) {
     log_d("Frame points to itself!");
+    set_error(ETHREAD);
     FAIL;
   }
 
@@ -308,6 +313,7 @@ _py_thread__push_iframe_from_addr(py_thread_t * self, PyInterpreterFrame * ifram
   *prev = V_FIELD_PTR(void *, iframe, py_iframe, o_previous);
   if (unlikely(origin == *prev)) {
     log_d("Interpreter frame points to itself!");
+    set_error(ETHREAD);
     FAIL;
   }
 
@@ -469,8 +475,11 @@ py_thread__set_idle(py_thread_t * self) {
   unsigned char bit   = 1 << (self->tid & 7);
   size_t        index = self->tid >> 3;
 
-  if (index > (max_pid >> 3))
+  if (index > (max_pid >> 3)) {
+    log_e("Invalid TID");
+    set_error(ETHREAD);
     FAIL;
+  }
 
   if (_py_thread__is_idle(self)) {
     _tids_idle[index] |= bit;
@@ -515,19 +524,26 @@ int
 py_thread__save_kernel_stack(py_thread_t * self) {
   char  stack_path[48];
 
-  if (!isvalid(_kstacks))
+  if (!isvalid(_kstacks)) {
+    log_e("Invalid kernel stack");
+    set_error(ETHREAD);
     FAIL;
+  }
 
   sfree(_kstacks[self->tid]);
 
   sprintf(stack_path, "/proc/%d/task/" TID_FMT "/stack", self->proc->pid, self->tid);
   cu_fd fd = open(stack_path, O_RDONLY);
-  if (fd == -1)
+  if (fd == -1) {
+    log_e("Failed to open %s", stack_path);
+    set_error(ETHREAD);
     FAIL;
+  }
 
   _kstacks[self->tid] = (char *) calloc(1, MAX_STACK_FILE_SIZE);
   if (read(fd, _kstacks[self->tid], MAX_STACK_FILE_SIZE) == -1) {
     log_e("stack: failed to read %s", stack_path);
+    set_error(ETHREAD);
     FAIL;
   };
 
@@ -595,20 +611,26 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
     _tids[self->tid] = _UPT_create(self->tid);
     if (!isvalid(_tids[self->tid])) {
       log_e("libunwind: failed to re-create context for thread %d", self->tid);
+      set_error(ETHREAD);
       FAIL;
     }
     if (!isvalid(context)) {
       log_e("libunwind: unexpected invalid context");
+      set_error(ETHREAD);
       FAIL;
     }
   }
 
-  if (fail(wait_unw_init_remote(&cursor, self->proc->unwind.as, context)))
+  if (fail(wait_unw_init_remote(&cursor, self->proc->unwind.as, context))) {
+    log_e("libunwind: failed to initialize remote cursor");
+    set_error(ETHREAD);
     FAIL;
+  }
 
   do {
     if (unw_get_reg(&cursor, UNW_REG_IP, &pc)) {
       log_e("libunwind: cannot read program counter\n");
+      set_error(ETHREAD);
       FAIL;
     }
 
@@ -686,6 +708,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t * self) {
         frame = frame_new(frame_key, filename, scope, offset, 0, 0, 0);
         if (!isvalid(frame)) {
           log_ie("Failed to make native frame");
+          set_error(ETHREAD);
           FAIL;
         }
       }
@@ -710,6 +733,7 @@ _py_thread__seize(py_thread_t * self) {
   if (!isvalid(_tids[self->tid])) {
     if (fail(wait_ptrace(PTRACE_SEIZE, self->tid, 0, 0))) {
       log_e("ptrace: cannot seize thread %d: %d\n", self->tid, errno);
+      set_error(ETHREAD);
       FAIL;
     }
     else {
@@ -718,6 +742,7 @@ _py_thread__seize(py_thread_t * self) {
     _tids[self->tid] = _UPT_create(self->tid);
     if (!isvalid(_tids[self->tid])) {
       log_e("libunwind: failed to create context for thread %d", self->tid);
+      set_error(ETHREAD);
       FAIL;
     }
   }
@@ -733,8 +758,11 @@ _py_thread__seize(py_thread_t * self) {
 // ----------------------------------------------------------------------------
 int
 py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc) {
-  if (!isvalid(self))
+  if (!isvalid(self)) {
+    log_e("Cannot fill invalid thread");
+    set_error(ETHREAD);
     FAIL;
+  }
 
   V_DESC(proc->py_v);
 
@@ -791,6 +819,7 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
     // If we fail to get a valid Thread ID, we resort to the PyThreadState
     // remote address
     log_e("Failed to retrieve OS thread information");
+    set_error(ETHREAD);
     FAIL;
   }
   #if defined PL_LINUX
@@ -833,8 +862,18 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
 // ----------------------------------------------------------------------------
 int
 py_thread__next(py_thread_t * self) {
-  if (self->invalid || !isvalid(self->next_raddr.addr))
+  if (self->invalid) {
+    log_e("Invalid thread or no address for next thread: %p", self);
+    set_error(ETHREADINV);
     FAIL;
+  }
+
+  if (!isvalid(self->next_raddr.addr)) {
+    austin_errno = ETHREADNONEXT;
+    FAIL;
+  }
+
+  log_t("Found next thread");
 
   return py_thread__fill_from_raddr(self, &(self->next_raddr), self->proc);
 }
@@ -971,7 +1010,7 @@ py_thread__emit_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t 
   }
   if (!stack_is_empty()) {
     log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
-    austin_errno = ETHREADINV;
+    set_error(ETHREADINV);
     #ifdef DEBUG
     emit_frames_left(stack_pointer());
     #endif
@@ -1022,8 +1061,11 @@ py_thread_allocate(void) {
   if (isvalid(_stack))
     SUCCESS;
 
-  if (fail(stack_allocate(MAX_STACK_SIZE)))
+  if (fail(stack_allocate(MAX_STACK_SIZE))) {
+    log_e("Failed to allocate stack");
+    set_error(ETHREAD);
     FAIL;
+  }
 
   #if defined PL_WIN
   // On Windows we need to fetch process and thread information to detect idle
@@ -1031,8 +1073,10 @@ py_thread_allocate(void) {
   // needed we grow it at runtime.
   _pi_buffer_size = (1 << 16) * sizeof(void *);
   _pi_buffer      = calloc(1, _pi_buffer_size);
-  if (!isvalid(_pi_buffer))
+  if (!isvalid(_pi_buffer)) {
+    set_error(ETHREAD);
     FAIL;
+  }
   #endif
 
   max_pid = pid_max() + 1;
@@ -1064,10 +1108,12 @@ failed:
   sfree(_tids_idle);
   sfree(_tids_int);
   sfree(_kstacks);
+  
+  set_error(ETHREAD);
   FAIL;
 
 ok:
-  #endif
+  #endif /* NATIVE */
 
   SUCCESS;
 }

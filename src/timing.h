@@ -39,7 +39,6 @@ ctime_t _sample_timestamp;
 static inline void
 stopwatch_start(void) {
   _sample_timestamp = gettime();
-  austin_errno = EOK;
 } /* timer_start */
 
 

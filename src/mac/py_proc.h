@@ -43,11 +43,6 @@
 #include "../mem.h"
 #include "../resources.h"
 
-#define DEREF_SYM
-
-
-#define SYMBOLS                        2
-
 
 #define next_lc(cmd)    (cmd = (struct segment_command *)    ((void *) cmd + cmd->cmdsize));
 #define next_lc_64(cmd) (cmd = (struct segment_command_64 *) ((void *) cmd + cmd->cmdsize));
@@ -161,7 +156,13 @@ _py_proc__analyze_macho64(py_proc_t * self, void * base, void * map) {
             self->map.bss.base = base + sec[j].addr;
             self->map.bss.size = sec[j].size;
             bin_attrs |= B_BSS;
-            break;
+            continue;
+          }
+          // This section was added in Python 3.11
+          if (strcmp(sec[j].sectname, "PyRuntime") == 0) {
+            self->map.runtime.base = base + sec[j].addr;
+            self->map.runtime.size = sec[j].size;
+            continue;
           }
         }
         cmd_cnt++;
@@ -171,7 +172,7 @@ _py_proc__analyze_macho64(py_proc_t * self, void * base, void * map) {
     case LC_SYMTAB:
       for (
         register int i = 0;
-        self->sym_loaded < SYMBOLS && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
+        self->sym_loaded < DYNSYM_COUNT && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
         i++
       ) {
         struct nlist_64 * sym_tab = (struct nlist_64 *) (map + sw32(s, ((struct symtab_command *) cmd)->symoff));
@@ -262,7 +263,13 @@ _py_proc__analyze_macho32(py_proc_t * self, void * base, void * map) {
             self->map.bss.base = base + sec[j].addr;
             self->map.bss.size = sec[j].size;
             bin_attrs |= B_BSS;
-            break;
+            continue;
+          }
+          // This section was added in Python 3.11
+          if (strcmp(sec[j].sectname, "PyRuntime") == 0) {
+            self->map.runtime.base = base + sec[j].addr;
+            self->map.runtime.size = sec[j].size;
+            continue;
           }
         }
         cmd_cnt++;
@@ -272,7 +279,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * base, void * map) {
     case LC_SYMTAB:
       for (
         register int i = 0;
-        self->sym_loaded < SYMBOLS && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
+        self->sym_loaded < DYNSYM_COUNT && i < sw32(s, ((struct symtab_command *) cmd)->nsyms);
         i++
       ) {
         struct nlist * sym_tab = (struct nlist *) (map + sw32(s, ((struct symtab_command *) cmd)->symoff));
@@ -292,7 +299,7 @@ _py_proc__analyze_macho32(py_proc_t * self, void * base, void * map) {
     next_lc(cmd);
   }
 
-  if (self->sym_loaded > 0)
+  if (self->sym_loaded)
     bin_attrs |= B_SYMBOLS;
 
   return bin_attrs;
@@ -369,12 +376,14 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * base, mach_vm_size
   cu_map_t    * map       = NULL;
   if (fstat(fd, fs) == -1) {  // Get file size
     log_e("Cannot get size of binary %s", path);
+    set_error(EPROC);
     FAIL;  // cppcheck-suppress [memleak]
   }
 
   map = map_new(fd, fs->st_size, MAP_SHARED);
   if (!isvalid(map)) {
     log_e("Cannot map binary %s", path);
+    set_error(EPROC);
     FAIL;  // cppcheck-suppress [memleak]
   }
 
@@ -399,7 +408,7 @@ _py_proc__analyze_macho(py_proc_t * self, char * path, void * base, mach_vm_size
     return _py_proc__analyze_fat(self, base, map_addr);
 
   default:
-    self->sym_loaded = 0;
+    self->sym_loaded = FALSE;
   }
 
   return 0;
@@ -437,7 +446,7 @@ pid_to_task(pid_t pid) {
   kern_return_t result;
 
   if (fail(check_pid(pid))) {
-    log_d("No such process: %d", pid);
+    log_d("Process ID %d is not valid", pid);
     return 0;
   }
 
@@ -460,23 +469,20 @@ _py_proc__get_maps(py_proc_t * self) {
   vm_region_basic_info_data_64_t region_info;
   mach_port_t                    object_name;
 
-  #if defined PL_MACOS
   // NOTE: Mac OS X kernel bug. This also gives time to the VM maps to
   // stabilise.
   usleep(50000); // 50ms
-  #endif
 
   cu_char * prev_path   = NULL;
   cu_char * needle_path = NULL;
   cu_char * path        = (char *) calloc(MAXPATHLEN + 1, sizeof(char));
-  if (!isvalid(path))
+  if (!isvalid(path)) {
+    set_error(EPROC);
     FAIL;
+  }
 
   self->min_raddr = (void *) -1;
   self->max_raddr = NULL;
-
-  self->map.heap.base = NULL;
-  self->map.heap.size = 0;
 
   sfree(self->bin_path);
   sfree(self->lib_path);
@@ -484,6 +490,7 @@ _py_proc__get_maps(py_proc_t * self) {
   cu_void * pd_mem = calloc(1, sizeof(struct proc_desc));
   if (!isvalid(pd_mem)) {
     log_ie("Cannot allocate memory for proc_desc");
+    set_error(EPROC);
     FAIL;  // cppcheck-suppress [memleak]
   }
   struct proc_desc * pd = pd_mem;
@@ -492,6 +499,7 @@ _py_proc__get_maps(py_proc_t * self) {
     log_w("Cannot get executable path for process %d", self->pid);
   }
   if (strlen(pd->exe_path) == 0) {
+    set_error(EPROC);
     FAIL;  // cppcheck-suppress [memleak]
   }
   log_d("Executable path: '%s'", pd->exe_path);
@@ -501,7 +509,6 @@ _py_proc__get_maps(py_proc_t * self) {
     log_ie("Cannot get task for PID");
     FAIL;  // cppcheck-suppress [memleak]
   }
-  set_error(EOK);
 
   struct vm_map * map = NULL;
 
@@ -530,6 +537,7 @@ _py_proc__get_maps(py_proc_t * self) {
     prev_path = strndup(path, path_len);
     if (!isvalid(prev_path)) {
       log_ie("Cannot duplicate path name");
+      set_error(EPROC);
       FAIL;
     }
 
@@ -542,6 +550,7 @@ _py_proc__get_maps(py_proc_t * self) {
       map->path = strndup(path, strlen(path));
       if (!isvalid(map->path)) {
         log_ie("Cannot duplicate path name");
+        set_error(EPROC);
         FAIL;
       }
 
@@ -566,6 +575,7 @@ _py_proc__get_maps(py_proc_t * self) {
         map->path = strndup(path, strlen(path));
         if (!isvalid(map->path)) {
           log_ie("Cannot duplicate path name");
+          set_error(EPROC);
           FAIL;
         }
         map->file_size = size;
@@ -591,6 +601,7 @@ _py_proc__get_maps(py_proc_t * self) {
             map->path = needle_path = strndup(path, strlen(path));
             if (!isvalid(map->path)) {
               log_ie("Cannot duplicate path name");
+              set_error(EPROC);
               FAIL;
             }
             map->file_size = size;
@@ -604,16 +615,10 @@ _py_proc__get_maps(py_proc_t * self) {
     }
 
 next:
-    // Make a best guess for the heap boundary.
-    if (self->map.heap.base == NULL)
-      self->map.heap.base = (void *) address;
-    self->map.heap.size += size;
-
     address += size;
   }
 
   log_d("BSS bounds  [%p - %p]", self->map.bss.base, self->map.bss.base + self->map.bss.size);
-  log_d("HEAP bounds [%p - %p]", self->map.heap.base, self->map.heap.base + self->map.heap.size);
 
   // If the library map is not valid, use the needle map
   if (!isvalid(pd->maps[MAP_LIBSYM].path)) {
@@ -629,8 +634,8 @@ next:
   for (int i = 0; i < MAP_COUNT; i++) {
     map = &(pd->maps[i]);
     if (map->has_symbols) {
-      self->map.elf.base = map->base;
-      self->map.elf.size = map->size;
+      self->map.exe.base = map->base;
+      self->map.exe.size = map->size;
       self->sym_loaded = TRUE;
       break;
     }
@@ -641,7 +646,12 @@ next:
   self->map.bss.base = pd->maps[map_index].bss_base;
   self->map.bss.size = pd->maps[map_index].bss_size;
 
-  return !self->sym_loaded;
+  if (!self->sym_loaded) {
+    set_error(EPROC);
+    FAIL;
+  }
+
+  SUCCESS;
 } // _py_proc__get_maps
 
 
@@ -663,8 +673,10 @@ _py_proc__get_resident_memory(py_proc_t * self) {
 static int
 _py_proc__init(py_proc_t * self) {
   log_t("macOS: py_proc init");
-  if (!isvalid(self))
+  if (!isvalid(self)) {
+    set_error(EPROC);
     FAIL;
+  }
 
   return _py_proc__get_maps(self);
 } // _py_proc__init
