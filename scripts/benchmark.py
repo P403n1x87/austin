@@ -355,13 +355,15 @@ def main():
                 )
             )
 
-        renderer.render_scenario(title, table)
-
         results.append((title, table))
 
     summary = summarize(results)
 
     renderer.render_summary(summary)
+
+    renderer.render_header("Benchmark Results", level=2)
+    for title, table in results:
+        renderer.render_scenario(title, table)
 
 
 if __name__ == "__main__":
