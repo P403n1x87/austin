@@ -26,7 +26,8 @@ from test.utils import austin
 from test.utils import python
 from test.utils import target
 
-from austin.format.mojo import MojoFile, MojoFrame
+from austin.format.mojo import MojoFile
+from austin.format.mojo import MojoFrame
 
 
 @allpythons(min=(3, 11))
