@@ -9,4 +9,3 @@ pycparser
 # Support tests
 psutil
 requests
-uwsgi; sys_platform != 'win32'
