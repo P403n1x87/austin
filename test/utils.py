@@ -243,7 +243,7 @@ class Variant(str):
                 timeout=timeout,
             )
         except Exception as exc:
-            if pid := getattr(exc, "pid", None) is not None:
+            if (pid := getattr(exc, "pid", None)) is not None:
                 print_logs(collect_logs(self.name, pid))
             raise
 
