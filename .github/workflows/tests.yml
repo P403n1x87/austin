@@ -6,6 +6,16 @@ on:
       - master
       - devel
   pull_request:
+    paths:
+      - .github/workflows/tests.yml
+      - scripts/build-wheel.py
+      - scripts/requirements-bw.txt
+      - scripts/requirements-val.txt
+      - scripts/validation.py
+      - src/**
+      - test/**
+      - configure.ac
+      - Makefile.am
 
 concurrency: 
   group: ${{ github.head_ref || github.run_id }}

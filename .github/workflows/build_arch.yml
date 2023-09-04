@@ -6,6 +6,14 @@ on:
       - master
       - devel
   pull_request:
+    paths:
+      - .github/workflows/build_arch.yml
+      - scripts/build_arch.sh
+      - scripts/build-wheel.py
+      - scripts/requirements-bw.txt
+      - src/**
+      - configure.ac
+      - Makefile.am
 
 jobs:
   build-linux-archs:
