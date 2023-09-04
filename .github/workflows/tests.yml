@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-20.04    
     name: Build Austin on Linux
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install build dependencies
         run: |
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-20.04    
     name: Build Austin on Linux (musl)
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install build dependencies
         run: |
@@ -72,7 +72,7 @@ jobs:
     
     name: Tests on Linux with Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
         with:
@@ -127,7 +127,7 @@ jobs:
 
     name: Build Linux wheels
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
         with:
@@ -167,7 +167,7 @@ jobs:
 
     name: Build Austin on macOS (gcc)
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Compile Austin
         run: gcc-11 -Wall -Werror -O3 -g src/*.c -o src/austin
@@ -183,7 +183,7 @@ jobs:
 
     name: Build Austin on macOS (clang)
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       
       - name: Install automake
         run: brew install automake
@@ -208,7 +208,7 @@ jobs:
 
     name: Tests on macOS with Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
         with:
@@ -253,7 +253,7 @@ jobs:
 
     name: Build macOS wheels
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
         with:
@@ -288,7 +288,7 @@ jobs:
 
     name: Build Austin on Windows
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Compile Austin
         run: |
@@ -317,7 +317,7 @@ jobs:
     
     name: Tests on Windows with Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
         with:
@@ -329,7 +329,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}-dev
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v4
         name: Install Python 3.10
         with:
           python-version: '3.10'
@@ -355,14 +355,14 @@ jobs:
 
     name: Build Windows wheels
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
         with:
           name: austin-binary
           path: src
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v4
         name: Install Python 3.10
         with:
           python-version: '3.10'
@@ -395,7 +395,7 @@ jobs:
 
     name: Data validation with Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install build dependencies
         run: |

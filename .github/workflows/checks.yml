@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-20.04
     name: Check manpage
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install build dependencies
         run: |
@@ -38,7 +38,7 @@ jobs:
       cppcheck-version: 2.10.3
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install build dependencies
         run: |
@@ -54,7 +54,7 @@ jobs:
           key: ${{ runner.os }}-cppcheck-${{ env.cppcheck-version }}
 
       - name: Check out cppcheck
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           repository: danmar/cppcheck
           ref: ${{ env.cppcheck-version }}
@@ -83,7 +83,7 @@ jobs:
     name: Static code analysis (macOS)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       
       - name: Install cppcheck
         run: brew install cppcheck
@@ -95,9 +95,9 @@ jobs:
     runs-on: ubuntu-20.04
     name: Codespell
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - uses: "actions/setup-python@v2"
+      - uses: "actions/setup-python@v4"
         with:
           python-version: "3.9"
 
@@ -111,9 +111,9 @@ jobs:
     runs-on: ubuntu-20.04
     name: Formatting (tests)
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - uses: "actions/setup-python@v2"
+      - uses: "actions/setup-python@v4"
         with:
           python-version: "3.10"
 
@@ -127,9 +127,9 @@ jobs:
     runs-on: ubuntu-20.04
     name: Linting (tests)
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
-      - uses: "actions/setup-python@v2"
+      - uses: "actions/setup-python@v4"
         with:
           python-version: "3.10"
 
@@ -143,7 +143,7 @@ jobs:
     runs-on: ubuntu-20.04
     name: Code coverage
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install build dependencies
         run: |
@@ -191,7 +191,7 @@ jobs:
     runs-on: ubuntu-20.04
     name: Check cog output
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install cog
         run: pip install cogapp
