@@ -2,6 +2,11 @@ name: Benchmarks
 
 on:
   pull_request:
+    paths:
+      - .github/workflows/benchmarks.yml
+      - scripts/benchmark.py
+      - scripts/requirements-bm.txt
+      - src/**
 
 jobs:
   benchmarks:
