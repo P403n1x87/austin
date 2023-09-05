@@ -388,7 +388,7 @@ jobs:
       - name: Run functional tests
         run: |
           venv\Scripts\Activate.ps1
-          python -m pytest --full-trace --pastebin=failed -svr a test\functional -k "not austinp"
+          python -m pytest --full-trace --pastebin=failed -svr a test\functional -k "not austinp" -n auto
         if: always()
 
       - name: Run integrity tests
