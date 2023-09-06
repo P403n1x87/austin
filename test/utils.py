@@ -110,9 +110,10 @@ def apport_unpack(report: Path, target_dir: Path):
     ).decode()
 
 
-def bt(binary: Path) -> str:
-    if Path("core").is_file():
-        return gdb(["bt full", "q"], str(binary), "core")
+def bt(binary: Path, pid: int) -> str:
+    core_file = f"core.{pid}"
+    if Path(core_file).is_file():
+        return gdb(["bt full", "q"], str(binary), core_file)
 
     # On Ubuntu, apport puts crashes in /var/crash
     crash_dir = Path("/var/crash")
@@ -155,7 +156,8 @@ def collect_logs(variant: str, pid: int) -> List[str]:
 EXEEXT = ".exe" if platform.system() == "Windows" else ""
 
 
-# Taken from the subprocess module
+# Taken from the subprocess module. We make our own version that can also
+# propagate the PID.
 def run(
     *popenargs, input=None, capture_output=False, timeout=None, check=False, **kwargs
 ):
@@ -248,7 +250,7 @@ class Variant(str):
             raise
 
         if result.returncode in (-11, 139):  # SIGSEGV
-            print(bt(self.path))
+            print(bt(self.path, result.pid))
 
         if mojo and not ({"-o", "-w", "--output", "--where"} & set(args)):
             # We produce MOJO binary data only if we are not writing to file
