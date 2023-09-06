@@ -1,7 +1,7 @@
 import os
 import platform
 
-PY3_LATEST = 11
+PY3_LATEST = 12
 
 try:
     REQUESTED_PYTHON_VERSIONS = [

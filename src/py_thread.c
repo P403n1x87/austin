@@ -317,6 +317,16 @@ _py_thread__push_iframe_from_addr(py_thread_t * self, PyInterpreterFrame * ifram
     FAIL;
   }
 
+  if (V_MIN(3, 12) && V_FIELD_PTR(char, iframe, py_iframe, o_owner) == FRAME_OWNED_BY_CSTACK) {
+    // This is a shim frame that we can ignore
+    #ifdef NATIVE
+    // In native mode we take this as the marker for the beginning of the stack
+    // for a call to PyEval_EvalFrameDefault.
+    stack_py_push_cframe();
+    #endif
+    SUCCESS;
+  }
+
   stack_py_push(
     origin,
     code_raddr,
@@ -324,7 +334,7 @@ _py_thread__push_iframe_from_addr(py_thread_t * self, PyInterpreterFrame * ifram
   );
 
   #ifdef NATIVE
-  if (V_MIN(3, 11) && V_FIELD_PTR(int, iframe, py_iframe, o_is_entry)) {
+  if (V_EQ(3, 11) && V_FIELD_PTR(int, iframe, py_iframe, o_is_entry)) {
     // This marks the end of a CFrame
     stack_py_push_cframe();
   }
@@ -797,7 +807,9 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   self->raddr = *raddr;
   
   self->top_frame = V_FIELD(void*, ts, py_thread, o_frame);
-   
+
+  self->status = V_FIELD(tstate_status_t, ts, py_thread, o_status);
+
   self->next_raddr = (raddr_t) {
     raddr->pref,
     V_FIELD(void*, ts, py_thread, o_next) == raddr->addr \

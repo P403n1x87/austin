@@ -81,6 +81,7 @@
  */
 #define V_MIN(M, m) (((py_v->major << 8) | py_v->minor) >= ((M << 8) | m))
 #define V_MAX(M, m) (((py_v->major << 8) | py_v->minor) <= ((M << 8) | m))
+#define V_EQ(M, m)  (((py_v->major << 8) | py_v->minor) == ((M << 8) | m))
 
 typedef unsigned long offset_t;
 
@@ -121,6 +122,7 @@ typedef struct {
   offset_t o_previous;
   offset_t o_prev_instr;
   offset_t o_is_entry;
+  offset_t o_owner;
 } py_iframe_v;
 
 
@@ -134,6 +136,7 @@ typedef struct {
   offset_t o_thread_id;
   offset_t o_native_thread_id;
   offset_t o_stack;
+  offset_t o_status;
 } py_thread_v;
 
 
@@ -161,6 +164,7 @@ typedef struct {
   offset_t o_next;
   offset_t o_tstate_head;
   offset_t o_gc;
+  offset_t o_gil_state;
 } py_is_v;
 
 
@@ -211,7 +215,6 @@ typedef struct {
   offsetof(s, co_qualname),             \
 }
 
-
 #define PY_FRAME(s) {                   \
   sizeof(s),                            \
   offsetof(s, f_back),                  \
@@ -232,6 +235,16 @@ typedef struct {
   offsetof(s, previous),                \
   offsetof(s, prev_instr),              \
   offsetof(s, is_entry),                \
+  offsetof(s, owner),                   \
+}
+
+#define PY_IFRAME_312(s) {              \
+  sizeof(s),                            \
+  offsetof(s, f_code),                  \
+  offsetof(s, previous),                \
+  offsetof(s, prev_instr),              \
+  0,                                    \
+  offsetof(s, owner),                   \
 }
 
 #define PY_THREAD(s) {                  \
@@ -252,6 +265,18 @@ typedef struct {
   offsetof(s, thread_id),               \
   offsetof(s, native_thread_id),        \
   offsetof(s, datastack_chunk),         \
+}
+
+#define PY_THREAD_312(s) {              \
+  sizeof(s),                            \
+  offsetof(s, prev),                    \
+  offsetof(s, next),                    \
+  offsetof(s, interp),                  \
+  offsetof(s, cframe),                  \
+  offsetof(s, thread_id),               \
+  offsetof(s, native_thread_id),        \
+  offsetof(s, datastack_chunk),         \
+  offsetof(s, _status)                  \
 }
 
 #define PY_UNICODE(n) {                 \
@@ -288,6 +313,13 @@ typedef struct {
   offsetof(s, gc),                      \
 }
 
+#define PY_IS_312(s) {                  \
+  sizeof(s),                            \
+  offsetof(s, next),                    \
+  offsetof(s, threads.head),            \
+  offsetof(s, gc),                      \
+  offsetof(s, ceval.gil),               \
+}
 
 #define PY_GC(s) {                      \
   sizeof(s),                            \
@@ -341,6 +373,19 @@ python_v python_v3_11 = {
   PY_IFRAME_311   (_PyInterpreterFrame3_11),
 };
 
+// ---- Python 3.12 -----------------------------------------------------------
+
+python_v python_v3_12 = {
+  PY_CODE_311     (PyCodeObject3_12),
+  PY_FRAME        (PyFrameObject3_10),  // Irrelevant
+  PY_THREAD_312   (PyThreadState3_12),
+  PY_IS_312       (PyInterpreterState3_12),
+  PY_RUNTIME_311  (_PyRuntimeState3_12),
+  PY_GC           (struct _gc_runtime_state3_12),
+  PY_CFRAME_311   (_PyCFrame3_12),
+  PY_IFRAME_312   (_PyInterpreterFrame3_12),
+};
+
 // ----------------------------------------------------------------------------
 static inline python_v *
 get_version_descriptor(int major, int minor, int patch) {
@@ -375,6 +420,9 @@ get_version_descriptor(int major, int minor, int patch) {
 
     // 3.11
     case 11: py_v = &python_v3_11; break;
+
+    // 3.12
+    case 12: py_v = &python_v3_12; break;
 
     default: py_v = LATEST_VERSION;
       UNSUPPORTED_VERSION;

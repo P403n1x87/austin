@@ -156,8 +156,7 @@ jobs:
           sudo apt-get update
           sudo apt-get -y install \
             valgrind \
-            python2.7 \
-            python3.{5..11} \
+            python3.{8..12} \
             python3.10-full python3.10-dev
 
           python3.10 -m venv .venv
@@ -175,8 +174,8 @@ jobs:
         run: |
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           ulimit -c unlimited
-          .venv/bin/pytest --pastebin=failed -sr fE -n auto || true
-          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -sr fE -n auto || true
+          .venv/bin/pytest -sr fE -n auto || true
+          sudo -E env PATH="$PATH" .venv/bin/pytest -sr fE -n auto || true
 
       - name: Generate Cobertura report
         run: gcovr --xml ./cobertura.xml -r src/

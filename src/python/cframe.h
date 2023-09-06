@@ -40,8 +40,16 @@ typedef struct _PyCFrame3_11 {
 } _PyCFrame3_11;
 
 
+typedef struct {
+    /* Pointer to the currently executing frame (it can be NULL) */
+    void *current_frame;
+    void *previous;
+} _PyCFrame3_12;
+
+
 typedef union {
     _PyCFrame3_11 v3_11;
+    _PyCFrame3_12 v3_12;
 } PyCFrame;
 
 #endif
