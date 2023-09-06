@@ -360,7 +360,7 @@ jobs:
       - name: Compile Austin
         run: |
           gcc.exe --version
-          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Werror
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Werror -DDEBUG
           src\austin.exe --help
 
       - uses: actions/upload-artifact@v3
@@ -411,7 +411,7 @@ jobs:
       - name: Run functional tests
         run: |
           venv\Scripts\Activate.ps1
-          python -m pytest --full-trace --pastebin=failed -svr a test\functional -k "not austinp" -n auto
+          python -m pytest --full-trace --pastebin=failed -svr a test\functional -k "not austinp"
         if: always()
 
       - name: Run integrity tests
