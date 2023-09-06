@@ -96,8 +96,7 @@ jobs:
           sudo apt-get update
           sudo apt-get -y install \
             valgrind \
-            gdb \
-            systemd-coredump
+            gdb
 
       - name: Install Python
         uses: actions/setup-python@v4
@@ -114,37 +113,61 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r test/requirements.txt
+          
+      - name: Set core dump file pattern
+        run: |
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+          
           ulimit -c unlimited
+          python3.10 -c "import ctypes;ctypes.string_at(0)" || true
+          ls core.*
+          rm core.*
 
       - name: Run unit tests
-        run: .venv/bin/pytest -sv test/cunit
+        run: |
+          ulimit -c unlimited
+          .venv/bin/pytest -sv test/cunit
   
       - name: Run functional Austin tests (with sudo)
-        run: sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a test/functional -n auto -k "not austinp"
+        run: |
+          ulimit -c unlimited
+          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a test/functional -n auto -k "not austinp"
         if: always()
 
       - name: Run functional Austin tests (without sudo)
-        run: .venv/bin/pytest --pastebin=failed -svr a test/functional -n auto -k "not austinp"
+        run: |
+          ulimit -c unlimited
+          .venv/bin/pytest --pastebin=failed -svr a test/functional -n auto -k "not austinp"
         if: always()
 
       - name: Run functional austinp tests (with sudo)
-        run: sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a test/functional -n auto -k "austinp"
+        run: |
+          ulimit -c unlimited
+          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a test/functional -n auto -k "austinp"
         if: always()
 
       - name: Run functional austinp tests (without sudo)
-        run: .venv/bin/pytest --pastebin=failed -svr a test/functional -n auto -k "austinp"
+        run: |
+          ulimit -c unlimited
+          .venv/bin/pytest --pastebin=failed -svr a test/functional -n auto -k "austinp"
         if: always()
   
       - name: Run integrity tests (with sudo)
-        run: sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a test/integrity
+        run: |
+          ulimit -c unlimited
+          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a test/integrity
         if: always()
 
       - name: Run integrity tests (without sudo)
-        run: .venv/bin/pytest --pastebin=failed -svr a test/integrity
+        run: |
+          ulimit -c unlimited
+          .venv/bin/pytest --pastebin=failed -svr a test/integrity
         if: always()
 
       - name: Run support tests
-        run: .venv/bin/pytest -sv test/support
+        run: |
+          ulimit -c unlimited
+          .venv/bin/pytest -sv test/support
         if: always()
 
   wheels-linux:
@@ -484,6 +507,7 @@ jobs:
       - name: Run data validation
         run: |
           ulimit -c unlimited
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
 
           source .venv/bin/activate
           python scripts/validation.py --ignore-errors

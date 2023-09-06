@@ -160,6 +160,11 @@ jobs:
             python3.{5..11} \
             python3.10-full python3.10-dev
 
+          python3.10 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r test/requirements.txt
+
       - name: Compile Austin
         run: |
           autoreconf --install
@@ -168,14 +173,10 @@ jobs:
 
       - name: Run tests
         run: |
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           ulimit -c unlimited
-          python3.10 -m venv .venv
-          source .venv/bin/activate
-          pip install --upgrade pip
-          pip install -r test/requirements.txt
           .venv/bin/pytest --pastebin=failed -sr fE -n auto || true
           sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -sr fE -n auto || true
-          deactivate
 
       - name: Generate Cobertura report
         run: gcovr --xml ./cobertura.xml -r src/
