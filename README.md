@@ -621,10 +621,10 @@ when starting a container.
 Due to the **System Integrity Protection**, introduced in **MacOS** with El
 Capitan, and the [Hardened Runtime][hardened runtime], introduced in Mojave,
 Austin cannot profile Python processes that use an executable located in the
-`/bin` folder, even with `sudo`. This is the case for the system-provided
-version of Python, and the one installed with the official installers from
-[python.org](https://python.org). Other installation methods, like
-[pyenv][pyenv] or [Anaconda][anaconda] or
+`/bin` folder, or code-signed, even with `sudo`. This is the case for the
+system-provided version of Python, and the one installed with the official
+installers from [python.org](https://python.org). Other installation methods,
+like [pyenv][pyenv] or [Anaconda][anaconda] or
 [Homebrew](https://formulae.brew.sh/formula/austin) are known to work with
 Austin, out of the box.
 
@@ -873,6 +873,7 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 </p>
 
 
+[anaconda]: https://www.anaconda.com/
 [`austin-python`]: https://github.com/P403n1x87/austin-python
 [Austin TUI]: https://github.com/P403n1x87/austin-tui
 [Austin Web]: https://github.com/P403n1x87/austin-web
