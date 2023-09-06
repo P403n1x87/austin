@@ -3,9 +3,9 @@ import sys
 import typing as t
 from pathlib import Path
 from subprocess import PIPE
-from subprocess import run
 from test.cunit import SRC
 from test.utils import bt
+from test.utils import run
 from types import FunctionType
 
 import pytest
@@ -55,7 +55,9 @@ def cunit(
 
         if result.returncode == -11:
             binary_name = Path(module).stem.replace("test_", "")
-            raise SegmentationFault(bt((SRC / binary_name).with_suffix(".so")))
+            raise SegmentationFault(
+                bt((SRC / binary_name).with_suffix(".so"), result.pid)
+            )
 
         raise CUnitTestFailure(
             f"\n{result.stdout.decode()}\n"
