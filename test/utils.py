@@ -36,6 +36,7 @@ from subprocess import CompletedProcess
 from subprocess import Popen
 from subprocess import TimeoutExpired
 from subprocess import check_output
+from tempfile import gettempdir
 from test import PYTHON_VERSIONS
 from time import sleep
 from types import ModuleType
@@ -149,6 +150,20 @@ def collect_logs(variant: str, pid: int) -> List[str]:
                     ),
                     f" end of logs for {variant}[{pid}] ".center(80, "="),
                 ]
+
+        case "Windows":
+            with (Path(gettempdir()) / "austin.log").open() as logfile:
+                needles = (f"{variant}[{pid}]",)
+                return [
+                    f" logs for {variant}[{pid}] ".center(80, "="),
+                    *(
+                        line.strip()
+                        for line in logfile.readlines()
+                        if any(needle in line for needle in needles)
+                    ),
+                    f" end of logs for {variant}[{pid}] ".center(80, "="),
+                ]
+
         case _:
             return []
 
