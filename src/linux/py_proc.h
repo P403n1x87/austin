@@ -372,9 +372,6 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   crc32_t file_hash = fhash(fp);
   long modified_time = fmtime_ns(fp);
 
-  self->min_raddr = (void *) -1;
-  self->max_raddr = NULL;
-
   sfree(self->bin_path);
   sfree(self->lib_path);
 
@@ -432,13 +429,6 @@ _py_proc__parse_maps_file(py_proc_t * self) {
       self->map.runtime.base = (void *) lower - page_size;
       self->map.runtime.size = upper - lower + page_size;
       log_d("PyRuntime section inferred from VM maps for %s: %lx-%lx", map->path, lower, upper);
-    }
-
-    if (field_count == 0 || strstr(pathname, "[v") == NULL) {
-      // Skip meaningless addresses like [vsyscall] which would give
-      // ridiculous values.
-      if ((void *) lower < self->min_raddr) self->min_raddr = (void *) lower;
-      if ((void *) upper > self->max_raddr) self->max_raddr = (void *) upper;
     }
 
     if (pathname[0] == '[')
