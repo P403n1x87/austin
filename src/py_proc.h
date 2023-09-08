@@ -65,8 +65,6 @@ typedef struct {
   char          * lib_path;
 
   proc_vm_map_t   map;
-  void          * min_raddr;
-  void          * max_raddr;
 
   int             sym_loaded;
   python_v      * py_v;

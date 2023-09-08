@@ -676,9 +676,6 @@ _py_proc__run(py_proc_t * self) {
   if (!(isvalid(self->bin_path) || isvalid(self->lib_path)))
     log_w("No Python binary files detected");
 
-  if (self->min_raddr > self->max_raddr)
-    log_w("Invalid remote VM maximal bounds.");
-
   if (
     self->symbols[DYNSYM_RUNTIME] == NULL &&
     self->gc_state_raddr          == NULL
@@ -688,7 +685,6 @@ _py_proc__run(py_proc_t * self) {
   #ifdef DEBUG
   if (self->bin_path != NULL) log_d("Python binary:  %s", self->bin_path);
   if (self->lib_path != NULL) log_d("Python library: %s", self->lib_path);
-  log_d("Maximal VM address space: %p-%p", self->min_raddr, self->max_raddr);
   #endif
 
   self->timestamp = gettime();
@@ -713,7 +709,6 @@ py_proc_new(int child) {
     return NULL;
 
   py_proc->child = child;
-  py_proc->min_raddr = (void *) -1;
   py_proc->gc_state_raddr = NULL;
 
   _prehash_symbols();
