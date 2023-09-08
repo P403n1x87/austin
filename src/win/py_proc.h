@@ -219,9 +219,6 @@ _py_proc__get_modules(py_proc_t * self) {
   MODULEENTRY32 module;
   module.dwSize = sizeof(module);
 
-  self->min_raddr = (void *) -1;
-  self->max_raddr = NULL;
-
   sfree(self->bin_path);
   sfree(self->lib_path);
 
@@ -249,12 +246,6 @@ _py_proc__get_modules(py_proc_t * self) {
     FAIL;
   }
   do {
-    if ((void *) module.modBaseAddr < self->min_raddr)
-      self->min_raddr = module.modBaseAddr;
-
-    if ((void *) module.modBaseAddr + module.modBaseSize > self->max_raddr)
-      self->max_raddr = module.modBaseAddr + module.modBaseSize;
-
     if (isvalid(prev_path) && strcmp(module.szExePath, prev_path) == 0) { // Avoid analysing a binary multiple times
       continue;
     }

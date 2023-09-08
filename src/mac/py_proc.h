@@ -481,9 +481,6 @@ _py_proc__get_maps(py_proc_t * self) {
     FAIL;
   }
 
-  self->min_raddr = (void *) -1;
-  self->max_raddr = NULL;
-
   sfree(self->bin_path);
   sfree(self->lib_path);
 
@@ -521,12 +518,6 @@ _py_proc__get_maps(py_proc_t * self) {
     &count,
     &object_name
   ) == KERN_SUCCESS) {
-    if ((void *) address < self->min_raddr)
-      self->min_raddr = (void *) address;
-
-    if ((void *) address + size > self->max_raddr)
-      self->max_raddr = (void *) address + size;
-
     int path_len = proc_regionfilename(self->pid, address, path, MAXPATHLEN);
 
     if (isvalid(prev_path) && strcmp(path, prev_path) == 0) { // Avoid analysing a binary multiple times
