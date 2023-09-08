@@ -623,6 +623,7 @@ _py_proc__run(py_proc_t * self) {
   TIMER_START(pargs.timeout)
     if (try_once && ++attempts > 1) {
       log_d("Cannot attach to process %d with a single attempt.", self->pid);
+      set_error(EPROC);
       FAIL;
     }
 
@@ -657,6 +658,7 @@ _py_proc__run(py_proc_t * self) {
     // Scan the BSS section as a last resort
     if (fail(_py_proc__scan_bss(self))) {
       log_d("BSS scan failed");
+      set_error(EPROC);
       FAIL;
     }
 
