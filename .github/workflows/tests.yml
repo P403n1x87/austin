@@ -131,25 +131,25 @@ jobs:
       - name: Run functional Austin tests (with sudo)
         run: |
           ulimit -c unlimited
-          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a test/functional -n auto -k "not austinp"
+          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a test/functional -k "not austinp"
         if: always()
 
       - name: Run functional Austin tests (without sudo)
         run: |
           ulimit -c unlimited
-          .venv/bin/pytest --pastebin=failed -svr a test/functional -n auto -k "not austinp"
+          .venv/bin/pytest --pastebin=failed -svr a test/functional -k "not austinp"
         if: always()
 
       - name: Run functional austinp tests (with sudo)
         run: |
           ulimit -c unlimited
-          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a test/functional -n auto -k "austinp"
+          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a test/functional -k "austinp"
         if: always()
 
       - name: Run functional austinp tests (without sudo)
         run: |
           ulimit -c unlimited
-          .venv/bin/pytest --pastebin=failed -svr a test/functional -n auto -k "austinp"
+          .venv/bin/pytest --pastebin=failed -svr a test/functional -k "austinp"
         if: always()
   
       - name: Run integrity tests (with sudo)
