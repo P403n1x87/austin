@@ -1125,11 +1125,82 @@ _py_proc__resume_threads(py_proc_t * self, raddr_t * tstate_head_raddr) {
 
 
 // ----------------------------------------------------------------------------
-int
-py_proc__sample(py_proc_t * self) {
-  ctime_t   time_delta     = gettime() - self->timestamp;  // Time delta since last sample.
+static inline int
+_py_proc__sample_interpreter(py_proc_t * self, PyInterpreterState * is, ctime_t time_delta) {
   ssize_t   mem_delta      = 0;
   void    * current_thread = NULL;
+
+  V_DESC(self->py_v);
+
+  void * tstate_head = V_FIELD_PTR(void *, is, py_is, o_tstate_head);
+  if (!isvalid(tstate_head))
+    // Maybe the interpreter state is in an invalid state. We'll try again
+    // unless there is a fatal error.
+    SUCCESS;
+  
+  raddr_t raddr = { .pref = self->proc_ref, .addr = tstate_head };
+  py_thread_t py_thread;
+
+  if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self))) {
+    log_ie("Failed to fill thread from raddr while sampling");
+    if (is_fatal(austin_errno)) {
+      FAIL;
+    }
+    SUCCESS;
+  }
+
+  if (pargs.memory) {
+    // Use the current thread to determine which thread is manipulating memory
+    if (V_MIN(3, 12)) {
+      void * gil_state_raddr = V_FIELD_PTR(void *, is, py_is, o_gil_state);
+      if (!isvalid(gil_state_raddr))
+        SUCCESS;
+      gil_state_t gil_state;
+      if (fail(copy_datatype(self->proc_ref, gil_state_raddr, gil_state))) {
+        log_ie("Failed to copy GIL state");
+        FAIL;
+      }
+      current_thread = (void *) gil_state.last_holder._value;
+    }
+    else
+      current_thread = _py_proc__get_current_thread_state_raddr(self);
+  }
+
+  do {
+    if (pargs.memory) {
+      mem_delta = 0;
+      if (V_MAX(3, 11) && self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void *) -1) {
+        if (_py_proc__find_current_thread_offset(self, py_thread.raddr.addr))
+          continue;
+        else
+          current_thread = _py_proc__get_current_thread_state_raddr(self);
+      }
+      if (py_thread.raddr.addr == current_thread) {
+        mem_delta = _py_proc__get_memory_delta(self);
+        log_t("Thread %lx holds the GIL", py_thread.tid);
+      }
+    }
+
+    py_thread__emit_collapsed_stack(
+      &py_thread,
+      time_delta,
+      mem_delta
+    );
+  } while (success(py_thread__next(&py_thread)));
+
+  if (austin_errno != ETHREADNONEXT) {
+    log_ie("Failed to iterate over threads while sampling");
+    FAIL;
+  }
+
+  SUCCESS;
+} /* _py_proc__sample_interpreter */
+
+
+// ----------------------------------------------------------------------------
+int
+py_proc__sample(py_proc_t * self) {
+  ctime_t time_delta = gettime() - self->timestamp;  // Time delta since last sample.
 
   V_DESC(self->py_v);
 
@@ -1140,85 +1211,35 @@ py_proc__sample(py_proc_t * self) {
   }
 
   void * tstate_head = V_FIELD(void *, is, py_is, o_tstate_head);
-  if (isvalid(tstate_head)) {
-    raddr_t raddr = { .pref = self->proc_ref, .addr = tstate_head };
-    py_thread_t py_thread;
+  if (!isvalid(tstate_head))
+    // Maybe the interpreter state is in an invalid state. We'll try again
+    // unless there is a fatal error.
+    SUCCESS;
+  
 
-    #ifdef NATIVE
-    if (fail(_py_proc__interrupt_threads(self, &raddr))) {
-      log_ie("Failed to interrupt threads");
-      FAIL;
-    }
-    time_delta = gettime() - self->timestamp;
-    #endif
-
-    if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self))) {
-      log_ie("Failed to fill thread from raddr while sampling");
-      if (is_fatal(austin_errno)) {
-        FAIL;
-      }
-      SUCCESS;
-    }
-
-    if (pargs.memory) {
-      // Use the current thread to determine which thread is manipulating memory
-      if (V_MIN(3, 12)) {
-        void * gil_state_raddr = V_FIELD(void *, is, py_is, o_gil_state);
-        if (!isvalid(gil_state_raddr))
-          SUCCESS;
-        gil_state_t gil_state;
-        if (fail(copy_datatype(self->proc_ref, gil_state_raddr, gil_state))) {
-          log_ie("Failed to copy GIL state");
-          FAIL;
-        }
-        current_thread = (void *) gil_state.last_holder._value;
-      }
-      else
-        current_thread = _py_proc__get_current_thread_state_raddr(self);
-    }
-
-    do {
-      if (pargs.memory) {
-        mem_delta = 0;
-        if (V_MAX(3, 11) && self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void *) -1) {
-          if (_py_proc__find_current_thread_offset(self, py_thread.raddr.addr))
-            continue;
-          else
-            current_thread = _py_proc__get_current_thread_state_raddr(self);
-        }
-        if (py_thread.raddr.addr == current_thread) {
-          mem_delta = _py_proc__get_memory_delta(self);
-          log_t("Thread %lx holds the GIL", py_thread.tid);
-        }
-      }
-
-      py_thread__emit_collapsed_stack(
-        &py_thread,
-        time_delta,
-        mem_delta
-      );
-    } while (success(py_thread__next(&py_thread)));
-
-    if (austin_errno != ETHREADNONEXT) {
-      log_ie("Failed to iterate over threads while sampling");
-      FAIL;
-    }
-
-    #ifdef NATIVE
-    self->timestamp = gettime();
-    if (fail(_py_proc__resume_threads(self, &raddr))) {
-      log_ie("Failed to resume threads");
-      FAIL;
-    }
-    #endif
-
+  #ifdef NATIVE
+  raddr_t raddr = { .pref = self->proc_ref, .addr = tstate_head };
+  if (fail(_py_proc__interrupt_threads(self, &raddr))) {
+    log_ie("Failed to interrupt threads");
+    FAIL;
   }
+  time_delta = gettime() - self->timestamp;
+  #endif
 
-  #ifndef NATIVE
+  int result = _py_proc__sample_interpreter(self, &is, time_delta);
+
+  #ifdef NATIVE
+  self->timestamp = gettime();
+  
+  if (fail(_py_proc__resume_threads(self, &raddr))) {
+    log_ie("Failed to resume threads");
+    FAIL;
+  }
+  #else
   self->timestamp += time_delta;
   #endif
 
-  SUCCESS;
+  return result;
 } /* py_proc__sample */
 
 

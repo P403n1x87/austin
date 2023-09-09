@@ -2,6 +2,9 @@
 
   Dropped support for Python 2, 3.3, 3.4, 3.5, 3.6 and 3.7.
 
+  Bugfix: ensure that threads are resumed by austinp when an error occurs during
+  the sampling process.
+
 
 2023-02-21 v3.5.0
 
