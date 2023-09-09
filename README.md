@@ -367,11 +367,12 @@ for some further processing.
 By default, each line has the following structure:
 
 ~~~
-P<pid>;T<tid>[;[frame]]* [metric]*
+P<pid>;T<iid>:<tid>[;[frame]]* [metric]*
 ~~~
 
 where the structure of `[frame]` and the number and type of metrics on each line
-depend on the mode.
+depend on the mode. The `<pid>`, `<iid>` and `<tid>` component represent the
+process ID, the sub-interpreter ID, and the thread ID respectively.
 
 
 ## Environment variables
@@ -447,6 +448,15 @@ time, CPU time and memory pressure, all from a single run.
 Austin can be told to profile multi-process applications with the `-C` or
 `--children` switch. This way Austin will look for new children of the parent
 process.
+
+
+## Sub-interpreters
+
+Austin has support for Python applications that make use of sub-interpreters.
+This means that Austin will sample all the sub-interpreters that are running
+within each process making up the Python application.
+
+*Since Austin 3.6.0*.
 
 
 ## Garbage Collector Sampling

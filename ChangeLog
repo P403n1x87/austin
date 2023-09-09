@@ -1,5 +1,7 @@
 2023-xx-xx v3.6.0
 
+  Added support for sub-interpreters.
+
   Dropped support for Python 2, 3.3, 3.4, 3.5, 3.6 and 3.7.
 
   Bugfix: ensure that threads are resumed by austinp when an error occurs during

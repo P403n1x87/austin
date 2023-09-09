@@ -56,11 +56,11 @@ const char SAMPLE_FORMAT_KERNEL[]      = ";kernel:%s:0";
 const char SAMPLE_FORMAT_WHERE_KERNEL[]= "    \033[38;5;159m%s\033[0m 🐧\n";
 #endif
 #if defined PL_WIN
-const char HEAD_FORMAT_DEFAULT[]       = "P%I64d;T%I64x";
-const char HEAD_FORMAT_WHERE[]         = "\n\n%3$s%4$s Process \033[35;1m%1$I64d\033[0m 🧵 Thread \033[34;1m%2$I64d\033[0m\n\n";
+const char HEAD_FORMAT_DEFAULT[]       = "P%I64d;T%I64x:%I64x";
+const char HEAD_FORMAT_WHERE[]         = "\n\n%4$s%5$s Process \033[35;1m%1$I64d\033[0m 🧵 Thread \033[34;1m%2$I64d:%3$I64d\033[0m\n\n";
 #else
-const char HEAD_FORMAT_DEFAULT[]       = "P%d;T%ld";
-const char HEAD_FORMAT_WHERE[]         = "\n\n%3$s%4$s Process \033[35;1m%1$d\033[0m 🧵 Thread \033[34;1m%2$ld\033[0m\n\n";
+const char HEAD_FORMAT_DEFAULT[]       = "P%d;T%ld:%ld";
+const char HEAD_FORMAT_WHERE[]         = "\n\n%4$s%5$s Process \033[35;1m%1$d\033[0m 🧵 Thread \033[34;1m%2$ld:%3$ld\033[0m\n\n";
 #endif
 
 

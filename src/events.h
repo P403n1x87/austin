@@ -75,13 +75,13 @@
     }                                      \
   }
 
-#define emit_stack(format, pid, tid, ...)                         \
-  {                                                               \
-    if (pargs.binary) {                                           \
-      mojo_stack(pid, tid);                                       \
-    } else {                                                      \
-      fprintfp(pargs.output_file, format, pid, tid, __VA_ARGS__); \
-    }                                                             \
+#define emit_stack(format, pid, iid, tid, ...)                         \
+  {                                                                    \
+    if (pargs.binary) {                                                \
+      mojo_stack(pid, iid, tid);                                       \
+    } else {                                                           \
+      fprintfp(pargs.output_file, format, pid, iid, tid, __VA_ARGS__); \
+    }                                                                  \
   }
 
 #define emit_frame_ref(format, frame)                                      \

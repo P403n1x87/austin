@@ -163,6 +163,7 @@ typedef struct {
 
   offset_t o_next;
   offset_t o_tstate_head;
+  offset_t o_id;
   offset_t o_gc;
   offset_t o_gil_state;
 } py_is_v;
@@ -303,6 +304,7 @@ typedef struct {
   sizeof(s),                            \
   offsetof(s, next),                    \
   offsetof(s, tstate_head),             \
+  offsetof(s, id),                      \
   offsetof(s, gc),                      \
 }
 
@@ -310,6 +312,7 @@ typedef struct {
   sizeof(s),                            \
   offsetof(s, next),                    \
   offsetof(s, threads.head),            \
+  offsetof(s, id),                      \
   offsetof(s, gc),                      \
 }
 
@@ -317,6 +320,7 @@ typedef struct {
   sizeof(s),                            \
   offsetof(s, next),                    \
   offsetof(s, threads.head),            \
+  offsetof(s, id),                      \
   offsetof(s, gc),                      \
   offsetof(s, ceval.gil),               \
 }
