@@ -92,11 +92,12 @@ py_thread__next(py_thread_t *);
  * Print the frame stack using the collapsed format.
  *
  * @param  py_thread_t  self.
+ * @param  int64_t      the interpreter ID.
  * @param  ctime_t      the time delta.
  * @param  ssize_t      the memory delta.
  */
 void
-py_thread__emit_collapsed_stack(py_thread_t *, ctime_t, ssize_t);
+py_thread__emit_collapsed_stack(py_thread_t *, int64_t, ctime_t, ssize_t);
 
 
 /**

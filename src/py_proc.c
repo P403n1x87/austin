@@ -1166,6 +1166,7 @@ _py_proc__sample_interpreter(py_proc_t * self, PyInterpreterState * is, ctime_t 
       current_thread = _py_proc__get_current_thread_state_raddr(self);
   }
 
+  int64_t interp_id = V_FIELD_PTR(int64_t, is, py_is, o_id);
   do {
     if (pargs.memory) {
       mem_delta = 0;
@@ -1183,6 +1184,7 @@ _py_proc__sample_interpreter(py_proc_t * self, PyInterpreterState * is, ctime_t 
 
     py_thread__emit_collapsed_stack(
       &py_thread,
+      interp_id,
       time_delta,
       mem_delta
     );
@@ -1200,46 +1202,54 @@ _py_proc__sample_interpreter(py_proc_t * self, PyInterpreterState * is, ctime_t 
 // ----------------------------------------------------------------------------
 int
 py_proc__sample(py_proc_t * self) {
-  ctime_t time_delta = gettime() - self->timestamp;  // Time delta since last sample.
+  ctime_t   time_delta     = gettime() - self->timestamp;  // Time delta since last sample.
+  void    * current_interp = self->is_raddr;
 
   V_DESC(self->py_v);
 
   PyInterpreterState is;
-  if (fail(py_proc__get_type(self, self->is_raddr, is))) {
-    log_ie("Failed to get interpreter state while sampling");
-    FAIL;
-  }
 
-  void * tstate_head = V_FIELD(void *, is, py_is, o_tstate_head);
-  if (!isvalid(tstate_head))
-    // Maybe the interpreter state is in an invalid state. We'll try again
-    // unless there is a fatal error.
-    SUCCESS;
+  do {
+    if (fail(py_proc__get_type(self, current_interp, is))) {
+      log_ie("Failed to get interpreter state while sampling");
+      FAIL;
+    }
+
+    void * tstate_head = V_FIELD(void *, is, py_is, o_tstate_head);
+    if (!isvalid(tstate_head))
+      // Maybe the interpreter state is in an invalid state. We'll try again
+      // unless there is a fatal error.
+      SUCCESS;
+
+    #ifdef NATIVE
+    raddr_t raddr = { .pref = self->proc_ref, .addr = tstate_head };
+    if (fail(_py_proc__interrupt_threads(self, &raddr))) {
+      log_ie("Failed to interrupt threads");
+      FAIL;
+    }
+    time_delta = gettime() - self->timestamp;
+    #endif
+
+    int result = _py_proc__sample_interpreter(self, &is, time_delta);
+
+    #ifdef NATIVE
+    if (fail(_py_proc__resume_threads(self, &raddr))) {
+      log_ie("Failed to resume threads");
+      FAIL;
+    }
+    #endif
+    
+    if (fail(result))
+      FAIL;
+  } while (isvalid(current_interp = V_FIELD(void *, is, py_is, o_next)));
   
-
-  #ifdef NATIVE
-  raddr_t raddr = { .pref = self->proc_ref, .addr = tstate_head };
-  if (fail(_py_proc__interrupt_threads(self, &raddr))) {
-    log_ie("Failed to interrupt threads");
-    FAIL;
-  }
-  time_delta = gettime() - self->timestamp;
-  #endif
-
-  int result = _py_proc__sample_interpreter(self, &is, time_delta);
-
   #ifdef NATIVE
   self->timestamp = gettime();
-  
-  if (fail(_py_proc__resume_threads(self, &raddr))) {
-    log_ie("Failed to resume threads");
-    FAIL;
-  }
   #else
   self->timestamp += time_delta;
   #endif
 
-  return result;
+  SUCCESS;
 } /* py_proc__sample */
 
 

@@ -53,6 +53,7 @@ def test_fork_wall_time(austin, py, heap, mojo):
     assert len(processes(result.stdout)) == 1, compress(result.stdout)
     ts = threads(result.stdout)
     assert len(ts) == 2, compress(result.stdout)
+    assert all(len(t[1].split(":")) == 2 for t in ts), "threads have interpreter ID"
 
     assert has_pattern(result.stdout, "target34.py:keep_cpu_busy:3"), compress(
         result.stdout
