@@ -1275,18 +1275,35 @@ py_proc__log_version(py_proc_t * self, int parent) {
 }
 
 // ----------------------------------------------------------------------------
+#if defined PL_WIN
+#define SIGTERM 15
+#define SIGINT  2
+#endif
+
 void
-py_proc__terminate(py_proc_t * self) {
-  if (self->pid) {
-    log_d("Terminating process %u", self->pid);
-    #if defined PL_UNIX
-    kill(self->pid, SIGTERM);
-    #else
-    TerminateProcess(self->proc_ref, 42);
-    #endif
+py_proc__signal(py_proc_t * self, int signal) {
+  #if defined PL_WIN                                                   /* WIN */
+  switch(signal) {
+    case SIGINT:
+      GenerateConsoleCtrlEvent(CTRL_C_EVENT, self->pid);
+      break;
+    case SIGTERM:
+      TerminateProcess(self->proc_ref, signal);
+      break;
+    default:
+      log_e("Cannot send signal %d to process %d", signal, self->pid);
+      break;
   }
+  #else                                                               /* UNIX */
+  kill(self->pid, signal);
+  #endif
 }
 
+// ----------------------------------------------------------------------------
+void
+py_proc__terminate(py_proc_t * self) {
+  py_proc__signal(self, SIGTERM);
+}
 
 // ----------------------------------------------------------------------------
 void
