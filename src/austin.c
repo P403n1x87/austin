@@ -58,8 +58,11 @@ static int interrupt = FALSE;
 static void
 signal_callback_handler(int signum)
 {
-  if (signum == SIGINT || signum == SIGTERM)
-    interrupt = SIGTERM;
+  switch(signum) {
+    case SIGINT:
+    case SIGTERM:
+      interrupt = -signum;
+  }
 } /* signal_callback_handler */
 
 // ----------------------------------------------------------------------------
@@ -213,51 +216,44 @@ do_child_processes(py_proc_t * py_proc) {
 
 // ----------------------------------------------------------------------------
 static inline int
-handle_error() {
-  int retval = 0;
-  
+handle_error() {  
   log_d("Last error: %d :: %s", austin_errno, get_last_error());
   
-  if (interrupt == SIGTERM) {
-    retval = SIGTERM;
-  }
-  else {
-    retval = austin_errno;
+  int retval = austin_errno;
 
-    switch(retval) {
-    case EPROCISTIMEOUT:
-      _msg(MTIMEOUT, pargs.attach_pid == 0 ? "run" : "attach to");
-      break;
-    #if defined PL_UNIX
-    case EPROCPERM:
-      _msg(MPERM);
-      break;
-    #endif
-    case EPROCFORK:
-      _msg(MFORK);
-      break;
-    case EPROCATTACH:
-      _msg(MATTACH);
-      break;
-    case EPROCNPID:
-      _msg(MNOPROC);
-      break;
-    case EPROC:
-      _msg(MNOPYTHON);
-      break;
-    case EPROCNOCHILDREN:
-      _msg(MNOCHILDREN);
-      break;
-    case ENOVERSION:
-      _msg(MNOVERSION);
-      break;
-    case EMEMCOPY:
-      // Ignore. At this point we expect remote memory reads to fail.
-      retval = EOK;
-      break;
-    default:
-      _msg(MERROR);
-    }
+  switch(retval) {
+  case EPROCISTIMEOUT:
+    _msg(MTIMEOUT, pargs.attach_pid == 0 ? "run" : "attach to");
+    break;
+  #if defined PL_UNIX
+  case EPROCPERM:
+    _msg(MPERM);
+    break;
+  #endif
+  case EPROCFORK:
+    _msg(MFORK);
+    break;
+  case EPROCATTACH:
+    _msg(MATTACH);
+    break;
+  case EPROCNPID:
+    _msg(MNOPROC);
+    break;
+  case EPROC:
+    _msg(MNOPYTHON);
+    break;
+  case EPROCNOCHILDREN:
+    _msg(MNOCHILDREN);
+    break;
+  case ENOVERSION:
+    _msg(MNOVERSION);
+    break;
+  case EMEMCOPY:
+    // Ignore. At this point we expect remote memory reads to fail.
+    retval = EOK;
+    break;
+  default:
+    _msg(MERROR);
   }
 
   return retval;
@@ -415,6 +411,10 @@ release:
   }
 
   logger_close();
+
+  if (interrupt < 0)
+    // Interrupted  by signal
+    retval = interrupt;
 
   return retval;
 } /* main */
