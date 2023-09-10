@@ -112,8 +112,16 @@ do_single_process(py_proc_t * py_proc) {
     }
   }
 
-  if (interrupt == FALSE) {
+  if (pargs.attach_pid == 0) {
+    if (interrupt)
+      // Propagate the signal to the parent if we spawned it.
+      py_proc__signal(py_proc, interrupt < 0 ? -interrupt : SIGTERM);
+
+
+    #if defined PL_UNIX
+    // If we spawned the process, we need to wait for it to terminate.
     py_proc__wait(py_proc);
+    #endif
   }
 
   py_proc__destroy(py_proc);
@@ -207,9 +215,17 @@ do_child_processes(py_proc_t * py_proc) {
     }
   }
 
-  if (interrupt == FALSE) {
+  if (pargs.attach_pid == 0) {
+    if (interrupt)
+      // Propagate the signal to the child processes (via the parent) if we
+      // spawned them.
+      py_proc__signal(py_proc, interrupt < 0 ? -interrupt : SIGTERM);
+
+    // If we spawned the child processes, we need to wait for them to terminate.
     py_proc_list__update(list);
+    #if defined PL_UNIX
     py_proc_list__wait(list);
+    #endif
   }
 } /* do_child_processes */
 
@@ -415,6 +431,8 @@ release:
   if (interrupt < 0)
     // Interrupted  by signal
     retval = interrupt;
+
+  log_d("Exiting with code %d", retval);
 
   return retval;
 } /* main */
