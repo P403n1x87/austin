@@ -218,6 +218,16 @@ py_proc__log_version(py_proc_t *, int);
 
 
 /**
+ * Send a signal to the process.
+ *
+ * @param py_proc_t * the process object.
+ * @param int         the signal to send to the process.
+ */
+void
+py_proc__signal(py_proc_t *, int);
+
+
+/**
  * Terminate the process.
  *
  * @param py_proc_t * the process object.
