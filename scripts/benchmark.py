@@ -4,18 +4,15 @@
 import abc
 import re
 import sys
-from textwrap import wrap
 import typing as t
 from argparse import ArgumentParser
 from math import floor, log
 from pathlib import Path
-
-from scipy.stats import ttest_ind
+from test.utils import metadata, target
+from textwrap import wrap
 
 from common import download_release
-
-from test.utils import metadata, target
-
+from scipy.stats import ttest_ind
 
 VERSIONS = ("3.4.1", "3.5.0", "dev")
 SCENARIOS = [
@@ -96,6 +93,8 @@ def get_stats(output: str) -> t.Optional[dict]:
 
 
 class Outcome:
+    __critical_p__ = 0.025
+
     def __init__(self, data: list[float]) -> None:
         self.data = data
         self.mean = sum(data) / len(data)
@@ -120,7 +119,7 @@ class Outcome:
 
     def __eq__(self, other: "Outcome") -> bool:
         t, p = ttest_ind(self.data, other.data, equal_var=False)
-        return p < 0.05
+        return p < self.__critical_p__
 
 
 Results = t.Tuple[str, t.Dict[str, Outcome]]
@@ -312,7 +311,24 @@ def main():
         help="The output format",
     )
 
+    argp.add_argument(
+        "-l",
+        "--last",
+        action="store_true",
+        help="Run only with the last release of Austin",
+    )
+
+    argp.add_argument(
+        "-p",
+        "--pvalue",
+        type=float,
+        default=0.025,
+        help="The p-value to use when testing for statistical significance",
+    )
+
     opts = argp.parse_args()
+
+    Outcome.__critical_p__ = opts.pvalue
 
     renderer = {"terminal": TerminalRenderer, "markdown": MarkdownRenderer}[
         opts.format
@@ -330,7 +346,7 @@ def main():
             continue
 
         table: t.List[Results] = []
-        for version in VERSIONS:
+        for version in VERSIONS[-2:] if opts.last else VERSIONS:
             print(f"> Running with Austin {version} ...    ", end="\r", file=sys.stderr)
             try:
                 austin = download_release(version, Path("/tmp"), variant_name=variant)
