@@ -41,6 +41,7 @@ struct _ts; /* Forward */
 typedef struct _is2 {
     struct _is2 *next;
     struct _ts *tstate_head;
+    int64_t id;
     void* gc;  /* Dummy */
 } PyInterpreterState2;
 

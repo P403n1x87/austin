@@ -893,7 +893,7 @@ py_thread__next(py_thread_t * self) {
 
 // ----------------------------------------------------------------------------
 void
-py_thread__emit_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t mem_delta) {
+py_thread__emit_collapsed_stack(py_thread_t * self, int64_t interp_id, ctime_t time_delta, ssize_t mem_delta) {
   if (!pargs.full && pargs.memory && mem_delta == 0)
     return;
 
@@ -924,7 +924,7 @@ py_thread__emit_collapsed_stack(py_thread_t * self, ctime_t time_delta, ssize_t 
 
   // Group entries by thread.
   emit_stack(
-    pargs.head_format, self->proc->pid, self->tid,
+    pargs.head_format, self->proc->pid, interp_id, self->tid,
     // These are relevant only in `where` mode
     is_idle           ? "💤" : "🚀",
     self->proc->child ? "🧒" : ""

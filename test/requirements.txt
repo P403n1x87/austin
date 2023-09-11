@@ -1,4 +1,4 @@
-austin-python~=1.5
+austin-python~=1.6
 flaky
 pytest
 pytest-xdist
