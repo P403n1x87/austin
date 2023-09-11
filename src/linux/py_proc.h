@@ -409,7 +409,10 @@ _py_proc__parse_maps_file(py_proc_t * self) {
       pathname        // Binary path
     ) - 3; // We expect between 3 and 4 matches.
 
-    if (field_count == 0 && isvalid(map) && !isvalid(map->bss_base) && strcmp(perms, "rw-p") == 0) {
+    if (
+      field_count == 0 && isvalid(map) && !isvalid(map->bss_base)
+      && strcmp(perms, "rw-p") == 0
+    ) {
       // The BSS section is not mapped from a file and has rw permissions.
       // We find that the map reported by proc fs is rounded to the next page
       // boundary, so we need to adjust the values. We might slide into the data
@@ -423,7 +426,10 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     if (field_count <= 0)
       continue;
 
-    if (!isvalid(self->map.runtime.base) && strcmp(perms, "rw-p") == 0 && strcmp(map->path, pathname) == 0) {
+    if (
+      isvalid(map) && !isvalid(self->map.runtime.base)
+      && strcmp(perms, "rw-p") == 0 && strcmp(map->path, pathname) == 0
+    ) {
       // This is likely the PyRuntime section.
       size_t page_size = getpagesize();
       self->map.runtime.base = (void *) lower - page_size;
