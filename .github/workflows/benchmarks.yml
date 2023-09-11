@@ -36,15 +36,15 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-bm.txt
-          deactivate
 
       - name: Run benchmarks
+        env:
+          PYTHONPATH: "."
         run: |
           ulimit -c unlimited
-
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           source .venv/bin/activate
-          python scripts/benchmark.py --format markdown | tee comment.txt
-          deactivate
+          python scripts/benchmark.py --format markdown --last | tee comment.txt
 
       - name: Post results on PR
         uses: marocchino/sticky-pull-request-comment@v2
