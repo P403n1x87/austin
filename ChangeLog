@@ -1,8 +1,13 @@
-2023-xx-xx v3.6.0
+2023-10-04 v3.6.0
+
+  Added support for CPython 3.12
 
   Added support for sub-interpreters.
 
-  Dropped support for Python 2, 3.3, 3.4, 3.5, 3.6 and 3.7.
+  Dropped support for CPython 2, 3.3, 3.4, 3.5, 3.6 and 3.7.
+
+  Improved interpreter detection and general stability on all supported
+  platforms.
 
   Bugfix: ensure that threads are resumed by austinp when an error occurs during
   the sampling process.
