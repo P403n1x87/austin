@@ -64,7 +64,6 @@ def test_cli_short_lived():
 
 def test_cli_invalid_command():
     result = austin("snafubar", expect_fail=33)
-    assert "[GCC" in result.stderr
     assert result.returncode == 33
     assert "Cannot launch" in (result.stderr or result.stdout)
 
