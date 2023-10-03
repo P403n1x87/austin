@@ -993,12 +993,8 @@ py_thread__emit_collapsed_stack(py_thread_t * self, int64_t interp_id, ctime_t t
     if (!isvalid(scope)) {
       scope = UNKNOWN_SCOPE;
     }
-    char * eval_frame_fn = scope == UNKNOWN_SCOPE ? NULL : strstr(scope, "PyEval_EvalFrame");
-    int is_frame_eval = FALSE;
-    if (isvalid(eval_frame_fn)) {
-      char c = *(eval_frame_fn+16);
-      is_frame_eval = (c == 'D');
-    }
+
+    int is_frame_eval = (scope == UNKNOWN_SCOPE) ? FALSE : isvalid(strstr(scope, "PyEval_EvalFrameDefault"));
     if (!stack_is_empty() && is_frame_eval) {
       // TODO: if the py stack is empty we have a mismatch.
       frame_t * frame = stack_pop();
