@@ -14,11 +14,11 @@
 
 <p align="center">
   <a href="https://github.com/P403n1x87/austin/actions?query=workflow%3ATests">
-    <img src="https://github.com/P403n1x87/austin/workflows/Tests/badge.svg"
+    <img src="https://github.com/P403n1x87/austin/actions/workflows/tests.yml/badge.svg"
          alt="GitHub Action Status: Tests" />
   </a>
   <a href="https://github.com/P403n1x87/austin/actions?query=workflow%3AChecks">
-    <img src="https://github.com/P403n1x87/austin/workflows/Checks/badge.svg"
+    <img src="https://github.com/P403n1x87/austin/actions/workflows/checks.yml/badge.svg"
          alt="GitHub Action Status: Checks" />
   </a>
   <a href="https://codecov.io/gh/P403n1x87/austin">
