@@ -7,7 +7,7 @@
    viewBox="0 0 210 297"
    version="1.1"
    id="svg8"
-   inkscape:version="1.1.2 (0a00cf5339, 2022-02-04)"
+   inkscape:version="1.2.2 (b0a8486, 2022-12-01)"
    sodipodi:docname="cheatsheet.svg"
    inkscape:export-filename="/home/gabriele/Projects/austin/doc/cheatsheet.png"
    inkscape:export-xdpi="191.99664"
@@ -757,17 +757,19 @@
      inkscape:pageopacity="1"
      inkscape:pageshadow="2"
      inkscape:zoom="1.4"
-     inkscape:cx="355.35714"
-     inkscape:cy="-3878.5714"
+     inkscape:cx="273.21429"
+     inkscape:cy="20"
      inkscape:document-units="mm"
-     inkscape:current-layer="layer1"
+     inkscape:current-layer="layer3"
      showgrid="false"
-     inkscape:window-width="2560"
-     inkscape:window-height="1413"
+     inkscape:window-width="1440"
+     inkscape:window-height="900"
      inkscape:window-x="0"
-     inkscape:window-y="328"
-     inkscape:window-maximized="1"
-     inkscape:pagecheckerboard="0" />
+     inkscape:window-y="0"
+     inkscape:window-maximized="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:showpageshadow="2"
+     inkscape:deskcolor="#ebece0" />
   <metadata
      id="metadata5">
     <rdf:RDF>
@@ -6340,7 +6342,7 @@
          y="293.48233"
          x="49.886612"
          id="tspan9522"
-         sodipodi:role="line">2.3 thru 2.7 and 3.3 thru 3.11</tspan></text>
+         sodipodi:role="line">3.8 | 3.9 | 3.10 | 3.11 | 3.12</tspan></text>
     <text
        id="text9528"
        y="35.175755"
@@ -7262,15 +7264,15 @@
          style="font-weight:bold;font-size:5.57082px;text-align:center;letter-spacing:0px;text-anchor:middle;fill:#ffe8e1;fill-opacity:1;stroke-width:0.232117">CHEATSHEET</tspan></text>
     <text
        id="text869"
-       y="7.0526237"
-       x="182.67592"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583"
+       y="6.5234571"
+       x="206.75958"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:end;letter-spacing:0px;word-spacing:0px;text-anchor:end;display:inline;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583"
        xml:space="preserve"><tspan
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';text-align:start;letter-spacing:0px;text-anchor:start;fill:#ffe8e1;fill-opacity:1;stroke-width:0.264583"
-         y="7.0526237"
-         x="182.67592"
+         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';text-align:end;letter-spacing:0px;text-anchor:end;fill:#ffe8e1;fill-opacity:1;stroke-width:0.264583"
+         y="6.5234571"
+         x="206.75958"
          id="tspan867"
-         sodipodi:role="line">for version 3.5</tspan></text>
+         sodipodi:role="line">for version 3.6</tspan></text>
     <flowRoot
        xml:space="preserve"
        id="flowRoot1392"

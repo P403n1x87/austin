@@ -31,15 +31,19 @@ from io import StringIO
 from pathlib import Path
 from shutil import rmtree
 from subprocess import PIPE
+from subprocess import CalledProcessError
 from subprocess import CompletedProcess
 from subprocess import Popen
+from subprocess import TimeoutExpired
 from subprocess import check_output
-from subprocess import run
+from tempfile import gettempdir
 from test import PYTHON_VERSIONS
 from time import sleep
 from types import ModuleType
 from typing import Iterator
+from typing import List
 from typing import TypeVar
+from typing import Union
 
 
 try:
@@ -107,9 +111,10 @@ def apport_unpack(report: Path, target_dir: Path):
     ).decode()
 
 
-def bt(binary: Path) -> str:
-    if Path("core").is_file():
-        return gdb(["bt full", "q"], str(binary), "core")
+def bt(binary: Path, pid: int) -> str:
+    core_file = f"core.{pid}"
+    if Path(core_file).is_file():
+        return gdb(["bt full", "q"], str(binary), core_file)
 
     # On Ubuntu, apport puts crashes in /var/crash
     crash_dir = Path("/var/crash")
@@ -131,7 +136,93 @@ def bt(binary: Path) -> str:
     return "No core dump available."
 
 
+def collect_logs(variant: str, pid: int) -> List[str]:
+    match platform.system():
+        case "Linux":
+            with Path("/var/log/syslog").open() as logfile:
+                needles = (f"{variant}[{pid}]", f"systemd-coredump[{pid}]")
+                return [
+                    f" logs for {variant}[{pid}] ".center(80, "="),
+                    *(
+                        line.strip().replace("#012", "\n")
+                        for line in logfile.readlines()
+                        if any(needle in line for needle in needles)
+                    ),
+                    f" end of logs for {variant}[{pid}] ".center(80, "="),
+                ]
+
+        case "Windows":
+            with (Path(gettempdir()) / "austin.log").open() as logfile:
+                needles = (f"{variant}[{pid}]",)
+                return [
+                    f" logs for {variant}[{pid}] ".center(80, "="),
+                    *(
+                        line.strip()
+                        for line in logfile.readlines()
+                        if any(needle in line for needle in needles)
+                    ),
+                    f" end of logs for {variant}[{pid}] ".center(80, "="),
+                ]
+
+        case _:
+            return []
+
+
 EXEEXT = ".exe" if platform.system() == "Windows" else ""
+
+
+# Taken from the subprocess module. We make our own version that can also
+# propagate the PID.
+def run(
+    *popenargs, input=None, capture_output=False, timeout=None, check=False, **kwargs
+):
+    if input is not None:
+        if kwargs.get("stdin") is not None:
+            raise ValueError("stdin and input arguments may not both be used.")
+        kwargs["stdin"] = PIPE
+
+    if capture_output:
+        if kwargs.get("stdout") is not None or kwargs.get("stderr") is not None:
+            raise ValueError(
+                "stdout and stderr arguments may not be used " "with capture_output."
+            )
+        kwargs["stdout"] = PIPE
+        kwargs["stderr"] = PIPE
+
+    with Popen(*popenargs, **kwargs) as process:
+        try:
+            stdout, stderr = process.communicate(input, timeout=timeout)
+        except TimeoutExpired as exc:
+            exc.pid = process.pid
+            process.kill()
+            if platform.system() == "Windows":
+                exc.stdout, exc.stderr = process.communicate()
+            else:
+                process.wait()
+            raise
+        except Exception as e:
+            e.pid = process.pid
+            process.kill()
+            raise
+        retcode = process.poll()
+        if check and retcode:
+            exc = CalledProcessError(
+                retcode, process.args, output=stdout, stderr=stderr
+            )
+            exc.pid = process.pid
+            raise exc
+    result = CompletedProcess(process.args, retcode, stdout, stderr)
+    result.pid = process.pid
+
+    return result
+
+
+def print_logs(logs: List[str]) -> None:
+    if logs:
+        for log in logs:
+            print(log)
+    else:
+        print("<< no logs available >>")
 
 
 class Variant(str):
@@ -144,34 +235,52 @@ class Variant(str):
         if not path.is_file():
             path = Path(name).with_suffix(EXEEXT)
 
+        self.name = name
         self.path = path
 
         self.ALL.append(self)
 
     def __call__(
-        self, *args: str, timeout: int = 60, mojo: bool = False
+        self,
+        *args: str,
+        timeout: int = 60,
+        mojo: bool = False,
+        convert: bool = True,
+        expect_fail: Union[bool, int] = False,
     ) -> CompletedProcess:
         if not self.path.is_file():
             pytest.skip(f"Variant '{self}' not available")
 
         mojo_args = ["-b"] if mojo else []
 
-        result = run(
-            [str(self.path)] + mojo_args + list(args),
-            capture_output=True,
-            timeout=timeout,
-        )
+        try:
+            result = run(
+                [str(self.path)] + mojo_args + list(args),
+                capture_output=True,
+                timeout=timeout,
+            )
+        except Exception as exc:
+            if (pid := getattr(exc, "pid", None)) is not None:
+                print_logs(collect_logs(self.name, pid))
+            raise
 
         if result.returncode in (-11, 139):  # SIGSEGV
-            print(bt(self.path))
+            print(bt(self.path, result.pid))
 
         if mojo and not ({"-o", "-w", "--output", "--where"} & set(args)):
             # We produce MOJO binary data only if we are not writing to file
             # or using the "where" option.
-            result.stdout = demojo(result.stdout)
+            if convert:
+                result.stdout = demojo(result.stdout)
         else:
-            result.stdout = result.stdout.decode()
+            result.stdout = result.stdout.decode(errors="ignore")
         result.stderr = result.stderr.decode()
+
+        logs = collect_logs(self.name, result.pid)
+        result.logs = logs
+
+        if result.returncode != int(expect_fail):
+            print_logs(logs)
 
         return result
 

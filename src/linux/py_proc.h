@@ -36,6 +36,7 @@
 #include <unistd.h>
 
 #include "common.h"
+#include "futils.h"
 #include "../mem.h"
 #include "../resources.h"
 
@@ -49,17 +50,10 @@
 #include "../version.h"
 
 
-#define CHECK_HEAP
-#define DEREF_SYM
-
-
 #define BIN_MAP                  (1 << 0)
 #define DYNSYM_MAP               (1 << 1)
 #define RODATA_MAP               (1 << 2)
-#define HEAP_MAP                 (1 << 3)
-#define BSS_MAP                  (1 << 4)
-
-#define SYMBOLS                        3
+#define BSS_MAP                  (1 << 3)
 
 
 // Get the offset of the ith section header
@@ -92,6 +86,12 @@ _file_size(char * file) {
 }
 
 
+/*[[[cog
+from pathlib import Path
+analyze_elf = Path("src/linux/analyze_elf.h").read_text()
+print(analyze_elf)
+print(analyze_elf.replace("64", "32"))
+]]]*/
 // ----------------------------------------------------------------------------
 static Elf64_Addr
 _get_base_64(Elf64_Ehdr * ehdr, void * elf_map)
@@ -103,7 +103,6 @@ _get_base_64(Elf64_Ehdr * ehdr, void * elf_map)
   }
   return UINT64_MAX;
 } /* _get_base_64 */
-
 
 static int
 _py_proc__analyze_elf64(py_proc_t * self, void * elf_map, void * elf_base) {
@@ -139,19 +138,13 @@ _py_proc__analyze_elf64(py_proc_t * self, void * elf_map, void * elf_base) {
       ) {
         p_dynsym = p_shdr;
       }
-      // NOTE: This might be required if the Python version must be retrieved
-      //       from the RO data section
-      // else if (
-      //   p_shdr->sh_type == SHT_PROGBITS &&
-      //   strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
-      // ) {
-      //   self->map.rodata.base = (void *) p_shdr->sh_offset;
-      //   self->map.rodata.size = p_shdr->sh_size;
-      //   map_flag |= RODATA_MAP;
-      // }
       else if (strcmp(sh_name_base + p_shdr->sh_name, ".bss") == 0) {
         bss_base = elf_base + (p_shdr->sh_addr - base);
         bss_size = p_shdr->sh_size;
+      }
+      else if (strcmp(sh_name_base + p_shdr->sh_name, ".PyRuntime") == 0) {
+        self->map.runtime.base = elf_base + (p_shdr->sh_addr - base);
+        self->map.runtime.size = p_shdr->sh_size;
       }
     }
 
@@ -167,15 +160,18 @@ _py_proc__analyze_elf64(py_proc_t * self, void * elf_map, void * elf_base) {
           Elf64_Sym * sym      = (Elf64_Sym *) (elf_map + tab_off);
           char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
           void      * value    = elf_base + (sym->st_value - base);
-          if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= SYMBOLS)
+          if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= DYNSYM_COUNT) {
+            // We have found all the symbols. No need to look further
             break;
+          }
         }
       }
     }
   }
 
-  if (!symbols) {
-    log_e("ELF binary has no Python symbols");
+  if (symbols < DYNSYM_MANDATORY) {
+    log_e("ELF binary has not all the mandatory Python symbols");
+    set_error(ESYM);
     FAIL;
   }
 
@@ -186,7 +182,6 @@ _py_proc__analyze_elf64(py_proc_t * self, void * elf_map, void * elf_base) {
 
   SUCCESS;
 } /* _py_proc__analyze_elf64 */
-
 
 // ----------------------------------------------------------------------------
 static Elf32_Addr
@@ -199,7 +194,6 @@ _get_base_32(Elf32_Ehdr * ehdr, void * elf_map)
   }
   return UINT32_MAX;
 } /* _get_base_32 */
-
 
 static int
 _py_proc__analyze_elf32(py_proc_t * self, void * elf_map, void * elf_base) {
@@ -235,19 +229,13 @@ _py_proc__analyze_elf32(py_proc_t * self, void * elf_map, void * elf_base) {
       ) {
         p_dynsym = p_shdr;
       }
-      // NOTE: This might be required if the Python version must be retrieved
-      //       from the RO data section
-      // else if (
-      //   p_shdr->sh_type == SHT_PROGBITS &&
-      //   strcmp(sh_name_base + p_shdr->sh_name, ".rodata") == 0
-      // ) {
-      //   self->map.rodata.base = (void *) p_shdr->sh_offset;
-      //   self->map.rodata.size = p_shdr->sh_size;
-      //   map_flag |= RODATA_MAP;
-      // }
       else if (strcmp(sh_name_base + p_shdr->sh_name, ".bss") == 0) {
         bss_base = elf_base + (p_shdr->sh_addr - base);
         bss_size = p_shdr->sh_size;
+      }
+      else if (strcmp(sh_name_base + p_shdr->sh_name, ".PyRuntime") == 0) {
+        self->map.runtime.base = elf_base + (p_shdr->sh_addr - base);
+        self->map.runtime.size = p_shdr->sh_size;
       }
     }
 
@@ -263,15 +251,18 @@ _py_proc__analyze_elf32(py_proc_t * self, void * elf_map, void * elf_base) {
           Elf32_Sym * sym      = (Elf32_Sym *) (elf_map + tab_off);
           char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
           void      * value    = elf_base + (sym->st_value - base);
-          if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= SYMBOLS)
+          if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= DYNSYM_COUNT) {
+            // We have found all the symbols. No need to look further
             break;
+          }
         }
       }
     }
   }
 
-  if (!symbols) {
-    log_e("ELF binary has no Python symbols");
+  if (symbols < DYNSYM_MANDATORY) {
+    log_e("ELF binary has not all the mandatory Python symbols");
+    set_error(ESYM);
     FAIL;
   }
 
@@ -283,6 +274,7 @@ _py_proc__analyze_elf32(py_proc_t * self, void * elf_map, void * elf_base) {
   SUCCESS;
 } /* _py_proc__analyze_elf32 */
 
+//[[[end]]]
 
 // ----------------------------------------------------------------------------
 static int
@@ -297,6 +289,7 @@ _py_proc__analyze_elf(py_proc_t * self, char * path, void * elf_base) {
   cu_fd fd = open(path, O_RDONLY);
   if (fd == -1) {
     log_e("Cannot open binary file %s", path);
+    set_error(EPROC);
     FAIL;
   }
 
@@ -306,6 +299,7 @@ _py_proc__analyze_elf(py_proc_t * self, char * path, void * elf_base) {
 
   if (fstat(fd, &s) == -1) {
     log_ie("Cannot determine size of binary file");
+    set_error(EPROC);
     FAIL;
   }
 
@@ -314,6 +308,7 @@ _py_proc__analyze_elf(py_proc_t * self, char * path, void * elf_base) {
   binary_map = map_new(fd, binary_size, MAP_PRIVATE);
   if (!isvalid(binary_map)) {
     log_ie("Cannot map binary file to memory");
+    set_error(EPROC);
     FAIL;
   }
 
@@ -322,6 +317,7 @@ _py_proc__analyze_elf(py_proc_t * self, char * path, void * elf_base) {
 
   if (fail(_elf_check(ehdr))) {
     log_e("Bad ELF header");
+    set_error(EPROC);
     FAIL;
   }
 
@@ -337,6 +333,7 @@ _py_proc__analyze_elf(py_proc_t * self, char * path, void * elf_base) {
 
   default:
     log_e("%s has invalid ELF class", path);
+    set_error(EPROC);
     FAIL;
   }
 } /* _py_proc__analyze_elf */
@@ -370,26 +367,30 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     FAIL;
   }
 
-  self->min_raddr = (void *) -1;
-  self->max_raddr = NULL;
+  // Save the file hash and the modified time. We'll use them to detect if the
+  // content has changed since the last time we read it.
+  crc32_t file_hash = fhash(fp);
+  long modified_time = fmtime_ns(fp);
 
   sfree(self->bin_path);
   sfree(self->lib_path);
 
-  self->map.elf.base = NULL;
-  self->map.elf.size = 0;
+  self->map.exe.base = NULL;
+  self->map.exe.size = 0;
 
   sprintf(file_name, "/proc/%d/exe", self->pid);
 
   cu_void * pd_mem = calloc(1, sizeof(struct proc_desc));
   if (!isvalid(pd_mem)) {
     log_ie("Cannot allocate memory for proc_desc");
+    set_error(EPROC);
     FAIL;
   }
   struct proc_desc * pd = pd_mem;
 
   if (readlink(file_name, pd->exe_path, sizeof(pd->exe_path)) == -1) {
     log_e("Cannot readlink %s", file_name);
+    set_error(EPROC);
     FAIL;  // cppcheck-suppress [resourceLeak]
   }
   if (strcmp(pd->exe_path + (strlen(pd->exe_path) - 10), " (deleted)") == 0) {
@@ -399,8 +400,8 @@ _py_proc__parse_maps_file(py_proc_t * self) {
 
   while (getline(&line, &len, fp) != -1) {
     ssize_t lower, upper;
-    char    pathname[1024];
-    char    perms[5];
+    char    pathname[1024] = {0};
+    char    perms[5] = {0};
 
     int field_count = sscanf(line, ADDR_FMT "-" ADDR_FMT " %s %*x %*x:%*x %*x %s\n",
       &lower, &upper, // Map bounds
@@ -408,7 +409,10 @@ _py_proc__parse_maps_file(py_proc_t * self) {
       pathname        // Binary path
     ) - 3; // We expect between 3 and 4 matches.
 
-    if (field_count == 0 && isvalid(map) && !isvalid(map->bss_base) && strcmp(perms, "rw-p") == 0) {
+    if (
+      field_count == 0 && isvalid(map) && !isvalid(map->bss_base)
+      && strcmp(perms, "rw-p") == 0
+    ) {
       // The BSS section is not mapped from a file and has rw permissions.
       // We find that the map reported by proc fs is rounded to the next page
       // boundary, so we need to adjust the values. We might slide into the data
@@ -416,27 +420,21 @@ _py_proc__parse_maps_file(py_proc_t * self) {
       size_t page_size = getpagesize();
       map->bss_base = (void *) lower - page_size;
       map->bss_size = upper - lower + page_size;
-      log_d("Inferred BSS for %s: %lx-%lx", map->path, lower, upper);
+      log_d("BSS section inferred from VM maps for %s: %lx-%lx", map->path, lower, upper);
     }
 
     if (field_count <= 0)
       continue;
 
-    if (field_count == 0 || strstr(pathname, "[v") == NULL) {
-      // Skip meaningless addresses like [vsyscall] which would give
-      // ridiculous values.
-      if ((void *) lower < self->min_raddr) self->min_raddr = (void *) lower;
-      if ((void *) upper > self->max_raddr) self->max_raddr = (void *) upper;
-    }
-
-    if ((maps_flag & HEAP_MAP) == 0 && strstr(line, "[heap]\n") != NULL) {
-      self->map.heap.base = (void *) lower;
-      self->map.heap.size = upper - lower;
-
-      maps_flag |= HEAP_MAP;
-
-      log_d("HEAP bounds " ADDR_FMT "-" ADDR_FMT, lower, upper);
-      continue;
+    if (
+      isvalid(map) && !isvalid(self->map.runtime.base)
+      && strcmp(perms, "rw-p") == 0 && strcmp(map->path, pathname) == 0
+    ) {
+      // This is likely the PyRuntime section.
+      size_t page_size = getpagesize();
+      self->map.runtime.base = (void *) lower - page_size;
+      self->map.runtime.size = upper - lower + page_size;
+      log_d("PyRuntime section inferred from VM maps for %s: %lx-%lx", map->path, lower, upper);
     }
 
     if (pathname[0] == '[')
@@ -450,6 +448,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     prev_path = strndup(pathname, strlen(pathname));
     if (!isvalid(prev_path)) {
       log_ie("Cannot duplicate path name");
+      set_error(EPROC);
       FAIL;
     }
 
@@ -459,6 +458,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
       map->path = strndup(pathname, strlen(pathname));
       if (!isvalid(map->path)) {
         log_ie("Cannot duplicate path name");
+        set_error(EPROC);
         FAIL;
       }
       map->file_size = _file_size(pathname);
@@ -482,6 +482,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
         map->path = strndup(pathname, strlen(pathname));
         if (!isvalid(map->path)) {
           log_ie("Cannot duplicate path name");
+          set_error(EPROC);
           FAIL;
         }
         map->file_size = _file_size(pathname);
@@ -505,6 +506,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
             map->path = needle_path = strndup(pathname, strlen(pathname));
             if (!isvalid(map->path)) {
               log_ie("Cannot duplicate path name");
+              set_error(EPROC);
               FAIL;
             }
             map->file_size = _file_size(pathname);
@@ -533,10 +535,23 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   for (int i = 0; i < MAP_COUNT; i++) {
     map = &(pd->maps[i]);
     if (map->has_symbols) {
-      self->map.elf.base = map->base;
-      self->map.elf.size = map->size;
+      self->map.exe.base = map->base;
+      self->map.exe.size = map->size;
       maps_flag |= BIN_MAP;
+      self->sym_loaded = TRUE;
       break;
+    }
+  }
+
+  if (!(maps_flag & BIN_MAP) && !isvalid(pd->maps[MAP_LIBNEEDLE].path)) {
+    // We don't have symbols and we don't have a needle path so it's quite
+    // unlikely that we can work out a Python version in this case.
+    if (isvalid(pd->maps[MAP_BIN].path) && strstr(pd->maps[MAP_BIN].path, "python")) {
+      log_d("No symbols but binary seems to be Python.");
+      maps_flag |= BIN_MAP;
+    } else {
+      log_d("No symbols and no needle path. Giving up.");
+      FAIL;
     }
   }
 
@@ -545,10 +560,28 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   self->map.bss.base = pd->maps[map_index].bss_base;
   self->map.bss.size = pd->maps[map_index].bss_size;
   
+  if (!isvalid(self->map.bss.base)) {
+    log_e("Cannot find valid BSS map");
+    set_error(EPROCVM);
+    FAIL;
+  }
+
+  if (!(maps_flag & (BIN_MAP))) {
+    log_e("No usable Python binary found");
+    set_error(EPROC);
+    FAIL;
+  }
+
+  if (!(modified_time == fmtime_ns(fp) && file_hash == fhash(fp))) {
+    log_e("VM maps file has changed since last read");
+    set_error(EPROCVM);
+    FAIL;
+  }
+
   log_d("BSS map %d from %s @ %p", map_index, pd->maps[map_index].path, self->map.bss.base);
   log_d("VM maps parsing result: bin=%s lib=%s flags=%d", self->bin_path, self->lib_path, maps_flag);
 
-  return maps_flag != (BIN_MAP | HEAP_MAP);
+  SUCCESS;
 } /* _py_proc__parse_maps_file */
 
 
@@ -600,6 +633,7 @@ _py_proc__get_vm_maps(py_proc_t * self) {
 
   fp = _procfs(self->pid, "maps");
   if (!isvalid(fp)) {
+    set_error(EPROC);
     FAIL;
   }
 
@@ -641,10 +675,10 @@ _py_proc__get_vm_maps(py_proc_t * self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t * self) {
-  if (
-   !isvalid(self)
-  ||fail   (_py_proc__parse_maps_file(self))
-  ) FAIL;
+  if (!isvalid(self) || fail(_py_proc__parse_maps_file(self))) {
+    set_error(EPROC);
+    FAIL;
+  }
 
   self->extra->page_size = getpagesize();
   log_d("Page size: %u", self->extra->page_size);
@@ -730,6 +764,7 @@ _infer_tid_field_offset(py_thread_t * py_thread) {
     }
   }
 
+  set_error(ETHREAD);
   FAIL;
 }
 

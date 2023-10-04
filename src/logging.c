@@ -22,6 +22,7 @@
 
 #define _DEFAULT_SOURCE
 
+#include "austin.h"
 #include "events.h"
 #include "mem.h"
 #include "platform.h"
@@ -34,7 +35,7 @@
 
 #else
 #include <windows.h>
-#include <stdio.h>
+#include <time.h>
 
 #define LOG_EMERG   0  /* system is unusable */
 #define LOG_ALERT   1  /* action must be taken immediately */
@@ -60,14 +61,31 @@ _log_writer(int prio, const char * fmt, va_list ap) {
   vsyslog(prio, fmt, ap);
 
   #else
-  if (logfile == NULL) {
-    vfprintf(stderr, fmt, ap); fputc('\n', stderr);
-    fflush(stderr);
-  }
-  else {
-    vfprintf(logfile, fmt, ap); fputc('\n', logfile);
-    fflush(logfile);
-  }
+  time_t timer;
+  char buffer[32];
+  struct tm* tm_info;
+
+  timer = time(NULL);
+  tm_info = localtime(&timer);
+
+  strftime(buffer, 26, "%Y-%m-%d %H:%M:%S", tm_info);
+
+  FILE * stream = isvalid(logfile) ? logfile : stderr;
+
+  // Timestamp
+  fputs(buffer, stream);
+
+  // Process info
+  fprintf(stream, " " PROGRAM_NAME "[%ld]: ", GetCurrentProcessId());
+
+  // Log message
+  vfprintf(stream, fmt, ap);
+  
+  // Newline
+  fputc('\n', stream);
+
+  // Flush
+  fflush(stream);
 
   #endif
 }
@@ -84,7 +102,7 @@ logger_init(void) {
   if (!logging) return;
   #ifdef PL_UNIX
   setlogmask (LOG_UPTO (LOG_DEBUG));
-  openlog ("austin", LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
+  openlog (PROGRAM_NAME, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
 
   #else
   if (logfile == NULL) {

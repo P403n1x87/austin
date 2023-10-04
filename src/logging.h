@@ -43,12 +43,34 @@
   fprintf(pargs.output_file, __VA_ARGS__); \
   NL;
 
+#if defined __clang__
+#define COMPILER "clang"
+#define COMPILER_MAJOR __clang_major__
+#define COMPILER_MINOR __clang_minor__
+#define COMPILER_PATCH __clang_patchlevel__
+#elif defined __MUSL__
+#define COMPILER "musl-gcc"
+#define COMPILER_MAJOR __GNUC__
+#define COMPILER_MINOR __GNUC_MINOR__
+#define COMPILER_PATCH __GNUC_PATCHLEVEL__
+#elif defined __GNUC__
+#define COMPILER "gcc"
+#define COMPILER_MAJOR __GNUC__
+#define COMPILER_MINOR __GNUC_MINOR__
+#define COMPILER_PATCH __GNUC_PATCHLEVEL__
+#elif defined _MSC_VER
+#define COMPILER "msvc"
+#define COMPILER_MAJOR _MSC_VER / 100
+#define COMPILER_MINOR _MSC_VER % 100
+#define COMPILER_PATCH _MSC_BUILD
+#endif
+
 #ifdef NATIVE
 #define log_header() {                   \
   log_m("\033[1m              _   _      \033[0m");    \
   log_m("\033[1m __ _ _  _ __| |_(_)_ _  \033[0m");    \
   log_m("\033[1m/ _` | || (_-<  _| | ' \\ \033[0m");   \
-  log_m("\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m\033[31;1mp\033[0m \033[36;1m%s\033[0m [GCC %d.%d.%d]", VERSION, __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__); \
+  log_m("\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m\033[31;1mp\033[0m \033[36;1m" VERSION "\033[0m [" COMPILER " %d.%d.%d]", COMPILER_MAJOR, COMPILER_MINOR, COMPILER_PATCH); \
   log_i("====[ AUSTINP ]===="); \
 }
 #else
@@ -56,7 +78,7 @@
   log_m("\033[1m              _   _      \033[0m ");    \
   log_m("\033[1m __ _ _  _ __| |_(_)_ _  \033[0m");    \
   log_m("\033[1m/ _` | || (_-<  _| | ' \\ \033[0m");   \
-  log_m("\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m \033[36;1m%s\033[0m [GCC %d.%d.%d]", VERSION, __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__); \
+  log_m("\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m \033[36;1m" VERSION "\033[0m [" COMPILER " %d.%d.%d]", COMPILER_MAJOR, COMPILER_MINOR, COMPILER_PATCH); \
   log_i("====[ AUSTIN ]===="); \
 }
 #endif

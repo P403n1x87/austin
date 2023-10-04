@@ -1,0 +1,3 @@
+austin-python~=1.6
+numpy
+scipy

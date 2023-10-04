@@ -25,7 +25,8 @@ OPT_FLAGS = -O3
 STRIP_FLAGS = -Os -s
 
 if DEBUG_SYMBOLS
-DEBUG_OPTS = -g
+DEBUG_OPTS = -g -DDEBUG
+austin_LDADD = -lm
 undefine STRIP_FLAGS
 endif
 
@@ -62,5 +63,5 @@ bin_PROGRAMS += austinp
 
 austinp_SOURCES = $(austin_SOURCES)
 austinp_CFLAGS = $(austin_CFLAGS) @AUSTINP_CFLAGS@
-austinp_LDADD = @AUSTINP_LDADD@
+austinp_LDADD = $(austin_LDADD) @AUSTINP_LDADD@
 endif

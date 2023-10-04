@@ -1,3 +1,21 @@
+2023-10-04 v3.6.0
+
+  Added support for CPython 3.12
+
+  Added support for sub-interpreters.
+
+  Dropped support for CPython 2, 3.3, 3.4, 3.5, 3.6 and 3.7.
+
+  Improved interpreter detection and general stability on all supported
+  platforms.
+
+  Bugfix: ensure that threads are resumed by austinp when an error occurs during
+  the sampling process.
+
+  Bugfix: propagate the termination signal to the child process when launching a
+  command with Austin to prevent it from running indefinitely in the background.
+
+
 2023-02-21 v3.5.0
 
   Added support for fine-grained, column-level location information when

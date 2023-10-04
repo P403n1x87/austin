@@ -20,6 +20,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from itertools import takewhile
+from subprocess import check_output
+
 from test.utils import allpythons
 from test.utils import austin
 from test.utils import compress
@@ -32,10 +35,7 @@ from test.utils import sum_metric
 from test.utils import target
 from test.utils import threads
 
-from flaky import flaky
 
-
-@flaky
 @allpythons()
 def test_pipe_wall_time(py):
     interval = 1
@@ -75,7 +75,6 @@ def test_pipe_cpu_time(py):
     assert meta["interval"] == "1000", meta
 
 
-@flaky(max_runs=3)
 @allpythons()
 def test_pipe_wall_time_multiprocess(py):
     result = austin("-CPi", "1ms", *python(py), target())
@@ -90,7 +89,6 @@ def test_pipe_wall_time_multiprocess(py):
     assert ".".join((str(_) for _ in meta["python"])).startswith(py), meta
 
 
-@flaky
 @allpythons()
 def test_pipe_wall_time_multiprocess_output(py, tmp_path):
     datafile = tmp_path / "test_pipe.austin"
@@ -115,3 +113,24 @@ def test_pipe_wall_time_multiprocess_output(py, tmp_path):
         d = int(meta["duration"])
 
         assert 0 < 0.8 * d < a < 2.2 * d
+
+
+@allpythons(min=(3, 11))
+def test_python_version(py):
+    result = austin("-Pi", "1s", *python(py), target())
+    assert result.returncode == 0
+
+    meta = metadata(result.stdout)
+
+    reported_version = ".".join((str(_) for _ in meta["python"]))
+
+    # Take the version from the interpreter itself, discarding anything after
+    # the patchlevel.
+    actual_version = "".join(
+        takewhile(
+            lambda _: _.isdigit() or _ == ".",
+            (check_output([*python(py), "-V"]).decode().strip().partition(" ")[-1]),
+        )
+    )
+
+    assert reported_version == actual_version, meta

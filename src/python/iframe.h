@@ -57,8 +57,38 @@ typedef struct _PyInterpreterFrame3_11 {
 } _PyInterpreterFrame3_11;
 
 
+#define FRAME_OWNED_BY_CSTACK 3
+
+typedef struct _PyInterpreterFrame3_12 {
+    PyCodeObject *f_code; /* Strong reference */
+    struct _PyInterpreterFrame3_12 *previous;
+    PyObject *f_funcobj; /* Strong reference. Only valid if not on C stack */
+    PyObject *f_globals; /* Borrowed reference. Only valid if not on C stack */
+    PyObject *f_builtins; /* Borrowed reference. Only valid if not on C stack */
+    PyObject *f_locals; /* Strong reference, may be NULL. Only valid if not on C stack */
+    PyFrameObject *frame_obj; /* Strong reference, may be NULL. Only valid if not on C stack */
+    // NOTE: This is not necessarily the last instruction started in the given
+    // frame. Rather, it is the code unit *prior to* the *next* instruction. For
+    // example, it may be an inline CACHE entry, an instruction we just jumped
+    // over, or (in the case of a newly-created frame) a totally invalid value:
+    _Py_CODEUNIT *prev_instr;
+    int stacktop;  /* Offset of TOS from localsplus  */
+    /* The return_offset determines where a `RETURN` should go in the caller,
+     * relative to `prev_instr`.
+     * It is only meaningful to the callee,
+     * so it needs to be set in any CALL (to a Python function)
+     * or SEND (to a coroutine or generator).
+     * If there is no callee, then it is meaningless. */
+    uint16_t return_offset;
+    char owner;
+    /* Locals and stack */
+    PyObject *localsplus[1];
+} _PyInterpreterFrame3_12;
+
+
 typedef union {
     _PyInterpreterFrame3_11 v3_11;
+    _PyInterpreterFrame3_12 v3_12;
 } PyInterpreterFrame;
 
 #endif

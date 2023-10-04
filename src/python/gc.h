@@ -34,15 +34,6 @@
 
 // ---- include/objimpl.h -----------------------------------------------------
 
-typedef union _gc_head3_7 {
-    struct {
-        union _gc_head3_7 *gc_next;
-        union _gc_head3_7 *gc_prev;
-        Py_ssize_t gc_refs;
-    } gc;
-    long double dummy;  /* force worst-case alignment */
-} PyGC_Head3_7;
-
 typedef struct {
     uintptr_t _gc_next;
     uintptr_t _gc_prev;
@@ -51,13 +42,6 @@ typedef struct {
 // ---- internal/mem.h --------------------------------------------------------
 
 #define NUM_GENERATIONS 3
-
-struct gc_generation3_7 {
-    PyGC_Head3_7 head;
-    int threshold; /* collection threshold */
-    int count; /* count of allocations or collections of younger
-                  generations */
-};
 
 
 struct gc_generation3_8 {
@@ -74,18 +58,6 @@ struct gc_generation_stats {
     Py_ssize_t uncollectable;
 };
 
-struct _gc_runtime_state3_7 {
-    PyObject *trash_delete_later;
-    int trash_delete_nesting;
-    int enabled;
-    int debug;
-    struct gc_generation3_7 generations[NUM_GENERATIONS];
-    PyGC_Head3_7 *generation0;
-    struct gc_generation3_7 permanent_generation;
-    struct gc_generation_stats generation_stats[NUM_GENERATIONS];
-    int collecting;
-};
-
 struct _gc_runtime_state3_8 {
     PyObject *trash_delete_later;
     int trash_delete_nesting;
@@ -98,9 +70,46 @@ struct _gc_runtime_state3_8 {
     int collecting;
 };
 
+
+struct _gc_runtime_state3_12 {
+    /* List of objects that still need to be cleaned up, singly linked
+     * via their gc headers' gc_prev pointers.  */
+    PyObject *trash_delete_later;
+    /* Current call-stack depth of tp_dealloc calls. */
+    int trash_delete_nesting;
+
+    /* Is automatic collection enabled? */
+    int enabled;
+    int debug;
+    /* linked lists of container objects */
+    struct gc_generation3_8 generations[NUM_GENERATIONS];
+    void *generation0;
+    /* a permanent generation which won't be collected */
+    struct gc_generation3_8 permanent_generation;
+    struct gc_generation_stats generation_stats[NUM_GENERATIONS];
+    /* true if we are currently running the collector */
+    int collecting;
+    /* list of uncollectable objects */
+    PyObject *garbage;
+    /* a list of callbacks to be invoked when collection is performed */
+    PyObject *callbacks;
+    /* This is the number of objects that survived the last full
+       collection. It approximates the number of long lived objects
+       tracked by the GC.
+
+       (by "full collection", we mean a collection of the oldest
+       generation). */
+    Py_ssize_t long_lived_total;
+    /* This is the number of objects that survived all "non-full"
+       collections, and are awaiting to undergo a full collection for
+       the first time. */
+    Py_ssize_t long_lived_pending;
+};
+
+
 typedef union {
-    struct _gc_runtime_state3_7 v3_7;
-    struct _gc_runtime_state3_8 v3_8;
+    struct _gc_runtime_state3_8  v3_8;
+    struct _gc_runtime_state3_12 v3_12;
 } GCRuntimeState;
 
 #endif

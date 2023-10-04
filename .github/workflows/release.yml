@@ -10,11 +10,21 @@ jobs:
       fail-fast: false
     name: Release (Linux)
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         name: Checkout Austin
+
+      - name: Install Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
 
       - name: Generate artifacts
         run: |
+          python3.10 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-bw.txt
+          
           sudo apt-get update
           sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools zlib1g-dev
 
@@ -30,11 +40,25 @@ jobs:
           tar -Jcf austinp-$VERSION-gnu-linux-amd64.tar.xz austinp
           popd
 
+          # Build gnu wheel
+          python scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=manylinux_2_12_x86_64.manylinux2010_x86_64 \
+            --files austin:src/austin austinp:src/austinp
+
           # Build with musl
           musl-gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austin -D__MUSL__
           pushd src
           tar -Jcf austin-$VERSION-musl-linux-amd64.tar.xz austin
           popd
+
+          # Build musl wheel
+          python scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=musllinux_1_1_x86_64 \
+            --files austin:src/austin
+
+          deactivate
 
       - name: Upload artifacts to release
         uses: svenstaro/upload-release-action@v2
@@ -44,6 +68,12 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
+      
+      - name: Upload Python wheels to PyPI
+        run: |
+          source .venv/bin/activate
+          twine upload dist/*.whl --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+          deactivate
 
   release-win:
     runs-on: windows-latest
@@ -51,7 +81,7 @@ jobs:
       fail-fast: false
     name: Release (Windows)
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         name: Checkout Austin
         with:
           fetch-depth: 0
@@ -109,17 +139,50 @@ jobs:
           overwrite: true
           file_glob: true
 
+      - name: Install Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Build Python wheels
+        shell: bash
+        run: |
+          py -3.10 -m pip install --upgrade pip
+          py -3.10 -m pip install -r scripts/requirements-bw.txt
+          
+          export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
+
+          py -3.10 scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=win_amd64 \
+            --files austin.exe:src/austin.exe
+      
+      - name: Upload Python wheels to PyPI
+        shell: bash
+        run: |
+          py -3.10 -m twine upload dist/*.whl --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+
   release-osx:
     runs-on: macos-latest
     strategy:
       fail-fast: false
     name: Release (macOS)
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         name: Checkout Austin
+
+      - name: Install Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
 
       - name: Generate artifacts
         run: |
+          python3.10 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-bw.txt
+
           export VERSION=$(cat src/austin.h | sed -n -E "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
           echo "::set-output name=version::$VERSION"
 
@@ -129,6 +192,26 @@ jobs:
           zip -r austin-${VERSION}-mac64.zip austin
           popd
 
+          # Build intel wheel
+          python scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=macosx_11_0_x86_64 \
+            --files austin:src/austin
+
+          clang -Wall -O3 -Os -o src/austin src/*.c -target arm64-apple-macos11
+
+          pushd src
+          zip -r austin-${VERSION}-mac-arm64.zip austin
+          popd
+
+          # Build arm wheel
+          python scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=macosx_11_0_arm64 \
+            --files austin:src/austin
+
+          deactivate
+
       - name: Upload artifacts to release
         uses: svenstaro/upload-release-action@v2
         with:
@@ -137,3 +220,10 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
+      
+      - name: Upload Python wheels to PyPI
+        shell: bash
+        run: |
+          source .venv/bin/activate
+          twine upload dist/*.whl --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+          deactivate

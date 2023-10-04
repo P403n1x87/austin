@@ -1,4 +1,4 @@
-austin-python~=1.5
+austin-python~=1.6
 flaky
 pytest
 pytest-xdist
@@ -9,4 +9,3 @@ pycparser
 # Support tests
 psutil
 requests
-uwsgi; sys_platform != 'win32'

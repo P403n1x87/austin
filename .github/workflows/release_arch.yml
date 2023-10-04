@@ -12,7 +12,7 @@ jobs:
       fail-fast: false
     name: Build on ${{ matrix.arch }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         name: Checkout sources
       
       - uses: uraimo/run-on-arch-action@v2.0.5
@@ -39,3 +39,50 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Build wheels on ${{ matrix.arch }}
+        run: |
+          python3.10 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-bw.txt
+          
+          export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p");
+
+          case ${{ matrix.arch }} in
+            armv7)
+              PLATFORM=manylinux_2_17_armv7l.manylinux2014_armv7l
+              MUSL_PLATFORM=musllinux_1_1_armv7l
+              ;;
+            aarch64)
+              PLATFORM=manylinux_2_17_aarch64.manylinux2014_aarch64
+              MUSL_PLATFORM=musllinux_1_1_aarch64
+              ;;
+            ppc64le)
+              PLATFORM=manylinux_2_17_ppc64le.manylinux2014_ppc64le
+              MUSL_PLATFORM=musllinux_1_1_ppc64le
+              ;;
+          esac
+
+          python scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=$PLATFORM \
+            --files austin:./artifacts/austin austinp:./artifacts/austinp
+
+          python scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=$MUSL_PLATFORM \
+            --files austin:./artifacts/austin.musl
+
+          deactivate
+
+      - name: Upload wheels
+        run: |
+          source .venv/bin/activate
+          twine upload dist/*.whl --username __token__ --password ${{ secrets.PYPI_TOKEN }}s
+          deactivate

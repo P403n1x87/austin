@@ -25,8 +25,13 @@ pushd src
     tar -Jcf austin-$VERSION-gnu-linux-$ARCH.tar.xz austin
     tar -Jcf austinp-$VERSION-gnu-linux-$ARCH.tar.xz austinp
 
+    cp austin  /artifacts/austin
+    cp austinp /artifacts/austinp
+
     musl-gcc -O3 -Os -s -Wall -pthread *.c -o austin -D__MUSL__
     tar -Jcf austin-$VERSION-musl-linux-$ARCH.tar.xz austin
+
+    cp austin /artifacts/austin.musl
 
     mv austin-$VERSION-gnu-linux-$ARCH.tar.xz /artifacts
     mv austinp-$VERSION-gnu-linux-$ARCH.tar.xz /artifacts

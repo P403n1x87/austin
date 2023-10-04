@@ -1,20 +1,22 @@
 name: Benchmarks
 
 on:
-  push:
-    branches:
-      - master
-      - devel
   pull_request:
+    paths:
+      - .github/workflows/benchmarks.yml
+      - scripts/benchmark.py
+      - scripts/requirements-bm.txt
+      - src/**
 
 jobs:
   benchmarks:
     runs-on: ubuntu-20.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install build dependencies
         run: |
+          sudo apt-get update
           sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
 
       - name: Install Python 3.10
@@ -34,18 +36,15 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-bm.txt
-          deactivate
 
       - name: Run benchmarks
+        env:
+          PYTHONPATH: "."
         run: |
           ulimit -c unlimited
-
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           source .venv/bin/activate
-          python scripts/benchmark.py | tee benchmarks.txt
-          deactivate
-
-          # Make it a code comment
-          sed -e $'1i\\\n~~~' -e $'$a\\\n~~~' benchmarks.txt > comment.txt
+          python scripts/benchmark.py --format markdown --last | tee comment.txt
 
       - name: Post results on PR
         uses: marocchino/sticky-pull-request-comment@v2

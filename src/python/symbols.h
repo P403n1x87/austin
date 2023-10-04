@@ -26,12 +26,14 @@
 #include "../platform.h"
 #include "../py_string.h"
 
+#define DYNSYM_MANDATORY 1
 
 enum {
-  DYNSYM_THREADSTATE_CURRENT,
+  // Mandatory symbols
   DYNSYM_RUNTIME,
-  DYNSYM_INTERP_HEAD,
+  // Optional symbols
   DYNSYM_HEX_VERSION,
+  // Count
   DYNSYM_COUNT
 };
 
@@ -39,17 +41,15 @@ enum {
 #ifdef PY_PROC_C
 
 #ifdef PL_MACOS
-  #define SYM_PREFIX "__"
-#else
   #define SYM_PREFIX "_"
+#else
+  #define SYM_PREFIX ""
 #endif
 
 
 static const char * _dynsym_array[] = {
-  SYM_PREFIX "PyThreadState_Current",
-  SYM_PREFIX "PyRuntime",
-  "interp_head",
-  "Py_Version",
+  SYM_PREFIX "_PyRuntime",
+  SYM_PREFIX "Py_Version",
 };
 
 static long _dynsym_hash_array[DYNSYM_COUNT] = {0};

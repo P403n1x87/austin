@@ -44,8 +44,6 @@ def valgrind(python_args: list[str], mode: str):
                 str(austin.path),
                 f"-{mode}i",
                 "1ms",
-                "-t",
-                "1s",
                 "-o",
                 "/dev/null",
                 *python_args,
@@ -69,7 +67,7 @@ def test_valgrind_fork(py, mode):
 @pytest.mark.parametrize("mode", ["", "s", "C", "Cs"])
 @allpythons()
 def test_valgrind_attach(py, mode):
-    with run_python(py, target("sleepy.py")) as p:
+    with run_python(py, target("sleepy.py"), "2") as p:
         result = valgrind(["-p", str(p.pid)], mode)
         assert result.returncode == 0, "\n".join((result.stdout, result.stderr))
         p.kill()

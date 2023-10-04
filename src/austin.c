@@ -58,8 +58,11 @@ static int interrupt = FALSE;
 static void
 signal_callback_handler(int signum)
 {
-  if (signum == SIGINT || signum == SIGTERM)
-    interrupt = SIGTERM;
+  switch(signum) {
+    case SIGINT:
+    case SIGTERM:
+      interrupt = -signum;
+  }
 } /* signal_callback_handler */
 
 // ----------------------------------------------------------------------------
@@ -109,8 +112,16 @@ do_single_process(py_proc_t * py_proc) {
     }
   }
 
-  if (interrupt == FALSE) {
+  if (pargs.attach_pid == 0) {
+    if (interrupt)
+      // Propagate the signal to the parent if we spawned it.
+      py_proc__signal(py_proc, interrupt < 0 ? -interrupt : SIGTERM);
+
+
+    #if defined PL_UNIX
+    // If we spawned the process, we need to wait for it to terminate.
     py_proc__wait(py_proc);
+    #endif
   }
 
   py_proc__destroy(py_proc);
@@ -138,7 +149,7 @@ do_child_processes(py_proc_t * py_proc) {
     // enough so we can try to attach to child processes straight away.
     // TODO: In the future, we might want to consider adding the option to wait
     // for child processes, as they might be spawned only much later.
-    pargs.timeout = 1;
+    pargs.timeout = 100000;  // 0.1s
 
     // Store the PID before it gets deleted by the update.
     pid_t ppid = py_proc->pid;
@@ -204,12 +215,65 @@ do_child_processes(py_proc_t * py_proc) {
     }
   }
 
-  if (interrupt == FALSE) {
+  if (pargs.attach_pid == 0) {
+    if (interrupt)
+      // Propagate the signal to the child processes (via the parent) if we
+      // spawned them.
+      py_proc__signal(py_proc, interrupt < 0 ? -interrupt : SIGTERM);
+
+    // If we spawned the child processes, we need to wait for them to terminate.
     py_proc_list__update(list);
+    #if defined PL_UNIX
     py_proc_list__wait(list);
+    #endif
   }
 } /* do_child_processes */
 
+
+// ----------------------------------------------------------------------------
+static inline int
+handle_error() {  
+  log_d("Last error: %d :: %s", austin_errno, get_last_error());
+  
+  int retval = austin_errno;
+
+  switch(retval) {
+  case EPROCISTIMEOUT:
+    _msg(MTIMEOUT, pargs.attach_pid == 0 ? "run" : "attach to");
+    break;
+  #if defined PL_UNIX
+  case EPROCPERM:
+    _msg(MPERM);
+    break;
+  #endif
+  case EPROCFORK:
+    _msg(MFORK);
+    break;
+  case EPROCATTACH:
+    _msg(MATTACH);
+    break;
+  case EPROCNPID:
+    _msg(MNOPROC);
+    break;
+  case EPROC:
+    _msg(MNOPYTHON);
+    break;
+  case EPROCNOCHILDREN:
+    _msg(MNOCHILDREN);
+    break;
+  case ENOVERSION:
+    _msg(MNOVERSION);
+    break;
+  case EMEMCOPY:
+    // Ignore. At this point we expect remote memory reads to fail.
+    retval = EOK;
+    break;
+  default:
+    _msg(MERROR);
+  }
+
+  return retval;
+} /* handle_error */
 
 // ---- MAIN ------------------------------------------------------------------
 
@@ -218,6 +282,14 @@ int main(int argc, char ** argv) {
   int         retval         = 0;
   py_proc_t * py_proc        = NULL;
   int         exec_arg       = parse_args(argc, argv);
+
+#if defined PL_MACOS
+  // On MacOS, we need to be root to use Austin.
+  if (geteuid() != 0) {
+    _msg(MPERM);
+    return EPROCPERM;
+  }
+#endif
 
   logger_init();
   if (!pargs.pipe)
@@ -260,6 +332,8 @@ int main(int argc, char ** argv) {
     ) {
       log_ie("Cannot start the process");
       py_proc__terminate(py_proc);
+
+      retval = handle_error();
       goto finally;
     }
   } else {
@@ -268,12 +342,11 @@ int main(int argc, char ** argv) {
       && !pargs.children
     ) {
       log_ie("Cannot attach the process");
+
+      retval = handle_error();
       goto finally;
     }
   }
-
-  if (austin_errno == EPROCPERM)
-    goto finally;
 
   // Redirect output to STDOUT if not output file was given.
   if (pargs.output_file != stdout)
@@ -323,11 +396,10 @@ int main(int argc, char ** argv) {
   // destroying it. Hence once they return we need to invalidate it.
   py_proc = NULL;
 
-  if (austin_errno == EPROCNOCHILDREN)
+  if (austin_errno == EPROCNOCHILDREN) {
+    retval = handle_error();
     goto finally;
-
-  if (austin_errno == EPROCNPID)
-    austin_errno = EOK;
+  }
 
   if (pargs.where)
     goto finally;
@@ -346,49 +418,6 @@ finally:
   py_thread_free();
   py_proc__destroy(py_proc);
 
-  log_d("Last error: %d :: %s", austin_errno, get_last_error());
-  if (is_fatal(austin_errno)) {
-    retval = austin_errno;
-
-    switch(retval) {
-    case EPROCISTIMEOUT:
-      _msg(MTIMEOUT, pargs.attach_pid == 0 ? "run" : "attach to");
-      break;
-    #if defined PL_UNIX
-    case EPROCPERM:
-      _msg(MPERM);
-      break;
-    #endif
-    case EPROCFORK:
-      _msg(MFORK);
-      break;
-    case EPROCATTACH:
-      _msg(MATTACH);
-      break;
-    case EPROCNPID:
-      _msg(MNOPROC);
-      break;
-    case EPROC:
-      _msg(MNOPYTHON);
-      break;
-    case EPROCNOCHILDREN:
-      _msg(MNOCHILDREN);
-      break;
-    case ENOVERSION:
-      _msg(MNOVERSION);
-      break;
-    case EMEMCOPY:
-      // Ignore. At this point we expect remote memory reads to fail.
-      retval = EOK;
-      break;
-    default:
-      _msg(MERROR);
-    }
-  }
-
-  if (interrupt == SIGTERM)
-    retval = SIGTERM;
-
   log_footer();
 
 release:
@@ -398,6 +427,12 @@ release:
   }
 
   logger_close();
+
+  if (interrupt < 0)
+    // Interrupted  by signal
+    retval = interrupt;
+
+  log_d("Exiting with code %d", retval);
 
   return retval;
 } /* main */

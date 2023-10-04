@@ -11,4 +11,5 @@ cog -P $args \
     README.md \
     src/austin.h \
     src/argparse.c \
+    src/linux/py_proc.h \
     snap/snapcraft.yaml

@@ -35,6 +35,7 @@
 #define ENOVERSION            3
 #define ENULLDEV              4
 #define ECMDLINE              5
+#define ESYM                  6
 
 // PyCodeObject
 #define ECODE                 ((1 << 3) + 0)
@@ -55,6 +56,7 @@
 #define ETHREAD               ((3 << 3) + 0)
 #define ETHREADNOFRAME        ((3 << 3) + 1)
 #define ETHREADINV            ((3 << 3) + 2)
+#define ETHREADNONEXT         ((3 << 3) + 3)
 
 // py_proc_t
 #define EPROC                 ((4 << 3) + 0)

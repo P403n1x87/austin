@@ -79,8 +79,9 @@
  * @return    TRUE if the current version is at least/at most the requested one,
  *            FALSE otherwise.
  */
-#define V_MIN(M, m) (py_v->major > M || (py_v->major == M && py_v->minor >= m))
-#define V_MAX(M, m) (py_v->major < M || (py_v->major == M && py_v->minor <= m))
+#define V_MIN(M, m) (((py_v->major << 8) | py_v->minor) >= ((M << 8) | m))
+#define V_MAX(M, m) (((py_v->major << 8) | py_v->minor) <= ((M << 8) | m))
+#define V_EQ(M, m)  (((py_v->major << 8) | py_v->minor) == ((M << 8) | m))
 
 typedef unsigned long offset_t;
 
@@ -121,6 +122,7 @@ typedef struct {
   offset_t o_previous;
   offset_t o_prev_instr;
   offset_t o_is_entry;
+  offset_t o_owner;
 } py_iframe_v;
 
 
@@ -134,6 +136,7 @@ typedef struct {
   offset_t o_thread_id;
   offset_t o_native_thread_id;
   offset_t o_stack;
+  offset_t o_status;
 } py_thread_v;
 
 
@@ -160,7 +163,9 @@ typedef struct {
 
   offset_t o_next;
   offset_t o_tstate_head;
+  offset_t o_id;
   offset_t o_gc;
+  offset_t o_gil_state;
 } py_is_v;
 
 
@@ -211,7 +216,6 @@ typedef struct {
   offsetof(s, co_qualname),             \
 }
 
-
 #define PY_FRAME(s) {                   \
   sizeof(s),                            \
   offsetof(s, f_back),                  \
@@ -232,17 +236,16 @@ typedef struct {
   offsetof(s, previous),                \
   offsetof(s, prev_instr),              \
   offsetof(s, is_entry),                \
+  offsetof(s, owner),                   \
 }
 
-
-/* Hack. Python 3.3 and below don't have the prev field */
-#define PY_THREAD_2(s) {                \
+#define PY_IFRAME_312(s) {              \
   sizeof(s),                            \
-  offsetof(s, next),                    \
-  offsetof(s, next),                    \
-  offsetof(s, interp),                  \
-  offsetof(s, frame),                   \
-  offsetof(s, thread_id)                \
+  offsetof(s, f_code),                  \
+  offsetof(s, previous),                \
+  offsetof(s, prev_instr),              \
+  0,                                    \
+  offsetof(s, owner),                   \
 }
 
 #define PY_THREAD(s) {                  \
@@ -263,6 +266,18 @@ typedef struct {
   offsetof(s, thread_id),               \
   offsetof(s, native_thread_id),        \
   offsetof(s, datastack_chunk),         \
+}
+
+#define PY_THREAD_312(s) {              \
+  sizeof(s),                            \
+  offsetof(s, prev),                    \
+  offsetof(s, next),                    \
+  offsetof(s, interp),                  \
+  offsetof(s, cframe),                  \
+  offsetof(s, thread_id),               \
+  offsetof(s, native_thread_id),        \
+  offsetof(s, datastack_chunk),         \
+  offsetof(s, _status)                  \
 }
 
 #define PY_UNICODE(n) {                 \
@@ -289,6 +304,7 @@ typedef struct {
   sizeof(s),                            \
   offsetof(s, next),                    \
   offsetof(s, tstate_head),             \
+  offsetof(s, id),                      \
   offsetof(s, gc),                      \
 }
 
@@ -296,61 +312,23 @@ typedef struct {
   sizeof(s),                            \
   offsetof(s, next),                    \
   offsetof(s, threads.head),            \
+  offsetof(s, id),                      \
   offsetof(s, gc),                      \
 }
 
+#define PY_IS_312(s) {                  \
+  sizeof(s),                            \
+  offsetof(s, next),                    \
+  offsetof(s, threads.head),            \
+  offsetof(s, id),                      \
+  offsetof(s, gc),                      \
+  offsetof(s, ceval.gil),               \
+}
 
 #define PY_GC(s) {                      \
   sizeof(s),                            \
   offsetof(s, collecting),              \
 }
-
-// ---- Python 2 --------------------------------------------------------------
-
-python_v python_v2 = {
-  PY_CODE     (PyCodeObject2),
-  PY_FRAME    (PyFrameObject2),
-  PY_THREAD_2 (PyThreadState2),
-  PY_IS       (PyInterpreterState2),
-};
-
-// ---- Python 3.3 ------------------------------------------------------------
-
-python_v python_v3_3 = {
-  PY_CODE     (PyCodeObject3_3),
-  PY_FRAME    (PyFrameObject2),
-  PY_THREAD_2 (PyThreadState2),
-  PY_IS       (PyInterpreterState2),
-};
-
-// ---- Python 3.4 ------------------------------------------------------------
-
-python_v python_v3_4 = {
-  PY_CODE     (PyCodeObject3_3),
-  PY_FRAME    (PyFrameObject2),
-  PY_THREAD   (PyThreadState3_4),
-  PY_IS       (PyInterpreterState2),
-};
-
-// ---- Python 3.6 ------------------------------------------------------------
-
-python_v python_v3_6 = {
-  PY_CODE     (PyCodeObject3_6),
-  PY_FRAME    (PyFrameObject2),
-  PY_THREAD   (PyThreadState3_4),
-  PY_IS       (PyInterpreterState2),
-};
-
-// ---- Python 3.7 ------------------------------------------------------------
-
-python_v python_v3_7 = {
-  PY_CODE     (PyCodeObject3_6),
-  PY_FRAME    (PyFrameObject3_7),
-  PY_THREAD   (PyThreadState3_7),
-  PY_IS       (PyInterpreterState2),
-  PY_RUNTIME  (_PyRuntimeState3_7),
-  PY_GC       (struct _gc_runtime_state3_7),
-};
 
 // ---- Python 3.8 ------------------------------------------------------------
 
@@ -399,6 +377,19 @@ python_v python_v3_11 = {
   PY_IFRAME_311   (_PyInterpreterFrame3_11),
 };
 
+// ---- Python 3.12 -----------------------------------------------------------
+
+python_v python_v3_12 = {
+  PY_CODE_311     (PyCodeObject3_12),
+  PY_FRAME        (PyFrameObject3_10),  // Irrelevant
+  PY_THREAD_312   (PyThreadState3_12),
+  PY_IS_312       (PyInterpreterState3_12),
+  PY_RUNTIME_311  (_PyRuntimeState3_12),
+  PY_GC           (struct _gc_runtime_state3_12),
+  PY_CFRAME_311   (_PyCFrame3_12),
+  PY_IFRAME_312   (_PyInterpreterFrame3_12),
+};
+
 // ----------------------------------------------------------------------------
 static inline python_v *
 get_version_descriptor(int major, int minor, int patch) {
@@ -409,47 +400,18 @@ get_version_descriptor(int major, int minor, int patch) {
 
   switch (major) {
 
-  // ---- Python 2 ------------------------------------------------------------
-  case 2:
-    switch (minor) {
-    case 0:
-    case 1:
-    case 2:
-      UNSUPPORTED_VERSION;  // NOTE: These versions haven't been tested.
-
-    // 2.3, 2.4, 2.5, 2.6, 2.7
-    case 3:
-    case 4:
-    case 5:
-    case 6:
-    case 7: py_v = &python_v2;
-      break;
-
-    default: py_v = &python_v2;
-      UNSUPPORTED_VERSION;
-    }
-    break;
-
   // ---- Python 3 ------------------------------------------------------------
   case 3:
     switch (minor) {
     case 0:
     case 1:
     case 2:
-      UNSUPPORTED_VERSION;  // NOTE: These versions haven't been tested.
-
-    // 3.3
-    case 3: py_v = &python_v3_3; break;
-
-    // 3.4, 3.5
+    case 3:
     case 4:
-    case 5: py_v = &python_v3_4; break;
-
-    // 3.6
-    case 6: py_v = &python_v3_6; break;
-
-    // 3.7
-    case 7: py_v = &python_v3_7; break;
+    case 5:
+    case 6:
+    case 7:
+      UNSUPPORTED_VERSION;  // NOTE: These versions haven't been tested.
 
     // 3.8
     case 8: py_v = &python_v3_8; break;
@@ -462,6 +424,9 @@ get_version_descriptor(int major, int minor, int patch) {
 
     // 3.11
     case 11: py_v = &python_v3_11; break;
+
+    // 3.12
+    case 12: py_v = &python_v3_12; break;
 
     default: py_v = LATEST_VERSION;
       UNSUPPORTED_VERSION;

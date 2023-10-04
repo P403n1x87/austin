@@ -6,6 +6,16 @@ on:
       - master
       - devel
   pull_request:
+    paths:
+      - .github/workflows/tests.yml
+      - scripts/build-wheel.py
+      - scripts/requirements-bw.txt
+      - scripts/requirements-val.txt
+      - scripts/validation.py
+      - src/**
+      - test/**
+      - configure.ac
+      - Makefile.am
 
 concurrency: 
   group: ${{ github.head_ref || github.run_id }}
@@ -16,10 +26,11 @@ jobs:
     runs-on: ubuntu-20.04    
     name: Build Austin on Linux
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Install build dependencies
         run: |
+          sudo apt-get update
           sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
 
       - name: Compile Austin
@@ -35,22 +46,43 @@ jobs:
             src/austin
             src/austinp
 
+  build-linux-musl:
+    runs-on: ubuntu-20.04    
+    name: Build Austin on Linux (musl)
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install musl-tools
+
+      - name: Compile Austin
+        run: |
+          musl-gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austin.musl -D__MUSL__
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: austin-binaries
+          path: |
+            src/austin.musl
+
   tests-linux:
     runs-on: ubuntu-20.04
 
-    needs: build-linux
+    needs: [build-linux, build-linux-musl]
 
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.5", "3.6", "3.7", "3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
     
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
     
     name: Tests on Linux with Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
         with:
@@ -61,6 +93,7 @@ jobs:
 
       - name: Install test dependencies
         run: |
+          sudo apt-get update
           sudo apt-get -y install \
             valgrind \
             gdb
@@ -74,16 +107,117 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
-
-      - name: Run tests
+      - name: Install test dependencies
         run: |
-          ulimit -c unlimited
           python3.10 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r test/requirements.txt
-          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed --no-flaky-report -sr a
-          .venv/bin/pytest --pastebin=failed --no-flaky-report -sr a
+          
+      - name: Set core dump file pattern
+        run: |
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+
+          ulimit -c unlimited
+          python3.10 -c "import ctypes;ctypes.string_at(0)" || true
+          ls core.*
+          rm core.*
+
+      - name: Run unit tests
+        run: |
+          ulimit -c unlimited
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+          .venv/bin/pytest -sv test/cunit
+  
+      - name: Run functional Austin tests (with sudo)
+        run: |
+          ulimit -c unlimited
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a test/functional -k "not austinp"
+        if: always()
+
+      - name: Run functional Austin tests (without sudo)
+        run: |
+          ulimit -c unlimited
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+          .venv/bin/pytest --pastebin=failed -svr a test/functional -k "not austinp"
+        if: always()
+
+      - name: Run functional austinp tests (with sudo)
+        run: |
+          ulimit -c unlimited
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a test/functional -k "austinp"
+        if: always()
+
+      - name: Run functional austinp tests (without sudo)
+        run: |
+          ulimit -c unlimited
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+          .venv/bin/pytest --pastebin=failed -svr a test/functional -k "austinp"
+        if: always()
+  
+      - name: Run integrity tests (with sudo)
+        run: |
+          ulimit -c unlimited
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+          sudo -E env PATH="$PATH" .venv/bin/pytest --pastebin=failed -svr a test/integrity
+        if: always()
+
+      - name: Run integrity tests (without sudo)
+        run: |
+          ulimit -c unlimited
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+          .venv/bin/pytest --pastebin=failed -svr a test/integrity
+        if: always()
+
+      - name: Run support tests
+        run: |
+          ulimit -c unlimited
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+          sudo -E env PATH="$PATH" .venv/bin/pytest -sv test/support
+        if: always()
+
+  wheels-linux:
+    runs-on: ubuntu-20.04
+
+    needs: build-linux
+
+    name: Build Linux wheels
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: austin-binaries
+          path: src
+
+      - run: chmod +x src/austin && chmod +x src/austinp
+
+      - name: Install Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Build wheels
+        run: |
+          python3.10 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-bw.txt
+          
+          export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p");
+
+          python scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=manylinux_2_12_x86_64.manylinux2010_x86_64 \
+            --files austin:src/austin austinp:src/austinp
+
+          python scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=musllinux_1_1_x86_64 \
+            --files austin:src/austin.musl
+
           deactivate
 
   build-osx-gcc:
@@ -91,7 +225,7 @@ jobs:
 
     name: Build Austin on macOS (gcc)
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Compile Austin
         run: gcc-11 -Wall -Werror -O3 -g src/*.c -o src/austin
@@ -107,7 +241,7 @@ jobs:
 
     name: Build Austin on macOS (clang)
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
       
       - name: Install automake
         run: brew install automake
@@ -125,14 +259,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["2.7", "3.5", "3.6", "3.7", "3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
 
     name: Tests on macOS with Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
         with:
@@ -156,14 +290,72 @@ jobs:
           codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/bin/python3 || true
           codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/Resources/Python.app/Contents/MacOS/Python || true
 
-      - name: Run tests
+      - name: Install test dependencies
         run: |
           python3.10 -m pip install --upgrade pip
           python3.10 -m pip install -r test/requirements.txt
           python${{ matrix.python-version }} -m venv .venv \
             || (python${{ matrix.python-version }} -m pip install virtualenv && python${{ matrix.python-version }} -m virtualenv .venv)
+      
+      - name: Run functional tests
+        run: |
           source .venv/bin/activate
-          sudo -E pytest --ignore=test/cunit --pastebin=failed --no-flaky-report -sr a
+          sudo -E pytest --pastebin=failed -svr a -n auto test/functional -k "not austinp"
+        if: always()
+
+      - name: Run integrity tests
+        run: |
+          source .venv/bin/activate
+          sudo -E pytest --pastebin=failed -svr a -n auto test/integrity -k "not austinp"
+        if: always()
+  
+      - name: Run support tests
+        run: |
+          source .venv/bin/activate
+          sudo -E pytest --pastebin=failed -svr a -n auto test/support
+        if: always()
+
+      - name: Run Darwin-only tests
+        run: |
+          source .venv/bin/activate
+          pytest --pastebin=failed -svr a -k "_darwin" test/functional
+        if: always()
+
+  wheels-osx:
+    runs-on: macos-latest
+    
+    needs: [build-osx-gcc, build-osx-clang]
+
+    name: Build macOS wheels
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: austin-binary
+          path: src
+
+      - run: chmod +x src/austin
+
+      - name: Install Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Build wheels
+        run: |
+          python3.10 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-bw.txt
+          
+          export VERSION=$(cat src/austin.h | sed -n -E "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
+
+          python scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=macosx_11_0_x86_64 \
+            --files austin:src/austin
+
           deactivate
 
   build-win:
@@ -171,12 +363,12 @@ jobs:
 
     name: Build Austin on Windows
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - name: Compile Austin
         run: |
           gcc.exe --version
-          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Werror
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Werror -DDEBUG
           src\austin.exe --help
 
       - uses: actions/upload-artifact@v3
@@ -193,14 +385,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["2.7", "3.5", "3.6", "3.7", "3.8", "3.9", "3.10", "3.11"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
     
     name: Tests on Windows with Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v3
         with:
@@ -212,16 +404,119 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}-dev
 
-      - uses: actions/setup-python@v2
+      - uses: actions/setup-python@v4
         name: Install Python 3.10
         with:
           python-version: '3.10'
 
-      - name: Run tests
+      - name: Install test dependencies
         run: |
           py -3.10 -m venv venv
           venv\Scripts\Activate.ps1
           python -m pip install --upgrade pip
           python -m pip install -r test/requirements.txt
-          python -m pytest --ignore=test\cunit --pastebin=failed --no-flaky-report -sr a
+
+      - name: Run functional tests
+        run: |
+          venv\Scripts\Activate.ps1
+          python -m pytest --full-trace --pastebin=failed -svr a test\functional -k "not austinp"
+        if: always()
+
+      - name: Run integrity tests
+        run: |
+          venv\Scripts\Activate.ps1
+          python -m pytest --full-trace --pastebin=failed -svr a test\integrity -k "not austinp"
+        if: always()
+
+      - name: Run support tests
+        run: |
+          venv\Scripts\Activate.ps1
+          python -m pytest --full-trace --pastebin=failed -svr a test\support
+        if: always()
+
+  wheels-win:
+    runs-on: windows-latest
+
+    needs: build-win
+
+    name: Build Windows wheels
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: austin-binary
+          path: src
+
+      - uses: actions/setup-python@v4
+        name: Install Python 3.10
+        with:
+          python-version: '3.10'
+
+      - name: Build wheels
+        shell: bash
+        run: |
+          py -3.10 -m pip install --upgrade pip
+          py -3.10 -m pip install -r scripts/requirements-bw.txt
+          
+          export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
+
+          py -3.10 scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=win_amd64 \
+            --files austin.exe:src/austin.exe
+
+  validation:
+    runs-on: ubuntu-20.04
+
+    needs: build-linux
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
+    
+    env:
+      AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
+
+    name: Data validation with Python ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}-dev
+
+      - name: Install Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure --enable-debug-symbols true
+          make
+
+      - name: Install runtime dependencies
+        run: |
+          python3.10 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-val.txt
+          deactivate
+
+      - name: Run data validation
+        run: |
+          ulimit -c unlimited
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+
+          source .venv/bin/activate
+          python scripts/validation.py --ignore-errors
           deactivate

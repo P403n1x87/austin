@@ -6,7 +6,7 @@ AC_PREREQ([2.69])
 # from scripts.utils import get_current_version_from_changelog as version
 # print(f"AC_INIT([austin], [{version()}], [https://github.com/p403n1x87/austin/issues])")
 # ]]]
-AC_INIT([austin], [3.5.0], [https://github.com/p403n1x87/austin/issues])
+AC_INIT([austin], [3.6.0], [https://github.com/p403n1x87/austin/issues])
 # [[[end]]]
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])
@@ -81,7 +81,10 @@ AM_CONDITIONAL([COVERAGE], [test x$coverage = xtrue])
 AC_ARG_ENABLE([debug-symbols], [
   --enable-debug-symbols    Include debug symbols], [
 case "${enableval}" in
-    yes) debugsymbols=true ;;
+    yes)
+        debugsymbols=true
+        AUSTINP_LDADD+=" -lm"
+        ;;
     no)  debugsymbols=false ;;
     *) AC_MSG_ERROR([bad value ${enableval} for --enable-debug-symbols]) ;;
 esac], [debugsymbols=false])

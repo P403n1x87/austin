@@ -35,7 +35,10 @@
   </a>
 
   <br/>
-
+  <a href="https://badge.fury.io/py/austin-dist">
+    <img src="https://badge.fury.io/py/austin-dist.svg"
+         alt="PyPI version">
+  </a>
   <a href="https://chocolatey.org/packages/austin/">
     <img src="https://img.shields.io/chocolatey/v/austin"
          alt="Chocolatey Version" />
@@ -44,10 +47,10 @@
     <img src="https://img.shields.io/conda/vn/conda-forge/austin.svg"
          alt="Conda Version" />
   </a>
-  <a href="https://packages.debian.org/unstable/austin">
+  <!-- <a href="https://packages.debian.org/unstable/austin">
     <img src="https://badges.debian.net/badges/debian/unstable/austin/version.svg"
          alt="Debian package status" />
-  </a>
+  </a> -->
   <a href="https://formulae.brew.sh/formula/austin">
     <img src="https://img.shields.io/homebrew/v/austin"
          alt="homebrew" />
@@ -154,9 +157,20 @@ project.</i></br>🙏</p>
 
 # Installation
 
-Austin is available from the major software repositories of the most popular
-platforms. Check out the [latest release] page for pre-compiled binaries and
-installation packages.
+Austin is available to install from [PyPI](pypi) and from the major software
+repositories of the most popular platforms. Check out the [latest release] page
+for pre-compiled binaries and installation packages.
+
+On all supported platforms and architectures, Austin can be installed from PyPI
+with `pip` or `pipx` via the commands
+
+~~~
+pip install austin-dist
+~~~
+or
+~~~
+pipx install austin-dist
+~~~
 
 On Linux, it can be installed using `autotools` or as a snap from the [Snap
 Store](https://snapcraft.io/store). The latter will automatically perform the
@@ -171,7 +185,7 @@ On Windows, Austin can be easily installed from the command line using either
 On macOS, Austin can be easily installed from the command line using [Homebrew].
 Anaconda users can install Austin from [Conda Forge].
 
-For any other platform, compiling Austin from sources is as easy as cloning the
+For any other platforms, compiling Austin from sources is as easy as cloning the
 repository and running the C compiler. The [Releases][releases] page has many
 pre-compiled binaries that are ready to be uncompressed and used.
 
@@ -353,11 +367,12 @@ for some further processing.
 By default, each line has the following structure:
 
 ~~~
-P<pid>;T<tid>[;[frame]]* [metric]*
+P<pid>;T<iid>:<tid>[;[frame]]* [metric]*
 ~~~
 
 where the structure of `[frame]` and the number and type of metrics on each line
-depend on the mode.
+depend on the mode. The `<pid>`, `<iid>` and `<tid>` component represent the
+process ID, the sub-interpreter ID, and the thread ID respectively.
 
 
 ## Environment variables
@@ -433,6 +448,15 @@ time, CPU time and memory pressure, all from a single run.
 Austin can be told to profile multi-process applications with the `-C` or
 `--children` switch. This way Austin will look for new children of the parent
 process.
+
+
+## Sub-interpreters
+
+Austin has support for Python applications that make use of sub-interpreters.
+This means that Austin will sample all the sub-interpreters that are running
+within each process making up the Python application.
+
+*Since Austin 3.6.0*.
 
 
 ## Garbage Collector Sampling
@@ -567,19 +591,21 @@ folder in either the SVG, PDF or PNG format
 
 # Compatibility
 
-Austin supports Python 2.3-2.7 and 3.3-3.11 and has been tested on the
-following platforms and architectures
+Austin supports Python 3.8 through 3.12, and has been tested on the following
+platforms and architectures
 
 |             | <img src="art/tux.svg" /> | <img src="art/win.svg"/> | <img src="art/apple.svg"/> |
 | ----------- | ------------------------- | ------------------------ | -------------------------- |
 | **x86_64**  | ✓                         | ✓                        | ✓                          |
 | **i686**    | ✓                         |                          | ✓                          |
+| **armv7**   | ✓                         |                          |                            |
 | **arm64**   | ✓                         |                          | ✓                          |
 | **ppc64le** | ✓                         |                          |                            |
 
 > **NOTE** Austin *might* work with other versions of Python on all the
 > platforms and architectures above. So it is worth giving it a try even if
-> your system is not listed below.
+> your system is not listed below. If you are looking for support for Python <
+> 3.8, you can use Austin 3.5.
 
 Because of platform-specific details, Austin usage may vary slightly. Below are
 further compatibility details to be aware of.
@@ -605,10 +631,10 @@ when starting a container.
 Due to the **System Integrity Protection**, introduced in **MacOS** with El
 Capitan, and the [Hardened Runtime][hardened runtime], introduced in Mojave,
 Austin cannot profile Python processes that use an executable located in the
-`/bin` folder, even with `sudo`. This is the case for the system-provided
-version of Python, and the one installed with the official installers from
-[python.org](https://python.org). Other installation methods, like
-[pyenv][pyenv] or [Anaconda][anaconda] or
+`/bin` folder, or code-signed, even with `sudo`. This is the case for the
+system-provided version of Python, and the one installed with the official
+installers from [python.org](https://python.org). Other installation methods,
+like [pyenv][pyenv] or [Anaconda][anaconda] or
 [Homebrew](https://formulae.brew.sh/formula/austin) are known to work with
 Austin, out of the box.
 
@@ -857,6 +883,7 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 </p>
 
 
+[anaconda]: https://www.anaconda.com/
 [`austin-python`]: https://github.com/P403n1x87/austin-python
 [Austin TUI]: https://github.com/P403n1x87/austin-tui
 [Austin Web]: https://github.com/P403n1x87/austin-web
@@ -871,6 +898,7 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 [MOJO]: https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format
 [pprof]: https://github.com/google/pprof
 [pyenv]: https://github.com/pyenv/pyenv
+[pypi]: https://pypi.org/project/austin-dist/
 [releases]: https://github.com/P403n1x87/austin/releases
 [Scoop]: https://scoop.sh/
 [Speedscope]: https://speedscope.app

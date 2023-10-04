@@ -179,8 +179,6 @@ _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python
       return NULL;
     }
 
-    lasti >>= 1;
-
     for (size_t i = 0, bc = 0; i < len; i++) {
       bc += (lnotab[i] & 7) + 1;
       int code = (lnotab[i] >> 3) & 15;

@@ -45,7 +45,7 @@
 #else
 #define DEFAULT_SAMPLING_INTERVAL    100
 #endif
-#define DEFAULT_INIT_TIMEOUT_MS      500  // 0.5 seconds
+#define DEFAULT_INIT_TIMEOUT_MS     1000  // 1 second
 #define DEFAULT_HEAP_SIZE              0
 
 const char SAMPLE_FORMAT_NORMAL[]      = ";%s:%s:%d";
@@ -56,11 +56,11 @@ const char SAMPLE_FORMAT_KERNEL[]      = ";kernel:%s:0";
 const char SAMPLE_FORMAT_WHERE_KERNEL[]= "    \033[38;5;159m%s\033[0m 🐧\n";
 #endif
 #if defined PL_WIN
-const char HEAD_FORMAT_DEFAULT[]       = "P%I64d;T%I64x";
-const char HEAD_FORMAT_WHERE[]         = "\n\n%3$s%4$s Process \033[35;1m%1$I64d\033[0m 🧵 Thread \033[34;1m%2$I64d\033[0m\n\n";
+const char HEAD_FORMAT_DEFAULT[]       = "P%I64d;T%I64x:%I64x";
+const char HEAD_FORMAT_WHERE[]         = "\n\n%4$s%5$s Process \033[35;1m%1$I64d\033[0m 🧵 Thread \033[34;1m%2$I64d:%3$I64d\033[0m\n\n";
 #else
-const char HEAD_FORMAT_DEFAULT[]       = "P%d;T%ld";
-const char HEAD_FORMAT_WHERE[]         = "\n\n%3$s%4$s Process \033[35;1m%1$d\033[0m 🧵 Thread \033[34;1m%2$ld\033[0m\n\n";
+const char HEAD_FORMAT_DEFAULT[]       = "P%d;T%ld:%ld";
+const char HEAD_FORMAT_WHERE[]         = "\n\n%4$s%5$s Process \033[35;1m%1$d\033[0m 🧵 Thread \033[34;1m%2$ld:%3$ld\033[0m\n\n";
 #endif
 
 
@@ -553,7 +553,7 @@ _handle_opts(arg_option * opts, arg_callback cb, int * argi, int argc, char ** a
 static const char * help_msg = \
 /*[[[cog
 from subprocess import check_output
-for line in check_output(["src/austin", "--help"]).decode().splitlines():
+for line in check_output(["src/austin", "--help"]).decode().strip().splitlines():
   print(f'"{line}\\n"')
 print(";")
 ]]]*/
@@ -598,7 +598,7 @@ print(";")
 static const char * usage_msg = \
 /*[[[cog
 from subprocess import check_output
-for line in check_output(["src/austin", "--usage"]).decode().splitlines():
+for line in check_output(["src/austin", "--usage"]).decode().strip().splitlines():
   print(f'"{line}\\n"')
 print(";")
 ]]]*/

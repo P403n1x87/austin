@@ -41,6 +41,7 @@ struct _ts; /* Forward */
 typedef struct _is2 {
     struct _is2 *next;
     struct _ts *tstate_head;
+    int64_t id;
     void* gc;  /* Dummy */
 } PyInterpreterState2;
 
@@ -119,11 +120,63 @@ typedef struct _is3_11 {
 } PyInterpreterState3_11;
 
 
+typedef struct {
+    void *next;
+
+    int64_t id;
+    int64_t id_refcount;
+    int requires_idref;
+    PyThread_type_lock id_mutex;
+
+    /* Has been initialized to a safe state.
+
+       In order to be effective, this must be set to 0 during or right
+       after allocation. */
+    int _initialized;
+    int finalizing;
+
+    uint64_t monitoring_version;
+    uint64_t last_restart_version;
+    struct {
+        uint64_t next_unique_id;
+        /* The linked list of threads, newest first. */
+        void *head;
+        /* Used in Modules/_threadmodule.c. */
+        long count;
+        /* Support for runtime thread stack size tuning.
+           A value of 0 means using the platform's default stack size
+           or the size specified by the THREAD_STACK_SIZE macro. */
+        /* Used in Python/thread.c. */
+        size_t stacksize;
+    } threads;
+
+    void *runtime;
+
+    _Py_atomic_address _finalizing;
+
+    struct _gc_runtime_state3_12 gc;
+
+    // Dictionary of the sys module
+    PyObject *sysdict;
+
+    // Dictionary of the builtins module
+    PyObject *builtins;
+
+    struct {
+        _Py_atomic_int eval_breaker;
+        _Py_atomic_int gil_drop_request;
+        int recursion_limit;
+        void *gil;
+        // ...
+    } ceval;
+} PyInterpreterState3_12;
+
 
 typedef union {
   PyInterpreterState2    v2;
   PyInterpreterState3_9  v3_9;
   PyInterpreterState3_11 v3_11;
+  PyInterpreterState3_12 v3_12;
 } PyInterpreterState;
 
 #endif

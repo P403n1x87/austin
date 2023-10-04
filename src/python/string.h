@@ -42,16 +42,6 @@ typedef uint8_t Py_UCS1;
 
 typedef PY_UNICODE_TYPE Py_UNICODE;
 
-
-typedef struct {
-    PyObject_HEAD
-    Py_ssize_t length;          /* Length of raw Unicode data in buffer */
-    Py_UNICODE *str;            /* Raw Unicode buffer */
-    long hash;                  /* Hash value; -1 if not set */
-    PyObject *defenc;           /* (Default) Encoded version as Python string */
-} PyUnicodeObject2;
-
-
 typedef Py_ssize_t Py_hash_t;
 
 typedef struct {
@@ -90,9 +80,36 @@ typedef struct {
 } PyUnicodeObject3;
 
 
+typedef struct {
+    struct {
+        struct {
+            PyObject_HEAD
+            Py_ssize_t length;          /* Number of code points in the string */
+            Py_hash_t hash;             /* Hash value; -1 if not set */
+            struct {
+                unsigned int interned:2;
+                unsigned int kind:3;
+                unsigned int compact:1;
+                unsigned int ascii:1;
+                unsigned int :25;
+            } state;
+        } _base;
+        Py_ssize_t utf8_length;     /* Number of bytes in utf8, excluding the
+                                    * terminating \0. */
+        char *utf8;                 /* UTF-8 representation (null-terminated) */
+    } _base;
+    union {
+        void *any;
+        void *latin1;
+        void *ucs2;
+        void *ucs4;
+    } data;                     /* Canonical, smallest-form Unicode buffer */
+} PyUnicodeObject3_12;
+
+
 typedef union {
-  PyUnicodeObject2 v2;
-  PyUnicodeObject3 v3;
+    PyUnicodeObject3    v3;
+    PyUnicodeObject3_12 v3_12;
 } PyUnicodeObject;
 
 // ---- bytesobject.h ---------------------------------------------------------
