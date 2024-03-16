@@ -293,7 +293,7 @@ int main(int argc, char ** argv) {
 
   logger_init();
   if (!pargs.pipe)
-    log_header();
+    log_header();  // cppcheck-suppress [unknownMacro]
 
   if (exec_arg <= 0 && pargs.attach_pid == 0) {
     _msg(MCMDLINE);

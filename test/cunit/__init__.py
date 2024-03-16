@@ -254,9 +254,14 @@ class DeclCollector(c_ast.NodeVisitor):
 
             args = (
                 [
-                    (_.name, c_void_p if isinstance(_.type, c_ast.PtrDecl) else c_long)
-                    if hasattr(_, "name")
-                    else None
+                    (
+                        (
+                            _.name,
+                            c_void_p if isinstance(_.type, c_ast.PtrDecl) else c_long,
+                        )
+                        if hasattr(_, "name")
+                        else None
+                    )
                     for _ in node.type.args.params
                 ]
                 if node.type.args is not None
