@@ -21,13 +21,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from pathlib import Path
-from test.utils import allpythons
-from test.utils import austin
-from test.utils import python
-from test.utils import target
+from test.utils import allpythons, austin, python, target
 
-from austin.format.mojo import MojoFile
-from austin.format.mojo import MojoFrame
+from austin.format.mojo import MojoFile, MojoFrame
 
 
 @allpythons(min=(3, 11))
@@ -56,3 +52,27 @@ def test_mojo_column_data(py, tmp_path: Path):
             ("lazy", 6, 6, 9, 19),
             ("<listcomp>", 17, 17, 5, 17),
         }
+
+
+@allpythons(max=(3, 10))
+def test_mojo_no_column_data(py, tmp_path: Path):
+    """
+    Test that no other location information is present apart from the line
+    number for Python versions prior to 3.11.
+    """
+    datafile = tmp_path / "test_mojo_column.austin"
+
+    result = austin(
+        "-i", "100", "-o", str(datafile), *python(py), target("column.py"), mojo=True
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    def strip(f):
+        return
+
+    with datafile.open("rb") as f:
+        assert {
+            (e.line_end, e.column, e.column_end)
+            for e in MojoFile(f).parse()
+            if isinstance(e, MojoFrame)
+        } == {(0, 0, 0)}
