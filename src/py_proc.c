@@ -110,17 +110,14 @@ _get_version_from_executable(char * binary, int * major, int * minor, int * patc
   #endif
 
   fp = _popen(cmd, "r");
-  if (!isvalid(fp)) {
-    set_error(EPROC);
+  if (!isvalid(fp))
     FAIL;
-  }
 
   while (fgets(version, sizeof(version) - 1, fp) != NULL) {
     if (sscanf(version, "Python %d.%d.%d", major, minor, patch) == 3)
       SUCCESS;
   }
 
-  set_error(EPROC);
   FAIL;
 } /* _get_version_from_executable */
 
@@ -129,13 +126,15 @@ _get_version_from_filename(char * filename, const char * needle, int * major, in
   #if defined PL_LINUX                                               /* LINUX */
   char         * base       = filename;
   char         * end        = base + strlen(base);
+  size_t         needle_len = strlen(needle);
 
   while (base < end) {
     base = strstr(base, needle);
     if (!isvalid(base)) {
       break;
     }
-    if (sscanf(base + strlen(needle), "%u.%u", major, minor) == 2) {
+    base += needle_len;
+    if (sscanf(base, "%u.%u", major, minor) == 2) {
       SUCCESS;
     }
   }
@@ -143,23 +142,18 @@ _get_version_from_filename(char * filename, const char * needle, int * major, in
   #elif defined PL_WIN                                                 /* WIN */
   // Assume the library path is of the form *.python3[0-9]+[.]dll
   int n = strlen(filename);
-  if (n < 10) {
-    set_error(EPROC);
+  if (n < 10)
     FAIL;
-  }
 
   char * p = filename + n - 1;
   while (*(p--) != 'n' && p > filename);
   p++;
   *major = *(p++) - '0';
-  if (*major != 3) {
-    set_error(EPROC);
+  if (*major != 3)
     FAIL;
-  }
 
-  if (sscanf(p,"%d.dll", minor) == 1) {
+  if (sscanf(p,"%d.dll", minor) == 1)
     SUCCESS;
-  }
 
   #elif defined PL_MACOS                                               /* MAC */
   char * ver_needle = strstr(filename, "3.");
@@ -169,7 +163,6 @@ _get_version_from_filename(char * filename, const char * needle, int * major, in
 
   #endif
 
-  set_error(EPROC);
   FAIL;
 } /* _get_version_from_filename */
 

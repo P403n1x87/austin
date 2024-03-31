@@ -1,5 +1,7 @@
 2024-xx-xx v3.6.1
 
+  Improve support for Python processes running in containers.
+
   Bugfix: fixed a bug with the MOJO binary format that caused the line end
   position to wrongly be set to a non-zero value for CPython < 3.11, where line
   end information is not actually available.
