@@ -457,9 +457,9 @@ _py_proc__parse_maps_file(py_proc_t * self) {
       map = &(pd->maps[MAP_BIN]);
       map->path = proc_root(self->pid, pathname);
       if (!isvalid(map->path)) {
-        log_e("Cannot get proc root path for %s", pathname);
+        log_e("Cannot get proc root path for %s", pathname);  // GCOV_EXCL_START
         set_error(EPROC);
-        FAIL;
+        FAIL;  // GCOV_EXCL_STOP
       }
       map->file_size = _file_size(map->path);
       map->base = (void *) lower;
@@ -481,9 +481,9 @@ _py_proc__parse_maps_file(py_proc_t * self) {
         map = &(pd->maps[MAP_LIBSYM]);
         map->path = proc_root(self->pid, pathname);
         if (!isvalid(map->path)) {
-          log_e("Cannot get proc root path for %s", pathname);
+          log_e("Cannot get proc root path for %s", pathname);  // GCOV_EXCL_START
           set_error(EPROC);
-          FAIL;
+          FAIL;  // GCOV_EXCL_STOP
         }
         map->file_size = _file_size(map->path);
         map->base = (void *) lower;
@@ -505,9 +505,9 @@ _py_proc__parse_maps_file(py_proc_t * self) {
             map = &(pd->maps[MAP_LIBNEEDLE]);
             map->path = needle_path = proc_root(self->pid, pathname);
             if (!isvalid(map->path)) {
-              log_e("Cannot get proc root path for %s", pathname);
+              log_e("Cannot get proc root path for %s", pathname);  // GCOV_EXCL_START
               set_error(EPROC);
-              FAIL;
+              FAIL;  // GCOV_EXCL_STOP
             }
             map->file_size = _file_size(map->path);
             map->base = (void *) lower;
