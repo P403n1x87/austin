@@ -455,16 +455,16 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     // The first memory map of the executable
     if (!isvalid(pd->maps[MAP_BIN].path) && strcmp(pd->exe_path, pathname) == 0) {
       map = &(pd->maps[MAP_BIN]);
-      map->path = strndup(pathname, strlen(pathname));
+      map->path = proc_root(self->pid, pathname);
       if (!isvalid(map->path)) {
-        log_ie("Cannot duplicate path name");
+        log_e("Cannot get proc root path for %s", pathname);  // GCOV_EXCL_START
         set_error(EPROC);
-        FAIL;
+        FAIL;  // GCOV_EXCL_STOP
       }
-      map->file_size = _file_size(pathname);
+      map->file_size = _file_size(map->path);
       map->base = (void *) lower;
       map->size = upper - lower;
-      map->has_symbols = success(_py_proc__analyze_elf(self, pathname, (void *) lower));
+      map->has_symbols = success(_py_proc__analyze_elf(self, map->path, (void *) lower));
       if (map->has_symbols) {
         map->bss_base = self->map.bss.base;
         map->bss_size = self->map.bss.size;
@@ -479,13 +479,13 @@ _py_proc__parse_maps_file(py_proc_t * self) {
       int has_symbols = success(_py_proc__analyze_elf(self, pathname, (void *) lower));
       if (has_symbols) {
         map = &(pd->maps[MAP_LIBSYM]);
-        map->path = strndup(pathname, strlen(pathname));
+        map->path = proc_root(self->pid, pathname);
         if (!isvalid(map->path)) {
-          log_ie("Cannot duplicate path name");
+          log_e("Cannot get proc root path for %s", pathname);  // GCOV_EXCL_START
           set_error(EPROC);
-          FAIL;
+          FAIL;  // GCOV_EXCL_STOP
         }
-        map->file_size = _file_size(pathname);
+        map->file_size = _file_size(map->path);
         map->base = (void *) lower;
         map->size = upper - lower;
         map->has_symbols = TRUE;
@@ -503,13 +503,13 @@ _py_proc__parse_maps_file(py_proc_t * self) {
           unsigned int v;
           if (sscanf(needle, "libpython%u.%u", &v, &v) == 2) {
             map = &(pd->maps[MAP_LIBNEEDLE]);
-            map->path = needle_path = strndup(pathname, strlen(pathname));
+            map->path = needle_path = proc_root(self->pid, pathname);
             if (!isvalid(map->path)) {
-              log_ie("Cannot duplicate path name");
+              log_e("Cannot get proc root path for %s", pathname);  // GCOV_EXCL_START
               set_error(EPROC);
-              FAIL;
+              FAIL;  // GCOV_EXCL_STOP
             }
-            map->file_size = _file_size(pathname);
+            map->file_size = _file_size(map->path);
             map->base = (void *) lower;
             map->size = upper - lower;
             map->has_symbols = FALSE;

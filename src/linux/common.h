@@ -26,9 +26,11 @@
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/ptrace.h>
 
 #include "../error.h"
+#include "../hints.h"
 #include "../stats.h"
 
 
@@ -108,4 +110,25 @@ _procfs(pid_t pid, char * file) {
   }
 
   return fp;
+}
+
+
+// ----------------------------------------------------------------------------
+static inline char *
+proc_root(pid_t pid, char * file) {
+  if (file[0] != '/') {
+    log_e("File path is not absolute");  // GCOV_EXCL_START
+    return NULL;  // GCOV_EXCL_STOP
+  }
+
+  char * proc_root = calloc(1, strlen(file) + 24);
+  if (!isvalid(proc_root))
+    return NULL;  // GCOV_EXCL_LINE
+
+  if (sprintf(proc_root, "/proc/%d/root%s", pid, file) < 0) {
+    free(proc_root);  // GCOV_EXCL_START
+    return NULL;  // GCOV_EXCL_STOP
+  }
+  
+  return proc_root;
 }
