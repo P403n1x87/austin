@@ -4,7 +4,7 @@ base: core20
 # from scripts.utils import get_current_version_from_changelog as version
 # print(f"version: '{version()}+git'")
 # ]]]
-version: '3.6.1+git'
+version: '3.7.0+git'
 # [[[end]]]
 summary: A Python frame stack sampler for CPython
 description: |

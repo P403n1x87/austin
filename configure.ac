@@ -6,7 +6,7 @@ AC_PREREQ([2.69])
 # from scripts.utils import get_current_version_from_changelog as version
 # print(f"AC_INIT([austin], [{version()}], [https://github.com/p403n1x87/austin/issues])")
 # ]]]
-AC_INIT([austin], [3.6.1], [https://github.com/p403n1x87/austin/issues])
+AC_INIT([austin], [3.7.0], [https://github.com/p403n1x87/austin/issues])
 # [[[end]]]
 AC_CONFIG_SRCDIR([config.h.in])
 AC_CONFIG_HEADERS([config.h])

@@ -1,7 +1,8 @@
 import os
 import platform
 
-PY3_LATEST = 12
+PY3_EARLIEST = 8
+PY3_LATEST = 13
 
 try:
     REQUESTED_PYTHON_VERSIONS = [
@@ -15,9 +16,9 @@ except Exception:
 match platform.system():
     case "Darwin":
         PYTHON_VERSIONS = REQUESTED_PYTHON_VERSIONS or [
-            (3, _) for _ in range(8, PY3_LATEST + 1)
+            (3, _) for _ in range(PY3_EARLIEST, PY3_LATEST + 1)
         ]
     case _:
         PYTHON_VERSIONS = REQUESTED_PYTHON_VERSIONS or [
-            (3, _) for _ in range(8, PY3_LATEST + 1)
+            (3, _) for _ in range(PY3_EARLIEST, PY3_LATEST + 1)
         ]

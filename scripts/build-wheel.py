@@ -21,6 +21,7 @@ METADATA = {
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
     ],
     "Project-URL": [
         "Homepage, https://github.com/P403n1x87/austin",
