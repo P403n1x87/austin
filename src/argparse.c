@@ -112,7 +112,7 @@ str_to_num(char * str, long * num) {
 /**
  * Parse the interval argument.
  *
- * This acceps s, ms and us as units. The result is in microseconds.
+ * This accepts s, ms and us as units. The result is in microseconds.
  */
 static int
 parse_interval(char * str, long * num) {
@@ -150,7 +150,7 @@ parse_interval(char * str, long * num) {
 /**
  * Parse the timeout argument.
  *
- * This acceps s and ms as units. The result is in milliseconds.
+ * This accepts s and ms as units. The result is in milliseconds.
  */
 static int
 parse_timeout(char * str, long * num) {

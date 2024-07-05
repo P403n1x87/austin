@@ -89,7 +89,7 @@ jobs:
         run: brew install cppcheck
       
       - name: Check source code
-        run: cppcheck -q -f --error-exitcode=1 --inline-suppr src
+        run: cppcheck -q -f --error-exitcode=1 --inline-suppr --check-level=exhaustive src
 
   codespell:
     runs-on: ubuntu-20.04

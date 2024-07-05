@@ -99,6 +99,10 @@ typedef struct {
   hash_table_t    * base_table;
   #endif
 
+  // Local buffers
+  PyInterpreterState * is;
+  PyThreadState      * ts;
+
   // Platform-dependent fields
   proc_extra_info * extra;
 } py_proc_t;
@@ -207,6 +211,19 @@ py_proc__sample(py_proc_t *);
  * @return 0 on success.
  */
 #define py_proc__get_type(self, raddr, dt) (py_proc__memcpy(self, raddr, sizeof(dt), &dt))
+
+/**
+ * Make a local copy of a remote structure.
+ *
+ * @param self  the process object.
+ * @param type  the type of the structure.
+ * @param raddr the remote address of the structure.
+ * @param dest  the destination address.
+ *
+ * @return 0 on success.
+ */
+#define py_proc__copy_v(self, type, raddr, dest) (py_proc__memcpy(self, raddr, py_v->py_##type.size, dest))
+
 
 /**
  * Log the Python interpreter version
