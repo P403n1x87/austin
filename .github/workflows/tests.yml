@@ -228,7 +228,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Compile Austin
-        run: gcc-11 -Wall -Werror -O3 -g src/*.c -o src/austin
+        run: gcc-12 -Wall -Werror -O3 -g src/*.c -o src/austin
 
       - uses: actions/upload-artifact@v3
         with:
