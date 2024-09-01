@@ -124,7 +124,7 @@ jobs:
           sed -i "" "s/$PREV_VERSION/$VERSION/g" src/austin.h
           echo "::set-output name=version::$VERSION"
 
-          gcc-11 -Wall -O3 -Os -o src/austin src/*.c
+          gcc-12 -Wall -O3 -Os -o src/austin src/*.c
 
           pushd src
           zip -r austin-${VERSION}-mac64.zip austin
