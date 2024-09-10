@@ -26,15 +26,15 @@
 #include "platform.h"
 
 #ifdef NATIVE
-#define PROGRAM_NAME                    "austinp"
+#define PROGRAM_NAME "austinp"
 #else
-#define PROGRAM_NAME                    "austin"
+#define PROGRAM_NAME "austin"
 #endif
 /* [[[cog
 from scripts.utils import get_current_version_from_changelog as version
 print(f'#define VERSION                         "{version()}"')
 ]]] */
-#define VERSION                         "3.6.1"
+#define VERSION                         "3.7.0"
 // [[[end]]]
 
 #endif

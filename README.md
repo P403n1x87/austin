@@ -330,8 +330,6 @@ requires no instrumentation and has practically no impact on the tracee.
                              https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format
                              for more details.
   -C, --children             Attach to child processes.
-  -e, --exclude-empty        Do not output samples of threads with no frame
-                             stacks.
   -f, --full                 Produce the full set of metrics (time +mem -mem).
   -g, --gc                   Sample the garbage collector state.
   -h, --heap=n_mb            Maximum heap size to allocate to increase sampling

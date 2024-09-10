@@ -900,10 +900,6 @@ py_thread__emit_collapsed_stack(py_thread_t * self, int64_t interp_id, ctime_t t
   if (self->invalid)
     return;
 
-  if (pargs.exclude_empty && stack_is_empty())
-    // Skip if thread has no frames and we want to exclude empty threads
-    return;
-
   if (mem_delta == 0 && time_delta == 0)
     return;
 
