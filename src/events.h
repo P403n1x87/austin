@@ -75,10 +75,10 @@
     }                                      \
   }
 
-#define emit_stack(format, pid, iid, tid, ...)                         \
+#define emit_stack(hash, format, pid, iid, tid, ...)                   \
   {                                                                    \
     if (pargs.binary) {                                                \
-      mojo_stack(pid, iid, tid);                                       \
+      mojo_stack(hash, pid, iid, tid);                                 \
     } else {                                                           \
       fprintfp(pargs.output_file, format, pid, iid, tid, __VA_ARGS__); \
     }                                                                  \

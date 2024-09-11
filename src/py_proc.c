@@ -54,6 +54,9 @@
 #include "py_thread.h"
 
 
+#define MAX_STACK_CACHE_SIZE (1 << 16)  // 64K
+
+
 // ---- PRIVATE ---------------------------------------------------------------
 
 #define py_proc__memcpy(self, raddr, size, dest)  copy_memory(self->proc_ref, raddr, size, dest)
@@ -708,6 +711,15 @@ py_proc_new(int child) {
 
   py_proc->frames_heap = py_proc->frames = NULL_MEM_BLOCK;
 
+  py_proc->stack_cache = lru_cache_new(MAX_STACK_CACHE_SIZE, NULL);
+  if (!isvalid(py_proc->stack_cache)) {
+    log_e("Failed to allocate stack cache");
+    goto error;
+  }
+  #ifdef DEBUG
+  py_proc->stack_cache->name = "stack cache";
+  #endif
+
   py_proc->frame_cache = lru_cache_new(MAX_FRAME_CACHE_SIZE, (void (*)(value_t)) frame__destroy);
   if (!isvalid(py_proc->frame_cache)) {
     log_e("Failed to allocate frame cache");
@@ -1175,7 +1187,7 @@ _py_proc__sample_interpreter(py_proc_t * self, PyInterpreterState * is, ctime_t 
       }
     }
 
-    py_thread__emit_collapsed_stack(
+    py_thread__emit_sample(
       &py_thread,
       interp_id,
       time_delta,
@@ -1327,6 +1339,7 @@ py_proc__destroy(py_proc_t * self) {
 
   lru_cache__destroy(self->string_cache);
   lru_cache__destroy(self->frame_cache);
+  lru_cache__destroy(self->stack_cache);
 
   free(self);
 }

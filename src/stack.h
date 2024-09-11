@@ -23,6 +23,7 @@
 #ifndef STACK_H
 #define STACK_H
 
+#include <limits.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -51,8 +52,14 @@ typedef struct {
   #endif
 } stack_dt;
 
+typedef key_dt stack_hash_t;
+
 static stack_dt * _stack;
 
+#define ROTL(x) ((x << 1) | (x >> (sizeof(x) * CHAR_BIT - 1)))
+
+
+// ----------------------------------------------------------------------------
 static inline int
 stack_allocate(size_t size) {
   if (isvalid(_stack))
@@ -73,6 +80,8 @@ stack_allocate(size_t size) {
   SUCCESS;
 }
 
+
+// ----------------------------------------------------------------------------
 static inline void
 stack_deallocate(void) {
   if (!isvalid(_stack))
@@ -89,7 +98,7 @@ stack_deallocate(void) {
 }
 
 
-
+// ----------------------------------------------------------------------------
 static inline int
 stack_has_cycle(void) {
   if (_stack->pointer < 2)
@@ -110,6 +119,8 @@ stack_has_cycle(void) {
   return FALSE;
 }
 
+
+// ----------------------------------------------------------------------------
 static inline void
 stack_py_push(void * origin, void * code, int lasti) {
   _stack->py_base[_stack->pointer++] = (py_frame_t) {
@@ -118,6 +129,55 @@ stack_py_push(void * origin, void * code, int lasti) {
     .lasti  = lasti
   };
 }
+
+
+// ----------------------------------------------------------------------------
+static inline stack_hash_t
+stack_py_hash(void) {
+  stack_hash_t hash = 0;
+  
+  for (ssize_t i = 0; i < _stack->pointer; i++) {
+    py_frame_t * frame = _stack->py_base+i;
+    hash = ROTL(hash) ^ py_frame_key(frame->code, frame->lasti);
+  }
+  
+  return hash;
+}
+
+
+#ifdef NATIVE
+// ----------------------------------------------------------------------------
+static inline stack_hash_t
+stack_native_hash(void) {
+  stack_hash_t hash = 0;
+  
+  for (ssize_t i = 0; i < _stack->native_pointer; i++) {
+    frame_t * frame = _stack->native_base[i];
+    hash = ROTL(hash) ^ frame->key;
+  }
+  
+  return hash;
+}
+
+
+// ----------------------------------------------------------------------------
+static inline stack_hash_t
+stack_kernel_hash(void) {
+  stack_hash_t hash = 0;
+  
+  for (ssize_t i = 0; i < _stack->kernel_pointer; i++) {
+    key_dt frame = (key_dt)_stack->kernel_base[i];
+    hash = ROTL(hash) ^ frame;
+  }
+  
+  return hash;
+}
+
+#endif
+
+
+// ----------------------------------------------------------------------------
+
 
 #define stack_pointer()         (_stack->pointer)
 #define stack_push(frame)       {_stack->base[_stack->pointer++] = frame;}

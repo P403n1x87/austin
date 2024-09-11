@@ -48,7 +48,8 @@ queue_item__destroy(queue_item_t * self, void (*deallocator)(value_t)) {
   if (!isvalid(self))
     return;
 
-  deallocator(self->value);
+  if (deallocator)
+    deallocator(self->value);
 
   free(self);
 }

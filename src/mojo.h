@@ -29,7 +29,7 @@
 #include "cache.h"
 #include "platform.h"
 
-#define MOJO_VERSION 3
+#define MOJO_VERSION 4
 
 enum {
   MOJO_RESERVED,
@@ -44,7 +44,7 @@ enum {
   MOJO_METRIC_TIME,
   MOJO_METRIC_MEMORY,
   MOJO_STRING,
-  MOJO_STRING_REF,
+  MOJO_STACK_REF,
   MOJO_MAX,
 };
 
@@ -119,10 +119,11 @@ static inline void mojo_integer(mojo_int_t integer, int sign) {
   mojo_string(label);             \
   mojo_fstring(__VA_ARGS__);
 
-#define mojo_stack(pid, iid, tid) \
-  mojo_event(MOJO_STACK);         \
-  mojo_integer(pid, 0);           \
-  mojo_integer(iid, 0);           \
+#define mojo_stack(key, pid, iid, tid) \
+  mojo_event(MOJO_STACK);              \
+  mojo_ref(key);                       \
+  mojo_integer(pid, 0);                \
+  mojo_integer(iid, 0);                \
   mojo_fstring(FORMAT_TID, tid);
 
 #define mojo_frame(frame)           \
@@ -159,5 +160,12 @@ static inline void mojo_integer(mojo_int_t integer, int sign) {
 #define mojo_string_ref(key)   \
   mojo_event(MOJO_STRING_REF); \
   mojo_ref(key);
+
+#define mojo_stack_ref(key, pid, iid, tid) \
+  mojo_event(MOJO_STACK_REF);              \
+  mojo_ref(key);                           \
+  mojo_integer(pid, 0);                    \
+  mojo_integer(iid, 0);                    \
+  mojo_fstring(FORMAT_TID, tid);
 
 #endif
