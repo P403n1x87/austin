@@ -146,7 +146,7 @@ On Linux, it can be installed using `autotools` or as a snap from the [Snap
 Store](https://snapcraft.io/store). The latter will automatically perform the
 steps of the `autotools` method with a single command. On distributions derived
 from Debian, Austin can be installed from the official repositories with
-Aptitude. Anaconda users can install Austin from [Conda Forge].
+`apt`. Anaconda users can install Austin from [Conda Forge].
 
 On Windows, Austin can be easily installed from the command line using either
 [Chocolatey] or [Scoop]. Alternatively, you can download the installer from the
@@ -198,7 +198,7 @@ On March 30 2019 Austin was accepted into the official Debian repositories and
 can therefore be installed with the `apt` utility.
 
 ~~~ console
-sudo apt-get update -y && sudo apt-get install austin -y
+sudo apt update -y && sudo apt install austin -y
 ~~~
 
 ## On macOS
