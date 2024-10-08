@@ -120,14 +120,4 @@ typedef struct {
     char ob_sval[1];
 } PyBytesObject;
 
-
-// ---- stringobject.h --------------------------------------------------------
-
-typedef struct {
-    PyObject_VAR_HEAD
-    long ob_shash;
-    int ob_sstate;
-    char ob_sval[1];
-} PyStringObject; /* From Python 2.7 */
-
 #endif

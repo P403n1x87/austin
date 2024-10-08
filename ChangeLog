@@ -1,4 +1,6 @@
-2024-xx-xx v3.6.1
+2024-xx-xx v3.7.0
+
+  Added support for CPython 3.13.
 
   Improve support for Python processes running in containers.
 

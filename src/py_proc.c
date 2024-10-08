@@ -235,6 +235,30 @@ _py_proc__infer_python_version(py_proc_t * self) {
 
   int major = 0, minor = 0, patch = 0;
 
+  // Starting with Python 3.13 we can use the PyRuntime structure
+  if (isvalid(self->symbols[DYNSYM_RUNTIME])) {
+    _Py_DebugOffsets py_d;
+    if (fail(py_proc__get_type(self, self->symbols[DYNSYM_RUNTIME], py_d))) {
+      log_e("Cannot copy PyRuntimeState structure from remote address");
+      FAIL;
+    }
+
+    if (0 == memcmp(py_d.v3_13.cookie, "xdebugpy", sizeof(py_d.v3_13.cookie))) {
+      uint64_t version = py_d.v3_13.version;
+      major = (version>>24) & 0xFF;
+      minor = (version>>16) & 0xFF;
+      patch = (version>>8)  & 0xFF;
+
+      log_d("Python version (from debug offsets): %d.%d.%d", major, minor, patch);
+
+      self->py_v = get_version_descriptor(major, minor, patch);
+
+      init_version_descriptor(self->py_v, &py_d);
+      
+      SUCCESS;
+    }
+  }
+
   // Starting with Python 3.11 we can rely on the Py_Version symbol
   if (isvalid(self->symbols[DYNSYM_HEX_VERSION])) {
     unsigned long py_version = 0;
@@ -322,17 +346,14 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   V_DESC(self->py_v);
 
-  PyInterpreterState is;
-  PyThreadState      tstate_head;
-
-  if (py_proc__get_type(self, raddr, is)) {
+  if (py_proc__copy_v(self, is, raddr, self->is)) {
     log_ie("Cannot get remote interpreter state");
     FAIL;
   }
+  log_d("Interpreter state buffer %p", self->is);
+  void * tstate_head_addr = V_FIELD_PTR(void *, self->is, py_is, o_tstate_head);
 
-  void * tstate_head_addr = V_FIELD(void *, is, py_is, o_tstate_head);
-
-  if (fail(py_proc__get_type(self, tstate_head_addr, tstate_head))) {
+  if (fail(py_proc__copy_v(self, thread, tstate_head_addr, self->ts))) {
     log_e(
       "Cannot copy PyThreadState head at %p from PyInterpreterState instance",
       tstate_head_addr
@@ -342,7 +363,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   log_t("PyThreadState head loaded @ %p", V_FIELD(void *, is, py_is, o_tstate_head));
 
-  if (V_FIELD(void*, tstate_head, py_thread, o_interp) != raddr) {
+  if (V_FIELD_PTR(void*, self->ts, py_thread, o_interp) != raddr) {
     log_d("PyThreadState head does not point to interpreter state");
     set_error(EPROC);
     FAIL;
@@ -358,7 +379,7 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
     raddr, V_FIELD(void *, is, py_is, o_tstate_head)
   );
 
-  raddr_t thread_raddr = {self->proc_ref, V_FIELD(void *, is, py_is, o_tstate_head)};
+  raddr_t thread_raddr = {self->proc_ref, V_FIELD_PTR(void *, self->is, py_is, o_tstate_head)};
   py_thread_t thread;
 
   if (fail(py_thread__fill_from_raddr(&thread, &thread_raddr, self))) {
@@ -561,6 +582,45 @@ _py_proc__get_current_thread_state_raddr(py_proc_t * self) {
 }
 
 // ----------------------------------------------------------------------------
+static void
+_py_proc__free_local_buffers(py_proc_t * self) {
+  sfree(self->is);
+  sfree(self->ts);
+}
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__init_local_buffers(py_proc_t * self) {
+  if (!isvalid(self)) {
+    set_error(EPROC);
+    FAIL;
+  }
+
+  self->is = calloc(1, self->py_v->py_is.size);
+  if (!isvalid(self->is)) {
+    log_e("Cannot allocate memory for PyInterpreterState");
+    goto error;
+  }
+
+  self->ts = calloc(1, self->py_v->py_thread.size);
+  if (!isvalid(self->ts)) {
+    log_e("Cannot allocate memory for PyThreadState");
+    goto error;
+  }
+
+  log_d("Local buffers initialised");
+  
+  SUCCESS;
+
+error:
+  set_error(ENOMEM);
+
+  _py_proc__free_local_buffers(self);
+
+  FAIL;
+}
+
+// ----------------------------------------------------------------------------
 static int
 _py_proc__find_interpreter_state(py_proc_t * self) {
   if (!isvalid(self)) {
@@ -573,6 +633,9 @@ _py_proc__find_interpreter_state(py_proc_t * self) {
 
   // Determine and set version
   if (fail(_py_proc__infer_python_version(self)))
+    FAIL;
+
+  if (fail(_py_proc__init_local_buffers(self)))
     FAIL;
 
   if (self->sym_loaded || isvalid(self->map.runtime.base)) {
@@ -703,6 +766,10 @@ py_proc_new(int child) {
 
   py_proc->child = child;
   py_proc->gc_state_raddr = NULL;
+  py_proc->py_v = NULL;
+  
+  py_proc->is = NULL;
+  py_proc->ts = NULL;
 
   _prehash_symbols();
 
@@ -1200,15 +1267,13 @@ py_proc__sample(py_proc_t * self) {
 
   V_DESC(self->py_v);
 
-  PyInterpreterState is;
-
   do {
-    if (fail(py_proc__get_type(self, current_interp, is))) {
+    if (fail(py_proc__copy_v(self, is, current_interp, self->is))) {
       log_ie("Failed to get interpreter state while sampling");
       FAIL;
     }
 
-    void * tstate_head = V_FIELD(void *, is, py_is, o_tstate_head);
+    void * tstate_head = V_FIELD_PTR(void *, self->is, py_is, o_tstate_head);
     if (!isvalid(tstate_head))
       // Maybe the interpreter state is in an invalid state. We'll try again
       // unless there is a fatal error.
@@ -1223,7 +1288,7 @@ py_proc__sample(py_proc_t * self) {
     time_delta = gettime() - self->timestamp;
     #endif
 
-    int result = _py_proc__sample_interpreter(self, &is, time_delta);
+    int result = _py_proc__sample_interpreter(self, self->is, time_delta);
 
     #ifdef NATIVE
     if (fail(_py_proc__resume_threads(self, &raddr))) {
@@ -1234,7 +1299,7 @@ py_proc__sample(py_proc_t * self) {
     
     if (fail(result))
       FAIL;
-  } while (isvalid(current_interp = V_FIELD(void *, is, py_is, o_next)));
+  } while (isvalid(current_interp = V_FIELD_PTR(void *, self->is, py_is, o_next)));
   
   #ifdef NATIVE
   self->timestamp = gettime();
@@ -1320,6 +1385,8 @@ py_proc__destroy(py_proc_t * self) {
   vm_range_tree__destroy(self->maps_tree);
   hash_table__destroy(self->base_table);
   #endif
+
+  _py_proc__free_local_buffers(self);
 
   sfree(self->bin_path);
   sfree(self->lib_path);
