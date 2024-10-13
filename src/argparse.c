@@ -70,7 +70,6 @@ parsed_args_t pargs = {
   /* timeout             */ DEFAULT_INIT_TIMEOUT_MS * 1000,
   /* attach_pid          */ 0,
   /* where               */ 0,
-  /* exclude_empty       */ 0,
   /* sleepless           */ 0,
   /* format              */ (char *) SAMPLE_FORMAT_NORMAL,
   #ifdef NATIVE
@@ -220,10 +219,6 @@ static struct argp_option options[] = {
     "Start up wait time in milliseconds (default is 100). Accepted units: s, ms."
   },
   {
-    "exclude-empty",'e', NULL,          0,
-    "Do not output samples of threads with no frame stacks."
-  },
-  {
     "sleepless",    's', NULL,          0,
     "Suppress idle samples to estimate CPU time."
   },
@@ -337,10 +332,6 @@ parse_opt (int key, char *arg, struct argp_state *state)
 
   case 'b':
     pargs.binary = 1;
-    break;
-
-  case 'e':
-    pargs.exclude_empty = 1;
     break;
 
   case 's':
@@ -566,8 +557,6 @@ print(";")
 "                             https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format\n"
 "                             for more details.\n"
 "  -C, --children             Attach to child processes.\n"
-"  -e, --exclude-empty        Do not output samples of threads with no frame\n"
-"                             stacks.\n"
 "  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
 "  -g, --gc                   Sample the garbage collector state.\n"
 "  -h, --heap=n_mb            Maximum heap size to allocate to increase sampling\n"
@@ -602,12 +591,11 @@ for line in check_output(["src/austin", "--usage"]).decode().strip().splitlines(
   print(f'"{line}\\n"')
 print(";")
 ]]]*/
-"Usage: austin [-bCefgmPs?V] [-h n_mb] [-i n_us] [-o FILE] [-p PID] [-t n_ms]\n"
-"            [-w PID] [-x n_sec] [--binary] [--children] [--exclude-empty]\n"
-"            [--full] [--gc] [--heap=n_mb] [--interval=n_us] [--memory]\n"
-"            [--output=FILE] [--pid=PID] [--pipe] [--sleepless] [--timeout=n_ms]\n"
-"            [--where=PID] [--exposure=n_sec] [--help] [--usage] [--version]\n"
-"            command [ARG...]\n"
+"Usage: austin [-bCfgmPs?V] [-h n_mb] [-i n_us] [-o FILE] [-p PID] [-t n_ms]\n"
+"            [-w PID] [-x n_sec] [--binary] [--children] [--full] [--gc]\n"
+"            [--heap=n_mb] [--interval=n_us] [--memory] [--output=FILE]\n"
+"            [--pid=PID] [--pipe] [--sleepless] [--timeout=n_ms] [--where=PID]\n"
+"            [--exposure=n_sec] [--help] [--usage] [--version] command [ARG...]\n"
 ;
 /*[[[end]]]*/
 
@@ -684,10 +672,6 @@ cb(const char opt, const char * arg) {
   
   case 'b':
     pargs.binary = 1;
-    break;
-
-  case 'e':
-    pargs.exclude_empty = 1;
     break;
 
   case 's':
