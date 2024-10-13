@@ -424,7 +424,7 @@ static inline int
 _py_thread__unwind_iframe_stack(py_thread_t * self, void * iframe_raddr) {
   int invalid = FALSE; 
   void * curr = iframe_raddr;
-  
+
   while (isvalid(curr)) {
     if (fail(_py_thread__push_iframe(self, &curr))) {
       log_d("Failed to retrieve iframe #%d", stack_pointer());
@@ -457,8 +457,6 @@ static inline int
 _py_thread__unwind_cframe_stack(py_thread_t * self) {
   PyCFrame cframe;
 
-  int invalid = FALSE;
-
   _py_thread__read_stack(self);
 
   stack_reset();
@@ -470,11 +468,7 @@ _py_thread__unwind_cframe_stack(py_thread_t * self) {
     FAIL;
   }
 
-  invalid = fail(_py_thread__unwind_iframe_stack(self, V_FIELD(void *, cframe, py_cframe, o_current_frame)));
-  if (invalid)
-    return invalid;
-
-  return invalid;
+  return fail(_py_thread__unwind_iframe_stack(self, V_FIELD(void *, cframe, py_cframe, o_current_frame)));
 }
 
 
