@@ -141,16 +141,6 @@ typedef struct {
 
 
 typedef struct {
-  int version;
-} py_unicode_v;
-
-
-typedef struct {
-  int version;
-} py_bytes_v;
-
-
-typedef struct {
   ssize_t  size;
 
   offset_t o_interp_head;
@@ -278,14 +268,6 @@ typedef struct {
   offsetof(s, native_thread_id),        \
   offsetof(s, datastack_chunk),         \
   offsetof(s, _status)                  \
-}
-
-#define PY_UNICODE(n) {                 \
-  n                                     \
-}
-
-#define PY_BYTES(n) {                   \
-  n                                     \
 }
 
 #define PY_RUNTIME(s) {                 \
