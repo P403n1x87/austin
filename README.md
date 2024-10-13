@@ -13,52 +13,22 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/P403n1x87/austin/actions?query=workflow%3ATests">
-    <img src="https://github.com/P403n1x87/austin/actions/workflows/tests.yml/badge.svg"
-         alt="GitHub Action Status: Tests" />
-  </a>
-  <a href="https://github.com/P403n1x87/austin/actions?query=workflow%3AChecks">
-    <img src="https://github.com/P403n1x87/austin/actions/workflows/checks.yml/badge.svg"
-         alt="GitHub Action Status: Checks" />
-  </a>
-  <a href="https://codecov.io/gh/P403n1x87/austin">
-    <img src="https://codecov.io/gh/P403n1x87/austin/branch/master/graph/badge.svg?token=OEDWB2IYBR"
-         alt="Code coverage"/>
-  </a>
-  <a href="https://github.com/P403n1x87/austin/releases/latest">
-    <img src="http://img.shields.io/github/v/release/p403n1x87/austin"
-         alt="latest release" />
-  </a>
-  <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md">
-    <img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg"
-         alt="LICENSE" />
-  </a>
+  <a href="https://github.com/P403n1x87/austin/actions?query=workflow%3ATests"><img src="https://github.com/P403n1x87/austin/actions/workflows/tests.yml/badge.svg" alt="GitHub Action Status: Tests" /></a>
+  <a href="https://github.com/P403n1x87/austin/actions?query=workflow%3AChecks"><img src="https://github.com/P403n1x87/austin/actions/workflows/checks.yml/badge.svg" alt="GitHub Action Status: Checks" /></a>
+  <a href="https://codecov.io/gh/P403n1x87/austin"><img src="https://codecov.io/gh/P403n1x87/austin/branch/master/graph/badge.svg?token=OEDWB2IYBR" alt="Code coverage"/></a>
+  <a href="https://github.com/P403n1x87/austin/releases/latest"><img src="http://img.shields.io/github/v/release/p403n1x87/austin" alt="latest release" /></a>
+  <a href="https://github.com/P403n1x87/austin/blob/master/LICENSE.md"><img src="https://img.shields.io/badge/license-GPLv3-ff69b4.svg" alt="LICENSE" /></a>
 
   <br/>
-  <a href="https://badge.fury.io/py/austin-dist">
-    <img src="https://badge.fury.io/py/austin-dist.svg"
-         alt="PyPI version">
-  </a>
-  <a href="https://chocolatey.org/packages/austin/">
-    <img src="https://img.shields.io/chocolatey/v/austin"
-         alt="Chocolatey Version" />
-  </a>
-  <a href="https://anaconda.org/conda-forge/austin">
-    <img src="https://img.shields.io/conda/vn/conda-forge/austin.svg"
-         alt="Conda Version" />
-  </a>
+  <a href="https://badge.fury.io/py/austin-dist"><img src="https://badge.fury.io/py/austin-dist.svg" alt="PyPI version"></a>
+  <a href="https://chocolatey.org/packages/austin/"><img src="https://img.shields.io/chocolatey/v/austin" alt="Chocolatey Version" /></a>
+  <a href="https://anaconda.org/conda-forge/austin"><img src="https://img.shields.io/conda/vn/conda-forge/austin.svg" alt="Conda Version" /></a>
   <!-- <a href="https://packages.debian.org/unstable/austin">
     <img src="https://badges.debian.net/badges/debian/unstable/austin/version.svg"
          alt="Debian package status" />
   </a> -->
-  <a href="https://formulae.brew.sh/formula/austin">
-    <img src="https://img.shields.io/homebrew/v/austin"
-         alt="homebrew" />
-  </a>
-  <a href="https://snapcraft.io/austin">
-    <img src="https://snapcraft.io/austin/badge.svg"
-         alt="austin Snap Store Build Status" />
-  </a>
+  <a href="https://formulae.brew.sh/formula/austin"><img src="https://img.shields.io/homebrew/v/austin" alt="homebrew" /></a>
+  <a href="https://snapcraft.io/austin"><img src="https://snapcraft.io/austin/badge.svg" alt="austin Snap Store Build Status" /></a>
 
 </p>
 
