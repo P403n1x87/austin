@@ -591,7 +591,7 @@ folder in either the SVG, PDF or PNG format
 
 # Compatibility
 
-Austin supports Python 3.8 through 3.12, and has been tested on the following
+Austin supports Python 3.8 through 3.13, and has been tested on the following
 platforms and architectures
 
 |             | <img src="art/tux.svg" /> | <img src="art/win.svg"/> | <img src="art/apple.svg"/> |
