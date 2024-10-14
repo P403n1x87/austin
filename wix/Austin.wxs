@@ -1,8 +1,6 @@
 <?xml version='1.0' encoding='windows-1252'?>
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
-  <Product
-    Id='*'
-
+  <Product Id='*'
     Name='Austin %VERSION%'
     Manufacturer='Gabriele N. Tornetta'
 
