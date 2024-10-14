@@ -141,16 +141,6 @@ typedef struct {
 
 
 typedef struct {
-  int version;
-} py_unicode_v;
-
-
-typedef struct {
-  int version;
-} py_bytes_v;
-
-
-typedef struct {
   ssize_t  size;
 
   offset_t o_interp_head;
@@ -280,14 +270,6 @@ typedef struct {
   offsetof(s, _status)                  \
 }
 
-#define PY_UNICODE(n) {                 \
-  n                                     \
-}
-
-#define PY_BYTES(n) {                   \
-  n                                     \
-}
-
 #define PY_RUNTIME(s) {                 \
   sizeof(s),                            \
   offsetof(s, interpreters.head),       \
@@ -390,6 +372,10 @@ python_v python_v3_12 = {
   PY_IFRAME_312   (_PyInterpreterFrame3_12),
 };
 
+// ---- Python 3.13 -----------------------------------------------------------
+
+python_v python_v3_13;
+
 // ----------------------------------------------------------------------------
 static inline python_v *
 get_version_descriptor(int major, int minor, int patch) {
@@ -428,6 +414,9 @@ get_version_descriptor(int major, int minor, int patch) {
     // 3.12
     case 12: py_v = &python_v3_12; break;
 
+    // 3.13+
+    case 13: py_v = &python_v3_13; break;
+
     default: py_v = LATEST_VERSION;
       UNSUPPORTED_VERSION;
     }
@@ -439,6 +428,74 @@ get_version_descriptor(int major, int minor, int patch) {
 
   return py_v;
 }
+
+// ----------------------------------------------------------------------------
+
+#define V_ASSIGN(ver, dst, src) {py_v->py_##dst = py_d->v##ver.src;log_d("py_%s = %ld", #dst, py_v->py_##dst);}
+
+#define PY_CODE_313(v) { \
+  V_ASSIGN(v, code.size, code_object.size) \
+  V_ASSIGN(v, code.o_filename, code_object.filename) \
+  V_ASSIGN(v, code.o_name, code_object.name) \
+  V_ASSIGN(v, code.o_lnotab, code_object.linetable) \
+  V_ASSIGN(v, code.o_firstlineno, code_object.firstlineno) \
+  V_ASSIGN(v, code.o_code, code_object.co_code_adaptive) \
+  V_ASSIGN(v, code.o_qualname, code_object.qualname) \
+}
+
+#define PY_IFRAME_313(v) { \
+  V_ASSIGN(v, iframe.size, interpreter_frame.size) \
+  V_ASSIGN(v, iframe.o_previous, interpreter_frame.previous) \
+  V_ASSIGN(v, iframe.o_code, interpreter_frame.executable) \
+  V_ASSIGN(v, iframe.o_prev_instr, interpreter_frame.instr_ptr) \
+  V_ASSIGN(v, iframe.o_owner, interpreter_frame.owner) \
+}
+
+#define PY_THREAD_313(v) { \
+  V_ASSIGN(v, thread.size, thread_state.size) \
+  V_ASSIGN(v, thread.o_prev, thread_state.prev) \
+  V_ASSIGN(v, thread.o_next, thread_state.next) \
+  V_ASSIGN(v, thread.o_interp, thread_state.interp) \
+  V_ASSIGN(v, thread.o_frame, thread_state.current_frame) \
+  V_ASSIGN(v, thread.o_thread_id, thread_state.thread_id) \
+  V_ASSIGN(v, thread.o_native_thread_id, thread_state.native_thread_id) \
+  V_ASSIGN(v, thread.o_stack, thread_state.datastack_chunk) \
+  V_ASSIGN(v, thread.o_status, thread_state.status) \
+}
+
+#define PY_RUNTIME_313(v) { \
+  V_ASSIGN(v, runtime.size, runtime_state.size) \
+  V_ASSIGN(v, runtime.o_interp_head, runtime_state.interpreters_head) \
+}
+
+#define PY_IS_313(v) { \
+  V_ASSIGN(v, is.size, interpreter_state.size) \
+  V_ASSIGN(v, is.o_next, interpreter_state.next) \
+  V_ASSIGN(v, is.o_tstate_head, interpreter_state.threads_head) \
+  V_ASSIGN(v, is.o_id, interpreter_state.id) \
+  V_ASSIGN(v, is.o_gc, interpreter_state.gc) \
+  V_ASSIGN(v, is.o_gil_state, interpreter_state.ceval_gil) \
+}
+
+#define PY_GC_313(v) { \
+  V_ASSIGN(v, gc.size, gc.size) \
+  V_ASSIGN(v, gc.o_collecting, gc.collecting) \
+}
+
+// ----------------------------------------------------------------------------
+static void
+init_version_descriptor(python_v * py_v, _Py_DebugOffsets* py_d) {
+  switch (py_v->minor) {
+    case 13:
+      PY_CODE_313(3_13);
+      PY_IFRAME_313(3_13);
+      PY_THREAD_313(3_13);
+      PY_RUNTIME_313(3_13);
+      PY_IS_313(3_13);
+      PY_GC_313(3_13);
+  }
+}
+
 
 #endif  // PY_PROC_C
 

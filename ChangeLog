@@ -1,3 +1,16 @@
+2024-10-14 v3.7.0
+
+  Added support for CPython 3.13.
+
+  Improve support for Python processes running in containers.
+
+  Removed the exclude-empty option.
+
+  Bugfix: fixed a bug with the MOJO binary format that caused the line end
+  position to wrongly be set to a non-zero value for CPython < 3.11, where line
+  end information is not actually available.
+
+
 2023-10-04 v3.6.0
 
   Added support for CPython 3.12

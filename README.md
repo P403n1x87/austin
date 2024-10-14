@@ -300,8 +300,6 @@ requires no instrumentation and has practically no impact on the tracee.
                              https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format
                              for more details.
   -C, --children             Attach to child processes.
-  -e, --exclude-empty        Do not output samples of threads with no frame
-                             stacks.
   -f, --full                 Produce the full set of metrics (time +mem -mem).
   -g, --gc                   Sample the garbage collector state.
   -h, --heap=n_mb            Maximum heap size to allocate to increase sampling
@@ -561,7 +559,7 @@ folder in either the SVG, PDF or PNG format
 
 # Compatibility
 
-Austin supports Python 3.8 through 3.12, and has been tested on the following
+Austin supports Python 3.8 through 3.13, and has been tested on the following
 platforms and architectures
 
 |             | <img src="art/tux.svg" /> | <img src="art/win.svg"/> | <img src="art/apple.svg"/> |

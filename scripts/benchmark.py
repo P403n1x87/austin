@@ -14,7 +14,7 @@ from textwrap import wrap
 from common import download_release
 from scipy.stats import ttest_ind
 
-VERSIONS = ("3.4.1", "3.5.0", "dev")
+VERSIONS = ("3.5.0", "3.6.0", "dev")
 SCENARIOS = [
     *[
         (

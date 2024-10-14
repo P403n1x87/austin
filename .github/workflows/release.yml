@@ -127,7 +127,7 @@ jobs:
           /bin/find . -type f -exec sed -i "s/%VERSION%/$VERSION/g" {} \; ;
           choco apikey --key ${{ secrets.CHOCO_APIKEY }} --source https://push.chocolatey.org/
           choco pack
-          choco push
+          choco push --source https://push.chocolatey.org/
           popd
 
       - name: Upload artifacts to release
@@ -186,7 +186,7 @@ jobs:
           export VERSION=$(cat src/austin.h | sed -n -E "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
           echo "::set-output name=version::$VERSION"
 
-          gcc-11 -Wall -O3 -Os -o src/austin src/*.c
+          gcc-12 -Wall -O3 -Os -o src/austin src/*.c
 
           pushd src
           zip -r austin-${VERSION}-mac64.zip austin

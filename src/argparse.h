@@ -35,7 +35,6 @@ typedef struct {
   ctime_t   timeout;
   pid_t     attach_pid;
   int       where;
-  int       exclude_empty;
   int       sleepless;
   char    * format;
   #ifdef NATIVE

@@ -168,7 +168,7 @@ _frame_from_code_raddr(py_proc_t * py_proc, void * code_raddr, int lasti, python
   ssize_t len = 0;
 
   unsigned int lineno     = V_FIELD(unsigned int, code, py_code, o_firstlineno);
-  unsigned int line_end   = lineno;
+  unsigned int line_end   = 0;
   unsigned int column     = 0;
   unsigned int column_end = 0;
 

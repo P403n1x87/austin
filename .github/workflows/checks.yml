@@ -10,14 +10,16 @@ on:
 jobs:
   check-manpage:
     runs-on: ubuntu-20.04
-    name: Check manpage
+    name: Check docs
     steps:
       - uses: actions/checkout@v3
 
       - name: Install build dependencies
         run: |
+          sudo add-apt-repository -y universe
+          sudo add-apt-repository -y ppa:inkscape.dev/stable
           sudo apt-get update
-          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev help2man
+          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev help2man inkscape
 
       - name: Compile Austin
         run: |
@@ -25,10 +27,10 @@ jobs:
           ./configure
           make
 
-      - name: Generate manpage
-        run: bash doc/genman.sh
+      - name: Generate docs
+        run: bash doc/gen.sh
 
-      - name: Check manpage
+      - name: Check docs
         run: git diff -I".* DO NOT MODIFY.*" -I"[.]TH AUSTIN.*" --exit-code src/austin.1
 
   cppcheck-linux:
@@ -89,7 +91,7 @@ jobs:
         run: brew install cppcheck
       
       - name: Check source code
-        run: cppcheck -q -f --error-exitcode=1 --inline-suppr src
+        run: cppcheck -q -f --error-exitcode=1 --inline-suppr --check-level=exhaustive src
 
   codespell:
     runs-on: ubuntu-20.04
@@ -156,7 +158,7 @@ jobs:
           sudo apt-get update
           sudo apt-get -y install \
             valgrind \
-            python3.{8..12} \
+            python3.{8..13} \
             python3.10-full python3.10-dev
 
           python3.10 -m venv .venv
