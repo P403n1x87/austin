@@ -1,10 +1,11 @@
 <?xml version='1.0' encoding='windows-1252'?>
 <Wix xmlns='http://schemas.microsoft.com/wix/2006/wi'>
   <Product
+    Id='*'
+
     Name='Austin %VERSION%'
     Manufacturer='Gabriele N. Tornetta'
 
-    Id='2c5be9da-e66c-4eec-a8ea-facaedaa17e3'
     UpgradeCode='7ae63393-fefa-49c2-bb04-41ce4a552d59'
 
     Language='1033'
