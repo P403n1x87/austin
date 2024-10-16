@@ -444,8 +444,6 @@ _py_thread__unwind_iframe_stack(py_thread_t * self, void * iframe_raddr) {
       break;
     }
   }
-  
-  invalid = fail(_py_thread__resolve_py_stack(self)) || invalid;
 
   return invalid;
 }
@@ -887,7 +885,7 @@ py_thread__next(py_thread_t * self) {
 
 // ----------------------------------------------------------------------------
 void
-py_thread__emit_collapsed_stack(py_thread_t * self, int64_t interp_id, ctime_t time_delta, ssize_t mem_delta) {
+py_thread__emit_sample(py_thread_t * self, int64_t interp_id, ctime_t time_delta, ssize_t mem_delta) {
   if (!pargs.full && pargs.memory && mem_delta == 0)
     return;
 
@@ -912,18 +910,8 @@ py_thread__emit_collapsed_stack(py_thread_t * self, int64_t interp_id, ctime_t t
     }
   }
 
-  // Group entries by thread.
-  emit_stack(
-    pargs.head_format, self->proc->pid, interp_id, self->tid,
-    // These are relevant only in `where` mode
-    is_idle           ? "💤" : "🚀",
-    self->proc->child ? "🧒" : ""
-  );
-
   int error = FALSE;
-
   #ifdef NATIVE
-
   // We sample the kernel frame stack BEFORE interrupting because otherwise
   // we would see the ptrace syscall call stack, which is not very interesting.
   // The downside is that the kernel stack might not be in sync with the other
@@ -943,6 +931,7 @@ py_thread__emit_collapsed_stack(py_thread_t * self, int64_t interp_id, ctime_t t
 
   V_DESC(self->proc->py_v);
 
+  stack_hash_t stack_hash = 0;
   if (isvalid(self->top_frame)) {
     if (V_MIN(3, 13)) {
       if (fail(_py_thread__unwind_iframe_stack(self, self->top_frame))) {
@@ -962,11 +951,41 @@ py_thread__emit_collapsed_stack(py_thread_t * self, int64_t interp_id, ctime_t t
         error = TRUE;
       }
     }
-    
-    if (fail(_py_thread__resolve_py_stack(self))) {
-      emit_invalid_frame();
-      error = TRUE;
+
+    stack_hash = stack_py_hash();
+    #ifdef NATIVE
+    stack_hash ^= stack_native_hash();
+    if (pargs.kernel) {
+      stack_hash ^= stack_kernel_hash();
     }
+    #endif
+
+    if (pargs.binary) {
+      value_t seen_stack = lru_cache__maybe_hit(self->proc->stack_cache, stack_hash);
+      if (seen_stack) {
+        mojo_stack_ref(stack_hash, self->proc->pid, interp_id, self->tid);
+        goto finish_sample;
+      } else {
+        lru_cache__store(self->proc->stack_cache, stack_hash, (value_t)TRUE);
+      }
+    }
+  }
+
+  // Group entries by thread.
+  emit_stack(
+    stack_hash,
+    pargs.head_format, self->proc->pid, interp_id, self->tid,
+    // These are relevant only in `where` mode
+    is_idle           ? "💤" : "🚀",
+    self->proc->child ? "🧒" : ""
+  );
+
+  if (stack_hash == 0)
+    // We have no stack to emit.
+    goto finish_sample;
+
+  if (!error && fail(_py_thread__resolve_py_stack(self))) {
+    emit_invalid_frame();
   }
 
   #ifdef NATIVE
@@ -1032,6 +1051,7 @@ py_thread__emit_collapsed_stack(py_thread_t * self, int64_t interp_id, ctime_t t
   }
   #endif
 
+finish_sample:
   if (pargs.gc && py_proc__is_gc_collecting(self->proc) == TRUE) {
     emit_gc();
     stats_gc_time(time_delta);
@@ -1056,7 +1076,7 @@ py_thread__emit_collapsed_stack(py_thread_t * self, int64_t interp_id, ctime_t t
   stats_count_sample();
   if (error) stats_count_error();
   stats_check_duration(stopwatch_duration());
-} /* py_thread__emit_collapsed_stack */
+} /* py_thread__emit_sample */
 
 
 // ----------------------------------------------------------------------------
