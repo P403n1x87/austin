@@ -39,7 +39,7 @@ jobs:
           ./configure --enable-debug-symbols true
           make
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: austin-binaries
           path: |
@@ -61,7 +61,7 @@ jobs:
         run: |
           musl-gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austin.musl -D__MUSL__
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: austin-binaries
           path: |
@@ -230,7 +230,7 @@ jobs:
       - name: Compile Austin
         run: gcc-12 -Wall -Werror -O3 -g src/*.c -o src/austin
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: austin-binary
           path: |
@@ -371,7 +371,7 @@ jobs:
           gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Werror -DDEBUG
           src\austin.exe --help
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: austin-binary
           path: |
