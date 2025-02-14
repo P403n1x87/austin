@@ -5,7 +5,7 @@ on:
       - 'v*-*'
 jobs:
   release-linux-archs:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         arch: ["armv7", "aarch64", "ppc64le"]
@@ -14,12 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         name: Checkout sources
-      - uses: uraimo/run-on-arch-action@v2.0.5
+      - uses: uraimo/run-on-arch-action@v2
         name: Generate artifacts on ${{ matrix.arch }}
         id: run-tests-on-arch
         with:
           arch: ${{ matrix.arch }}
-          distro: ubuntu20.04
+          distro: ubuntu24.04
           githubToken: ${{ github.token }}
           dockerRunArgs: --volume "${GITHUB_WORKSPACE}/artifacts:/artifacts"
           setup: |

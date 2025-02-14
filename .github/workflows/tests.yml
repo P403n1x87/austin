@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-20.04    
+    runs-on: ubuntu-24.04    
     name: Build Austin on Linux
     steps:
       - uses: actions/checkout@v3
@@ -36,18 +36,19 @@ jobs:
       - name: Compile Austin
         run: |
           autoreconf --install
-          ./configure --enable-debug-symbols true
+          ./configure --enable-debug-symbols=yes
           make
 
       - uses: actions/upload-artifact@v4
         with:
-          name: austin-binaries
+          name: austin-binaries-${{ runner.os }}
+          overwrite: true
           path: |
             src/austin
             src/austinp
 
   build-linux-musl:
-    runs-on: ubuntu-20.04    
+    runs-on: ubuntu-24.04    
     name: Build Austin on Linux (musl)
     steps:
       - uses: actions/checkout@v3
@@ -63,12 +64,13 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: austin-binaries
+          name: austin-binaries-${{ runner.os }}-musl
+          overwrite: true
           path: |
             src/austin.musl
 
   tests-linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     needs: [build-linux, build-linux-musl]
 
@@ -86,7 +88,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binaries
+          name: austin-binaries-${{ runner.os }}
           path: src
 
       - run: chmod +x src/austin && chmod +x src/austinp
@@ -179,9 +181,9 @@ jobs:
         if: always()
 
   wheels-linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
-    needs: build-linux
+    needs: [build-linux, build-linux-musl]
 
     name: Build Linux wheels
     steps:
@@ -189,7 +191,12 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binaries
+          name: austin-binaries-${{ runner.os }}
+          path: src
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: austin-binaries-${{ runner.os }}-musl
           path: src
 
       - run: chmod +x src/austin && chmod +x src/austinp
@@ -232,7 +239,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: austin-binary
+          name: austin-binary-${{ runner.os }}
+          overwrite: true
           path: |
             src/austin
 
@@ -270,7 +278,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binary
+          name: austin-binary-${{ runner.os }}
           path: src
 
       - run: chmod +x src/austin
@@ -332,7 +340,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binary
+          name: austin-binary-${{ runner.os }}
           path: src
 
       - run: chmod +x src/austin
@@ -373,7 +381,8 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: austin-binary
+          name: austin-binary-${{ runner.os }}
+          overwrite: true
           path: |
             src/austin.exe
 
@@ -396,7 +405,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binary
+          name: austin-binary-${{ runner.os }}
           path: src
 
       - name: Install Python
@@ -445,7 +454,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binary
+          name: austin-binary-${{ runner.os }}
           path: src
 
       - uses: actions/setup-python@v4
@@ -467,7 +476,7 @@ jobs:
             --files austin.exe:src/austin.exe
 
   validation:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     needs: build-linux
 
@@ -501,7 +510,7 @@ jobs:
       - name: Compile Austin
         run: |
           autoreconf --install
-          ./configure --enable-debug-symbols true
+          ./configure --enable-debug-symbols=yes
           make
 
       - name: Install runtime dependencies
