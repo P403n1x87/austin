@@ -8,13 +8,14 @@ import typing as t
 from argparse import ArgumentParser
 from math import floor, log
 from pathlib import Path
-from test.utils import metadata, target
 from textwrap import wrap
 
 from common import download_release
 from scipy.stats import ttest_ind
 
-VERSIONS = ("3.5.0", "3.6.0", "dev")
+from test.utils import metadata, target
+
+VERSIONS = ("3.6.0", "3.7.0", "dev")
 SCENARIOS = [
     *[
         (
@@ -131,32 +132,29 @@ class Renderer(abc.ABC):
     SAME = "same"
 
     @abc.abstractmethod
-    def render_header(self, title: str, level: int = 1) -> str:
-        ...
+    def render_header(self, title: str, level: int = 1) -> None: ...
 
     @abc.abstractmethod
-    def render_paragraph(self, text: str) -> str:
-        ...
+    def render_paragraph(self, text: str) -> None: ...
 
     @abc.abstractmethod
-    def render_table(self, table) -> str:
-        ...
+    def render_table(self, table) -> None: ...
 
     @abc.abstractmethod
     def render_scenario(
         self, title, results: t.List[t.Tuple[str, t.List[Results]]]
-    ) -> str:
-        ...
+    ) -> None: ...
 
     @abc.abstractmethod
     def render_summary(
         self, summary: t.List[t.Tuple[str, t.List[t.Tuple[str, bool, int]]]]
-    ) -> str:
-        ...
+    ) -> None: ...
 
+
+class TerminalRenderer(Renderer):
     def render_scenario(
         self, title, table: t.List[t.Tuple[str, t.List[Results]]]
-    ) -> str:
+    ) -> None:
         self.render_header(title, level=2)
         self.render_table(table)
         print()
@@ -189,9 +187,7 @@ class Renderer(abc.ABC):
             ]
         )
 
-
-class TerminalRenderer(Renderer):
-    def render_table(self, table: t.List[t.Tuple[str, t.List[Results]]]) -> str:
+    def render_table(self, table: t.List[t.Tuple[str, t.List[Results]]]) -> None:
         _, row = table[0]
         cols = list(row.keys())
         max_vh = max(len(e[0]) for e in table)
@@ -202,43 +198,43 @@ class TerminalRenderer(Renderer):
         print("=" * div_len)
         print(
             (" " * (max_vh + 2))
-            + "".join(f"{col:^{cw+2}}" for col, cw in zip(cols, col_widths))
+            + "".join(f"{col:^{cw + 2}}" for col, cw in zip(cols, col_widths))
         )
         print("-" * div_len)
 
         for v, row in table:
-            print(f"{v:^{max_vh+2}}", end="")
+            print(f"{v:^{max_vh + 2}}", end="")
             for col, cw in zip(cols, col_widths):
-                print(f"{str(row[col]):^{cw+2}}", end="")
+                print(f"{str(row[col]):^{cw + 2}}", end="")
             print()
 
         print("=" * div_len)
 
-    def render_header(self, title: str, level: int = 1) -> str:
+    def render_header(self, title: str, level: int = 1) -> None:
         print(title)
         print({1: "=", 2: "-", 3: "~"}.get(level, "-") * len(title))
         print()
 
-    def render_paragraph(self, text: str) -> str:
+    def render_paragraph(self, text: str) -> None:
         for _ in wrap(text):
             print(_)
         print()
 
 
-class MarkdownRenderer(Renderer):
+class MarkdownRenderer(TerminalRenderer):
     BETTER = ":green_circle:"
     WORSE = ":red_circle:"
     SAME = ":yellow_circle:"
 
-    def render_header(self, title: str, level: int = 1) -> str:
+    def render_header(self, title: str, level: int = 1) -> None:
         print(f"{'#' * level} {title}")
         print()
 
-    def render_paragraph(self, text: str) -> str:
+    def render_paragraph(self, text: str) -> None:
         print(text)
         print()
 
-    def render_table(self, table: t.List[t.Tuple[str, t.List[Results]]]) -> str:
+    def render_table(self, table: t.List[t.Tuple[str, t.List[Results]]]) -> None:
         _, row = table[0]
         cols = list(row.keys())
         max_vh = max(len(e[0]) for e in table)
@@ -260,7 +256,7 @@ class MarkdownRenderer(Renderer):
 
     def render_scenario(
         self, title, table: t.List[t.Tuple[str, t.List[Results]]]
-    ) -> str:
+    ) -> None:
         print("<details>")
         print(f"<summary><strong>{title}</strong></summary>")
         print()
