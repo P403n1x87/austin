@@ -152,7 +152,7 @@ def test_where_kernel(py):
         assert "do_syscall" in result.stdout, compress(result.stdout)
 
 
-@pytest.mark.parametrize("prefix", [[], ["unshare", "-p", "-f", "-r"]])
+@pytest.mark.parametrize("prefix", [[], ["unshare", "-p", "-r"]])
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux only")
 @requires_sudo
 @allpythons()
@@ -178,7 +178,7 @@ def test_attach_container_like(py, tmp_path, prefix):
         rmtree(venv_path)
         sleep(0.5)
 
-        result = austin("-Cp", str(p.pid))
+        result = austin("-p", str(p.pid))
         assert result.returncode == 0
 
         ts = threads(result.stdout)

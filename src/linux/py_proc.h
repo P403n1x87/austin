@@ -378,8 +378,6 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   self->map.exe.base = NULL;
   self->map.exe.size = 0;
 
-  sprintf(file_name, "/proc/%d/exe", self->pid);
-
   cu_void * pd_mem = calloc(1, sizeof(struct proc_desc));
   if (!isvalid(pd_mem)) {
     log_ie("Cannot allocate memory for proc_desc");
@@ -388,15 +386,17 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   }
   struct proc_desc * pd = pd_mem;
 
+  sprintf(file_name, "/proc/%d/exe", self->pid);
   if (readlink(file_name, pd->exe_path, sizeof(pd->exe_path)) == -1) {
-    log_e("Cannot readlink %s", file_name);
-    set_error(EPROC);
-    FAIL;  // cppcheck-suppress [resourceLeak]
+    log_w("Cannot readlink %s: %s", file_name, strerror(errno));
+    pd->exe_path[0] = '\0';
   }
-  if (strcmp(pd->exe_path + (strlen(pd->exe_path) - 10), " (deleted)") == 0) {
-    pd->exe_path[strlen(pd->exe_path) - 10] = '\0';
+  else {
+    if (strcmp(pd->exe_path + (strlen(pd->exe_path) - 10), " (deleted)") == 0) {
+      pd->exe_path[strlen(pd->exe_path) - 10] = '\0';
+    }
+    log_d("Executable path: %s (from %s)", pd->exe_path, file_name);
   }
-  log_d("Executable path: %s", pd->exe_path);
 
   while (getline(&line, &len, fp) != -1) {
     ssize_t lower, upper;
@@ -453,6 +453,12 @@ _py_proc__parse_maps_file(py_proc_t * self) {
     }
 
     // The first memory map of the executable
+    if (pd->exe_path[0] == '\0') {
+      // If /proc/exe readlink failed (e.g. containers) we use the path of the
+      // first memory map.
+      strcpy(pd->exe_path, pathname);
+      log_d("Executable path: %s (from first memory map)", pd->exe_path);
+    }
     if (!isvalid(pd->maps[MAP_BIN].path) && strcmp(pd->exe_path, pathname) == 0) {
       map = &(pd->maps[MAP_BIN]);
       map->path = proc_root(self->pid, pathname);
