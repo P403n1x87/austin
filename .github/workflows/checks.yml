@@ -9,7 +9,7 @@ on:
 
 jobs:
   check-manpage:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     name: Check docs
     steps:
       - uses: actions/checkout@v3
@@ -34,7 +34,7 @@ jobs:
         run: git diff -I".* DO NOT MODIFY.*" -I"[.]TH AUSTIN.*" --exit-code src/austin.1
 
   cppcheck-linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     name: Static code analysis (Linux)
     env:
       cppcheck-version: 2.10.3
@@ -42,44 +42,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install build dependencies
+      - name: Install cppcheck
         run: |
           sudo apt-get update
-          sudo apt-get -y install libpcre3-dev
-
-      - name: Restore cppcheck build
-        id: cppcheck-build-restore
-        uses: actions/cache/restore@v3
-        with:
-          path: |
-            ${{ github.workspace }}/cppcheck
-          key: ${{ runner.os }}-cppcheck-${{ env.cppcheck-version }}
-
-      - name: Check out cppcheck
-        uses: actions/checkout@v3
-        with:
-          repository: danmar/cppcheck
-          ref: ${{ env.cppcheck-version }}
-          path: ${{ github.workspace }}/cppcheck
-
-      - name: Compile cppcheck
-        run: |
-          sudo apt-get update
-          sudo apt-get -y install libpcre3-dev
-          cd cppcheck
-          make MATCHCOMPILER=yes FILESDIR=/usr/share/cppcheck HAVE_RULES=yes CXXFLAGS="-O2 -DNDEBUG -Wall -Wno-sign-compare -Wno-unused-function"
-          cd -
-
-      - name: Save cppcheck build
-        id: cppcheck-build-save
-        uses: actions/cache/save@v3
-        with:
-          path: |
-            ${{ github.workspace }}/cppcheck
-          key: ${{ runner.os }}-cppcheck-${{ env.cppcheck-version }}
+          sudo apt-get -y install cppcheck
 
       - name: Check source code
-        run: ${{ github.workspace }}/cppcheck/cppcheck -q -f --error-exitcode=1 --inline-suppr src
+        run: cppcheck -q -f --error-exitcode=1 --inline-suppr src
 
   cppcheck-macos:
     name: Static code analysis (macOS)
@@ -94,7 +63,7 @@ jobs:
         run: cppcheck -q -f --error-exitcode=1 --inline-suppr --check-level=exhaustive src
 
   codespell:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     name: Codespell
     steps:
       - uses: actions/checkout@v3
@@ -110,7 +79,7 @@ jobs:
         run: codespell -I .github/workflows/wordlist.txt -S "src/python/*" src
 
   formatting-tests:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     name: Formatting (tests)
     steps:
       - uses: actions/checkout@v3
@@ -126,7 +95,7 @@ jobs:
         run: black --check --exclude=test/targets test/
 
   linting-tests:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     name: Linting (tests)
     steps:
       - uses: actions/checkout@v3
@@ -142,7 +111,7 @@ jobs:
         run: flake8 --config test/.flake8 test/
 
   coverage:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     name: Code coverage
     steps:
       - uses: actions/checkout@v3
@@ -190,7 +159,7 @@ jobs:
           verbose: true
 
   check-cog:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     name: Check cog output
     steps:
       - uses: actions/checkout@v3

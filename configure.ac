@@ -16,6 +16,10 @@ AM_INIT_AUTOMAKE
 AC_PROG_CC_C99
 AC_PROG_CPP
 
+# Host conditionals
+AC_CANONICAL_HOST
+AC_CANONICAL_TARGET
+
 # Use the C language and compiler for the following checks
 AC_LANG([C])
 
@@ -33,6 +37,12 @@ AC_CHECK_LIB(bfd, bfd_openr, [
     AC_DEFINE([HAVE_BFD], [1], ["Compile with BFD support"])
     AUSTINP_CFLAGS+=" -DHAVE_BFD"
     AUSTINP_LDADD+=" -l:libbfd.a -l:libz.a"
+    AC_CHECK_LIB(sframe, sframe_encode, [
+        AUSTINP_LDADD+=" -l:libsframe.a"
+    ])
+    AC_CHECK_LIB(zstd, ZSTD_compress, [
+        AUSTINP_LDADD+=" -l:libzstd.a"
+    ])
     echo "enabling symbol resolution support for austinp"
 ], [
     echo "austinp will be built without symbol resolution support: missing libbfd"
@@ -48,6 +58,12 @@ AC_CHECK_LIB(iberty, bfd_demangle, [
     -lbfd
 ])
 AUSTINP_LDADD+=" -ldl"
+
+case $target_cpu in
+    powerpc64le )
+        AUSTINP_CFLAGS+=" -Wno-error=stringop-overflow"
+        ;;
+esac
 
 AC_SUBST(AUSTINP_CFLAGS, [$AUSTINP_CFLAGS])
 AC_SUBST(AUSTINP_LDADD, [$AUSTINP_LDADD])
