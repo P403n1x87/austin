@@ -133,28 +133,6 @@ _py_thread__read_frames(py_thread_t * self) {
 
 
 // ----------------------------------------------------------------------------
-static inline void
-_py_thread__read_stack(py_thread_t * self) {
-  if (!pargs.heap || !isvalid(self->stack))
-    return;
-
-  // For now we read a single datastack chunk up to the requested heap size.
-
-  size_t maxsize = pargs.heap < self->stack_size ? pargs.heap : self->stack_size;
-
-  if (maxsize > _frames.size) {
-    _frames.content = realloc(_frames.content, maxsize);
-  }
-
-  if (fail(copy_memory(self->raddr.pref, self->stack, maxsize, _frames.content))) {
-    log_d("Failed to read remote thread stack data");
-    sfree(_frames.content);
-    _frames = NULL_HEAP;
-  }
-}
-
-
-// ----------------------------------------------------------------------------
 static inline int
 _py_thread__resolve_py_stack(py_thread_t * self) {
   lru_cache_t * cache = self->proc->frame_cache;
@@ -364,13 +342,14 @@ _py_thread__push_iframe_from_raddr(py_thread_t * self, void ** prev) {
 static inline int
 _py_thread__push_iframe(py_thread_t * self, void ** prev) {
   void * raddr = *prev;
-  if (_use_heaps) {
+  if (isvalid(self->stack)) {
     #ifdef DEBUG
     _frames_total++;
     #endif
 
-    if (isvalid(_frames.content) && (raddr >= self->stack && raddr < self->stack + self->stack_size)) {
-      return _py_thread__push_iframe_from_addr(self, raddr - self->stack + _frames.content, prev);
+    void * resolved_addr = isvalid(self->stack) ? stack_chunk__resolve(self->stack, raddr) : NULL;
+    if (resolved_addr != NULL) {
+      return _py_thread__push_iframe_from_addr(self, resolved_addr, prev);
     }
 
     #ifdef DEBUG
@@ -456,8 +435,6 @@ _py_thread__unwind_iframe_stack(py_thread_t * self, void * iframe_raddr) {
 static inline int
 _py_thread__unwind_cframe_stack(py_thread_t * self) {
   PyCFrame cframe;
-
-  _py_thread__read_stack(self);
 
   stack_reset();
 
@@ -771,7 +748,6 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   V_DESC(proc->py_v);
 
   PyThreadState ts;
-  _PyStackChunk chunk;
 
   self->invalid = TRUE;
 
@@ -781,21 +757,12 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
   }
   
   self->stack = NULL;
-
-  if (pargs.heap && V_MIN(3, 11)) {
-    // Get the thread stack information.
-    void * stack_raddr = V_FIELD(void *, ts, py_thread, o_stack);
-    
-    if (fail(copy_datatype(self->raddr.pref, stack_raddr, chunk))) {
-      // Best effort
-      log_d("Cannot read thread data stack");
-    }
-    else {
-      self->stack = stack_raddr;
-      self->stack_size = chunk.size;
-    }
+  if (V_MIN(3, 11)) {
+    // This is destroyed in py_thread__next, so it is important that all threads
+    // are traversed to avoid a memory leak!
+    self->stack = stack_chunk_new(proc->proc_ref, V_FIELD(void *, ts, py_thread, o_stack));
   }
-  
+
   self->proc = proc;
 
   self->raddr = *raddr;
@@ -868,6 +835,12 @@ py_thread__fill_from_raddr(py_thread_t * self, raddr_t * raddr, py_proc_t * proc
 // ----------------------------------------------------------------------------
 int
 py_thread__next(py_thread_t * self) {
+  V_DESC(self->proc->py_v);
+  
+  if (V_MIN(3, 11)) {
+    stack_chunk__destroy(self->stack);
+  }
+
   if (self->invalid) {
     log_e("Invalid thread or no address for next thread: %p", self);
     set_error(ETHREADINV);
@@ -940,7 +913,6 @@ py_thread__emit_collapsed_stack(py_thread_t * self, int64_t interp_id, ctime_t t
   // the native stack just collected
   py_thread__fill_from_raddr(self, &self->raddr, self->proc);
   #endif
-
   V_DESC(self->proc->py_v);
 
   if (isvalid(self->top_frame)) {

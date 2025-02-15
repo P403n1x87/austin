@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef STACK_H
-#define STACK_H
+#pragma once
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -33,7 +32,7 @@
 #include "platform.h"
 #include "py_proc.h"
 #include "py_string.h"
-#include "py_thread.h"
+#include "python/misc.h"
 #include "version.h"
 
 
@@ -147,4 +146,88 @@ stack_py_push(void * origin, void * code, int lasti) {
 #define stack_kernel_reset()     {_stack->kernel_pointer = 0;}
 #endif
 
-#endif // STACK_H
+// ----------------------------------------------------------------------------
+
+// Support for datastack_chunk. This thread data was introduced in CPython 3.11
+// and is used to store per-thread interpreter frame objects. Support for these
+// chunks of memory allows us to copy all the frame objects in one go, thus
+// reducing the number of syscalls needed to copy the individual frame objects.
+// We expect that an added benefit of this is also a reduced error rate and
+// higher overall accuracy.
+
+// This is our representation of the linked list of stack chunks
+typedef struct stack_chunk {
+  void               * origin;
+  _PyStackChunk      * data;
+  struct stack_chunk * previous;
+} stack_chunk_t;
+
+// ----------------------------------------------------------------------------
+static inline stack_chunk_t *
+stack_chunk_new(proc_ref_t pref, void * origin) {
+  _PyStackChunk original_chunk;
+  
+  if (copy_datatype(pref, origin, original_chunk)) {
+    log_e("Failed to copy _PyStackChunk");
+    return NULL;
+  }
+
+  stack_chunk_t * chunk = (stack_chunk_t *)calloc(1, sizeof(stack_chunk_t));
+  if (!isvalid(chunk)) {
+    log_e("Cannot allocate memory for stack chunk");
+    return NULL;
+  }
+
+  chunk->data = (_PyStackChunk *)malloc(original_chunk.size);
+  if (!isvalid(chunk->data)) {
+    log_e("Cannot allocate memory for stack chunk data");
+    goto fail;
+  }
+
+  if (copy_memory(pref, origin, original_chunk.size, chunk->data)) {
+    log_e("Failed to copy full stack chunk data");
+    goto fail;
+  }
+
+  chunk->origin = origin;
+  
+  if (original_chunk.previous != NULL) {
+    chunk->previous = stack_chunk_new(pref, original_chunk.previous);
+    if (!isvalid(chunk->previous)) {
+      log_e("Failed to copy previous stack chunk");
+      goto fail;
+    }
+  }
+
+  return chunk;
+
+fail:
+  sfree(chunk->data);
+  sfree(chunk);
+
+  return NULL;
+}
+
+// ----------------------------------------------------------------------------
+static inline void
+stack_chunk__destroy(stack_chunk_t * chunk) {
+  if (!isvalid(chunk))
+    return;
+
+  sfree(chunk->data);
+  stack_chunk__destroy(chunk->previous);
+ 
+  sfree(chunk);
+}
+
+// ----------------------------------------------------------------------------
+static inline void *
+stack_chunk__resolve(stack_chunk_t * self, void * address) {
+  if (address >= self->origin && (char *)address < (char *)self->origin + self->data->size)
+    return (char *)self->data + ((char *)address - (char *)self->origin);
+
+  if (self->previous)
+    return stack_chunk__resolve(self->previous, address);
+
+  return NULL;
+}

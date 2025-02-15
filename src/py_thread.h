@@ -29,6 +29,7 @@
 #include "cache.h"
 #include "mem.h"
 #include "py_proc.h"
+#include "stack.h"
 #include "stats.h"
 
 
@@ -59,8 +60,7 @@ typedef struct thread {
   int             invalid;
 
   /* The per-thread datastack was introduced in Python 3.11 */
-  void           * stack;
-  size_t           stack_size;
+  stack_chunk_t * stack;
 
   tstate_status_t  status;
 } py_thread_t;
