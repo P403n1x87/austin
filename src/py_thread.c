@@ -913,7 +913,6 @@ py_thread__emit_collapsed_stack(py_thread_t * self, int64_t interp_id, ctime_t t
   // the native stack just collected
   py_thread__fill_from_raddr(self, &self->raddr, self->proc);
   #endif
-  
   V_DESC(self->proc->py_v);
 
   if (isvalid(self->top_frame)) {
