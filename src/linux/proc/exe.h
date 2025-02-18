@@ -5,7 +5,7 @@
 //
 // Austin is a Python frame stack sampler for CPython.
 //
-// Copyright (c) 2023 Gabriele N. Tornetta <phoenix1987@gmail.com>.
+// Copyright (c) 2018-2021 Gabriele N. Tornetta <phoenix1987@gmail.com>.
 // All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -22,28 +22,36 @@
 
 #pragma once
 
-#include "stats.h"
 
-#if defined PL_UNIX
-#include <sched.h>
-#else
-#include <windows.h>
-#endif
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "../../error.h"
+#include "../../hints.h"
 
 
-static inline void
-yield() {
-#if defined DEBUG
-    // Reduce the startup log noise.
-    usleep(50000);
-#elif defined PL_UNIX
-    sched_yield();
-#else
-    Sleep(0);
-#endif
+#define DELETED_SUFFIX " (deleted)"
+
+
+// ----------------------------------------------------------------------------
+static int
+proc_exe_readlink(pid_t pid, char * dest, ssize_t size) {
+    char file_name[32];
+
+    sprintf(file_name, "/proc/%d/exe", pid);
+
+    if (readlink(file_name, dest, size) == -1) {
+        log_e("Cannot readlink %s", file_name);
+        FAIL;  // cppcheck-suppress [resourceLeak]
+    }
+
+    // Handle deleted files
+    char * suffix = strstr(dest, DELETED_SUFFIX);
+    if (isvalid(suffix)) {
+        *suffix = '\0';
+    }
+
+    SUCCESS;
 }
-
-
-#define TIMER_START(d) {__label__ _s;ctime_t _e=(gettime()+d);while(gettime()<=_e){
-#define TIMER_END      yield();}_s:;}
-#define TIMER_STOP     goto _s;

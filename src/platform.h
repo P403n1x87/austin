@@ -68,6 +68,14 @@
 
 // ----------------------------------------------------------------------------
 
+#if defined PL_LINUX
+#define LIB_NEEDLE "libpython"
+#else
+#define LIB_NEEDLE "python"
+#endif
+
+// ----------------------------------------------------------------------------
+
 #if defined PL_MACOS
 #define PID_MAX                    99999  // From sys/proc_internal.h
 #endif

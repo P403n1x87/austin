@@ -37,7 +37,10 @@
 
 #include "common.h"
 #include "futils.h"
+#include "proc/exe.h"
+#include "proc/maps.h"
 #include "../mem.h"
+#include "../platform.h"
 #include "../resources.h"
 
 #ifdef NATIVE
@@ -342,43 +345,21 @@ _py_proc__analyze_elf(py_proc_t * self, char * path, void * elf_base) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__parse_maps_file(py_proc_t * self) {
-  char      file_name[32];
-  cu_FILE * fp          = NULL;
-  cu_char * line        = NULL;
-  cu_char * prev_path   = NULL;
-  cu_char * needle_path = NULL;
-  size_t    len         = 0;
-  int       maps_flag   = 0;
-
+  int             maps_flag = 0;
   struct vm_map * map = NULL;
 
-  fp = _procfs(self->pid, "maps");
-  if (fp == NULL) {
-    switch (errno) {
-    case EACCES:  // Needs elevated privileges
-      set_error(EPROCPERM);
-      break;
-    case ENOENT:  // Invalid pid
-      set_error(EPROCNPID);
-      break;
-    default:
-      set_error(EPROCVM);
-    }
+  cu_proc_map_t * proc_maps = proc_map_new(self->pid);
+  if (!isvalid(proc_maps)) {
+    log_e("Cannot get memory maps for pid %d", self->pid);
+    set_error(EPROC);
     FAIL;
   }
-
-  // Save the file hash and the modified time. We'll use them to detect if the
-  // content has changed since the last time we read it.
-  crc32_t file_hash = fhash(fp);
-  long modified_time = fmtime_ns(fp);
 
   sfree(self->bin_path);
   sfree(self->lib_path);
 
   self->map.exe.base = NULL;
   self->map.exe.size = 0;
-
-  sprintf(file_name, "/proc/%d/exe", self->pid);
 
   cu_void * pd_mem = calloc(1, sizeof(struct proc_desc));
   if (!isvalid(pd_mem)) {
@@ -388,134 +369,124 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   }
   struct proc_desc * pd = pd_mem;
 
-  if (readlink(file_name, pd->exe_path, sizeof(pd->exe_path)) == -1) {
-    log_e("Cannot readlink %s", file_name);
-    set_error(EPROC);
-    FAIL;  // cppcheck-suppress [resourceLeak]
-  }
-  if (strcmp(pd->exe_path + (strlen(pd->exe_path) - 10), " (deleted)") == 0) {
-    pd->exe_path[strlen(pd->exe_path) - 10] = '\0';
-  }
-  log_d("Executable path: %s", pd->exe_path);
+  proc_map_t * first_binary_map = NULL;
 
-  while (getline(&line, &len, fp) != -1) {
-    ssize_t lower, upper;
-    char    pathname[1024] = {0};
-    char    perms[5] = {0};
-
-    int field_count = sscanf(line, ADDR_FMT "-" ADDR_FMT " %s %*x %*x:%*x %*x %s\n",
-      &lower, &upper, // Map bounds
-      perms,          // Permissions
-      pathname        // Binary path
-    ) - 3; // We expect between 3 and 4 matches.
-
-    if (
-      field_count == 0 && isvalid(map) && !isvalid(map->bss_base)
-      && strcmp(perms, "rw-p") == 0
-    ) {
-      // The BSS section is not mapped from a file and has rw permissions.
-      // We find that the map reported by proc fs is rounded to the next page
-      // boundary, so we need to adjust the values. We might slide into the data
-      // section, but that should be readable anyway.
-      size_t page_size = getpagesize();
-      map->bss_base = (void *) lower - page_size;
-      map->bss_size = upper - lower + page_size;
-      log_d("BSS section inferred from VM maps for %s: %lx-%lx", map->path, lower, upper);
+  if (fail(proc_exe_readlink(self->pid, pd->exe_path, sizeof(pd->exe_path)))) {
+    // We cannot readlink the executable path so we take the first memory map
+    PROC_MAP_ITER(proc_maps, m) {
+      if (isvalid(m->pathname)) {
+        strncpy(pd->exe_path, m->pathname, sizeof(pd->exe_path) - 1);
+        first_binary_map = m;
+        break;
+      }
     }
-
-    if (field_count <= 0)
-      continue;
-
-    if (
-      isvalid(map) && !isvalid(self->map.runtime.base)
-      && strcmp(perms, "rw-p") == 0 && strcmp(map->path, pathname) == 0
-    ) {
-      // This is likely the PyRuntime section.
-      size_t page_size = getpagesize();
-      self->map.runtime.base = (void *) lower - page_size;
-      self->map.runtime.size = upper - lower + page_size;
-      log_d("PyRuntime section inferred from VM maps for %s: %lx-%lx", map->path, lower, upper);
-    }
-
-    if (pathname[0] == '[')
-      continue;
-
-    if (isvalid(prev_path) && strcmp(pathname, prev_path) == 0) { // Avoid analysing a binary multiple times
-      continue;
-    }
-    
-    sfree(prev_path);
-    prev_path = strndup(pathname, strlen(pathname));
-    if (!isvalid(prev_path)) {
-      log_ie("Cannot duplicate path name");
+    if (!isvalid(first_binary_map)) {
+      log_ie("Cannot infer the executable path");
       set_error(EPROC);
       FAIL;
     }
+  }
+  else {
+    first_binary_map = proc_map__first(proc_maps, pd->exe_path);
+    if (!isvalid(first_binary_map)) {
+      log_ie("Cannot find the first binary map");
+      set_error(EPROC);
+      FAIL;
+    }
+  }
 
-    // The first memory map of the executable
-    if (!isvalid(pd->maps[MAP_BIN].path) && strcmp(pd->exe_path, pathname) == 0) {
-      map = &(pd->maps[MAP_BIN]);
-      map->path = proc_root(self->pid, pathname);
+  log_d("Executable path: %s", pd->exe_path);
+
+  map = &(pd->maps[MAP_BIN]);
+  map->path = proc_root(self->pid, pd->exe_path);
+  if (!isvalid(map->path)) {
+    log_e("Cannot get proc root path for %s", pd->exe_path);  // GCOV_EXCL_START
+    set_error(EPROC);
+    FAIL;  // GCOV_EXCL_STOP
+  }
+  map->file_size = _file_size(map->path);
+  map->base = first_binary_map->address;
+  map->size = first_binary_map->size;
+  map->has_symbols = success(_py_proc__analyze_elf(self, map->path, map->base));
+  if (map->has_symbols) {
+    map->bss_base = self->map.bss.base;
+    map->bss_size = self->map.bss.size;
+  }
+  log_d("Binary path: %s (symbols: %d)", map->path, map->has_symbols);
+
+  size_t page_size = getpagesize();
+
+  if (map->bss_size == 0) {
+    // Find the BSS section for the binary
+    PROC_MAP_ITER(first_binary_map, m) {
+      if (!isvalid(m->pathname) && m->perms == (PERMS_READ | PERMS_WRITE) && m->size > 0) {
+        map = &(pd->maps[MAP_BIN]);
+        map->bss_base = m->address - page_size;
+        map->bss_size = m->size + page_size;
+        log_d("BSS section found @ %p (size %x)", self->map.bss.base, self->map.bss.size);
+        break;
+      }
+    }
+  }
+
+  if (!map->has_symbols) {
+    // Find the runtime section for the binary
+    PROC_MAP_ITER(first_binary_map, m) {
+      if (
+        m->perms == (PERMS_READ | PERMS_WRITE)
+        && isvalid(m->pathname) && strcmp(m->pathname, pd->exe_path) == 0
+        ) {
+        self->map.runtime.base = m->address - page_size;
+        self->map.runtime.size = m->size + page_size;
+        log_d("PyRuntime section found @ %p (size %x)", self->map.runtime.base, self->map.runtime.size);
+        break;
+      }
+    }
+  }
+
+  proc_map_t * first_lib_map = proc_map__first_submatch(proc_maps, LIB_NEEDLE);
+  if (isvalid(first_lib_map)) {
+    if (success(_py_proc__analyze_elf(self, first_lib_map->pathname, first_lib_map->address))) {
+      // The library binary has symbols
+      map = &(pd->maps[MAP_LIBSYM]);
+
+      map->path = proc_root(self->pid, first_lib_map->pathname);
       if (!isvalid(map->path)) {
-        log_e("Cannot get proc root path for %s", pathname);  // GCOV_EXCL_START
+        log_e("Cannot get proc root path for %s", first_lib_map->pathname);  // GCOV_EXCL_START
         set_error(EPROC);
         FAIL;  // GCOV_EXCL_STOP
       }
       map->file_size = _file_size(map->path);
-      map->base = (void *) lower;
-      map->size = upper - lower;
-      map->has_symbols = success(_py_proc__analyze_elf(self, map->path, (void *) lower));
-      if (map->has_symbols) {
-        map->bss_base = self->map.bss.base;
-        map->bss_size = self->map.bss.size;
-      }
-      log_d("Binary map: %s (symbols %d)", map->path, map->has_symbols);
-      continue;
+      map->base = first_lib_map->address;
+      map->size = first_lib_map->size;
+      map->has_symbols = TRUE;
+      map->bss_base = self->map.bss.base;
+      map->bss_size = self->map.bss.size;
+
+      log_d("Library path: %s (with symbols)", map->path);
     }
+    else {
+      // We look for something matching "libpythonX.Y"
+      PROC_MAP_ITER(first_lib_map, m) {
+        unsigned int v;
+        char * needle = strstr(m->pathname, LIB_NEEDLE);
+        if (sscanf(needle, "libpython%u.%u", &v, &v) == 2) {
+          map = &(pd->maps[MAP_LIBNEEDLE]);
 
-    // The first memory map of the shared library (if any)
-    char * needle = strstr(pathname, "libpython");
-    if (!isvalid(pd->maps[MAP_LIBSYM].path) && isvalid(needle)) {
-      int has_symbols = success(_py_proc__analyze_elf(self, pathname, (void *) lower));
-      if (has_symbols) {
-        map = &(pd->maps[MAP_LIBSYM]);
-        map->path = proc_root(self->pid, pathname);
-        if (!isvalid(map->path)) {
-          log_e("Cannot get proc root path for %s", pathname);  // GCOV_EXCL_START
-          set_error(EPROC);
-          FAIL;  // GCOV_EXCL_STOP
-        }
-        map->file_size = _file_size(map->path);
-        map->base = (void *) lower;
-        map->size = upper - lower;
-        map->has_symbols = TRUE;
-        map->bss_base = self->map.bss.base;
-        map->bss_size = self->map.bss.size;
-
-        log_d("Library map: %s (with symbols)", map->path);
-
-        continue;
-      }
-      
-      // The first memory map of a binary that contains "pythonX.Y" in its name
-      if (!isvalid(pd->maps[MAP_LIBNEEDLE].path)) {
-        if (isvalid(needle)) {
-          unsigned int v;
-          if (sscanf(needle, "libpython%u.%u", &v, &v) == 2) {
-            map = &(pd->maps[MAP_LIBNEEDLE]);
-            map->path = needle_path = proc_root(self->pid, pathname);
-            if (!isvalid(map->path)) {
-              log_e("Cannot get proc root path for %s", pathname);  // GCOV_EXCL_START
-              set_error(EPROC);
-              FAIL;  // GCOV_EXCL_STOP
-            }
-            map->file_size = _file_size(map->path);
-            map->base = (void *) lower;
-            map->size = upper - lower;
-            map->has_symbols = FALSE;
-            log_d("Library map: %s (needle)", map->path);
-            continue;
+          map->path = proc_root(self->pid, m->pathname);
+          if (!isvalid(map->path)) {
+            log_e("Cannot get proc root path for %s", m->pathname);  // GCOV_EXCL_START
+            set_error(EPROC);
+            FAIL;  // GCOV_EXCL_STOP
           }
+          map->file_size = _file_size(map->path);
+          map->base = m->address;
+          map->size = m->size;
+          map->has_symbols = FALSE;
+
+          log_d("Library path: %s (from pattern match)", map->path);
+
+          break;
         }
       }
     }
@@ -524,7 +495,7 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   // If the library map is not valid, use the needle map
   if (!isvalid(pd->maps[MAP_LIBSYM].path)) {
     pd->maps[MAP_LIBSYM] = pd->maps[MAP_LIBNEEDLE];
-    pd->maps[MAP_LIBNEEDLE].path = needle_path = NULL;
+    pd->maps[MAP_LIBNEEDLE].path = NULL;
   }
 
   // Work out paths
@@ -559,7 +530,6 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   int map_index = isvalid(pd->maps[MAP_LIBSYM].path) ? MAP_LIBSYM : MAP_BIN;
   self->map.bss.base = pd->maps[map_index].bss_base;
   self->map.bss.size = pd->maps[map_index].bss_size;
-  
   if (!isvalid(self->map.bss.base)) {
     log_e("Cannot find valid BSS map");
     set_error(EPROCVM);
@@ -569,12 +539,6 @@ _py_proc__parse_maps_file(py_proc_t * self) {
   if (!(maps_flag & (BIN_MAP))) {
     log_e("No usable Python binary found");
     set_error(EPROC);
-    FAIL;
-  }
-
-  if (!(modified_time == fmtime_ns(fp) && file_hash == fhash(fp))) {
-    log_e("VM maps file has changed since last read");
-    set_error(EPROCVM);
     FAIL;
   }
 
@@ -619,15 +583,15 @@ _py_proc__get_vm_maps(py_proc_t * self) {
   size_t            len   = 0;
   vm_range_tree_t * tree  = NULL;
   hash_table_t    * table = NULL;
-  
+
   if (pargs.where) {
     tree  = vm_range_tree_new();
     table = hash_table_new(256);
-    
+
     vm_range_tree__destroy(self->maps_tree);
     hash_table__destroy(self->base_table);
-    
-    self->maps_tree = tree; 
+
+    self->maps_tree = tree;
     self->base_table = table;
   }
 
@@ -639,7 +603,7 @@ _py_proc__get_vm_maps(py_proc_t * self) {
 
   log_d("Rebuilding vm ranges tree");
 
-  int    nrange  = 0;
+  int    nrange = 0;
   while (getline(&line, &len, fp) != -1 && nrange < 256) {
     ssize_t lower, upper;
 
@@ -665,7 +629,7 @@ _py_proc__get_vm_maps(py_proc_t * self) {
   }
 
   for (int i = 0; i < nrange; i++)
-    vm_range_tree__add(tree, (vm_range_t *) ranges[i]); 
+    vm_range_tree__add(tree, (vm_range_t *) ranges[i]);
 
   SUCCESS;
 } /* _py_proc__get_vm_maps */
