@@ -396,7 +396,10 @@ _py_proc__check_interp_state(py_proc_t * self, void * raddr) {
 
   if (V_MIN(3, 11)) {
     // In Python 3.11 we can make use of the native_thread_id field on Linux
-    // to get the thread id.
+    // to get the thread id. We need to destroy the stack chunk though, to avoid
+    // a memory leak.
+    stack_chunk__destroy(thread.stack);
+
     SUCCESS;
   }
 
