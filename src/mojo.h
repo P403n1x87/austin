@@ -32,20 +32,20 @@
 #define MOJO_VERSION 3
 
 enum {
-  MOJO_RESERVED,
-  MOJO_METADATA,
-  MOJO_STACK,
-  MOJO_FRAME,
-  MOJO_FRAME_INVALID,
-  MOJO_FRAME_REF,
-  MOJO_FRAME_KERNEL,
-  MOJO_GC,
-  MOJO_IDLE,
-  MOJO_METRIC_TIME,
-  MOJO_METRIC_MEMORY,
-  MOJO_STRING,
-  MOJO_STRING_REF,
-  MOJO_MAX,
+    MOJO_RESERVED,
+    MOJO_METADATA,
+    MOJO_STACK,
+    MOJO_FRAME,
+    MOJO_FRAME_INVALID,
+    MOJO_FRAME_REF,
+    MOJO_FRAME_KERNEL,
+    MOJO_GC,
+    MOJO_IDLE,
+    MOJO_METRIC_TIME,
+    MOJO_METRIC_MEMORY,
+    MOJO_STRING,
+    MOJO_STRING_REF,
+    MOJO_MAX,
 };
 
 #if defined PL_WIN
@@ -67,38 +67,39 @@ typedef unsigned long long mojo_int_t;
 
 // Primitives
 
-#define mojo_event(event) \
-  { fputc(event, pargs.output_file); }
+#define mojo_event(event)                \
+    { fputc(event, pargs.output_file); }
 
-#define mojo_string(string)         \
-  fputs(string, pargs.output_file); \
-  fputc('\0', pargs.output_file);
+#define mojo_string(string)           \
+    fputs(string, pargs.output_file); \
+    fputc('\0', pargs.output_file);
 
-#define mojo_fstring(...)                  \
-  fprintf(pargs.output_file, __VA_ARGS__); \
-  fputc('\0', pargs.output_file);
+#define mojo_fstring(...)                    \
+    fprintf(pargs.output_file, __VA_ARGS__); \
+    fputc('\0', pargs.output_file);
 
-static inline void mojo_integer(mojo_int_t integer, int sign) {
-  unsigned char byte = integer & 0x3f;
-  if (sign) {
-    byte |= 0x40;
-  }
-
-  integer >>= 6;
-  if (integer) {
-    byte |= 0x80;
-  }
-
-  fputc(byte, pargs.output_file);
-
-  while (integer) {
-    byte = integer & 0x7f;
-    integer >>= 7;
-    if (integer) {
-      byte |= 0x80;
+static inline void
+mojo_integer(mojo_int_t integer, int sign) {
+    unsigned char byte = integer & 0x3f;
+    if (sign) {
+        byte |= 0x40;
     }
+
+    integer >>= 6;
+    if (integer) {
+        byte |= 0x80;
+    }
+
     fputc(byte, pargs.output_file);
-  }
+
+    while (integer) {
+        byte      = integer & 0x7f;
+        integer >>= 7;
+        if (integer) {
+            byte |= 0x80;
+        }
+        fputc(byte, pargs.output_file);
+    }
 }
 
 // We expect the least significant bits to be varied enough to provide a valid
@@ -107,57 +108,57 @@ static inline void mojo_integer(mojo_int_t integer, int sign) {
 
 // Mojo events
 
-#define mojo_header()                \
-  {                                  \
-    fputs("MOJ", pargs.output_file); \
-    mojo_integer(MOJO_VERSION, 0);   \
-    fflush(pargs.output_file);       \
-  }
+#define mojo_header()                    \
+    {                                    \
+        fputs("MOJ", pargs.output_file); \
+        mojo_integer(MOJO_VERSION, 0);   \
+        fflush(pargs.output_file);       \
+    }
 
 #define mojo_metadata(label, ...) \
-  mojo_event(MOJO_METADATA);      \
-  mojo_string(label);             \
-  mojo_fstring(__VA_ARGS__);
+    mojo_event(MOJO_METADATA);    \
+    mojo_string(label);           \
+    mojo_fstring(__VA_ARGS__);
 
-#define mojo_stack(pid, iid, tid) \
-  mojo_event(MOJO_STACK);         \
-  mojo_integer(pid, 0);           \
-  mojo_integer(iid, 0);           \
-  mojo_fstring(FORMAT_TID, tid);
+#define mojo_stack(pid, iid, tid)  \
+    mojo_event(MOJO_STACK);        \
+    mojo_integer(pid, 0);          \
+    mojo_integer(iid, 0);          \
+    mojo_fstring(FORMAT_TID, tid);
 
-#define mojo_frame(frame)           \
-  mojo_event(MOJO_FRAME);           \
-  mojo_integer(frame->key, 0);      \
-  mojo_ref(frame->filename);        \
-  mojo_ref(frame->scope);           \
-  mojo_integer(frame->line, 0);     \
-  mojo_integer(frame->line_end, 0); \
-  mojo_integer(frame->column, 0);   \
-  mojo_integer(frame->column_end, 0);
+#define mojo_frame(frame)               \
+    mojo_event(MOJO_FRAME);             \
+    mojo_integer(frame->key, 0);        \
+    mojo_ref(frame->filename);          \
+    mojo_ref(frame->scope);             \
+    mojo_integer(frame->line, 0);       \
+    mojo_integer(frame->line_end, 0);   \
+    mojo_integer(frame->column, 0);     \
+    mojo_integer(frame->column_end, 0);
 
-#define mojo_frame_ref(frame) \
-  mojo_event(MOJO_FRAME_REF); \
-  mojo_integer(frame->key, 0);
+#define mojo_frame_ref(frame)    \
+    mojo_event(MOJO_FRAME_REF);  \
+    mojo_integer(frame->key, 0);
 
-#define mojo_frame_kernel(scope) \
-  mojo_event(MOJO_FRAME_KERNEL); \
-  mojo_string(scope);
+#define mojo_frame_kernel(scope)   \
+    mojo_event(MOJO_FRAME_KERNEL); \
+    mojo_string(scope);
 
-#define mojo_metric_time(value) \
-  mojo_event(MOJO_METRIC_TIME); \
-  mojo_integer(value, 0);
+#define mojo_metric_time(value)   \
+    mojo_event(MOJO_METRIC_TIME); \
+    mojo_integer(value, 0);
 
-#define mojo_metric_memory(value) \
-  mojo_event(MOJO_METRIC_MEMORY); \
-  mojo_integer(value < 0 ? -value : value, value < 0);
+#define mojo_metric_memory(value)                        \
+    mojo_event(MOJO_METRIC_MEMORY);                      \
+    mojo_integer(value < 0 ? -value : value, value < 0);
 
 #define mojo_string_event(key, string) \
-  mojo_event(MOJO_STRING);             \
-  mojo_ref(key);                       \
-  mojo_string(string);
+    mojo_event(MOJO_STRING);           \
+    mojo_ref(key);                     \
+    mojo_string(string);
 
-#define mojo_string_ref(key)   \
-  mojo_event(MOJO_STRING_REF); \
-  mojo_ref(key);
+#define mojo_string_ref(key)     \
+    mojo_event(MOJO_STRING_REF); \
+    mojo_ref(key);
 
 #endif

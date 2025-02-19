@@ -25,69 +25,63 @@
 #include <elf.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include "../mem.h"
+#include "../platform.h"
+#include "../resources.h"
 #include "common.h"
 #include "futils.h"
 #include "proc/exe.h"
 #include "proc/maps.h"
-#include "../mem.h"
-#include "../platform.h"
-#include "../resources.h"
 
 #ifdef NATIVE
 #include "../argparse.h"
 #include "../cache.h"
 #endif
-#include "../py_string.h"
 #include "../hints.h"
 #include "../py_proc.h"
+#include "../py_string.h"
 #include "../version.h"
 
-
-#define BIN_MAP                  (1 << 0)
-#define DYNSYM_MAP               (1 << 1)
-#define RODATA_MAP               (1 << 2)
-#define BSS_MAP                  (1 << 3)
-
+#define BIN_MAP    (1 << 0)
+#define DYNSYM_MAP (1 << 1)
+#define RODATA_MAP (1 << 2)
+#define BSS_MAP    (1 << 3)
 
 // Get the offset of the ith section header
 #define ELF_SH_OFF(ehdr, i) /* as */ (ehdr->e_shoff + i * ehdr->e_shentsize)
 
-
 union {
-  Elf32_Ehdr v32;
-  Elf64_Ehdr v64;
+    Elf32_Ehdr v32;
+    Elf64_Ehdr v64;
 } ehdr_v;
 
-
 // ----------------------------------------------------------------------------
-static void *
-wait_thread(void * py_proc) {
-  waitpid(((py_proc_t *) py_proc)->pid, 0, 0);
-  return NULL;
+static void*
+wait_thread(void* py_proc) {
+    waitpid(((py_proc_t*)py_proc)->pid, 0, 0);
+    return NULL;
 }
-
 
 // ----------------------------------------------------------------------------
 static ssize_t
-_file_size(char * file) {
-  struct stat statbuf;
+_file_size(char* file) {
+    struct stat statbuf;
 
-  if (fail(stat(file, &statbuf)))
-    return -1;
+    if (fail(stat(file, &statbuf)))
+        return -1;
 
-  return statbuf.st_size;
+    return statbuf.st_size;
 }
-
 
 /*[[[cog
 from pathlib import Path
@@ -97,593 +91,560 @@ print(analyze_elf.replace("64", "32"))
 ]]]*/
 // ----------------------------------------------------------------------------
 static Elf64_Addr
-_get_base_64(Elf64_Ehdr * ehdr, void * elf_map)
-{
-  for (int i = 0; i < ehdr->e_phnum; ++i) {
-    Elf64_Phdr * phdr = (Elf64_Phdr *) (elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);
-    if (phdr->p_type == PT_LOAD)
-      return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
-  }
-  return UINT64_MAX;
+_get_base_64(Elf64_Ehdr* ehdr, void* elf_map) {
+    for (int i = 0; i < ehdr->e_phnum; ++i) {
+        Elf64_Phdr* phdr = (Elf64_Phdr*)(elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);
+        if (phdr->p_type == PT_LOAD)
+            return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
+    }
+    return UINT64_MAX;
 } /* _get_base_64 */
 
 static int
-_py_proc__analyze_elf64(py_proc_t * self, void * elf_map, void * elf_base) {
-  register int symbols = 0;
+_py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base) {
+    register int symbols = 0;
 
-  Elf64_Ehdr * ehdr = elf_map;
+    Elf64_Ehdr* ehdr = elf_map;
 
-  // Section header must be read from binary as it is not loaded into memory
-  Elf64_Xword   sht_size      = ehdr->e_shnum * ehdr->e_shentsize;
-  Elf64_Off     elf_map_size  = ehdr->e_shoff + sht_size;
-  Elf64_Shdr  * p_shdr;
+    // Section header must be read from binary as it is not loaded into memory
+    Elf64_Xword sht_size     = ehdr->e_shnum * ehdr->e_shentsize;
+    Elf64_Off   elf_map_size = ehdr->e_shoff + sht_size;
+    Elf64_Shdr* p_shdr;
 
-  Elf64_Shdr  * p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr->e_shstrndx);
-  char        * sh_name_base = elf_map + p_shstrtab->sh_offset;
-  Elf64_Shdr  * p_dynsym     = NULL;
-  Elf64_Addr    base         = _get_base_64(ehdr, elf_map);
+    Elf64_Shdr* p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr->e_shstrndx);
+    char*       sh_name_base = elf_map + p_shstrtab->sh_offset;
+    Elf64_Shdr* p_dynsym     = NULL;
+    Elf64_Addr  base         = _get_base_64(ehdr, elf_map);
 
-  void         * bss_base    = NULL;
-  size_t         bss_size    = 0;
+    void*  bss_base = NULL;
+    size_t bss_size = 0;
 
-  if (base != UINT64_MAX) {
-    log_d("Base @ %p", base);
+    if (base != UINT64_MAX) {
+        log_d("Base @ %p", base);
 
-    for (Elf64_Off sh_off = ehdr->e_shoff; \
-      sh_off < elf_map_size; \
-      sh_off += ehdr->e_shentsize \
-    ) {
-      p_shdr = (Elf64_Shdr *) (elf_map + sh_off);
+        for (Elf64_Off sh_off = ehdr->e_shoff; sh_off < elf_map_size; sh_off += ehdr->e_shentsize) {
+            p_shdr = (Elf64_Shdr*)(elf_map + sh_off);
 
-      if (
-        p_shdr->sh_type == SHT_DYNSYM && \
-        strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
-      ) {
-        p_dynsym = p_shdr;
-      }
-      else if (strcmp(sh_name_base + p_shdr->sh_name, ".bss") == 0) {
-        bss_base = elf_base + (p_shdr->sh_addr - base);
-        bss_size = p_shdr->sh_size;
-      }
-      else if (strcmp(sh_name_base + p_shdr->sh_name, ".PyRuntime") == 0) {
-        self->map.runtime.base = elf_base + (p_shdr->sh_addr - base);
-        self->map.runtime.size = p_shdr->sh_size;
-      }
-    }
-
-    if (p_dynsym != NULL) {
-      if (p_dynsym->sh_offset != 0) {
-        Elf64_Shdr * p_strtabsh = (Elf64_Shdr *) (elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
-
-        // Search for dynamic symbols
-        for (Elf64_Off tab_off = p_dynsym->sh_offset; \
-          tab_off < p_dynsym->sh_offset + p_dynsym->sh_size; \
-          tab_off += p_dynsym->sh_entsize
-        ) {
-          Elf64_Sym * sym      = (Elf64_Sym *) (elf_map + tab_off);
-          char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
-          void      * value    = elf_base + (sym->st_value - base);
-          if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= DYNSYM_COUNT) {
-            // We have found all the symbols. No need to look further
-            break;
-          }
+            if (p_shdr->sh_type == SHT_DYNSYM && strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0) {
+                p_dynsym = p_shdr;
+            } else if (strcmp(sh_name_base + p_shdr->sh_name, ".bss") == 0) {
+                bss_base = elf_base + (p_shdr->sh_addr - base);
+                bss_size = p_shdr->sh_size;
+            } else if (strcmp(sh_name_base + p_shdr->sh_name, ".PyRuntime") == 0) {
+                self->map.runtime.base = elf_base + (p_shdr->sh_addr - base);
+                self->map.runtime.size = p_shdr->sh_size;
+            }
         }
-      }
+
+        if (p_dynsym != NULL) {
+            if (p_dynsym->sh_offset != 0) {
+                Elf64_Shdr* p_strtabsh = (Elf64_Shdr*)(elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
+
+                // Search for dynamic symbols
+                for (Elf64_Off tab_off  = p_dynsym->sh_offset; tab_off < p_dynsym->sh_offset + p_dynsym->sh_size;
+                     tab_off           += p_dynsym->sh_entsize) {
+                    Elf64_Sym* sym      = (Elf64_Sym*)(elf_map + tab_off);
+                    char*      sym_name = (char*)(elf_map + p_strtabsh->sh_offset + sym->st_name);
+                    void*      value    = elf_base + (sym->st_value - base);
+                    if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= DYNSYM_COUNT) {
+                        // We have found all the symbols. No need to look further
+                        break;
+                    }
+                }
+            }
+        }
     }
-  }
 
-  if (symbols < DYNSYM_MANDATORY) {
-    log_e("ELF binary has not all the mandatory Python symbols");
-    set_error(ESYM);
-    FAIL;
-  }
+    if (symbols < DYNSYM_MANDATORY) {
+        log_e("ELF binary has not all the mandatory Python symbols");
+        set_error(ESYM);
+        FAIL;
+    }
 
-  // Communicate BSS data back to the caller
-  self->map.bss.base = bss_base;
-  self->map.bss.size = bss_size;
-  log_d("BSS @ %p (size %x, offset %x)", self->map.bss.base, self->map.bss.size, self->map.bss.base - elf_base);
+    // Communicate BSS data back to the caller
+    self->map.bss.base = bss_base;
+    self->map.bss.size = bss_size;
+    log_d("BSS @ %p (size %x, offset %x)", self->map.bss.base, self->map.bss.size, self->map.bss.base - elf_base);
 
-  SUCCESS;
+    SUCCESS;
 } /* _py_proc__analyze_elf64 */
 
 // ----------------------------------------------------------------------------
 static Elf32_Addr
-_get_base_32(Elf32_Ehdr * ehdr, void * elf_map)
-{
-  for (int i = 0; i < ehdr->e_phnum; ++i) {
-    Elf32_Phdr * phdr = (Elf32_Phdr *) (elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);
-    if (phdr->p_type == PT_LOAD)
-      return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
-  }
-  return UINT32_MAX;
+_get_base_32(Elf32_Ehdr* ehdr, void* elf_map) {
+    for (int i = 0; i < ehdr->e_phnum; ++i) {
+        Elf32_Phdr* phdr = (Elf32_Phdr*)(elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);
+        if (phdr->p_type == PT_LOAD)
+            return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
+    }
+    return UINT32_MAX;
 } /* _get_base_32 */
 
 static int
-_py_proc__analyze_elf32(py_proc_t * self, void * elf_map, void * elf_base) {
-  register int symbols = 0;
+_py_proc__analyze_elf32(py_proc_t* self, void* elf_map, void* elf_base) {
+    register int symbols = 0;
 
-  Elf32_Ehdr * ehdr = elf_map;
+    Elf32_Ehdr* ehdr = elf_map;
 
-  // Section header must be read from binary as it is not loaded into memory
-  Elf32_Xword   sht_size      = ehdr->e_shnum * ehdr->e_shentsize;
-  Elf32_Off     elf_map_size  = ehdr->e_shoff + sht_size;
-  Elf32_Shdr  * p_shdr;
+    // Section header must be read from binary as it is not loaded into memory
+    Elf32_Xword sht_size     = ehdr->e_shnum * ehdr->e_shentsize;
+    Elf32_Off   elf_map_size = ehdr->e_shoff + sht_size;
+    Elf32_Shdr* p_shdr;
 
-  Elf32_Shdr  * p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr->e_shstrndx);
-  char        * sh_name_base = elf_map + p_shstrtab->sh_offset;
-  Elf32_Shdr  * p_dynsym     = NULL;
-  Elf32_Addr    base         = _get_base_32(ehdr, elf_map);
+    Elf32_Shdr* p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr->e_shstrndx);
+    char*       sh_name_base = elf_map + p_shstrtab->sh_offset;
+    Elf32_Shdr* p_dynsym     = NULL;
+    Elf32_Addr  base         = _get_base_32(ehdr, elf_map);
 
-  void         * bss_base    = NULL;
-  size_t         bss_size    = 0;
+    void*  bss_base = NULL;
+    size_t bss_size = 0;
 
-  if (base != UINT32_MAX) {
-    log_d("Base @ %p", base);
+    if (base != UINT32_MAX) {
+        log_d("Base @ %p", base);
 
-    for (Elf32_Off sh_off = ehdr->e_shoff; \
-      sh_off < elf_map_size; \
-      sh_off += ehdr->e_shentsize \
-    ) {
-      p_shdr = (Elf32_Shdr *) (elf_map + sh_off);
+        for (Elf32_Off sh_off = ehdr->e_shoff; sh_off < elf_map_size; sh_off += ehdr->e_shentsize) {
+            p_shdr = (Elf32_Shdr*)(elf_map + sh_off);
 
-      if (
-        p_shdr->sh_type == SHT_DYNSYM && \
-        strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0
-      ) {
-        p_dynsym = p_shdr;
-      }
-      else if (strcmp(sh_name_base + p_shdr->sh_name, ".bss") == 0) {
-        bss_base = elf_base + (p_shdr->sh_addr - base);
-        bss_size = p_shdr->sh_size;
-      }
-      else if (strcmp(sh_name_base + p_shdr->sh_name, ".PyRuntime") == 0) {
-        self->map.runtime.base = elf_base + (p_shdr->sh_addr - base);
-        self->map.runtime.size = p_shdr->sh_size;
-      }
-    }
-
-    if (p_dynsym != NULL) {
-      if (p_dynsym->sh_offset != 0) {
-        Elf32_Shdr * p_strtabsh = (Elf32_Shdr *) (elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
-
-        // Search for dynamic symbols
-        for (Elf32_Off tab_off = p_dynsym->sh_offset; \
-          tab_off < p_dynsym->sh_offset + p_dynsym->sh_size; \
-          tab_off += p_dynsym->sh_entsize
-        ) {
-          Elf32_Sym * sym      = (Elf32_Sym *) (elf_map + tab_off);
-          char      * sym_name = (char *) (elf_map + p_strtabsh->sh_offset + sym->st_name);
-          void      * value    = elf_base + (sym->st_value - base);
-          if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= DYNSYM_COUNT) {
-            // We have found all the symbols. No need to look further
-            break;
-          }
+            if (p_shdr->sh_type == SHT_DYNSYM && strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0) {
+                p_dynsym = p_shdr;
+            } else if (strcmp(sh_name_base + p_shdr->sh_name, ".bss") == 0) {
+                bss_base = elf_base + (p_shdr->sh_addr - base);
+                bss_size = p_shdr->sh_size;
+            } else if (strcmp(sh_name_base + p_shdr->sh_name, ".PyRuntime") == 0) {
+                self->map.runtime.base = elf_base + (p_shdr->sh_addr - base);
+                self->map.runtime.size = p_shdr->sh_size;
+            }
         }
-      }
+
+        if (p_dynsym != NULL) {
+            if (p_dynsym->sh_offset != 0) {
+                Elf32_Shdr* p_strtabsh = (Elf32_Shdr*)(elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
+
+                // Search for dynamic symbols
+                for (Elf32_Off tab_off  = p_dynsym->sh_offset; tab_off < p_dynsym->sh_offset + p_dynsym->sh_size;
+                     tab_off           += p_dynsym->sh_entsize) {
+                    Elf32_Sym* sym      = (Elf32_Sym*)(elf_map + tab_off);
+                    char*      sym_name = (char*)(elf_map + p_strtabsh->sh_offset + sym->st_name);
+                    void*      value    = elf_base + (sym->st_value - base);
+                    if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= DYNSYM_COUNT) {
+                        // We have found all the symbols. No need to look further
+                        break;
+                    }
+                }
+            }
+        }
     }
-  }
 
-  if (symbols < DYNSYM_MANDATORY) {
-    log_e("ELF binary has not all the mandatory Python symbols");
-    set_error(ESYM);
-    FAIL;
-  }
+    if (symbols < DYNSYM_MANDATORY) {
+        log_e("ELF binary has not all the mandatory Python symbols");
+        set_error(ESYM);
+        FAIL;
+    }
 
-  // Communicate BSS data back to the caller
-  self->map.bss.base = bss_base;
-  self->map.bss.size = bss_size;
-  log_d("BSS @ %p (size %x, offset %x)", self->map.bss.base, self->map.bss.size, self->map.bss.base - elf_base);
+    // Communicate BSS data back to the caller
+    self->map.bss.base = bss_base;
+    self->map.bss.size = bss_size;
+    log_d("BSS @ %p (size %x, offset %x)", self->map.bss.base, self->map.bss.size, self->map.bss.base - elf_base);
 
-  SUCCESS;
+    SUCCESS;
 } /* _py_proc__analyze_elf32 */
 
 //[[[end]]]
 
 // ----------------------------------------------------------------------------
 static int
-_elf_check(Elf64_Ehdr * ehdr) {
-  return (ehdr->e_shoff == 0 || ehdr->e_shnum < 2 || memcmp(ehdr->e_ident, ELFMAG, SELFMAG));
+_elf_check(Elf64_Ehdr* ehdr) {
+    return (ehdr->e_shoff == 0 || ehdr->e_shnum < 2 || memcmp(ehdr->e_ident, ELFMAG, SELFMAG));
 }
 
-
 // ----------------------------------------------------------------------------
 static int
-_py_proc__analyze_elf(py_proc_t * self, char * path, void * elf_base) {
-  cu_fd fd = open(path, O_RDONLY);
-  if (fd == -1) {
-    log_e("Cannot open binary file %s", path);
-    set_error(EPROC);
-    FAIL;
-  }
+_py_proc__analyze_elf(py_proc_t* self, char* path, void* elf_base) {
+    cu_fd fd = open(path, O_RDONLY);
+    if (fd == -1) {
+        log_e("Cannot open binary file %s", path);
+        set_error(EPROC);
+        FAIL;
+    }
 
-  cu_map_t    * binary_map  = NULL;
-  size_t        binary_size = 0;
-  struct stat   s;
+    cu_map_t*   binary_map  = NULL;
+    size_t      binary_size = 0;
+    struct stat s;
 
-  if (fstat(fd, &s) == -1) {
-    log_ie("Cannot determine size of binary file");
-    set_error(EPROC);
-    FAIL;
-  }
+    if (fstat(fd, &s) == -1) {
+        log_ie("Cannot determine size of binary file");
+        set_error(EPROC);
+        FAIL;
+    }
 
-  binary_size = s.st_size;
+    binary_size = s.st_size;
 
-  binary_map = map_new(fd, binary_size, MAP_PRIVATE);
-  if (!isvalid(binary_map)) {
-    log_ie("Cannot map binary file to memory");
-    set_error(EPROC);
-    FAIL;
-  }
+    binary_map = map_new(fd, binary_size, MAP_PRIVATE);
+    if (!isvalid(binary_map)) {
+        log_ie("Cannot map binary file to memory");
+        set_error(EPROC);
+        FAIL;
+    }
 
-  Elf64_Ehdr * ehdr = binary_map->addr;
-  log_t("Analysing ELF");
+    Elf64_Ehdr* ehdr = binary_map->addr;
+    log_t("Analysing ELF");
 
-  if (fail(_elf_check(ehdr))) {
-    log_e("Bad ELF header");
-    set_error(EPROC);
-    FAIL;
-  }
+    if (fail(_elf_check(ehdr))) {
+        log_e("Bad ELF header");
+        set_error(EPROC);
+        FAIL;
+    }
 
-  // Dispatch
-  switch (ehdr->e_ident[EI_CLASS]) {
-  case ELFCLASS64:
-    log_d("%s is 64-bit ELF", path);
-    return _py_proc__analyze_elf64(self, binary_map->addr, elf_base);
+    // Dispatch
+    switch (ehdr->e_ident[EI_CLASS]) {
+    case ELFCLASS64:
+        log_d("%s is 64-bit ELF", path);
+        return _py_proc__analyze_elf64(self, binary_map->addr, elf_base);
 
-  case ELFCLASS32:
-    log_d("%s is 32-bit ELF", path);
-    return _py_proc__analyze_elf32(self, binary_map->addr, elf_base);
+    case ELFCLASS32:
+        log_d("%s is 32-bit ELF", path);
+        return _py_proc__analyze_elf32(self, binary_map->addr, elf_base);
 
-  default:
-    log_e("%s has invalid ELF class", path);
-    set_error(EPROC);
-    FAIL;
-  }
+    default:
+        log_e("%s has invalid ELF class", path);
+        set_error(EPROC);
+        FAIL;
+    }
 } /* _py_proc__analyze_elf */
 
-
 // ----------------------------------------------------------------------------
 static int
-_py_proc__parse_maps_file(py_proc_t * self) {
-  int             maps_flag = 0;
-  struct vm_map * map = NULL;
+_py_proc__parse_maps_file(py_proc_t* self) {
+    int            maps_flag = 0;
+    struct vm_map* map       = NULL;
 
-  cu_proc_map_t * proc_maps = proc_map_new(self->pid);
-  if (!isvalid(proc_maps)) {
-    log_e("Cannot get memory maps for pid %d", self->pid);
-    set_error(EPROC);
-    FAIL;
-  }
-
-  sfree(self->bin_path);
-  sfree(self->lib_path);
-
-  self->map.exe.base = NULL;
-  self->map.exe.size = 0;
-
-  cu_void * pd_mem = calloc(1, sizeof(struct proc_desc));
-  if (!isvalid(pd_mem)) {
-    log_ie("Cannot allocate memory for proc_desc");
-    set_error(EPROC);
-    FAIL;
-  }
-  struct proc_desc * pd = pd_mem;
-
-  proc_map_t * first_binary_map = NULL;
-
-  if (fail(proc_exe_readlink(self->pid, pd->exe_path, sizeof(pd->exe_path)))) {
-    // We cannot readlink the executable path so we take the first memory map
-    PROC_MAP_ITER(proc_maps, m) {
-      if (isvalid(m->pathname)) {
-        strncpy(pd->exe_path, m->pathname, sizeof(pd->exe_path) - 1);
-        first_binary_map = m;
-        break;
-      }
-    }
-    if (!isvalid(first_binary_map)) {
-      log_ie("Cannot infer the executable path");
-      set_error(EPROC);
-      FAIL;
-    }
-  }
-  else {
-    first_binary_map = proc_map__first(proc_maps, pd->exe_path);
-    if (!isvalid(first_binary_map)) {
-      log_ie("Cannot find the first binary map");
-      set_error(EPROC);
-      FAIL;
-    }
-  }
-
-  log_d("Executable path: %s", pd->exe_path);
-
-  map = &(pd->maps[MAP_BIN]);
-  map->path = proc_root(self->pid, pd->exe_path);
-  if (!isvalid(map->path)) {
-    log_e("Cannot get proc root path for %s", pd->exe_path);  // GCOV_EXCL_START
-    set_error(EPROC);
-    FAIL;  // GCOV_EXCL_STOP
-  }
-  map->file_size = _file_size(map->path);
-  map->base = first_binary_map->address;
-  map->size = first_binary_map->size;
-  map->has_symbols = success(_py_proc__analyze_elf(self, map->path, map->base));
-  if (map->has_symbols) {
-    map->bss_base = self->map.bss.base;
-    map->bss_size = self->map.bss.size;
-  }
-  log_d("Binary path: %s (symbols: %d)", map->path, map->has_symbols);
-
-  size_t page_size = getpagesize();
-
-  if (map->bss_size == 0) {
-    // Find the BSS section for the binary
-    PROC_MAP_ITER(first_binary_map, m) {
-      if (!isvalid(m->pathname) && m->perms == (PERMS_READ | PERMS_WRITE) && m->size > 0) {
-        map = &(pd->maps[MAP_BIN]);
-        map->bss_base = m->address - page_size;
-        map->bss_size = m->size + page_size;
-        log_d("BSS section found @ %p (size %x)", self->map.bss.base, self->map.bss.size);
-        break;
-      }
-    }
-  }
-
-  if (!map->has_symbols) {
-    // Find the runtime section for the binary
-    PROC_MAP_ITER(first_binary_map, m) {
-      if (
-        m->perms == (PERMS_READ | PERMS_WRITE)
-        && isvalid(m->pathname) && strcmp(m->pathname, pd->exe_path) == 0
-        ) {
-        self->map.runtime.base = m->address - page_size;
-        self->map.runtime.size = m->size + page_size;
-        log_d("PyRuntime section found @ %p (size %x)", self->map.runtime.base, self->map.runtime.size);
-        break;
-      }
-    }
-  }
-
-  proc_map_t * first_lib_map = proc_map__first_submatch(proc_maps, LIB_NEEDLE);
-  if (isvalid(first_lib_map)) {
-    if (success(_py_proc__analyze_elf(self, first_lib_map->pathname, first_lib_map->address))) {
-      // The library binary has symbols
-      map = &(pd->maps[MAP_LIBSYM]);
-
-      map->path = proc_root(self->pid, first_lib_map->pathname);
-      if (!isvalid(map->path)) {
-        log_e("Cannot get proc root path for %s", first_lib_map->pathname);  // GCOV_EXCL_START
+    cu_proc_map_t* proc_maps = proc_map_new(self->pid);
+    if (!isvalid(proc_maps)) {
+        log_e("Cannot get memory maps for pid %d", self->pid);
         set_error(EPROC);
-        FAIL;  // GCOV_EXCL_STOP
-      }
-      map->file_size = _file_size(map->path);
-      map->base = first_lib_map->address;
-      map->size = first_lib_map->size;
-      map->has_symbols = TRUE;
-      map->bss_base = self->map.bss.base;
-      map->bss_size = self->map.bss.size;
-
-      log_d("Library path: %s (with symbols)", map->path);
+        FAIL;
     }
-    else {
-      // We look for something matching "libpythonX.Y"
-      PROC_MAP_ITER(first_lib_map, m) {
-        unsigned int v;
-        char * needle = strstr(m->pathname, LIB_NEEDLE);
-        if (sscanf(needle, "libpython%u.%u", &v, &v) == 2) {
-          map = &(pd->maps[MAP_LIBNEEDLE]);
 
-          map->path = proc_root(self->pid, m->pathname);
-          if (!isvalid(map->path)) {
-            log_e("Cannot get proc root path for %s", m->pathname);  // GCOV_EXCL_START
-            set_error(EPROC);
-            FAIL;  // GCOV_EXCL_STOP
-          }
-          map->file_size = _file_size(map->path);
-          map->base = m->address;
-          map->size = m->size;
-          map->has_symbols = FALSE;
+    sfree(self->bin_path);
+    sfree(self->lib_path);
 
-          log_d("Library path: %s (from pattern match)", map->path);
+    self->map.exe.base = NULL;
+    self->map.exe.size = 0;
 
-          break;
+    cu_void* pd_mem = calloc(1, sizeof(struct proc_desc));
+    if (!isvalid(pd_mem)) {
+        log_ie("Cannot allocate memory for proc_desc");
+        set_error(EPROC);
+        FAIL;
+    }
+    struct proc_desc* pd = pd_mem;
+
+    proc_map_t* first_binary_map = NULL;
+
+    if (fail(proc_exe_readlink(self->pid, pd->exe_path, sizeof(pd->exe_path)))) {
+        // We cannot readlink the executable path so we take the first memory map
+        PROC_MAP_ITER(proc_maps, m) {
+            if (isvalid(m->pathname)) {
+                strncpy(pd->exe_path, m->pathname, sizeof(pd->exe_path) - 1);
+                first_binary_map = m;
+                break;
+            }
         }
-      }
-    }
-  }
-
-  // If the library map is not valid, use the needle map
-  if (!isvalid(pd->maps[MAP_LIBSYM].path)) {
-    pd->maps[MAP_LIBSYM] = pd->maps[MAP_LIBNEEDLE];
-    pd->maps[MAP_LIBNEEDLE].path = NULL;
-  }
-
-  // Work out paths
-  self->bin_path = pd->maps[MAP_BIN].path;
-  self->lib_path = pd->maps[MAP_LIBSYM].path;
-
-  // Work out binary map
-  for (int i = 0; i < MAP_COUNT; i++) {
-    map = &(pd->maps[i]);
-    if (map->has_symbols) {
-      self->map.exe.base = map->base;
-      self->map.exe.size = map->size;
-      maps_flag |= BIN_MAP;
-      self->sym_loaded = TRUE;
-      break;
-    }
-  }
-
-  if (!(maps_flag & BIN_MAP) && !isvalid(pd->maps[MAP_LIBNEEDLE].path)) {
-    // We don't have symbols and we don't have a needle path so it's quite
-    // unlikely that we can work out a Python version in this case.
-    if (isvalid(pd->maps[MAP_BIN].path) && strstr(pd->maps[MAP_BIN].path, "python")) {
-      log_d("No symbols but binary seems to be Python.");
-      maps_flag |= BIN_MAP;
+        if (!isvalid(first_binary_map)) {
+            log_ie("Cannot infer the executable path");
+            set_error(EPROC);
+            FAIL;
+        }
     } else {
-      log_d("No symbols and no needle path. Giving up.");
-      FAIL;
+        first_binary_map = proc_map__first(proc_maps, pd->exe_path);
+        if (!isvalid(first_binary_map)) {
+            log_ie("Cannot find the first binary map");
+            set_error(EPROC);
+            FAIL;
+        }
     }
-  }
 
-  // Work out BSS map
-  int map_index = isvalid(pd->maps[MAP_LIBSYM].path) ? MAP_LIBSYM : MAP_BIN;
-  self->map.bss.base = pd->maps[map_index].bss_base;
-  self->map.bss.size = pd->maps[map_index].bss_size;
-  if (!isvalid(self->map.bss.base)) {
-    log_e("Cannot find valid BSS map");
-    set_error(EPROCVM);
-    FAIL;
-  }
+    log_d("Executable path: %s", pd->exe_path);
 
-  if (!(maps_flag & (BIN_MAP))) {
-    log_e("No usable Python binary found");
-    set_error(EPROC);
-    FAIL;
-  }
+    map       = &(pd->maps[MAP_BIN]);
+    map->path = proc_root(self->pid, pd->exe_path);
+    if (!isvalid(map->path)) {
+        log_e("Cannot get proc root path for %s", pd->exe_path); // GCOV_EXCL_START
+        set_error(EPROC);
+        FAIL; // GCOV_EXCL_STOP
+    }
+    map->file_size   = _file_size(map->path);
+    map->base        = first_binary_map->address;
+    map->size        = first_binary_map->size;
+    map->has_symbols = success(_py_proc__analyze_elf(self, map->path, map->base));
+    if (map->has_symbols) {
+        map->bss_base = self->map.bss.base;
+        map->bss_size = self->map.bss.size;
+    }
+    log_d("Binary path: %s (symbols: %d)", map->path, map->has_symbols);
 
-  log_d("BSS map %d from %s @ %p", map_index, pd->maps[map_index].path, self->map.bss.base);
-  log_d("VM maps parsing result: bin=%s lib=%s flags=%d", self->bin_path, self->lib_path, maps_flag);
+    size_t page_size = getpagesize();
 
-  SUCCESS;
+    if (map->bss_size == 0) {
+        // Find the BSS section for the binary
+        PROC_MAP_ITER(first_binary_map, m) {
+            if (!isvalid(m->pathname) && m->perms == (PERMS_READ | PERMS_WRITE) && m->size > 0) {
+                map           = &(pd->maps[MAP_BIN]);
+                map->bss_base = m->address - page_size;
+                map->bss_size = m->size + page_size;
+                log_d("BSS section found @ %p (size %x)", self->map.bss.base, self->map.bss.size);
+                break;
+            }
+        }
+    }
+
+    if (!map->has_symbols) {
+        // Find the runtime section for the binary
+        PROC_MAP_ITER(first_binary_map, m) {
+            if (m->perms == (PERMS_READ | PERMS_WRITE) && isvalid(m->pathname)
+                && strcmp(m->pathname, pd->exe_path) == 0) {
+                self->map.runtime.base = m->address - page_size;
+                self->map.runtime.size = m->size + page_size;
+                log_d("PyRuntime section found @ %p (size %x)", self->map.runtime.base, self->map.runtime.size);
+                break;
+            }
+        }
+    }
+
+    proc_map_t* first_lib_map = proc_map__first_submatch(proc_maps, LIB_NEEDLE);
+    if (isvalid(first_lib_map)) {
+        if (success(_py_proc__analyze_elf(self, first_lib_map->pathname, first_lib_map->address))) {
+            // The library binary has symbols
+            map = &(pd->maps[MAP_LIBSYM]);
+
+            map->path = proc_root(self->pid, first_lib_map->pathname);
+            if (!isvalid(map->path)) {
+                log_e("Cannot get proc root path for %s", first_lib_map->pathname); // GCOV_EXCL_START
+                set_error(EPROC);
+                FAIL; // GCOV_EXCL_STOP
+            }
+            map->file_size   = _file_size(map->path);
+            map->base        = first_lib_map->address;
+            map->size        = first_lib_map->size;
+            map->has_symbols = TRUE;
+            map->bss_base    = self->map.bss.base;
+            map->bss_size    = self->map.bss.size;
+
+            log_d("Library path: %s (with symbols)", map->path);
+        } else {
+            // We look for something matching "libpythonX.Y"
+            PROC_MAP_ITER(first_lib_map, m) {
+                unsigned int v;
+                char*        needle = strstr(m->pathname, LIB_NEEDLE);
+                if (sscanf(needle, "libpython%u.%u", &v, &v) == 2) {
+                    map = &(pd->maps[MAP_LIBNEEDLE]);
+
+                    map->path = proc_root(self->pid, m->pathname);
+                    if (!isvalid(map->path)) {
+                        log_e("Cannot get proc root path for %s", m->pathname); // GCOV_EXCL_START
+                        set_error(EPROC);
+                        FAIL; // GCOV_EXCL_STOP
+                    }
+                    map->file_size   = _file_size(map->path);
+                    map->base        = m->address;
+                    map->size        = m->size;
+                    map->has_symbols = FALSE;
+
+                    log_d("Library path: %s (from pattern match)", map->path);
+
+                    break;
+                }
+            }
+        }
+    }
+
+    // If the library map is not valid, use the needle map
+    if (!isvalid(pd->maps[MAP_LIBSYM].path)) {
+        pd->maps[MAP_LIBSYM]         = pd->maps[MAP_LIBNEEDLE];
+        pd->maps[MAP_LIBNEEDLE].path = NULL;
+    }
+
+    // Work out paths
+    self->bin_path = pd->maps[MAP_BIN].path;
+    self->lib_path = pd->maps[MAP_LIBSYM].path;
+
+    // Work out binary map
+    for (int i = 0; i < MAP_COUNT; i++) {
+        map = &(pd->maps[i]);
+        if (map->has_symbols) {
+            self->map.exe.base  = map->base;
+            self->map.exe.size  = map->size;
+            maps_flag          |= BIN_MAP;
+            self->sym_loaded    = TRUE;
+            break;
+        }
+    }
+
+    if (!(maps_flag & BIN_MAP) && !isvalid(pd->maps[MAP_LIBNEEDLE].path)) {
+        // We don't have symbols and we don't have a needle path so it's quite
+        // unlikely that we can work out a Python version in this case.
+        if (isvalid(pd->maps[MAP_BIN].path) && strstr(pd->maps[MAP_BIN].path, "python")) {
+            log_d("No symbols but binary seems to be Python.");
+            maps_flag |= BIN_MAP;
+        } else {
+            log_d("No symbols and no needle path. Giving up.");
+            FAIL;
+        }
+    }
+
+    // Work out BSS map
+    int map_index      = isvalid(pd->maps[MAP_LIBSYM].path) ? MAP_LIBSYM : MAP_BIN;
+    self->map.bss.base = pd->maps[map_index].bss_base;
+    self->map.bss.size = pd->maps[map_index].bss_size;
+    if (!isvalid(self->map.bss.base)) {
+        log_e("Cannot find valid BSS map");
+        set_error(EPROCVM);
+        FAIL;
+    }
+
+    if (!(maps_flag & (BIN_MAP))) {
+        log_e("No usable Python binary found");
+        set_error(EPROC);
+        FAIL;
+    }
+
+    log_d("BSS map %d from %s @ %p", map_index, pd->maps[map_index].path, self->map.bss.base);
+    log_d("VM maps parsing result: bin=%s lib=%s flags=%d", self->bin_path, self->lib_path, maps_flag);
+
+    SUCCESS;
 } /* _py_proc__parse_maps_file */
-
 
 // ----------------------------------------------------------------------------
 static ssize_t
-_py_proc__get_resident_memory(py_proc_t * self) {
-  FILE * statm = fopen(self->extra->statm_file, "rb");
-  if (statm == NULL) {
-    set_error(EPROCVM);
-    return -1;
-  }
+_py_proc__get_resident_memory(py_proc_t* self) {
+    FILE* statm = fopen(self->extra->statm_file, "rb");
+    if (statm == NULL) {
+        set_error(EPROCVM);
+        return -1;
+    }
 
-  int ret = 0;
+    int ret = 0;
 
-  ssize_t size, resident;
-  if (fscanf(statm, SIZE_FMT " " SIZE_FMT, &size, &resident) != 2)
-    ret = -1;
+    ssize_t size, resident;
+    if (fscanf(statm, SIZE_FMT " " SIZE_FMT, &size, &resident) != 2)
+        ret = -1;
 
-  fclose(statm);
+    fclose(statm);
 
-  return ret ? ret : resident * self->extra->page_size;
+    return ret ? ret : resident * self->extra->page_size;
 } /* _py_proc__get_resident_memory */
-
 
 #ifdef NATIVE
 // ----------------------------------------------------------------------------
-char         pathname[1024];
-char         prevpathname[1024];
-vm_range_t * ranges[256];
+char        pathname[1024];
+char        prevpathname[1024];
+vm_range_t* ranges[256];
 
 static int
-_py_proc__get_vm_maps(py_proc_t * self) {
-  cu_FILE         * fp    = NULL;
-  cu_char         * line  = NULL;
-  size_t            len   = 0;
-  vm_range_tree_t * tree  = NULL;
-  hash_table_t    * table = NULL;
+_py_proc__get_vm_maps(py_proc_t* self) {
+    cu_FILE*         fp    = NULL;
+    cu_char*         line  = NULL;
+    size_t           len   = 0;
+    vm_range_tree_t* tree  = NULL;
+    hash_table_t*    table = NULL;
 
-  if (pargs.where) {
-    tree  = vm_range_tree_new();
-    table = hash_table_new(256);
+    if (pargs.where) {
+        tree  = vm_range_tree_new();
+        table = hash_table_new(256);
 
-    vm_range_tree__destroy(self->maps_tree);
-    hash_table__destroy(self->base_table);
+        vm_range_tree__destroy(self->maps_tree);
+        hash_table__destroy(self->base_table);
 
-    self->maps_tree = tree;
-    self->base_table = table;
-  }
-
-  fp = _procfs(self->pid, "maps");
-  if (!isvalid(fp)) {
-    set_error(EPROC);
-    FAIL;
-  }
-
-  log_d("Rebuilding vm ranges tree");
-
-  int    nrange = 0;
-  while (getline(&line, &len, fp) != -1 && nrange < 256) {
-    ssize_t lower, upper;
-
-    if (sscanf(line, ADDR_FMT "-" ADDR_FMT " %*s %*x %*x:%*x %*x %s\n",
-      &lower, &upper, // Map bounds
-      pathname        // Binary path
-    ) == 3 && pathname[0] != '[') {
-      if (pargs.where) {
-        if (strcmp(pathname, prevpathname)) {
-          ranges[nrange++] = vm_range_new(lower, upper, strdup(pathname));
-          key_dt key = string__hash(pathname);
-          if (!isvalid(hash_table__get(table, key)))
-            hash_table__set(table, key, (value_t) lower);
-          strcpy(prevpathname, pathname);
-        } else
-          ranges[nrange-1]->hi = upper;
-      }
-      else
-        // We print the maps instead so that we can resolve them later and use
-        // the CPU more efficiently to collect samples.
-        emit_metadata("map", ADDR_FMT "-" ADDR_FMT " %s", lower, upper, pathname);
+        self->maps_tree  = tree;
+        self->base_table = table;
     }
-  }
 
-  for (int i = 0; i < nrange; i++)
-    vm_range_tree__add(tree, (vm_range_t *) ranges[i]);
+    fp = _procfs(self->pid, "maps");
+    if (!isvalid(fp)) {
+        set_error(EPROC);
+        FAIL;
+    }
 
-  SUCCESS;
+    log_d("Rebuilding vm ranges tree");
+
+    int nrange = 0;
+    while (getline(&line, &len, fp) != -1 && nrange < 256) {
+        ssize_t lower, upper;
+
+        if (sscanf(
+                line, ADDR_FMT "-" ADDR_FMT " %*s %*x %*x:%*x %*x %s\n", &lower, &upper, // Map bounds
+                pathname                                                                 // Binary path
+            ) == 3
+            && pathname[0] != '[') {
+            if (pargs.where) {
+                if (strcmp(pathname, prevpathname)) {
+                    ranges[nrange++] = vm_range_new(lower, upper, strdup(pathname));
+                    key_dt key       = string__hash(pathname);
+                    if (!isvalid(hash_table__get(table, key)))
+                        hash_table__set(table, key, (value_t)lower);
+                    strcpy(prevpathname, pathname);
+                } else
+                    ranges[nrange - 1]->hi = upper;
+            } else
+                // We print the maps instead so that we can resolve them later and use
+                // the CPU more efficiently to collect samples.
+                emit_metadata("map", ADDR_FMT "-" ADDR_FMT " %s", lower, upper, pathname);
+        }
+    }
+
+    for (int i = 0; i < nrange; i++)
+        vm_range_tree__add(tree, (vm_range_t*)ranges[i]);
+
+    SUCCESS;
 } /* _py_proc__get_vm_maps */
 #endif
 
-
 // ----------------------------------------------------------------------------
 static int
-_py_proc__init(py_proc_t * self) {
-  if (!isvalid(self) || fail(_py_proc__parse_maps_file(self))) {
-    set_error(EPROC);
-    FAIL;
-  }
+_py_proc__init(py_proc_t* self) {
+    if (!isvalid(self) || fail(_py_proc__parse_maps_file(self))) {
+        set_error(EPROC);
+        FAIL;
+    }
 
-  self->extra->page_size = getpagesize();
-  log_d("Page size: %u", self->extra->page_size);
+    self->extra->page_size = getpagesize();
+    log_d("Page size: %u", self->extra->page_size);
 
-  sprintf(self->extra->statm_file, "/proc/%d/statm", self->pid);
+    sprintf(self->extra->statm_file, "/proc/%d/statm", self->pid);
 
-  self->last_resident_memory = _py_proc__get_resident_memory(self);
+    self->last_resident_memory = _py_proc__get_resident_memory(self);
 
-  #ifdef NATIVE
-  _py_proc__get_vm_maps(self);
-  #endif
+#ifdef NATIVE
+    _py_proc__get_vm_maps(self);
+#endif
 
-  SUCCESS;
+    SUCCESS;
 } /* _py_proc__init */
-
 
 // ----------------------------------------------------------------------------
 pid_t
 _get_nspid(pid_t pid) {
-  cu_char * line  = NULL;
-  size_t    len   = 0;
-  pid_t     nspid = 0;
-  pid_t     this  = 0;
+    cu_char* line  = NULL;
+    size_t   len   = 0;
+    pid_t    nspid = 0;
+    pid_t this     = 0;
 
-  cu_FILE * status = _procfs(pid, "status");
-  if (!isvalid(status)) {
-    log_e("Cannot get namespace PID for %d", pid);
-    return 0;
-  }
-
-  while (getline(&line, &len, status) != -1) {
-    if (sscanf(line, "NSpid:\t%d\t%d", &this, &nspid) == 2 && this == pid) {
-      break;
+    cu_FILE* status = _procfs(pid, "status");
+    if (!isvalid(status)) {
+        log_e("Cannot get namespace PID for %d", pid);
+        return 0;
     }
-  }
 
-  log_d("NS PID for %d: %d", pid, nspid);
+    while (getline(&line, &len, status) != -1) {
+        if (sscanf(line, "NSpid:\t%d\t%d", &this, &nspid) == 2 && this == pid) {
+            break;
+        }
+    }
 
-  return nspid;
+    log_d("NS PID for %d: %d", pid, nspid);
+
+    return nspid;
 }
-
 
 // Support for CPU time on Linux. We need to retrieve the TID from the struct
 // pthread pointed to by the native thread ID stored by Python. We do not have
@@ -692,44 +653,40 @@ _get_nspid(pid_t pid) {
 
 // ----------------------------------------------------------------------------
 static int
-_infer_tid_field_offset(py_thread_t * py_thread) {
-  if (fail(read_pthread_t(py_thread->proc, (void *) py_thread->tid))) {
-    log_d("> Cannot copy pthread_t structure (pid: %u)", py_thread->raddr.pref);
-    set_error(EMMAP);
+_infer_tid_field_offset(py_thread_t* py_thread) {
+    if (fail(read_pthread_t(py_thread->proc, (void*)py_thread->tid))) {
+        log_d("> Cannot copy pthread_t structure (pid: %u)", py_thread->raddr.pref);
+        set_error(EMMAP);
+        FAIL;
+    }
+
+    log_d("pthread_t at %p", py_thread->tid);
+
+    // If the target process is in a different PID namespace, we need to get its
+    // other PID to be able to determine the offset of the TID field.
+    pid_t nspid = _get_nspid(py_thread->raddr.pref);
+
+    for (register int i = 0; i < PTHREAD_BUFFER_ITEMS; i++) {
+        if (py_thread->raddr.pref == py_thread->proc->extra->_pthread_buffer[i]
+            || (nspid && nspid == py_thread->proc->extra->_pthread_buffer[i])) {
+            log_d("TID field offset: %d", i);
+            py_thread->proc->extra->pthread_tid_offset = i;
+            SUCCESS;
+        }
+    }
+
+    // Fall-back to smaller steps if we failed
+    for (register int i = 0; i < PTHREAD_BUFFER_ITEMS * (sizeof(uintptr_t) / sizeof(pid_t)); i++) {
+        if (py_thread->raddr.pref == (pid_t)((pid_t*)py_thread->proc->extra->_pthread_buffer)[i]
+            || (nspid && nspid == (pid_t)((pid_t*)py_thread->proc->extra->_pthread_buffer)[i])) {
+            log_d("TID field offset (from fall-back): %d", i);
+            py_thread->proc->extra->pthread_tid_offset = -i;
+            SUCCESS;
+        }
+    }
+
+    set_error(ETHREAD);
     FAIL;
-  }
-
-  log_d("pthread_t at %p", py_thread->tid);
-
-  // If the target process is in a different PID namespace, we need to get its
-  // other PID to be able to determine the offset of the TID field.
-  pid_t nspid = _get_nspid(py_thread->raddr.pref);
-
-  for (register int i = 0; i < PTHREAD_BUFFER_ITEMS; i++) {
-    if (
-      py_thread->raddr.pref == py_thread->proc->extra->_pthread_buffer[i]
-      || (nspid && nspid == py_thread->proc->extra->_pthread_buffer[i])
-    ) {
-      log_d("TID field offset: %d", i);
-      py_thread->proc->extra->pthread_tid_offset = i;
-      SUCCESS;
-    }
-  }
-
-  // Fall-back to smaller steps if we failed
-  for (register int i = 0; i < PTHREAD_BUFFER_ITEMS * (sizeof(uintptr_t) / sizeof(pid_t)); i++) {
-    if (
-      py_thread->raddr.pref == (pid_t) ((pid_t *) py_thread->proc->extra->_pthread_buffer)[i]
-      || (nspid && nspid == (pid_t) ((pid_t *) py_thread->proc->extra->_pthread_buffer)[i])
-    ) {
-      log_d("TID field offset (from fall-back): %d", i);
-      py_thread->proc->extra->pthread_tid_offset = -i;
-      SUCCESS;
-    }
-  }
-
-  set_error(ETHREAD);
-  FAIL;
 }
 
 #endif

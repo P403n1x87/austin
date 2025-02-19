@@ -28,128 +28,124 @@
 #include "hints.h"
 #include "platform.h"
 
+#define MAXERROR (5 << 3)
 
-#define MAXERROR              (5 << 3)
+const char* _error_msg_tab[MAXERROR] = {
+    // generic error messages
+    "No error",
+    "Cannot open memory maps file",
+    "Cannot read remote memory",
+    "Cannot determine Python version",
+    "Cannot redirect STDOUT to " NULL_DEVICE,
+    "No command nor valid PID",
+    "Binary has no symbols",
+    NULL,
 
-const char * _error_msg_tab[MAXERROR] = {
-  // generic error messages
-  "No error",
-  "Cannot open memory maps file",
-  "Cannot read remote memory",
-  "Cannot determine Python version",
-  "Cannot redirect STDOUT to " NULL_DEVICE,
-  "No command nor valid PID",
-  "Binary has no symbols",
-  NULL,
+    // PyCodeObject
+    "Failed to retrieve PyCodeObject",
+    "Encountered unsupported string format",
+    "Not a compact unicode object",
+    "Failed to retrieve PyBytesObject",
+    "Unable to get filename from code object",
+    "Unable to get function name from code object",
+    "Unable to get line number from code object",
+    "Failed to retrieve PyUnicodeObject",
 
-  // PyCodeObject
-  "Failed to retrieve PyCodeObject",
-  "Encountered unsupported string format",
-  "Not a compact unicode object",
-  "Failed to retrieve PyBytesObject",
-  "Unable to get filename from code object",
-  "Unable to get function name from code object",
-  "Unable to get line number from code object",
-  "Failed to retrieve PyUnicodeObject",
+    // PyFrameObject
+    "Failed to create frame object",
+    "Failed to get code object for frame",
+    "Invalid frame",
+    NULL,
+    NULL,
+    NULL,
+    NULL,
+    NULL,
 
-  // PyFrameObject
-  "Failed to create frame object",
-  "Failed to get code object for frame",
-  "Invalid frame",
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
+    // py_thread_t
+    "Failed to create thread object",
+    "Failed to get top frame for thread",
+    "Invalid thread",
+    "No next thread",
+    NULL,
+    NULL,
+    NULL,
+    NULL,
 
-  // py_thread_t
-  "Failed to create thread object",
-  "Failed to get top frame for thread",
-  "Invalid thread",
-  "No next thread",
-  NULL,
-  NULL,
-  NULL,
-  NULL,
-
-  // py_proc_t
-  "Failed to initialise process",
-  "Failed to fork process",
-  "Failed to load memory maps",
-  "Interpreter state search timed out",
-  "Failed to attach to running process",
-  "Permission denied. Try with elevated privileges",
-  "No such process",
-  "Non-Python parent process has no Python children",
+    // py_proc_t
+    "Failed to initialise process",
+    "Failed to fork process",
+    "Failed to load memory maps",
+    "Interpreter state search timed out",
+    "Failed to attach to running process",
+    "Permission denied. Try with elevated privileges",
+    "No such process",
+    "Non-Python parent process has no Python children",
 };
-
 
 const int _fatal_error_tab[MAXERROR] = {
-  // generic error messages
-  0,
-  1,
-  1,
-  1,
-  0,
-  1,
-  0,
-  0,
+    // generic error messages
+    0,
+    1,
+    1,
+    1,
+    0,
+    1,
+    0,
+    0,
 
-  // PyCodeObject
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
+    // PyCodeObject
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
 
-  // PyFrameObject
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
+    // PyFrameObject
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
 
-  // py_thread_t
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
-  0,
+    // py_thread_t
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
 
-  // py_proc_t
-  0,
-  1,
-  1,
-  1,
-  1,
-  1,
-  1,
-  1,
+    // py_proc_t
+    0,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
+    1,
 };
 
-
-const char *
+const char*
 error_get_msg(error_t n) {
-  if (n >= MAXERROR)
-    return "<Unknown error>";
+    if (n >= MAXERROR)
+        return "<Unknown error>";
 
-  return _error_msg_tab[n];
+    return _error_msg_tab[n];
 }
-
 
 const int
 is_fatal(error_t n) {
-  if (n >= MAXERROR)
-    return FALSE;
+    if (n >= MAXERROR)
+        return FALSE;
 
-  return _fatal_error_tab[n];
+    return _fatal_error_tab[n];
 }

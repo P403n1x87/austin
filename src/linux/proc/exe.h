@@ -22,7 +22,6 @@
 
 #pragma once
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -31,24 +30,22 @@
 #include "../../error.h"
 #include "../../hints.h"
 
-
 #define DELETED_SUFFIX " (deleted)"
-
 
 // ----------------------------------------------------------------------------
 static int
-proc_exe_readlink(pid_t pid, char * dest, ssize_t size) {
+proc_exe_readlink(pid_t pid, char* dest, ssize_t size) {
     char file_name[32];
 
     sprintf(file_name, "/proc/%d/exe", pid);
 
     if (readlink(file_name, dest, size) == -1) {
         log_e("Cannot readlink %s", file_name);
-        FAIL;  // cppcheck-suppress [resourceLeak]
+        FAIL; // cppcheck-suppress [resourceLeak]
     }
 
     // Handle deleted files
-    char * suffix = strstr(dest, DELETED_SUFFIX);
+    char* suffix = strstr(dest, DELETED_SUFFIX);
     if (isvalid(suffix)) {
         *suffix = '\0';
     }

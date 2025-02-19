@@ -23,8 +23,7 @@
 // This source has been adapted from
 // https://github.com/bminor/binutils-gdb/blob/ce230579c65b9e04c830f35cb78ff33206e65db1/binutils/addr2line.c
 
-
-#define PACKAGE "austinp"  // https://github.com/P403n1x87/austin/issues/152
+#define PACKAGE "austinp" // https://github.com/P403n1x87/austin/issues/152
 
 #include <bfd.h>
 #include <ctype.h>
@@ -38,21 +37,22 @@
 #include "../logging.h"
 #include "../stack.h"
 
-static asymbol **syms; /* Symbol table.  */
+static asymbol** syms; /* Symbol table.  */
 
-static void slurp_symtab(bfd *);
-static void find_address_in_section(bfd *, asection *, void *);
+static void
+slurp_symtab(bfd*);
+static void
+find_address_in_section(bfd*, asection*, void*);
 
 #define string__startswith(str, head) (strncmp(head, str, strlen(head)) == 0)
 
 // TODO: This is incomplete or plain incorrect
-static inline char *
-demangle_cython(char *function)
-{
+static inline char*
+demangle_cython(char* function) {
     if (!isvalid(function))
         return NULL;
 
-    char *f = function;
+    char* f = function;
 
     if (string__startswith(f, "__pyx_pw_") || string__startswith(f, "__pyx_pf_"))
         return function;
@@ -63,23 +63,20 @@ demangle_cython(char *function)
     if (string__startswith(f, "__pyx_fuse_"))
         function = strstr(f + 12, "__pyx_") + 12;
 
-    while (!isdigit(*f))
-    {
+    while (!isdigit(*f)) {
         if (*(f++) == '\0')
             return function;
     }
 
     int n = 0;
-    while (*f != '\0')
-    {
+    while (*f != '\0') {
         puts(f);
         char c = *(f++);
         if (isdigit(c))
             n = n * 10 + (c - '0');
-        else
-        {
+        else {
             f += n;
-            n = 0;
+            n  = 0;
             if (!isdigit(*f))
                 return f;
         }
@@ -91,8 +88,7 @@ demangle_cython(char *function)
 /* Read in the symbol table.  */
 
 static void
-slurp_symtab(bfd *abfd)
-{
+slurp_symtab(bfd* abfd) {
     long storage;
     long symcount;
     bool dynamic = false;
@@ -101,15 +97,14 @@ slurp_symtab(bfd *abfd)
         return;
 
     storage = bfd_get_symtab_upper_bound(abfd);
-    if (storage == 0)
-    {
+    if (storage == 0) {
         storage = bfd_get_dynamic_symtab_upper_bound(abfd);
         dynamic = true;
     }
     if (storage < 0)
         return;
 
-    syms = (asymbol **)malloc(storage);
+    syms = (asymbol**)malloc(storage);
     if (dynamic)
         symcount = bfd_canonicalize_dynamic_symtab(abfd, syms);
     else
@@ -119,25 +114,23 @@ slurp_symtab(bfd *abfd)
 
     /* If there are no symbols left after canonicalization and
      we have not tried the dynamic symbols then give them a go.  */
-    if (symcount == 0 && !dynamic && (storage = bfd_get_dynamic_symtab_upper_bound(abfd)) > 0)
-    {
+    if (symcount == 0 && !dynamic && (storage = bfd_get_dynamic_symtab_upper_bound(abfd)) > 0) {
         free(syms);
-        syms = (asymbol **)malloc(storage);
+        syms     = (asymbol**)malloc(storage);
         symcount = bfd_canonicalize_dynamic_symtab(abfd, syms);
     }
 
     /* PR 17512: file: 2a1d3b5b.
      Do not pretend that we have some symbols when we don't.  */
-    if (symcount <= 0)
-    {
+    if (symcount <= 0) {
         free(syms);
         syms = NULL;
     }
 }
 
-static bfd_vma pc;
-static const char *filename;
-static const char *functionname;
+static bfd_vma      pc;
+static const char*  filename;
+static const char*  functionname;
 static unsigned int line;
 static unsigned int discriminator;
 
@@ -145,9 +138,8 @@ static unsigned int discriminator;
    bfd_map_over_sections.  */
 
 static void
-find_address_in_section(bfd *abfd, asection *section, void *data ATTRIBUTE_UNUSED)
-{
-    bfd_vma vma;
+find_address_in_section(bfd* abfd, asection* section, void* data ATTRIBUTE_UNUSED) {
+    bfd_vma       vma;
     bfd_size_type size;
 
     if ((bfd_section_flags(section) & SEC_ALLOC) == 0)
@@ -161,21 +153,17 @@ find_address_in_section(bfd *abfd, asection *section, void *data ATTRIBUTE_UNUSE
     if (pc >= vma + size)
         return;
 
-    bfd_find_nearest_line_discriminator(abfd, section, syms, pc - vma,
-                                        &filename, &functionname,
-                                        &line, &discriminator);
+    bfd_find_nearest_line_discriminator(abfd, section, syms, pc - vma, &filename, &functionname, &line, &discriminator);
 }
 
-static inline frame_t *
-get_native_frame(const char *file_name, bfd_vma addr, key_dt frame_key)
-{
-    bfd *abfd;
-    char **matching;
+static inline frame_t*
+get_native_frame(const char* file_name, bfd_vma addr, key_dt frame_key) {
+    bfd*   abfd;
+    char** matching;
 
     // TODO: This would be much cheaper if we could read directly from memory.
     abfd = bfd_openr(file_name, NULL);
-    if (abfd == NULL)
-    {
+    if (abfd == NULL) {
         log_e("Failed to open %s", file_name);
         return NULL;
     }
@@ -183,14 +171,12 @@ get_native_frame(const char *file_name, bfd_vma addr, key_dt frame_key)
     /* Decompress sections.  */
     abfd->flags |= BFD_DECOMPRESS;
 
-    if (bfd_check_format(abfd, bfd_archive))
-    {
+    if (bfd_check_format(abfd, bfd_archive)) {
         log_e("BFD format check failed");
         return NULL;
     }
 
-    if (!bfd_check_format_matches(abfd, bfd_object, &matching))
-    {
+    if (!bfd_check_format_matches(abfd, bfd_object, &matching)) {
         free(matching);
         log_d("BFC format matches check failed.");
         return NULL;
@@ -201,19 +187,18 @@ get_native_frame(const char *file_name, bfd_vma addr, key_dt frame_key)
     // Reset global state for a new lookup
     filename = functionname = NULL;
     line = discriminator = 0;
-    pc = addr;
+    pc                   = addr;
 
     bfd_map_over_sections(abfd, find_address_in_section, NULL);
 
-    const char *name;
+    const char* name;
 
     name = functionname;
     if (name == NULL || *name == '\0')
         name = "<unnamed>";
 #ifdef HAVE_LIBERTY
-    else
-    {
-        char *alloc = bfd_demangle(abfd, name, DMGL_PARAMS | DMGL_ANSI);
+    else {
+        char* alloc = bfd_demangle(abfd, name, DMGL_PARAMS | DMGL_ANSI);
         if (alloc != NULL)
             name = alloc;
     }
@@ -222,9 +207,9 @@ get_native_frame(const char *file_name, bfd_vma addr, key_dt frame_key)
     free(syms);
     syms = NULL;
 
-    frame_t *frame = isvalid(filename) && isvalid(name)
-        ? frame_new(frame_key, strdup(filename), strdup(name), line, 0, 0, 0)
-        : NULL;
+    frame_t* frame = isvalid(filename) && isvalid(name)
+                       ? frame_new(frame_key, strdup(filename), strdup(name), line, 0, 0, 0)
+                       : NULL;
 
     bfd_close(abfd);
 

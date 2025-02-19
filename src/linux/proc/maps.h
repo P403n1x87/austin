@@ -22,9 +22,8 @@
 
 #pragma once
 
-
-#include <stdio.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "../../error.h"
@@ -34,42 +33,38 @@
 // ----------------------------------------------------------------------------
 
 typedef struct _proc_map {
-    void             * address;
-    size_t             size;
-    uint8_t            perms;
-    char             * pathname;
+    void*   address;
+    size_t  size;
+    uint8_t perms;
+    char*   pathname;
 
-    struct _proc_map * next;
+    struct _proc_map* next;
 } proc_map_t;
-
 
 #define PERMS_READ  (1 << 0)
 #define PERMS_WRITE (1 << 1)
 #define PERMS_EXEC  (1 << 2)
 
-
-#define PROC_MAP_ITER(proc_maps, map) \
-    for (proc_map_t * map = proc_maps; isvalid(map); map = map->next)
-
+#define PROC_MAP_ITER(proc_maps, map) for (proc_map_t* map = proc_maps; isvalid(map); map = map->next)
 
 // ----------------------------------------------------------------------------
-static inline proc_map_t *
+static inline proc_map_t*
 proc_map_new(pid_t pid) {
-    cu_char    * line = NULL;
-    size_t       len = 0;
-    char         pathname[1024] = { 0 };
-    char         perms[5] = { 0 };
-    proc_map_t * head = NULL;
-    proc_map_t * curr = NULL;
-    proc_map_t * next = NULL;
+    cu_char*    line           = NULL;
+    size_t      len            = 0;
+    char        pathname[1024] = {0};
+    char        perms[5]       = {0};
+    proc_map_t* head           = NULL;
+    proc_map_t* curr           = NULL;
+    proc_map_t* next           = NULL;
 
     cu_FILE* fp = _procfs(pid, "maps");
     if (fp == NULL) {
         switch (errno) {
-        case EACCES:  // Needs elevated privileges
+        case EACCES: // Needs elevated privileges
             set_error(EPROCPERM);
             break;
-        case ENOENT:  // Invalid pid
+        case ENOENT: // Invalid pid
             set_error(EPROCNPID);
             break;
         default:
@@ -81,14 +76,17 @@ proc_map_new(pid_t pid) {
     while (getline(&line, &len, fp) != -1) {
         ssize_t lower, upper;
 
-        int has_pathname = sscanf(line, ADDR_FMT "-" ADDR_FMT " %s %*x %*x:%*x %*x %s\n",
-            &lower, &upper, // Map bounds
-            perms,          // Permissions
-            pathname        // Binary path
-        ) - 3; // We expect between 3 and 4 matches. We skip offset, dev and inode
+        int has_pathname = sscanf(
+                               line, ADDR_FMT "-" ADDR_FMT " %s %*x %*x:%*x %*x %s\n", &lower,
+                               &upper,  // Map bounds
+                               perms,   // Permissions
+                               pathname // Binary path
+                           )
+                         - 3; // We expect between 3 and 4 matches. We skip offset, dev and inode
 
         if (has_pathname < 0) {
-            // Too few columns. This shouldn't happen but we skip this case anyway.
+            // Too few columns. This shouldn't happen but we skip this case
+            // anyway.
             continue;
         }
         if (has_pathname && pathname[0] == '[') {
@@ -102,30 +100,27 @@ proc_map_new(pid_t pid) {
             set_error(EPROC);
             break;
         }
-        if (!isvalid(head)) {
+        if (!isvalid(head))
             head = next;
-        }
-        else {
+        else
             curr->next = next;
-        }
+
         curr = next;
 
-        curr->address = (void*)lower;
-        curr->size = upper - lower;
-        curr->perms = 0;
-        if (perms[0] == 'r') curr->perms |= PERMS_READ;
-        if (perms[1] == 'w') curr->perms |= PERMS_WRITE;
-        if (perms[2] == 'x') curr->perms |= PERMS_EXEC;
-        curr->pathname = has_pathname ? strdup(pathname) : NULL;
+        curr->address   = (void*)lower;
+        curr->size      = upper - lower;
+        curr->perms    |= PERMS_READ * (perms[0] == 'r');
+        curr->perms    |= PERMS_WRITE * (perms[1] == 'w');
+        curr->perms    |= PERMS_EXEC * (perms[2] == 'x');
+        curr->pathname  = has_pathname ? strdup(pathname) : NULL;
     }
 
     return head;
 }
 
-
 // ----------------------------------------------------------------------------
 static inline proc_map_t*
-proc_map__first(proc_map_t* self, char * pathname) {
+proc_map__first(proc_map_t* self, char* pathname) {
     if (!isvalid(self) || !isvalid(pathname))
         return NULL;
 
@@ -137,10 +132,9 @@ proc_map__first(proc_map_t* self, char * pathname) {
     return NULL;
 }
 
-
 // ----------------------------------------------------------------------------
 static inline proc_map_t*
-proc_map__first_submatch(proc_map_t* self, char * needle) {
+proc_map__first_submatch(proc_map_t* self, char* needle) {
     if (!isvalid(self) || !isvalid(needle))
         return NULL;
 
@@ -153,10 +147,9 @@ proc_map__first_submatch(proc_map_t* self, char * needle) {
     return NULL;
 }
 
-
 // ----------------------------------------------------------------------------
 static inline void
-proc_map__destroy(proc_map_t * self) {
+proc_map__destroy(proc_map_t* self) {
     if (!isvalid(self))
         return;
 

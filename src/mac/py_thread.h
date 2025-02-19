@@ -28,43 +28,34 @@
 #include "../py_thread.h"
 #include "../resources.h"
 
-
 // This offset was discovered by looking at the result of PROC_PIDLISTTHREADS.
 // It's unclear whether we can rely on it always being the same, regardless of
 // interpreter and OS versions.
-#define SILLY_OFFSET                0xe0
+#define SILLY_OFFSET 0xe0
 
-#define MAX_THREADS                 4096
-
+#define MAX_THREADS 4096
 
 static uint64_t _silly_offset = 0;
 
-
 // ----------------------------------------------------------------------------
 static void
-_infer_thread_id_offset(py_thread_t * py_thread) {
+_infer_thread_id_offset(py_thread_t* py_thread) {
     // Set the default value, in case we fail to find the actual one.
     _silly_offset = SILLY_OFFSET;
 
-    cu_void  * tids_mem = calloc(MAX_THREADS, sizeof(uint64_t));
-    uint64_t * tids     = (uint64_t *) tids_mem;
+    cu_void*  tids_mem = calloc(MAX_THREADS, sizeof(uint64_t));
+    uint64_t* tids     = (uint64_t*)tids_mem;
     if (!isvalid(tids)) {
-        return;  // cppcheck-suppress [memleak]
+        return; // cppcheck-suppress [memleak]
     }
 
-    int n = proc_pidinfo(
-        py_thread->proc->pid,
-        PROC_PIDLISTTHREADS,
-        0,
-        tids,
-        MAX_THREADS * sizeof(uint64_t)
-    ) / sizeof(uint64_t);
+    int n = proc_pidinfo(py_thread->proc->pid, PROC_PIDLISTTHREADS, 0, tids, MAX_THREADS * sizeof(uint64_t))
+          / sizeof(uint64_t);
     if (n >= MAX_THREADS) {
         log_w("More than %d threads. Thread module initialisation might fail", MAX_THREADS);
-    }
-    else if (n <= 0) {
+    } else if (n <= 0) {
         log_w("No native threads found. This is weird.");
-        return;  // cppcheck-suppress [memleak]
+        return; // cppcheck-suppress [memleak]
     }
 
     // Find the thread ID offset
@@ -79,10 +70,9 @@ _infer_thread_id_offset(py_thread_t * py_thread) {
     log_t("Silly thread id offset: %x", _silly_offset);
 }
 
-
 // ----------------------------------------------------------------------------
 static int
-_py_thread__is_idle(py_thread_t * self) {
+_py_thread__is_idle(py_thread_t* self) {
     if (unlikely(_silly_offset == 0)) {
         _infer_thread_id_offset(self);
     }
@@ -92,17 +82,11 @@ _py_thread__is_idle(py_thread_t * self) {
     // pth_system_time fields.
     struct proc_threadinfo ti;
 
-    if (proc_pidinfo(
-            self->proc->pid,
-            PROC_PIDTHREADINFO,
-            self->tid + _silly_offset,
-            &ti,
-            sizeof(ti))
-    != sizeof(ti)) {
+    if (proc_pidinfo(self->proc->pid, PROC_PIDTHREADINFO, self->tid + _silly_offset, &ti, sizeof(ti)) != sizeof(ti)) {
         log_d("Cannot get thread info for thread %lx", self->tid);
         return -1;
     }
-    
+
     return ti.pth_run_state != TH_STATE_RUNNING;
 }
 

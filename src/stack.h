@@ -35,115 +35,115 @@
 #include "python/misc.h"
 #include "version.h"
 
-
 typedef struct {
-  size_t        size;
-  frame_t    ** base;
-  ssize_t       pointer;
-  py_frame_t  * py_base;
-  #ifdef NATIVE
-  frame_t    ** native_base;
-  ssize_t       native_pointer;
+    size_t      size;
+    frame_t**   base;
+    ssize_t     pointer;
+    py_frame_t* py_base;
+#ifdef NATIVE
+    frame_t** native_base;
+    ssize_t   native_pointer;
 
-  char       ** kernel_base;
-  ssize_t       kernel_pointer;
-  #endif
+    char**  kernel_base;
+    ssize_t kernel_pointer;
+#endif
 } stack_dt;
 
-static stack_dt * _stack;
+static stack_dt* _stack;
 
 static inline int
 stack_allocate(size_t size) {
-  if (isvalid(_stack))
+    if (isvalid(_stack))
+        SUCCESS;
+
+    _stack = (stack_dt*)calloc(1, sizeof(stack_dt));
+    if (!isvalid(_stack))
+        FAIL;
+
+    _stack->size    = size;
+    _stack->base    = (frame_t**)calloc(size, sizeof(frame_t*));
+    _stack->py_base = (py_frame_t*)calloc(size, sizeof(py_frame_t));
+#ifdef NATIVE
+    _stack->native_base = (frame_t**)calloc(size, sizeof(frame_t*));
+    _stack->kernel_base = (char**)calloc(size, sizeof(char*));
+#endif
+
     SUCCESS;
-
-  _stack = (stack_dt *) calloc(1, sizeof(stack_dt));
-  if (!isvalid(_stack))
-    FAIL;
-  
-  _stack->size    = size;
-  _stack->base    = (frame_t **)   calloc(size, sizeof(frame_t *));
-  _stack->py_base = (py_frame_t *) calloc(size, sizeof(py_frame_t));
-  #ifdef NATIVE
-  _stack->native_base = (frame_t **) calloc(size, sizeof(frame_t *));
-  _stack->kernel_base = (char **)    calloc(size, sizeof(char *));
-  #endif
-
-  SUCCESS;
 }
 
 static inline void
 stack_deallocate(void) {
-  if (!isvalid(_stack))
-    return;
+    if (!isvalid(_stack))
+        return;
 
-  free(_stack->base);
-  free(_stack->py_base);
-  #ifdef NATIVE
-  free(_stack->native_base);
-  free(_stack->kernel_base);
-  #endif
+    free(_stack->base);
+    free(_stack->py_base);
+#ifdef NATIVE
+    free(_stack->native_base);
+    free(_stack->kernel_base);
+#endif
 
-  free(_stack);
+    free(_stack);
 }
-
-
 
 static inline int
 stack_has_cycle(void) {
-  if (_stack->pointer < 2)
-    return FALSE;
+    if (_stack->pointer < 2)
+        return FALSE;
 
-  // This sucks! :( Worst case is quadratic in the stack height, but if the
-  // sampled stacks are short on average, it might still be faster than the
-  // overhead introduced by looking up from a set-like data structure.
-  py_frame_t top = _stack->py_base[_stack->pointer-1];
-  for (ssize_t i = _stack->pointer - 2; i >= 0; i--) {
-    #ifdef NATIVE
-    if (top.origin == _stack->py_base[i].origin && top.origin != CFRAME_MAGIC)
-    #else
-    if (top.origin == _stack->py_base[i].origin)
-    #endif
-      return TRUE;
-  }
-  return FALSE;
+    // This sucks! :( Worst case is quadratic in the stack height, but if the
+    // sampled stacks are short on average, it might still be faster than the
+    // overhead introduced by looking up from a set-like data structure.
+    py_frame_t top = _stack->py_base[_stack->pointer - 1];
+    for (ssize_t i = _stack->pointer - 2; i >= 0; i--) {
+#ifdef NATIVE
+        if (top.origin == _stack->py_base[i].origin && top.origin != CFRAME_MAGIC)
+#else
+        if (top.origin == _stack->py_base[i].origin)
+#endif
+            return TRUE;
+    }
+    return FALSE;
 }
 
 static inline void
-stack_py_push(void * origin, void * code, int lasti) {
-  _stack->py_base[_stack->pointer++] = (py_frame_t) {
-    .origin = origin,
-    .code   = code,
-    .lasti  = lasti
-  };
+stack_py_push(void* origin, void* code, int lasti) {
+    _stack->py_base[_stack->pointer++] = (py_frame_t){.origin = origin, .code = code, .lasti = lasti};
 }
 
-#define stack_pointer()         (_stack->pointer)
-#define stack_push(frame)       {_stack->base[_stack->pointer++] = frame;}
-#define stack_set(i, frame)     {_stack->base[i] = frame;}
-#define stack_pop()             (_stack->base[--_stack->pointer])
-#define stack_py_pop()          (_stack->py_base[--_stack->pointer])
-#define stack_py_get(i)         (_stack->py_base[i])
-#define stack_top()             (_stack->pointer ? _stack->base[_stack->pointer-1] : NULL)
-#define stack_reset()           {_stack->pointer = 0;}
-#define stack_is_valid()        (_stack->base[_stack->pointer-1]->line != 0)
-#define stack_is_empty()        (_stack->pointer == 0)
-#define stack_full()            (_stack->pointer >= _stack->size)
+#define stack_pointer() (_stack->pointer)
+#define stack_push(frame)                        \
+    { _stack->base[_stack->pointer++] = frame; }
+#define stack_set(i, frame)      \
+    { _stack->base[i] = frame; }
+#define stack_pop()     (_stack->base[--_stack->pointer])
+#define stack_py_pop()  (_stack->py_base[--_stack->pointer])
+#define stack_py_get(i) (_stack->py_base[i])
+#define stack_top()     (_stack->pointer ? _stack->base[_stack->pointer - 1] : NULL)
+#define stack_reset()        \
+    { _stack->pointer = 0; }
+#define stack_is_valid() (_stack->base[_stack->pointer - 1]->line != 0)
+#define stack_is_empty() (_stack->pointer == 0)
+#define stack_full()     (_stack->pointer >= _stack->size)
 
 #ifdef NATIVE
-#define stack_py_push_cframe()   (stack_py_push(CFRAME_MAGIC, NULL, 0))
+#define stack_py_push_cframe() (stack_py_push(CFRAME_MAGIC, NULL, 0))
 
-#define stack_native_push(frame) {_stack->native_base[_stack->native_pointer++] = frame;}
-#define stack_native_pop()       (_stack->native_base[--_stack->native_pointer])
-#define stack_native_is_empty()  (_stack->native_pointer == 0)
-#define stack_native_full()      (_stack->native_pointer >= _stack->size)
-#define stack_native_reset()     {_stack->native_pointer = 0;}
+#define stack_native_push(frame)                               \
+    { _stack->native_base[_stack->native_pointer++] = frame; }
+#define stack_native_pop()      (_stack->native_base[--_stack->native_pointer])
+#define stack_native_is_empty() (_stack->native_pointer == 0)
+#define stack_native_full()     (_stack->native_pointer >= _stack->size)
+#define stack_native_reset()        \
+    { _stack->native_pointer = 0; }
 
-#define stack_kernel_push(frame) {_stack->kernel_base[_stack->kernel_pointer++] = frame;}
-#define stack_kernel_pop()       (_stack->kernel_base[--_stack->kernel_pointer])
-#define stack_kernel_is_empty()  (_stack->kernel_pointer == 0)
-#define stack_kernel_full()      (_stack->kernel_pointer >= _stack->size)
-#define stack_kernel_reset()     {_stack->kernel_pointer = 0;}
+#define stack_kernel_push(frame)                               \
+    { _stack->kernel_base[_stack->kernel_pointer++] = frame; }
+#define stack_kernel_pop()      (_stack->kernel_base[--_stack->kernel_pointer])
+#define stack_kernel_is_empty() (_stack->kernel_pointer == 0)
+#define stack_kernel_full()     (_stack->kernel_pointer >= _stack->size)
+#define stack_kernel_reset()        \
+    { _stack->kernel_pointer = 0; }
 #endif
 
 // ----------------------------------------------------------------------------
@@ -157,77 +157,77 @@ stack_py_push(void * origin, void * code, int lasti) {
 
 // This is our representation of the linked list of stack chunks
 typedef struct stack_chunk {
-  void               * origin;
-  _PyStackChunk      * data;
-  struct stack_chunk * previous;
+    void*               origin;
+    _PyStackChunk*      data;
+    struct stack_chunk* previous;
 } stack_chunk_t;
 
 // ----------------------------------------------------------------------------
-static inline stack_chunk_t *
-stack_chunk_new(proc_ref_t pref, void * origin) {
-  _PyStackChunk original_chunk;
-  
-  if (copy_datatype(pref, origin, original_chunk)) {
-    log_e("Failed to copy _PyStackChunk");
-    return NULL;
-  }
+static inline stack_chunk_t*
+stack_chunk_new(proc_ref_t pref, void* origin) {
+    _PyStackChunk original_chunk;
 
-  stack_chunk_t * chunk = (stack_chunk_t *)calloc(1, sizeof(stack_chunk_t));
-  if (!isvalid(chunk)) {
-    log_e("Cannot allocate memory for stack chunk");
-    return NULL;
-  }
-
-  chunk->data = (_PyStackChunk *)malloc(original_chunk.size);
-  if (!isvalid(chunk->data)) {
-    log_e("Cannot allocate memory for stack chunk data");
-    goto fail;
-  }
-
-  if (copy_memory(pref, origin, original_chunk.size, chunk->data)) {
-    log_e("Failed to copy full stack chunk data");
-    goto fail;
-  }
-
-  chunk->origin = origin;
-  
-  if (original_chunk.previous != NULL) {
-    chunk->previous = stack_chunk_new(pref, original_chunk.previous);
-    if (!isvalid(chunk->previous)) {
-      log_e("Failed to copy previous stack chunk");
-      goto fail;
+    if (copy_datatype(pref, origin, original_chunk)) {
+        log_e("Failed to copy _PyStackChunk");
+        return NULL;
     }
-  }
 
-  return chunk;
+    stack_chunk_t* chunk = (stack_chunk_t*)calloc(1, sizeof(stack_chunk_t));
+    if (!isvalid(chunk)) {
+        log_e("Cannot allocate memory for stack chunk");
+        return NULL;
+    }
+
+    chunk->data = (_PyStackChunk*)malloc(original_chunk.size);
+    if (!isvalid(chunk->data)) {
+        log_e("Cannot allocate memory for stack chunk data");
+        goto fail;
+    }
+
+    if (copy_memory(pref, origin, original_chunk.size, chunk->data)) {
+        log_e("Failed to copy full stack chunk data");
+        goto fail;
+    }
+
+    chunk->origin = origin;
+
+    if (original_chunk.previous != NULL) {
+        chunk->previous = stack_chunk_new(pref, original_chunk.previous);
+        if (!isvalid(chunk->previous)) {
+            log_e("Failed to copy previous stack chunk");
+            goto fail;
+        }
+    }
+
+    return chunk;
 
 fail:
-  sfree(chunk->data);
-  sfree(chunk);
+    sfree(chunk->data);
+    sfree(chunk);
 
-  return NULL;
+    return NULL;
 }
 
 // ----------------------------------------------------------------------------
 static inline void
-stack_chunk__destroy(stack_chunk_t * chunk) {
-  if (!isvalid(chunk))
-    return;
+stack_chunk__destroy(stack_chunk_t* chunk) {
+    if (!isvalid(chunk))
+        return;
 
-  sfree(chunk->data);
-  stack_chunk__destroy(chunk->previous);
- 
-  sfree(chunk);
+    sfree(chunk->data);
+    stack_chunk__destroy(chunk->previous);
+
+    sfree(chunk);
 }
 
 // ----------------------------------------------------------------------------
-static inline void *
-stack_chunk__resolve(stack_chunk_t * self, void * address) {
-  if (address >= self->origin && (char *)address < (char *)self->origin + self->data->size)
-    return (char *)self->data + ((char *)address - (char *)self->origin);
+static inline void*
+stack_chunk__resolve(stack_chunk_t* self, void* address) {
+    if (address >= self->origin && (char*)address < (char*)self->origin + self->data->size)
+        return (char*)self->data + ((char*)address - (char*)self->origin);
 
-  if (self->previous)
-    return stack_chunk__resolve(self->previous, address);
+    if (self->previous)
+        return stack_chunk__resolve(self->previous, address);
 
-  return NULL;
+    return NULL;
 }

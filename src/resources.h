@@ -25,37 +25,31 @@
 #include "hints.h"
 #include "platform.h"
 
-#define CLEANUP_TYPE(type, func)         \
-    static inline void func##t(type **v) \
-    {                                    \
-        if (isvalid(*v))                 \
-        {                                \
-            func(*v);                    \
-            *v = NULL;                   \
-        }                                \
-    }                                    \
+#define CLEANUP_TYPE(type, func)           \
+    static inline void func##t(type** v) { \
+        if (isvalid(*v)) {                 \
+            func(*v);                      \
+            *v = NULL;                     \
+        }                                  \
+    }                                      \
     struct __allow_semicolon__
 
 #define CLEANUP_FUNC_SENTINEL(type, func, sentinel) \
-    static inline void func##type(type *v)          \
-    {                                               \
-        if (*v != sentinel)                         \
-        {                                           \
+    static inline void func##type(type* v) {        \
+        if (*v != sentinel) {                       \
             func(*v);                               \
             *v = sentinel;                          \
         }                                           \
     }                                               \
     struct __allow_semicolon__
 
-#define CLEANUP_FUNC(type, func)            \
-    static inline void func##type(type **v) \
-    {                                       \
-        if (isvalid(*v))                    \
-        {                                   \
-            func(*v);                       \
-            *v = NULL;                      \
-        }                                   \
-    }                                       \
+#define CLEANUP_FUNC(type, func)              \
+    static inline void func##type(type** v) { \
+        if (isvalid(*v)) {                    \
+            func(*v);                         \
+            *v = NULL;                        \
+        }                                     \
+    }                                         \
     struct __allow_semicolon__
 
 CLEANUP_FUNC(void, free);
@@ -81,25 +75,22 @@ CLEANUP_FUNC(FILE, fclose);
 #include <sys/mman.h>
 #include <unistd.h>
 
-typedef struct
-{
-    void *addr;
+typedef struct {
+    void*  addr;
     size_t size;
 } map_t;
 
-#define _popen popen
+#define _popen  popen
 #define _pclose pclose
 
-static inline map_t *
-map_new(int fd, size_t size, int flags)
-{
-    void *addr = mmap(0, size, PROT_READ, flags, fd, 0);
+static inline map_t*
+map_new(int fd, size_t size, int flags) {
+    void* addr = mmap(0, size, PROT_READ, flags, fd, 0);
     if (!isvalid(addr))
         return NULL;
 
-    map_t *map = malloc(sizeof(map_t));
-    if (map == MAP_FAILED)
-    {
+    map_t* map = malloc(sizeof(map_t));
+    if (map == MAP_FAILED) {
         munmap(map, size);
         return NULL;
     }
@@ -111,10 +102,8 @@ map_new(int fd, size_t size, int flags)
 }
 
 static inline void
-map__destroy(map_t *map)
-{
-    if (isvalid(map))
-    {
+map__destroy(map_t* map) {
+    if (isvalid(map)) {
         munmap(map->addr, map->size);
         free(map);
     }

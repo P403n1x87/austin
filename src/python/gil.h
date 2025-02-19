@@ -32,16 +32,16 @@
 #include "misc.h"
 
 struct _gilstate_runtime_state3_11 {
-  int check_enabled;
-  _Py_atomic_address tstate_current;
-  PyInterpreterState *autoInterpreterState;
-  Py_tss_t autoTSSkey;
+    int                 check_enabled;
+    _Py_atomic_address  tstate_current;
+    PyInterpreterState* autoInterpreterState;
+    Py_tss_t            autoTSSkey;
 };
 
 struct _gil_runtime_state3_11 {
-  unsigned long interval;
-  _Py_atomic_address last_holder;
-  _Py_atomic_int locked;
+    unsigned long      interval;
+    _Py_atomic_address last_holder;
+    _Py_atomic_int     locked;
 };
 
 typedef struct _gil_runtime_state3_11 gil_state_t;

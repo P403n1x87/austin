@@ -26,18 +26,17 @@
 #include <sys/types.h>
 
 typedef struct {
-    void   * lo;
-    void   * hi;
-    void   * newlo;
-    void   * newhi;
+    void* lo;
+    void* hi;
+    void* newlo;
+    void* newhi;
 } _mem_block_t;
 
-
 typedef struct {
-    void   * content;
-    size_t   size;
+    void*  content;
+    size_t size;
 } _heap_t;
 
-#define NULL_MEM_BLOCK ((_mem_block_t) {(void *) -1, NULL, (void *) -1, NULL})
+#define NULL_MEM_BLOCK ((_mem_block_t){(void*)-1, NULL, (void*)-1, NULL})
 
 #endif

@@ -30,59 +30,72 @@
 #include "argparse.h"
 #include "austin.h"
 
-
 #define META_HEAD "# "
 #define META_SEP  ": "
 
-#define NL {if (!pargs.binary) fputc('\n', pargs.output_file);}
+#define NL                                  \
+    {                                       \
+        if (!pargs.binary)                  \
+            fputc('\n', pargs.output_file); \
+    }
 
-#define meta(key, ...)                     \
-  fputs(META_HEAD, pargs.output_file);     \
-  fputs(key, pargs.output_file);           \
-  fputs(META_SEP, pargs.output_file);      \
-  fprintf(pargs.output_file, __VA_ARGS__); \
-  NL;
+#define meta(key, ...)                       \
+    fputs(META_HEAD, pargs.output_file);     \
+    fputs(key, pargs.output_file);           \
+    fputs(META_SEP, pargs.output_file);      \
+    fprintf(pargs.output_file, __VA_ARGS__); \
+    NL;
 
 #if defined __clang__
-#define COMPILER "clang"
+#define COMPILER       "clang"
 #define COMPILER_MAJOR __clang_major__
 #define COMPILER_MINOR __clang_minor__
 #define COMPILER_PATCH __clang_patchlevel__
 #elif defined __MUSL__
-#define COMPILER "musl-gcc"
+#define COMPILER       "musl-gcc"
 #define COMPILER_MAJOR __GNUC__
 #define COMPILER_MINOR __GNUC_MINOR__
 #define COMPILER_PATCH __GNUC_PATCHLEVEL__
 #elif defined __GNUC__
-#define COMPILER "gcc"
+#define COMPILER       "gcc"
 #define COMPILER_MAJOR __GNUC__
 #define COMPILER_MINOR __GNUC_MINOR__
 #define COMPILER_PATCH __GNUC_PATCHLEVEL__
 #elif defined _MSC_VER
-#define COMPILER "msvc"
+#define COMPILER       "msvc"
 #define COMPILER_MAJOR _MSC_VER / 100
 #define COMPILER_MINOR _MSC_VER % 100
 #define COMPILER_PATCH _MSC_BUILD
 #endif
 
 #ifdef NATIVE
-#define log_header() {                   \
-  log_m("\033[1m              _   _      \033[0m");    \
-  log_m("\033[1m __ _ _  _ __| |_(_)_ _  \033[0m");    \
-  log_m("\033[1m/ _` | || (_-<  _| | ' \\ \033[0m");   \
-  log_m("\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m\033[31;1mp\033[0m \033[36;1m" VERSION "\033[0m [" COMPILER " %d.%d.%d]", COMPILER_MAJOR, COMPILER_MINOR, COMPILER_PATCH); \
-  log_i("====[ AUSTINP ]===="); \
-}
+#define log_header()                                                                                               \
+    {                                                                                                              \
+        log_m("\033[1m              _   _      \033[0m");                                                          \
+        log_m("\033[1m __ _ _  _ __| |_(_)_ _  \033[0m");                                                          \
+        log_m("\033[1m/ _` | || (_-<  _| | ' \\ \033[0m");                                                         \
+        log_m(                                                                                                     \
+            "\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m\033[31;1mp\033[0m \033[36;1m" VERSION "\033[0m [" COMPILER \
+            " %d.%d.%d]",                                                                                          \
+            COMPILER_MAJOR, COMPILER_MINOR, COMPILER_PATCH                                                         \
+        );                                                                                                         \
+        log_i("====[ AUSTINP ]====");                                                                              \
+    }
 #else
-#define log_header() {                   \
-  log_m("\033[1m              _   _      \033[0m ");    \
-  log_m("\033[1m __ _ _  _ __| |_(_)_ _  \033[0m");    \
-  log_m("\033[1m/ _` | || (_-<  _| | ' \\ \033[0m");   \
-  log_m("\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m \033[36;1m" VERSION "\033[0m [" COMPILER " %d.%d.%d]", COMPILER_MAJOR, COMPILER_MINOR, COMPILER_PATCH); \
-  log_i("====[ AUSTIN ]===="); \
-}
+#define log_header()                                                                                           \
+    {                                                                                                          \
+        log_m("\033[1m              _   _      \033[0m ");                                                     \
+        log_m("\033[1m __ _ _  _ __| |_(_)_ _  \033[0m");                                                      \
+        log_m("\033[1m/ _` | || (_-<  _| | ' \\ \033[0m");                                                     \
+        log_m(                                                                                                 \
+            "\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m \033[36;1m" VERSION "\033[0m [" COMPILER " %d.%d.%d]", \
+            COMPILER_MAJOR, COMPILER_MINOR, COMPILER_PATCH                                                     \
+        );                                                                                                     \
+        log_i("====[ AUSTIN ]====");                                                                           \
+    }
 #endif
-#define log_footer() {}
+#define log_footer() \
+    {}
 
 /**
  * Initialise logger.
@@ -96,20 +109,19 @@ logger_init(void);
  * Log an entry at the various supported levels.
  */
 void
-log_f(const char *, ...);
+log_f(const char*, ...);
 
 void
-log_e(const char *, ...);
+log_e(const char*, ...);
 
 void
-log_w(const char *, ...);
+log_w(const char*, ...);
 
 void
-log_i(const char *, ...);
+log_i(const char*, ...);
 
 void
-log_m(const char *, ...);  // metrics
-
+log_m(const char*, ...); // metrics
 
 /**
  * Log indirect error.
@@ -120,21 +132,21 @@ log_m(const char *, ...);  // metrics
  */
 #define log_ie(msg) log_e("> " msg)
 
-
 #ifdef DEBUG
 void
-log_d(const char *, ...);
+log_d(const char*, ...);
 #else
-#define log_d(f, args...) {}
+#define log_d(f, args...) \
+    {}
 #endif
 
 #ifdef TRACE
 void
-log_t(const char *, ...);
+log_t(const char*, ...);
 #else
-#define log_t(f, args...) {}
+#define log_t(f, args...) \
+    {}
 #endif
-
 
 /**
  * Close the logger.
@@ -143,7 +155,6 @@ log_t(const char *, ...);
  */
 void
 logger_close(void);
-
 
 void
 log_meta_header(void);

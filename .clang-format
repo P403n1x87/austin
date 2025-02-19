@@ -1,0 +1,40 @@
+---
+BasedOnStyle: LLVM
+
+AlignAfterOpenBracket: BlockIndent
+
+AlignArrayOfStructures: Left
+
+AlignConsecutiveAssignments:
+  Enabled: true
+  AcrossComments: true
+  AlignCompound: true
+
+AlignConsecutiveDeclarations:
+  Enabled: true
+  AcrossComments: true
+
+AlignConsecutiveMacros:
+  Enabled: true
+  AcrossComments: true
+
+AlignEscapedNewlines: LeftWithLastLine
+
+AlignOperands: AlignAfterOperator
+
+AlignTrailingComments:
+  Kind: Always
+
+AllowShortBlocksOnASingleLine: Always
+
+BreakAfterReturnType: All
+
+BreakBeforeBinaryOperators: All
+
+ColumnLimit: 120
+
+ContinuationIndentWidth: 4
+
+IndentWidth: 4
+
+PointerAlignment: Left

@@ -23,26 +23,32 @@
 #ifndef HINTS_H
 #define HINTS_H
 
-#define SUCCESS                         return 0
-#define FAIL                            return 1
+#define SUCCESS return 0
+#define FAIL    return 1
 
-#define TRUE                           1
-#define FALSE                          0
+#define TRUE  1
+#define FALSE 0
 
-#define success(x)                      (!(x))
-#define fail(x)                         (x)
-#define sfree(x)                        {if ((x) != NULL) {free(x); x = NULL;}}
+#define success(x) (!(x))
+#define fail(x)    (x)
+#define sfree(x)           \
+    {                      \
+        if ((x) != NULL) { \
+            free(x);       \
+            x = NULL;      \
+        }                  \
+    }
 
-#define isvalid(x)                      ((x) != NULL)
+#define isvalid(x) ((x) != NULL)
 
 #ifndef likely
-#define likely(x)                       __builtin_expect(!!(x), 1)
+#define likely(x) __builtin_expect(!!(x), 1)
 #endif
 
 #ifndef unlikely
-#define unlikely(x)                     __builtin_expect(!!(x), 0)
+#define unlikely(x) __builtin_expect(!!(x), 0)
 #endif
 
-#define UNKNOWN_SCOPE                   ((char *) 1)
+#define UNKNOWN_SCOPE ((char*)1)
 
 #endif

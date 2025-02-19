@@ -34,46 +34,44 @@
 // ---- frameobject.h ---------------------------------------------------------
 
 typedef struct _frame3_7 {
-    PyObject_VAR_HEAD
-    struct _frame3_7 *f_back;   /* previous frame, or NULL */
-    PyCodeObject *f_code;       /* code segment */
-    PyObject *f_builtins;       /* builtin symbol table (PyDictObject) */
-    PyObject *f_globals;        /* global symbol table (PyDictObject) */
-    PyObject *f_locals;         /* local symbol table (any mapping) */
-    PyObject **f_valuestack;    /* points after the last local */
-    PyObject **f_stacktop;
-    PyObject *f_trace;          /* Trace function */
-    char f_trace_lines;         /* Emit per-line trace events? */
-    char f_trace_opcodes;       /* Emit per-opcode trace events? */
-    PyObject *f_gen;
+    PyObject_VAR_HEAD struct _frame3_7* f_back;       /* previous frame, or NULL */
+    PyCodeObject*                       f_code;       /* code segment */
+    PyObject*                           f_builtins;   /* builtin symbol table (PyDictObject) */
+    PyObject*                           f_globals;    /* global symbol table (PyDictObject) */
+    PyObject*                           f_locals;     /* local symbol table (any mapping) */
+    PyObject**                          f_valuestack; /* points after the last local */
+    PyObject**                          f_stacktop;
+    PyObject*                           f_trace;         /* Trace function */
+    char                                f_trace_lines;   /* Emit per-line trace events? */
+    char                                f_trace_opcodes; /* Emit per-opcode trace events? */
+    PyObject*                           f_gen;
 
-    int f_lasti;                /* Last instruction if called */
-    int f_lineno;               /* Current line number */
+    int f_lasti;  /* Last instruction if called */
+    int f_lineno; /* Current line number */
 } PyFrameObject3_7;
 
 typedef struct _frame3_10 {
-    PyObject_VAR_HEAD
-    struct _frame3_10 *f_back;  /* previous frame, or NULL */
-    PyCodeObject *f_code;       /* code segment */
-    PyObject *f_builtins;       /* builtin symbol table (PyDictObject) */
-    PyObject *f_globals;        /* global symbol table (PyDictObject) */
-    PyObject *f_locals;         /* local symbol table (any mapping) */
-    PyObject **f_valuestack;    /* points after the last local */
-    PyObject *f_trace;          /* Trace function */
-    int f_stackdepth;           /* Depth of value stack */
-    char f_trace_lines;         /* Emit per-line trace events? */
-    char f_trace_opcodes;       /* Emit per-opcode trace events? */
+    PyObject_VAR_HEAD struct _frame3_10* f_back;          /* previous frame, or NULL */
+    PyCodeObject*                        f_code;          /* code segment */
+    PyObject*                            f_builtins;      /* builtin symbol table (PyDictObject) */
+    PyObject*                            f_globals;       /* global symbol table (PyDictObject) */
+    PyObject*                            f_locals;        /* local symbol table (any mapping) */
+    PyObject**                           f_valuestack;    /* points after the last local */
+    PyObject*                            f_trace;         /* Trace function */
+    int                                  f_stackdepth;    /* Depth of value stack */
+    char                                 f_trace_lines;   /* Emit per-line trace events? */
+    char                                 f_trace_opcodes; /* Emit per-opcode trace events? */
 
     /* Borrowed reference to a generator, or NULL */
-    PyObject *f_gen;
+    PyObject* f_gen;
 
-    int f_lasti;                /* Last instruction if called */
-    int f_lineno;               /* Current line number. Only valid if non-zero */
+    int f_lasti;  /* Last instruction if called */
+    int f_lineno; /* Current line number. Only valid if non-zero */
 } PyFrameObject3_10;
 
 typedef union {
-  PyFrameObject3_7  v3_7;
-  PyFrameObject3_10 v3_10;
+    PyFrameObject3_7  v3_7;
+    PyFrameObject3_10 v3_10;
 } PyFrameObject;
 
 #endif

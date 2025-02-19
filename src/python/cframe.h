@@ -33,19 +33,17 @@
 #include "iframe.h"
 
 typedef struct _PyCFrame3_11 {
-    uint8_t use_tracing;  // 0 or 255 (or'ed into opcode, hence 8-bit type)
+    uint8_t                         use_tracing; // 0 or 255 (or'ed into opcode, hence 8-bit type)
     /* Pointer to the currently executing frame (it can be NULL) */
-    struct _PyInterpreterFrame3_11 *current_frame;
-    struct _PyCFrame3_11 *previous;
+    struct _PyInterpreterFrame3_11* current_frame;
+    struct _PyCFrame3_11*           previous;
 } _PyCFrame3_11;
-
 
 typedef struct {
     /* Pointer to the currently executing frame (it can be NULL) */
-    void *current_frame;
-    void *previous;
+    void* current_frame;
+    void* previous;
 } _PyCFrame3_12;
-
 
 typedef union {
     _PyCFrame3_11 v3_11;

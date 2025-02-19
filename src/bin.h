@@ -22,15 +22,15 @@
 
 typedef unsigned int bin_attr_t;
 
-#define INVALID_ATTR                   0
+#define INVALID_ATTR 0
 
-#define BINARY_MIN_SIZE        (1 << 20)         // A meaningful Python binary takes MBs.
+#define BINARY_MIN_SIZE (1 << 20) // A meaningful Python binary takes MBs.
 
-#define BINARY_TYPE(x)                  (x & 3)  // Get binary type
-#define BT_OTHER                       0         // Other type of binary
-#define BT_EXEC                        1         // Binary is executable
-#define BT_LIB                         2         // Binary is shared library
+#define BINARY_TYPE(x) (x & 3) // Get binary type
+#define BT_OTHER       0       // Other type of binary
+#define BT_EXEC        1       // Binary is executable
+#define BT_LIB         2       // Binary is shared library
 
-#define B_SYMBOLS               (1 << 2)         // If the binary has symbols
+#define B_SYMBOLS (1 << 2) // If the binary has symbols
 
-#define B_BSS                   (1 << 3)         // If the BSS section was located
+#define B_BSS (1 << 3) // If the BSS section was located

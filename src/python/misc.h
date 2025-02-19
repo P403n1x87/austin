@@ -34,7 +34,7 @@
 #include "code.h"
 
 typedef struct _Py_atomic_address {
-  uintptr_t _value;
+    uintptr_t _value;
 } _Py_atomic_address;
 
 #ifdef PL_UNIX
@@ -45,95 +45,93 @@ typedef struct _Py_atomic_address {
 #endif
 
 struct _Py_tss_t {
-  int _is_initialized;
-  NATIVE_TSS_KEY_T _key;
+    int              _is_initialized;
+    NATIVE_TSS_KEY_T _key;
 };
 
 typedef struct _Py_tss_t Py_tss_t; /* opaque */
 
 typedef struct _Py_atomic_int {
-  int _value;
+    int _value;
 } _Py_atomic_int;
 
 #ifdef PL_UNIX
 #include <pthread.h>
 
 #define PyMUTEX_T pthread_mutex_t
-#define PyCOND_T pthread_cond_t
+#define PyCOND_T  pthread_cond_t
 
 #else
 #include <windows.h>
 
 typedef CRITICAL_SECTION PyMUTEX_T;
 typedef struct _PyCOND_T {
-  HANDLE sem;
-  int waiting;
+    HANDLE sem;
+    int    waiting;
 } PyCOND_T;
 
 #endif
 
-#define COMMON_FIELDS(PREFIX)                                               \
-  PyObject *PREFIX##globals;                                                \
-  PyObject *PREFIX##builtins;                                               \
-  PyObject *PREFIX##name;                                                   \
-  PyObject *PREFIX##qualname;                                               \
-  PyObject *PREFIX##code;       /* A code object, the __code__ attribute */ \
-  PyObject *PREFIX##defaults;   /* NULL or a tuple */                       \
-  PyObject *PREFIX##kwdefaults; /* NULL or a dict */                        \
-  PyObject *PREFIX##closure;    /* NULL or a tuple of cell objects */
+#define COMMON_FIELDS(PREFIX)                                                 \
+    PyObject* PREFIX##globals;                                                \
+    PyObject* PREFIX##builtins;                                               \
+    PyObject* PREFIX##name;                                                   \
+    PyObject* PREFIX##qualname;                                               \
+    PyObject* PREFIX##code;       /* A code object, the __code__ attribute */ \
+    PyObject* PREFIX##defaults;   /* NULL or a tuple */                       \
+    PyObject* PREFIX##kwdefaults; /* NULL or a dict */                        \
+    PyObject* PREFIX##closure;    /* NULL or a tuple of cell objects */
 
-typedef PyObject *(*vectorcallfunc)(PyObject *callable, PyObject *const *args,
-                                    size_t nargsf, PyObject *kwnames);
+typedef PyObject* (*vectorcallfunc)(PyObject* callable, PyObject* const* args, size_t nargsf, PyObject* kwnames);
 
 typedef struct {
-  PyObject_HEAD COMMON_FIELDS(func_)
-  PyObject *func_doc;         /* The __doc__ attribute, can be anything */
-  PyObject *func_dict;        /* The __dict__ attribute, a dict or NULL */
-  PyObject *func_weakreflist; /* List of weak references */
-  PyObject *func_module;      /* The __module__ attribute, can be anything */
-  PyObject *func_annotations; /* Annotations, a dict or NULL */
-  vectorcallfunc vectorcall;
-  /* Version number for use by specializer.
-   * Can set to non-zero when we want to specialize.
-   * Will be set to zero if any of these change:
-   *     defaults
-   *     kwdefaults (only if the object changes, not the contents of the dict)
-   *     code
-   *     annotations */
-  uint32_t func_version;
+    PyObject_HEAD  COMMON_FIELDS(func_) PyObject* func_doc; /* The __doc__ attribute, can be anything */
+    PyObject*      func_dict;                               /* The __dict__ attribute, a dict or NULL */
+    PyObject*      func_weakreflist;                        /* List of weak references */
+    PyObject*      func_module;                             /* The __module__ attribute, can be anything */
+    PyObject*      func_annotations;                        /* Annotations, a dict or NULL */
+    vectorcallfunc vectorcall;
+    /* Version number for use by specializer.
+     * Can set to non-zero when we want to specialize.
+     * Will be set to zero if any of these change:
+     *     defaults
+     *     kwdefaults (only if the object changes, not the contents of the dict)
+     *     code
+     *     annotations */
+    uint32_t       func_version;
 
-  /* Invariant:
-   *     func_closure contains the bindings for func_code->co_freevars, so
-   *     PyTuple_Size(func_closure) == PyCode_GetNumFree(func_code)
-   *     (func_closure may be NULL if PyCode_GetNumFree(func_code) == 0).
-   */
+    /* Invariant:
+     *     func_closure contains the bindings for func_code->co_freevars, so
+     *     PyTuple_Size(func_closure) == PyCode_GetNumFree(func_code)
+     *     (func_closure may be NULL if PyCode_GetNumFree(func_code) == 0).
+     */
 } PyFunctionObject;
 
 typedef uint16_t _Py_CODEUNIT;
 
 struct _opaque {
-  int computed_line;
-  const uint8_t *lo_next;
-  const uint8_t *limit;
+    int            computed_line;
+    const uint8_t* lo_next;
+    const uint8_t* limit;
 };
 
 typedef struct _line_offsets {
-  int ar_start;
-  int ar_end;
-  int ar_line;
-  struct _opaque opaque;
+    int            ar_start;
+    int            ar_end;
+    int            ar_line;
+    struct _opaque opaque;
 } PyCodeAddressRange;
 
 typedef struct {
-  PyCodeObject *code;         // The code object for the bounds. May be NULL.
-  PyCodeAddressRange bounds;  // Only valid if code != NULL.
+    PyCodeObject*      code;   // The code object for the bounds. May be NULL.
+    PyCodeAddressRange bounds; // Only valid if code != NULL.
 } PyTraceInfo;
 
 typedef struct _stack_chunk {
-  struct _stack_chunk *previous;
-  size_t size;
-  size_t top;
-  PyObject *data[1]; /* Variable sized */
+    struct _stack_chunk* previous;
+    size_t               size;
+    size_t               top;
+    PyObject*            data[1]; /* Variable sized */
 } _PyStackChunk;
 
 #endif

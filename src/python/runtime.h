@@ -37,22 +37,22 @@
 // ---- internal/pycore_pystate.h ---------------------------------------------
 
 typedef struct pyruntimestate3_8 {
-    int preinitializing;
-    int preinitialized;
-    int core_initialized;
-    int initialized;
-    PyThreadState *finalizing;
+    int            preinitializing;
+    int            preinitialized;
+    int            core_initialized;
+    int            initialized;
+    PyThreadState* finalizing;
 
     struct pyinterpreters3_8 {
-        PyThread_type_lock mutex;
-        PyInterpreterState *head;
-        PyInterpreterState *main;
-        int64_t next_id;
+        PyThread_type_lock  mutex;
+        PyInterpreterState* head;
+        PyInterpreterState* main;
+        int64_t             next_id;
     } interpreters;
     // XXX Remove this field once we have a tp_* slot.
     struct _xidregistry3_8 {
-        PyThread_type_lock mutex;
-        struct _xidregitem *head;
+        PyThread_type_lock  mutex;
+        struct _xidregitem* head;
     } xidregistry;
 
     unsigned long main_thread;
@@ -66,28 +66,26 @@ typedef struct pyruntimestate3_8 {
     // struct _gilstate_runtime_state gilstate;
 } _PyRuntimeState3_8;
 
-
 // ---- internal/pycore_runtime.h ---------------------------------------------
 
-
 typedef struct pyruntimestate3_11 {
-    int _initialized;
-    int preinitializing;
-    int preinitialized;
-    int core_initialized;
-    int initialized;
+    int                _initialized;
+    int                preinitializing;
+    int                preinitialized;
+    int                core_initialized;
+    int                initialized;
     _Py_atomic_address _finalizing;
 
     struct pyinterpreters3_11 {
-        PyThread_type_lock mutex;
-        PyInterpreterState *head;
-        PyInterpreterState *main;
-        int64_t next_id;
+        PyThread_type_lock  mutex;
+        PyInterpreterState* head;
+        PyInterpreterState* main;
+        int64_t             next_id;
     } interpreters;
 
     struct _xidregistry3_11 {
-        PyThread_type_lock mutex;
-        struct _xidregitem *head;
+        PyThread_type_lock  mutex;
+        struct _xidregitem* head;
     } xidregistry;
 
     unsigned long main_thread;
@@ -96,10 +94,9 @@ typedef struct pyruntimestate3_11 {
     void (*exitfuncs[NEXITFUNCS])(void);
     int nexitfuncs;
 
-    struct _ceval_runtime_state3_11 ceval;
+    struct _ceval_runtime_state3_11    ceval;
     struct _gilstate_runtime_state3_11 gilstate;
 } _PyRuntimeState3_11;
-
 
 typedef struct pyruntimestate3_12 {
     /* Has been initialized to a safe state.
@@ -130,11 +127,11 @@ typedef struct pyruntimestate3_12 {
     struct {
         PyThread_type_lock mutex;
         /* The linked list of interpreters, newest first. */
-        void *head;
+        void*              head;
         /* The runtime's initial interpreter, which has a special role
            in the operation of the runtime.  It is also often the only
            interpreter. */
-        void *main;
+        void*              main;
         /* next_id is an auto-numbered sequence of small
            integers.  It gets initialized in _PyInterpreterState_Enable(),
            which is called in Py_Initialize(), and used in
@@ -143,17 +140,16 @@ typedef struct pyruntimestate3_12 {
            always have an ID of 0.  Overflow results in a RuntimeError.
            If that becomes a problem later then we can adjust, e.g. by
            using a Python int. */
-        int64_t next_id;
+        int64_t            next_id;
     } interpreters;
 
     unsigned long main_thread;
 } _PyRuntimeState3_12;
 
-
 typedef union {
-  _PyRuntimeState3_8  v3_8;
-  _PyRuntimeState3_11 v3_11;
-  _PyRuntimeState3_12 v3_12;
+    _PyRuntimeState3_8  v3_8;
+    _PyRuntimeState3_11 v3_11;
+    _PyRuntimeState3_12 v3_12;
 } _PyRuntimeState;
 
 // ----------------------------------------------------------------------------
@@ -163,7 +159,7 @@ typedef union {
 #define _Py_Debug_Cookie "xdebugpy"
 
 typedef struct _Py_DebugOffsets3_13 {
-    char cookie[8];  // _Py_Debug_Cookie
+    char     cookie[8]; // _Py_Debug_Cookie
     uint64_t version;
     uint64_t free_threaded;
     // Runtime state offset;
@@ -191,7 +187,7 @@ typedef struct _Py_DebugOffsets3_13 {
     } interpreter_state;
 
     // Thread state offset;
-    struct _thread_state{
+    struct _thread_state {
         uint64_t size;
         uint64_t prev;
         uint64_t next;
@@ -297,10 +293,8 @@ typedef struct _Py_DebugOffsets3_13 {
     } gc;
 } _Py_DebugOffsets3_13;
 
-
 typedef union {
-  _Py_DebugOffsets3_13 v3_13;
+    _Py_DebugOffsets3_13 v3_13;
 } _Py_DebugOffsets;
-
 
 #endif

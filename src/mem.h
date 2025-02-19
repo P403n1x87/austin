@@ -22,36 +22,35 @@
 
 #pragma once
 
-
 #include <sys/types.h>
 
 #include "hints.h"
 #include "platform.h"
 
 #if defined PL_LINUX
-  #include <sys/uio.h>
-  #include <unistd.h>
-  ssize_t process_vm_readv(
-    pid_t, const struct iovec *, unsigned long liovcnt,
-    const struct iovec *remote_iov, unsigned long riovcnt, unsigned long flags
-  );
+#include <sys/uio.h>
+#include <unistd.h>
+ssize_t
+process_vm_readv(
+    pid_t, const struct iovec*, unsigned long liovcnt, const struct iovec* remote_iov, unsigned long riovcnt,
+    unsigned long flags
+);
 
 #elif defined(PL_WIN)
-  #include <windows.h>
-  __declspec( dllimport ) extern BOOL GetPhysicallyInstalledSystemMemory(PULONGLONG);
+#include <windows.h>
+__declspec(dllimport) extern BOOL GetPhysicallyInstalledSystemMemory(PULONGLONG);
 
 #elif defined(PL_MACOS)
-  #include <mach/mach.h>
-  #include <mach/mach_vm.h>
-  #include <mach/machine/kern_return.h>
-  #include <sys/types.h>
-  #include <sys/sysctl.h>
+#include <mach/mach.h>
+#include <mach/mach_vm.h>
+#include <mach/machine/kern_return.h>
+#include <sys/sysctl.h>
+#include <sys/types.h>
 
 #endif
 
 #include "error.h"
 #include "logging.h"
-
 
 /**
  * Copy a data structure from the given remote address structure.
@@ -61,7 +60,6 @@
  */
 #define copy_from_raddr(raddr, dt) copy_memory((raddr)->pref, (raddr)->addr, sizeof(dt), &dt)
 
-
 /**
  * Copy a data structure from the given remote address structure.
  * @param  raddr the remote address
@@ -69,7 +67,6 @@
  * @return       zero on success, otherwise non-zero.
  */
 #define copy_from_raddr_v(raddr, dt, n) copy_memory(raddr->pref, raddr->addr, n, &dt)
-
 
 /**
  * Same as copy_from_raddr, but with explicit arguments instead of a pointer to
@@ -81,7 +78,6 @@
  */
 #define copy_datatype(pref, addr, dt) copy_memory(pref, addr, sizeof(dt), &dt)
 
-
 /**
  * Same as copy_from_raddr, but for versioned Python data structures.
  * @param  pref     the process reference
@@ -92,17 +88,15 @@
  */
 #define copy_py(pref, addr, py_type, dest) copy_memory(pref, addr, py_v->py_type.size, &dest)
 
-
 // Whilst the PID is generally used to identify processes across platforms,
 // operations can only be performed on other process references, like a Win32
 // HANDLE or a OSX mach_port_t. We use this structure to abstract the process
 // reference to identify a remote address location in a platoform-independent
 // way.
 typedef struct {
-  proc_ref_t   pref;  // Process reference
-  void       * addr;  // Virtual memory address within the process
+    proc_ref_t pref; // Process reference
+    void*      addr; // Virtual memory address within the process
 } raddr_t;
-
 
 /**
  * Copy a chunk of memory from a portion of the virtual memory of another
@@ -112,82 +106,78 @@ typedef struct {
  * @param ssize_t     the number of bytes to read
  * @param void *      the destination buffer, expected to be at least as large
  *                    as the number of bytes to read.
- * 
+ *
  * @return  zero on success, otherwise non-zero.
  */
 static inline int
-copy_memory(proc_ref_t proc_ref, void * addr, ssize_t len, void * buf) {
-  ssize_t result = -1;
+copy_memory(proc_ref_t proc_ref, void* addr, ssize_t len, void* buf) {
+    ssize_t result = -1;
 
-  #if defined(PL_LINUX)                                              /* LINUX */
-  struct iovec local[1];
-  struct iovec remote[1];
+#if defined(PL_LINUX) /* LINUX */
+    struct iovec local[1];
+    struct iovec remote[1];
 
-  local[0].iov_base = buf;
-  local[0].iov_len = len;
-  remote[0].iov_base = addr;
-  remote[0].iov_len = len;
+    local[0].iov_base  = buf;
+    local[0].iov_len   = len;
+    remote[0].iov_base = addr;
+    remote[0].iov_len  = len;
 
-  result = process_vm_readv(proc_ref, local, 1, remote, 1, 0);
-  if (result == -1) {
-    switch (errno) {
-    case ESRCH:
-      set_error(EPROCNPID);
-      break;
-    case EPERM:
-      set_error(EPROCPERM);
-      break;
-    default:
-      set_error(EMEMCOPY);
+    result = process_vm_readv(proc_ref, local, 1, remote, 1, 0);
+    if (result == -1) {
+        switch (errno) {
+        case ESRCH:
+            set_error(EPROCNPID);
+            break;
+        case EPERM:
+            set_error(EPROCPERM);
+            break;
+        default:
+            set_error(EMEMCOPY);
+        }
     }
-  }
 
-  #elif defined(PL_WIN)                                                /* WIN */
-  size_t n;
-  result = ReadProcessMemory(proc_ref, addr, buf, len, &n) ? n : -1;
-  if (result == -1) {
-    switch(GetLastError()) {
-    case ERROR_ACCESS_DENIED:
-      set_error(EPROCPERM);
-      break;
-    case ERROR_INVALID_HANDLE:
-      set_error(EPROCNPID);
-      break;
-    default:
-      set_error(EMEMCOPY);
+#elif defined(PL_WIN) /* WIN */
+    size_t n;
+    result = ReadProcessMemory(proc_ref, addr, buf, len, &n) ? n : -1;
+    if (result == -1) {
+        switch (GetLastError()) {
+        case ERROR_ACCESS_DENIED:
+            set_error(EPROCPERM);
+            break;
+        case ERROR_INVALID_HANDLE:
+            set_error(EPROCNPID);
+            break;
+        default:
+            set_error(EMEMCOPY);
+        }
     }
-  }
 
-  #elif defined(PL_MACOS)                                              /* MAC */
-  kern_return_t kr = mach_vm_read_overwrite(
-    proc_ref,
-    (mach_vm_address_t) addr,
-    len,
-    (mach_vm_address_t) buf,
-    (mach_vm_size_t *) &result
-  );
-  if (unlikely(kr != KERN_SUCCESS)) {
-    // If we got to the point of calling this function on macOS then we must
-    // have permissions to call task_for_pid successfully. This also means that
-    // the PID that was used must have been valid. Therefore this call can only
-    // fail if the process no longer exists. However, if the return value is
-    // MACH_SEND_INVALID_DEST, we probably tried an invalid memory area.
-    switch(kr) {
-      case KERN_PROTECTION_FAILURE:
-        set_error(EPROCPERM);
-        break;
-      case KERN_INVALID_ARGUMENT:
-        set_error(EPROCNPID);
-        break;
-      default:
-        set_error(EMEMCOPY);
+#elif defined(PL_MACOS) /* MAC */
+    kern_return_t kr = mach_vm_read_overwrite(
+        proc_ref, (mach_vm_address_t)addr, len, (mach_vm_address_t)buf, (mach_vm_size_t*)&result
+    );
+    if (unlikely(kr != KERN_SUCCESS)) {
+        // If we got to the point of calling this function on macOS then we must
+        // have permissions to call task_for_pid successfully. This also means that
+        // the PID that was used must have been valid. Therefore this call can only
+        // fail if the process no longer exists. However, if the return value is
+        // MACH_SEND_INVALID_DEST, we probably tried an invalid memory area.
+        switch (kr) {
+        case KERN_PROTECTION_FAILURE:
+            set_error(EPROCPERM);
+            break;
+        case KERN_INVALID_ARGUMENT:
+            set_error(EPROCNPID);
+            break;
+        default:
+            set_error(EMEMCOPY);
+        }
+        FAIL;
     }
-    FAIL;
-  }
 
-  #endif
+#endif
 
-  return result != len;
+    return result != len;
 }
 
 /**
@@ -196,47 +186,44 @@ copy_memory(proc_ref_t proc_ref, void * addr, ssize_t len, void * buf) {
  */
 static inline size_t
 get_total_memory(void) {
-  #if defined PL_LINUX                                               /* LINUX */
-  size_t pagesize = getpagesize() >> 10;
-  return sysconf (_SC_PHYS_PAGES) * pagesize;
+#if defined PL_LINUX /* LINUX */
+    size_t pagesize = getpagesize() >> 10;
+    return sysconf(_SC_PHYS_PAGES) * pagesize;
 
-  #elif defined PL_MACOS                                               /* MAC */
-  int mib [] = { CTL_HW, HW_PHYSMEM };
-  int64_t size;
-  size_t length = sizeof(size);
+#elif defined PL_MACOS /* MAC */
+    int     mib[] = {CTL_HW, HW_PHYSMEM};
+    int64_t size;
+    size_t  length = sizeof(size);
 
-  return success(sysctl(mib, 2, &size, &length, NULL, 0)) ? size >> 10 : 0;
+    return success(sysctl(mib, 2, &size, &length, NULL, 0)) ? size >> 10 : 0;
 
-  #elif defined PL_WIN                                                 /* WIN */
-  ULONGLONG size;
-  return GetPhysicallyInstalledSystemMemory(&size) == TRUE ? size : 0;
+#elif defined PL_WIN /* WIN */
+    ULONGLONG size;
+    return GetPhysicallyInstalledSystemMemory(&size) == TRUE ? size : 0;
 
-  #endif
+#endif
 
-  return 0;
+    return 0;
 }
 
-
-struct vm_map{
-  char    * path;
-  ssize_t   file_size;
-  void    * base;
-  size_t    size;
-  void    * bss_base;
-  size_t    bss_size;
-  int       has_symbols;
+struct vm_map {
+    char*   path;
+    ssize_t file_size;
+    void*   base;
+    size_t  size;
+    void*   bss_base;
+    size_t  bss_size;
+    int     has_symbols;
 };
-
 
 enum {
-  MAP_BIN,
-  MAP_LIBSYM,
-  MAP_LIBNEEDLE,
-  MAP_COUNT,
+    MAP_BIN,
+    MAP_LIBSYM,
+    MAP_LIBNEEDLE,
+    MAP_COUNT,
 };
 
-
 struct proc_desc {
-  char          exe_path[1024];
-  struct vm_map maps[MAP_COUNT];
+    char          exe_path[1024];
+    struct vm_map maps[MAP_COUNT];
 };

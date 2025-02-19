@@ -27,57 +27,53 @@
 
 #include "logging.h"
 
-
 // generic messages
-#define EOK                   0
-#define EMMAP                 1
-#define EMEMCOPY              2
-#define ENOVERSION            3
-#define ENULLDEV              4
-#define ECMDLINE              5
-#define ESYM                  6
+#define EOK        0
+#define EMMAP      1
+#define EMEMCOPY   2
+#define ENOVERSION 3
+#define ENULLDEV   4
+#define ECMDLINE   5
+#define ESYM       6
 
 // PyCodeObject
-#define ECODE                 ((1 << 3) + 0)
-#define ECODEFMT              ((1 << 3) + 1)
-#define ECODECMPT             ((1 << 3) + 2)
-#define ECODEBYTES            ((1 << 3) + 3)
-#define ECODENOFNAME          ((1 << 3) + 4)
-#define ECODENONAME           ((1 << 3) + 5)
-#define ECODENOLINENO         ((1 << 3) + 6)
-#define ECODEUNICODE          ((1 << 3) + 7)
+#define ECODE         ((1 << 3) + 0)
+#define ECODEFMT      ((1 << 3) + 1)
+#define ECODECMPT     ((1 << 3) + 2)
+#define ECODEBYTES    ((1 << 3) + 3)
+#define ECODENOFNAME  ((1 << 3) + 4)
+#define ECODENONAME   ((1 << 3) + 5)
+#define ECODENOLINENO ((1 << 3) + 6)
+#define ECODEUNICODE  ((1 << 3) + 7)
 
 // PyFrameObject
-#define EFRAME                ((2 << 3) + 0)
-#define EFRAMENOCODE          ((2 << 3) + 1)
-#define EFRAMEINV             ((2 << 3) + 2)
+#define EFRAME       ((2 << 3) + 0)
+#define EFRAMENOCODE ((2 << 3) + 1)
+#define EFRAMEINV    ((2 << 3) + 2)
 
 // py_thread_t
-#define ETHREAD               ((3 << 3) + 0)
-#define ETHREADNOFRAME        ((3 << 3) + 1)
-#define ETHREADINV            ((3 << 3) + 2)
-#define ETHREADNONEXT         ((3 << 3) + 3)
+#define ETHREAD        ((3 << 3) + 0)
+#define ETHREADNOFRAME ((3 << 3) + 1)
+#define ETHREADINV     ((3 << 3) + 2)
+#define ETHREADNONEXT  ((3 << 3) + 3)
 
 // py_proc_t
-#define EPROC                 ((4 << 3) + 0)
-#define EPROCFORK             ((4 << 3) + 1)
-#define EPROCVM               ((4 << 3) + 2)
-#define EPROCISTIMEOUT        ((4 << 3) + 3)
-#define EPROCATTACH           ((4 << 3) + 4)
-#define EPROCPERM             ((4 << 3) + 5)
-#define EPROCNPID             ((4 << 3) + 6)
-#define EPROCNOCHILDREN       ((4 << 3) + 7)
-
+#define EPROC           ((4 << 3) + 0)
+#define EPROCFORK       ((4 << 3) + 1)
+#define EPROCVM         ((4 << 3) + 2)
+#define EPROCISTIMEOUT  ((4 << 3) + 3)
+#define EPROCATTACH     ((4 << 3) + 4)
+#define EPROCPERM       ((4 << 3) + 5)
+#define EPROCNPID       ((4 << 3) + 6)
+#define EPROCNOCHILDREN ((4 << 3) + 7)
 
 typedef int error_t;
-
 
 #ifdef ERROR_C
 __thread error_t austin_errno;
 #else
 extern __thread error_t austin_errno;
 #endif // ERROR_C
-
 
 /**
  * Get the message of the give message number.
@@ -86,17 +82,14 @@ extern __thread error_t austin_errno;
  *
  * @return a pointer to the message as const char *.
  */
-const char *
-error_get_msg(error_t);
-
+const char* error_get_msg(error_t);
 
 /**
  * Get the message of the last error.
  *
  * @return a pointer to the message as const char *.
  */
-#define get_last_error()                     error_get_msg(austin_errno)
-
+#define get_last_error() error_get_msg(austin_errno)
 
 /**
  * Determine if the given error is fatal or not.
@@ -105,26 +98,23 @@ error_get_msg(error_t);
  *
  * @return 1 if the error is fatal, 0 otherwise.
  */
-const int
-is_fatal(error_t);
-
+const int is_fatal(error_t);
 
 /**
  * Log the last error
  */
-#define log_error() { \
-  ( is_fatal(austin_errno) ? log_f(get_last_error()) : log_e(get_last_error()) ); \
-}
-
+#define log_error()                                                                   \
+    { (is_fatal(austin_errno) ? log_f(get_last_error()) : log_e(get_last_error())); }
 
 /**
  * Set and log the given error.
  *
  * @param  error_t  the error to set and log.
  */
-#define set_error(x) { \
-  austin_errno = (x); \
-  log_error(); \
-}
+#define set_error(x)        \
+    {                       \
+        austin_errno = (x); \
+        log_error();        \
+    }
 
 #endif // ERROR_H
