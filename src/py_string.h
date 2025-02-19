@@ -33,110 +33,104 @@
 #include "python/string.h"
 #include "version.h"
 
-#define MAGIC_TINY                            7
-#define MAGIC_BIG                       1000003
-#define p_ascii_data(raddr, size)              (raddr + size)
-
+#define MAGIC_TINY                7
+#define MAGIC_BIG                 1000003
+#define p_ascii_data(raddr, size) (raddr + size)
 
 // ----------------------------------------------------------------------------
 static inline long
-string__hash(char * string) {
-  // Stolen from stringobject.c
-  register unsigned char *p;
-  register long x;
+string__hash(char* string) {
+    // Stolen from stringobject.c
+    register unsigned char* p;
+    register long           x;
 
-  p = (unsigned char *) string;
-  x = *p << MAGIC_TINY;
-  while (*p != 0)
-    x = (MAGIC_BIG * x) ^ *(p++);
-  x ^= strlen(string);
-  return x == 0 ? 1 : x;
+    p = (unsigned char*)string;
+    x = *p << MAGIC_TINY;
+    while (*p != 0)
+        x = (MAGIC_BIG * x) ^ *(p++);
+    x ^= strlen(string);
+    return x == 0 ? 1 : x;
 }
 
-
 // ----------------------------------------------------------------------------
-static inline char *
-_string_from_raddr(proc_ref_t pref, void * raddr, python_v * py_v) {
-  PyUnicodeObject    unicode;
-  char             * buffer = NULL;
-  ssize_t            len = 0;
+static inline char*
+_string_from_raddr(proc_ref_t pref, void* raddr, python_v* py_v) {
+    PyUnicodeObject unicode;
+    char*           buffer = NULL;
+    ssize_t         len    = 0;
 
-  if (fail(copy_datatype(pref, raddr, unicode))) {
-    log_ie("Cannot read remote PyUnicodeObject3");
-    goto failed;
-  }
+    if (fail(copy_datatype(pref, raddr, unicode))) {
+        log_ie("Cannot read remote PyUnicodeObject3");
+        goto failed;
+    }
 
-  PyASCIIObject ascii = unicode.v3._base._base;
+    PyASCIIObject ascii = unicode.v3._base._base;
 
-  if (ascii.state.kind != 1) {
-    set_error(ECODEFMT);
-    goto failed;
-  }
-  
-  // Because changes to PyASCIIObject are rare, we handle the version manually
-  // instead of using a version offset descriptor.
-  ssize_t ascii_size = V_MIN(3, 12) ? sizeof(unicode.v3_12._base._base) : sizeof(unicode.v3._base._base);
-  void * data = ascii.state.compact
-    ? p_ascii_data(raddr, ascii_size)
-    : (V_MIN(3, 12) ? unicode.v3_12._base.utf8 : unicode.v3._base.utf8);
-  len = ascii.state.compact
-    ? ascii.length
-    : (V_MIN(3, 12) ? unicode.v3_12._base.utf8_length : unicode.v3._base.utf8_length);
+    if (ascii.state.kind != 1) {
+        set_error(ECODEFMT);
+        goto failed;
+    }
 
-  if (len < 0 || len > 4096) {
-    log_e("Invalid string length");
-    goto failed;
-  }
-  
-  buffer = (char *) malloc(len + 1);
-  
-  if (!isvalid(data) || fail(copy_memory(pref, data, len, buffer))) {
-    log_ie("Cannot read remote value of PyUnicodeObject3");
-    goto failed;
-  }
-  buffer[len] = 0;
+    // Because changes to PyASCIIObject are rare, we handle the version manually
+    // instead of using a version offset descriptor.
+    ssize_t ascii_size = V_MIN(3, 12) ? sizeof(unicode.v3_12._base._base) : sizeof(unicode.v3._base._base);
+    void*   data       = ascii.state.compact ? p_ascii_data(raddr, ascii_size)
+                                             : (V_MIN(3, 12) ? unicode.v3_12._base.utf8 : unicode.v3._base.utf8);
+    len                = ascii.state.compact ? ascii.length
+                                             : (V_MIN(3, 12) ? unicode.v3_12._base.utf8_length : unicode.v3._base.utf8_length);
 
-  return buffer;
+    if (len < 0 || len > 4096) {
+        log_e("Invalid string length");
+        goto failed;
+    }
+
+    buffer = (char*)malloc(len + 1);
+
+    if (!isvalid(data) || fail(copy_memory(pref, data, len, buffer))) {
+        log_ie("Cannot read remote value of PyUnicodeObject3");
+        goto failed;
+    }
+    buffer[len] = 0;
+
+    return buffer;
 
 failed:
-  sfree(buffer);
-  return NULL;
+    sfree(buffer);
+    return NULL;
 }
-
 
 // ----------------------------------------------------------------------------
-static inline unsigned char *
-_bytes_from_raddr(proc_ref_t pref, void * raddr, ssize_t * size, python_v * py_v) {
-  PyBytesObject   bytes;
-  ssize_t         len = 0;
-  unsigned char * array = NULL;
+static inline unsigned char*
+_bytes_from_raddr(proc_ref_t pref, void* raddr, ssize_t* size, python_v* py_v) {
+    PyBytesObject  bytes;
+    ssize_t        len   = 0;
+    unsigned char* array = NULL;
 
-  if (fail(copy_datatype(pref, raddr, bytes))) {
-    log_ie("Cannot read remote PyBytesObject");
-    goto error;
-  }
+    if (fail(copy_datatype(pref, raddr, bytes))) {
+        log_ie("Cannot read remote PyBytesObject");
+        goto error;
+    }
 
-  if ((len = bytes.ob_base.ob_size + 1) < 1) { // Include null-terminator
-    set_error(ECODEBYTES);
-    log_e("PyBytesObject is too short");
-    goto error;
-  }
+    if ((len = bytes.ob_base.ob_size + 1) < 1) { // Include null-terminator
+        set_error(ECODEBYTES);
+        log_e("PyBytesObject is too short");
+        goto error;
+    }
 
-  array = (unsigned char *) malloc((len + 1) * sizeof(unsigned char *));
-  if (fail(copy_memory(pref, raddr + offsetof(PyBytesObject, ob_sval), len, array))) {
-    log_ie("Cannot read remote value of PyBytesObject");
-    goto error;
-  }
+    array = (unsigned char*)malloc((len + 1) * sizeof(unsigned char*));
+    if (fail(copy_memory(pref, raddr + offsetof(PyBytesObject, ob_sval), len, array))) {
+        log_ie("Cannot read remote value of PyBytesObject");
+        goto error;
+    }
 
-  array[len] = 0;
-  *size      = len - 1;
+    array[len] = 0;
+    *size      = len - 1;
 
-  return array;
+    return array;
 
 error:
-  sfree(array);
-  return NULL;
+    sfree(array);
+    return NULL;
 }
-
 
 #endif

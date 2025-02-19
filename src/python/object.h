@@ -30,13 +30,13 @@
 
 // ---- object.h --------------------------------------------------------------
 
-#define PyObject_HEAD                   PyObject    ob_base;
-#define PyObject_VAR_HEAD               PyVarObject ob_base;
+#define PyObject_HEAD     PyObject ob_base;
+#define PyObject_VAR_HEAD PyVarObject ob_base;
 
 #ifdef Py_TRACE_REFS
-#define _PyObject_HEAD_EXTRA            \
-    struct _object *_ob_next;           \
-    struct _object *_ob_prev;
+#define _PyObject_HEAD_EXTRA  \
+    struct _object* _ob_next; \
+    struct _object* _ob_prev;
 
 #define _PyObject_EXTRA_INIT 0, 0,
 
@@ -45,18 +45,15 @@
 #define _PyObject_EXTRA_INIT
 #endif
 
-
 typedef ssize_t Py_ssize_t;
 
 typedef struct _object {
-    _PyObject_HEAD_EXTRA
-    ssize_t ob_refcnt;
-    struct _typeobject *ob_type;
+    _PyObject_HEAD_EXTRA ssize_t ob_refcnt;
+    struct _typeobject*          ob_type;
 } PyObject;
 
-
 typedef struct {
-    PyObject ob_base;
+    PyObject   ob_base;
     Py_ssize_t ob_size; /* Number of items in variable part */
 } PyVarObject;
 

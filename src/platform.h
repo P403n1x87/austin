@@ -25,30 +25,29 @@
 
 #include <stddef.h>
 
-
 #if defined(__linux__)
-  #define PL_LINUX
-  #define _GNU_SOURCE
+#define PL_LINUX
+#define _GNU_SOURCE
 
-  #include <sys/types.h>
+#include <sys/types.h>
 
-  typedef pid_t proc_ref_t;
+typedef pid_t proc_ref_t;
 
 #elif defined(__APPLE__) && defined(__MACH__)
-  #define PL_MACOS
+#define PL_MACOS
 
-  #include <mach/mach_port.h>
+#include <mach/mach_port.h>
 
-  typedef mach_port_t proc_ref_t;
+typedef mach_port_t proc_ref_t;
 
 #elif defined(_WIN32) || defined(_WIN64)
-  #define PL_WIN
+#define PL_WIN
 
-  #include <windows.h>
+#include <windows.h>
 
-  #define NULL_DEVICE "NUL:"
+#define NULL_DEVICE "NUL:"
 
-  typedef HANDLE proc_ref_t;
+typedef HANDLE proc_ref_t;
 
 #endif
 
@@ -61,9 +60,9 @@
 // ----------------------------------------------------------------------------
 
 #if defined(PL_LINUX) || defined(PL_MACOS)
-  #define PL_UNIX
+#define PL_UNIX
 
-  #define NULL_DEVICE "/dev/null"
+#define NULL_DEVICE "/dev/null"
 #endif
 
 // ----------------------------------------------------------------------------
@@ -77,9 +76,8 @@
 // ----------------------------------------------------------------------------
 
 #if defined PL_MACOS
-#define PID_MAX                    99999  // From sys/proc_internal.h
+#define PID_MAX 99999 // From sys/proc_internal.h
 #endif
-
 
 /**
  * Get the maximum PID for the platform.

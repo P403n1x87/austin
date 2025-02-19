@@ -32,511 +32,502 @@
 // -- Queue -------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-queue_item_t *
+queue_item_t*
 queue_item_new(value_t value, key_dt key) {
-  queue_item_t *item = (queue_item_t *)calloc(1, sizeof(queue_item_t));
+    queue_item_t* item = (queue_item_t*)calloc(1, sizeof(queue_item_t));
 
-  item->value = value;
-  item->key = key;
+    item->value = value;
+    item->key   = key;
 
-  return item;
+    return item;
 }
 
 // ----------------------------------------------------------------------------
 void
-queue_item__destroy(queue_item_t * self, void (*deallocator)(value_t)) {
-  if (!isvalid(self))
-    return;
+queue_item__destroy(queue_item_t* self, void (*deallocator)(value_t)) {
+    if (!isvalid(self))
+        return;
 
-  deallocator(self->value);
+    deallocator(self->value);
 
-  free(self);
+    free(self);
 }
 
 // ----------------------------------------------------------------------------
-queue_t *
+queue_t*
 queue_new(int capacity, void (*deallocator)(value_t)) {
-  queue_t *queue = (queue_t *)calloc(1, sizeof(queue_t));
+    queue_t* queue = (queue_t*)calloc(1, sizeof(queue_t));
 
-  queue->capacity    = capacity;
-  queue->deallocator = deallocator;
+    queue->capacity    = capacity;
+    queue->deallocator = deallocator;
 
-  return queue;
+    return queue;
 }
 
 // ----------------------------------------------------------------------------
 int
-queue__is_full(queue_t *queue) {
-  return queue->count == queue->capacity;
+queue__is_full(queue_t* queue) {
+    return queue->count == queue->capacity;
 }
 
 // ----------------------------------------------------------------------------
 int
-queue__is_empty(queue_t *queue) {
-  return queue->rear == NULL;
+queue__is_empty(queue_t* queue) {
+    return queue->rear == NULL;
 }
 
 // ----------------------------------------------------------------------------
 value_t
-queue__dequeue(queue_t *queue) {
-  if (queue__is_empty(queue))
-    return NULL;
+queue__dequeue(queue_t* queue) {
+    if (queue__is_empty(queue))
+        return NULL;
 
-  if (queue->front == queue->rear)
-    queue->front = NULL;
+    if (queue->front == queue->rear)
+        queue->front = NULL;
 
-  queue_item_t *temp = queue->rear;
-  queue->rear = queue->rear->prev;
+    queue_item_t* temp = queue->rear;
+    queue->rear        = queue->rear->prev;
 
-  if (queue->rear)
-    queue->rear->next = NULL;
+    if (queue->rear)
+        queue->rear->next = NULL;
 
-  void *value = temp->value;
-  free(temp);
+    void* value = temp->value;
+    free(temp);
 
-  queue->count--;
+    queue->count--;
 
-  return value;
+    return value;
 }
 
 // ----------------------------------------------------------------------------
-queue_item_t *
-queue__enqueue(queue_t *self, value_t value, key_dt key) {
-  if (queue__is_full(self)) 
-    return NULL;
+queue_item_t*
+queue__enqueue(queue_t* self, value_t value, key_dt key) {
+    if (queue__is_full(self))
+        return NULL;
 
-  queue_item_t *temp = queue_item_new(value, key);
-  temp->next = self->front;
+    queue_item_t* temp = queue_item_new(value, key);
+    temp->next         = self->front;
 
-  if (queue__is_empty(self))
-    self->rear = self->front = temp;
-  else {
-    self->front->prev = temp;
-    self->front = temp;
-  }
+    if (queue__is_empty(self))
+        self->rear = self->front = temp;
+    else {
+        self->front->prev = temp;
+        self->front       = temp;
+    }
 
-  self->count++;
+    self->count++;
 
-  return temp;
+    return temp;
 }
 
 // ----------------------------------------------------------------------------
 void
-queue__destroy(queue_t *self) {
-  if (!isvalid(self))
-    return;
+queue__destroy(queue_t* self) {
+    if (!isvalid(self))
+        return;
 
-  queue_item_t * next = NULL;
-  for (queue_item_t *item = self->front; isvalid(item); item = next) {
-    next = item->next;
-    queue_item__destroy(item, self->deallocator);
-  }
+    queue_item_t* next = NULL;
+    for (queue_item_t* item = self->front; isvalid(item); item = next) {
+        next = item->next;
+        queue_item__destroy(item, self->deallocator);
+    }
 
-  free(self);
+    free(self);
 }
-
 
 // -- Hash Table --------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-chain_t *
+chain_t*
 chain_new(key_dt key, value_t value) {
-  chain_t *chain = (chain_t *)calloc(1, sizeof(chain_t));
+    chain_t* chain = (chain_t*)calloc(1, sizeof(chain_t));
 
-  chain->key = key;
-  chain->value = value;
+    chain->key   = key;
+    chain->value = value;
 
-  return chain;
+    return chain;
 }
 
 // ----------------------------------------------------------------------------
 int
-chain__add(chain_t *self, key_dt key, value_t value) {
-  if (!isvalid(self))
+chain__add(chain_t* self, key_dt key, value_t value) {
+    if (!isvalid(self))
+        return 0;
+
+    if (!isvalid(self->next)) {
+        self->next = chain_new(key, value);
+        return 1;
+    }
+
+    if (self->next->key == key) {
+        self->next->value = value;
+    } else
+        return chain__add(self->next, key, value);
+
     return 0;
-
-  if (!isvalid(self->next)) {
-    self->next = chain_new(key, value);
-    return 1;
-  }
-
-  if (self->next->key == key) {
-    self->next->value = value;
-  } else
-    return chain__add(self->next, key, value);
-
-  return 0;
 }
 
 // ----------------------------------------------------------------------------
 int
-chain__remove(chain_t * self, key_dt key) {
-  if (!isvalid(self) || !isvalid(self->next))
-    return FALSE;
+chain__remove(chain_t* self, key_dt key) {
+    if (!isvalid(self) || !isvalid(self->next))
+        return FALSE;
 
-  if (self->next->key == key) {
-    chain_t * next = self->next;
-    self->next = next->next;
-    next->next = NULL;
+    if (self->next->key == key) {
+        chain_t* next = self->next;
+        self->next    = next->next;
+        next->next    = NULL;
 
-    free(next);
+        free(next);
 
-    return TRUE;
-  }
+        return TRUE;
+    }
 
-  return chain__remove(self->next, key);
+    return chain__remove(self->next, key);
 }
 
 // ----------------------------------------------------------------------------
 value_t
-chain__find(chain_t * self, key_dt key) {
-  if (!isvalid(self))
-    return NULL;
+chain__find(chain_t* self, key_dt key) {
+    if (!isvalid(self))
+        return NULL;
 
-  if (self->key == key)
-    return self->value;
+    if (self->key == key)
+        return self->value;
 
-  return chain__find(self->next, key);
+    return chain__find(self->next, key);
 }
 
 // ----------------------------------------------------------------------------
 int
-chain__has(chain_t * self, key_dt key) {
-  if (!isvalid(self))
-    return FALSE;
+chain__has(chain_t* self, key_dt key) {
+    if (!isvalid(self))
+        return FALSE;
 
-  if (self->key == key)
-    return TRUE;
+    if (self->key == key)
+        return TRUE;
 
-  return chain__has(self->next, key);
+    return chain__has(self->next, key);
 }
 
 // ----------------------------------------------------------------------------
-void chain__destroy(chain_t * self) {
-  if (!isvalid(self))
-    return;
+void
+chain__destroy(chain_t* self) {
+    if (!isvalid(self))
+        return;
 
-  chain__destroy(self->next);
+    chain__destroy(self->next);
 
-  free(self);
+    free(self);
 }
 
 // ----------------------------------------------------------------------------
-hash_table_t *
+hash_table_t*
 hash_table_new(int capacity) {
-  hash_table_t *hash = (hash_table_t *) calloc(1, sizeof(hash_table_t));
+    hash_table_t* hash = (hash_table_t*)calloc(1, sizeof(hash_table_t));
 
-  hash->capacity = capacity;
-  hash->load_factor = 0.75 * capacity;
-  hash->chains = (chain_t **) calloc(hash->capacity, sizeof(chain_t *));
+    hash->capacity    = capacity;
+    hash->load_factor = 0.75 * capacity;
+    hash->chains      = (chain_t**)calloc(hash->capacity, sizeof(chain_t*));
 
-  #ifdef DEBUG
-  hash->set_total = 0;
-  hash->set_empty = 0;
-  #endif
+#ifdef DEBUG
+    hash->set_total = 0;
+    hash->set_empty = 0;
+#endif
 
-  return hash;
+    return hash;
 }
 
 // ----------------------------------------------------------------------------
 #define MAGIC 2654435761
 
 static inline index_t
-_hash_table__index(hash_table_t *self, key_dt key) {
-  return (uintptr_t)((key * MAGIC) % self->capacity);
+_hash_table__index(hash_table_t* self, key_dt key) {
+    return (uintptr_t)((key * MAGIC) % self->capacity);
 }
 
 // ----------------------------------------------------------------------------
 value_t
-hash_table__get(hash_table_t *self, key_dt key) {
-  if (!isvalid(self))
-    return NULL;
+hash_table__get(hash_table_t* self, key_dt key) {
+    if (!isvalid(self))
+        return NULL;
 
-  chain_t * chain = self->chains[_hash_table__index(self, key)];
-  if (!isvalid(chain))
-    return NULL;
+    chain_t* chain = self->chains[_hash_table__index(self, key)];
+    if (!isvalid(chain))
+        return NULL;
 
-  return chain__find(chain, key);
+    return chain__find(chain, key);
 }
 
 // ----------------------------------------------------------------------------
 int
-hash_table__is_full(hash_table_t *self) {
-  if (!isvalid(self))
-    return -1;
+hash_table__is_full(hash_table_t* self) {
+    if (!isvalid(self))
+        return -1;
 
-  return self->size >= self->load_factor;
+    return self->size >= self->load_factor;
 }
 
 // ----------------------------------------------------------------------------
 void
-hash_table__set(hash_table_t *self, key_dt key, value_t value) {
-  if (!isvalid(self))
-    return;
+hash_table__set(hash_table_t* self, key_dt key, value_t value) {
+    if (!isvalid(self))
+        return;
 
-  index_t index = _hash_table__index(self, key);
+    index_t index = _hash_table__index(self, key);
 
-  #ifdef DEBUG
-  self->set_total++;
-  #endif
+#ifdef DEBUG
+    self->set_total++;
+#endif
 
-  chain_t * chain = self->chains[index];
-  if (!isvalid(chain)) {
-    if (self->size >= self->capacity)
-      return;
-    #ifdef DEBUG
-    self->set_empty++;
-    #endif
-    self->chains[index] = chain_head();
-    self->size += chain__add(self->chains[index], key, value);
-    return;
-  }
-
-  if ((self->size >= self->capacity) && !chain__has(chain, key))
-    return;
-
-  self->size += chain__add(self->chains[index], key, value);
-}
-
-// ----------------------------------------------------------------------------
-void
-hash_table__del(hash_table_t * self, key_dt key) {
-  if (!isvalid(self) || self->size == 0)
-    return;
-
-  index_t   index = _hash_table__index(self, key);
-  chain_t * chain = self->chains[index];
-
-  if (!isvalid(chain))
-    return;
-
-  self->size -= chain__remove(chain, key);
-
-  if (chain__is_empty(chain)) {
-    chain__destroy(chain);
-    self->chains[index] = NULL;
-  }
-}
-
-// ----------------------------------------------------------------------------
-void
-hash_table__destroy(hash_table_t *self) {
-  if (!isvalid(self))
-    return;
-
-  if (isvalid(self->chains)) {
-    for (int i = 0; i < self->capacity; i++) {
-      chain__destroy(self->chains[i]);
+    chain_t* chain = self->chains[index];
+    if (!isvalid(chain)) {
+        if (self->size >= self->capacity)
+            return;
+#ifdef DEBUG
+        self->set_empty++;
+#endif
+        self->chains[index]  = chain_head();
+        self->size          += chain__add(self->chains[index], key, value);
+        return;
     }
-    sfree(self->chains);
-  }
 
-  free(self);
+    if ((self->size >= self->capacity) && !chain__has(chain, key))
+        return;
+
+    self->size += chain__add(self->chains[index], key, value);
 }
 
+// ----------------------------------------------------------------------------
+void
+hash_table__del(hash_table_t* self, key_dt key) {
+    if (!isvalid(self) || self->size == 0)
+        return;
+
+    index_t  index = _hash_table__index(self, key);
+    chain_t* chain = self->chains[index];
+
+    if (!isvalid(chain))
+        return;
+
+    self->size -= chain__remove(chain, key);
+
+    if (chain__is_empty(chain)) {
+        chain__destroy(chain);
+        self->chains[index] = NULL;
+    }
+}
+
+// ----------------------------------------------------------------------------
+void
+hash_table__destroy(hash_table_t* self) {
+    if (!isvalid(self))
+        return;
+
+    if (isvalid(self->chains)) {
+        for (int i = 0; i < self->capacity; i++) {
+            chain__destroy(self->chains[i]);
+        }
+        sfree(self->chains);
+    }
+
+    free(self);
+}
 
 // -- LRU Cache ---------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-lru_cache_t *
+lru_cache_t*
 lru_cache_new(int capacity, void (*deallocator)(value_t)) {
-  lru_cache_t *cache = (lru_cache_t *)calloc(1, sizeof(lru_cache_t));
+    lru_cache_t* cache = (lru_cache_t*)calloc(1, sizeof(lru_cache_t));
 
-  cache->capacity = capacity;
-  
-  capacity = capacity ? capacity : 1024;
-  
-  cache->queue = queue_new(capacity, deallocator);
-  cache->hash  = hash_table_new((capacity * 4 / 3) | 1);
+    cache->capacity = capacity;
 
-  #ifdef DEBUG
-  cache->hits = 0;
-  cache->misses = 0;
-  #endif
+    capacity = capacity ? capacity : 1024;
 
-  return cache;
+    cache->queue = queue_new(capacity, deallocator);
+    cache->hash  = hash_table_new((capacity * 4 / 3) | 1);
+
+#ifdef DEBUG
+    cache->hits   = 0;
+    cache->misses = 0;
+#endif
+
+    return cache;
 }
 
 // ----------------------------------------------------------------------------
 value_t
-lru_cache__maybe_hit(lru_cache_t *self, key_dt key) {
-  queue_item_t *item = (queue_item_t *)hash_table__get(self->hash, key);
+lru_cache__maybe_hit(lru_cache_t* self, key_dt key) {
+    queue_item_t* item = (queue_item_t*)hash_table__get(self->hash, key);
 
-  if (!isvalid(item)) {
-    #ifdef DEBUG
-    self->misses++;
-    #endif
-    return NULL;
-  }
-
-  #ifdef DEBUG
-  self->hits++;
-  #endif
-
-  // Bring hit element to the front of the queue
-  if (item != self->queue->front)
-  {
-    item->prev->next = item->next;
-    if (item->next)
-      item->next->prev = item->prev;
-
-    if (item == self->queue->rear)
-    {
-      self->queue->rear = item->prev;
-      self->queue->rear->next = NULL;
+    if (!isvalid(item)) {
+#ifdef DEBUG
+        self->misses++;
+#endif
+        return NULL;
     }
 
-    item->next = self->queue->front;
-    item->prev = NULL;
+#ifdef DEBUG
+    self->hits++;
+#endif
 
-    item->next->prev = item;
+    // Bring hit element to the front of the queue
+    if (item != self->queue->front) {
+        item->prev->next = item->next;
+        if (item->next)
+            item->next->prev = item->prev;
 
-    self->queue->front = item;
-  }
+        if (item == self->queue->rear) {
+            self->queue->rear       = item->prev;
+            self->queue->rear->next = NULL;
+        }
 
-  return item->value;
+        item->next = self->queue->front;
+        item->prev = NULL;
+
+        item->next->prev = item;
+
+        self->queue->front = item;
+    }
+
+    return item->value;
 }
 
 // ----------------------------------------------------------------------------
 int
-lru_cache__is_full(lru_cache_t *self) {
-  return queue__is_full(self->queue);
+lru_cache__is_full(lru_cache_t* self) {
+    return queue__is_full(self->queue);
 }
 
 // ----------------------------------------------------------------------------
 void
-lru_cache__store(lru_cache_t *self, key_dt key, value_t value) {
-  queue_t * queue = self->queue;
+lru_cache__store(lru_cache_t* self, key_dt key, value_t value) {
+    queue_t* queue = self->queue;
 
-  if (queue__is_full(queue)) {
-    if (self->capacity == LRU_CACHE_EXPAND) {
-      // Double the queue capacity.
-      unsigned capacity = queue->capacity = (queue->capacity << 1);
+    if (queue__is_full(queue)) {
+        if (self->capacity == LRU_CACHE_EXPAND) {
+            // Double the queue capacity.
+            unsigned capacity = queue->capacity = (queue->capacity << 1);
 
-      // Double the hash table and move the items across.
-      hash_table_t *new_hash = hash_table_new((capacity * 4 / 3) | 1);
-      
-      hash_table__iter_start(self->hash, queue_item_t *, item) {
-        hash_table__set(new_hash, item->key, item);
-      } hash_table__iter_stop(self->hash);
+            // Double the hash table and move the items across.
+            hash_table_t* new_hash = hash_table_new((capacity * 4 / 3) | 1);
 
-      // Destroy the old hash table and replace it with the new one.
-      hash_table__destroy(self->hash);
-      self->hash = new_hash;
-    } else {
-      hash_table__del(self->hash, queue->rear->key);
-      
-      value_t value = queue__dequeue(queue);
-      if (isvalid(value))
-        queue->deallocator(value);
+            hash_table__iter_start(self->hash, queue_item_t*, item) { hash_table__set(new_hash, item->key, item); }
+            hash_table__iter_stop(self->hash);
+
+            // Destroy the old hash table and replace it with the new one.
+            hash_table__destroy(self->hash);
+            self->hash = new_hash;
+        } else {
+            hash_table__del(self->hash, queue->rear->key);
+
+            value_t value = queue__dequeue(queue);
+            if (isvalid(value))
+                queue->deallocator(value);
+        }
     }
-  }
 
-  hash_table__set(self->hash, key, queue__enqueue(self->queue, value, key));
+    hash_table__set(self->hash, key, queue__enqueue(self->queue, value, key));
 }
 
 // ----------------------------------------------------------------------------
 void
-lru_cache__destroy(lru_cache_t *self) {
-  if (!isvalid(self))
-    return;
+lru_cache__destroy(lru_cache_t* self) {
+    if (!isvalid(self))
+        return;
 
-  #ifdef DEBUG
-  size_t total = self->hits + self->misses;
-  log_d(
-    "(%s) hit ratio: %d/%d (%0.2f%%)\n",
-    self->name, self->hits, total, (self->hits) * 100.0 / total
-  );
-  log_d(
-    "(%s) hash collisions: %d/%d (%0.2f%%, prob: %0.2f%%)\n",
-    self->name,
-    self->hash->set_total - self->hash->set_empty,
-    self->hash->set_total,
-    (self->hash->set_total - self->hash->set_empty) * 100.0 / self->hash->set_total,
-    100.0 * (1 - exp(-((double) self->queue->count) * (self->queue->count - 1.0) / 2.0 / self->hash->capacity))
-  );
-  #endif
+#ifdef DEBUG
+    size_t total = self->hits + self->misses;
+    log_d("(%s) hit ratio: %d/%d (%0.2f%%)\n", self->name, self->hits, total, (self->hits) * 100.0 / total);
+    log_d(
+        "(%s) hash collisions: %d/%d (%0.2f%%, prob: %0.2f%%)\n", self->name,
+        self->hash->set_total - self->hash->set_empty, self->hash->set_total,
+        (self->hash->set_total - self->hash->set_empty) * 100.0 / self->hash->set_total,
+        100.0 * (1 - exp(-((double)self->queue->count) * (self->queue->count - 1.0) / 2.0 / self->hash->capacity))
+    );
+#endif
 
-  queue__destroy(self->queue);
-  hash_table__destroy(self->hash);
+    queue__destroy(self->queue);
+    hash_table__destroy(self->hash);
 
-  free(self);
+    free(self);
 }
-
 
 // -- Lookup ------------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-lookup_t *
+lookup_t*
 lookup_new(int size) {
-  lookup_t *lookup = (lookup_t *)calloc(1, sizeof(lookup_t));
-  if (!isvalid(lookup))
-    return NULL;
+    lookup_t* lookup = (lookup_t*)calloc(1, sizeof(lookup_t));
+    if (!isvalid(lookup))
+        return NULL;
 
-  lookup->hash = hash_table_new(size);
+    lookup->hash = hash_table_new(size);
 
-  return lookup;
+    return lookup;
 }
 
 // ----------------------------------------------------------------------------
 value_t
-lookup__get(lookup_t *self, key_dt key) {
-  if (!isvalid(self))
-    return NULL;
+lookup__get(lookup_t* self, key_dt key) {
+    if (!isvalid(self))
+        return NULL;
 
-  return hash_table__get(self->hash, key);
+    return hash_table__get(self->hash, key);
 }
 
 // ----------------------------------------------------------------------------
 void
-lookup__set(lookup_t *self, key_dt key, value_t value) {
-  if (!isvalid(self))
-    return;
+lookup__set(lookup_t* self, key_dt key, value_t value) {
+    if (!isvalid(self))
+        return;
 
-  if (hash_table__is_full(self->hash)) {
-    // Double the hash table and move the items across.
-    hash_table_t *new_hash = hash_table_new(self->hash->capacity << 1);
-    
-    hash_table__iteritems_start(self->hash, key_dt, _key, value_t, _value) {
-      hash_table__set(new_hash, _key, _value);
-    } hash_table__iter_stop(self->hash);
+    if (hash_table__is_full(self->hash)) {
+        // Double the hash table and move the items across.
+        hash_table_t* new_hash = hash_table_new(self->hash->capacity << 1);
 
-    // Destroy the old hash table and replace it with the new one.
+        hash_table__iteritems_start(self->hash, key_dt, _key, value_t, _value) {
+            hash_table__set(new_hash, _key, _value);
+        }
+        hash_table__iter_stop(self->hash);
+
+        // Destroy the old hash table and replace it with the new one.
+        hash_table__destroy(self->hash);
+        self->hash = new_hash;
+    }
+
+    hash_table__set(self->hash, key, value);
+}
+
+// ----------------------------------------------------------------------------
+void
+lookup__del(lookup_t* self, key_dt key) {
+    if (!isvalid(self))
+        return;
+
+    hash_table__del(self->hash, key);
+}
+
+// ----------------------------------------------------------------------------
+void
+lookup__clear(lookup_t* self) {
+    if (!isvalid(self))
+        return;
+
+    size_t size = self->hash->capacity;
     hash_table__destroy(self->hash);
-    self->hash = new_hash;
-  }
-
-  hash_table__set(self->hash, key, value);
+    self->hash = hash_table_new(size);
 }
 
 // ----------------------------------------------------------------------------
 void
-lookup__del(lookup_t *self, key_dt key) {
-  if (!isvalid(self))
-    return;
+lookup__destroy(lookup_t* self) {
+    if (!isvalid(self))
+        return;
 
-  hash_table__del(self->hash, key);
-}
+    hash_table__destroy(self->hash);
+    self->hash = NULL;
 
-// ----------------------------------------------------------------------------
-void
-lookup__clear(lookup_t *self) {
-  if (!isvalid(self))
-    return;
-
-  size_t size = self->hash->capacity;
-  hash_table__destroy(self->hash);
-  self->hash = hash_table_new(size);
-}
-
-// ----------------------------------------------------------------------------
-void
-lookup__destroy(lookup_t *self) {
-  if (!isvalid(self))
-    return;
-
-  hash_table__destroy(self->hash);
-  self->hash = NULL;
-
-  free(self);
+    free(self);
 }

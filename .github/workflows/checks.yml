@@ -78,6 +78,18 @@ jobs:
       - name: Check source code spelling
         run: codespell -I .github/workflows/wordlist.txt -S "src/python/*" src
 
+  formatting-sources:
+    runs-on: ubuntu-24.04
+    name: Formatting (sources)
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install clang-format
+        run: pip install clang-format
+
+      - name: Check formatting
+        run: find src -name "*.c" -o -name "*.h" | xargs clang-format -style=file --dry-run --Werror
+
   formatting-tests:
     runs-on: ubuntu-24.04
     name: Formatting (tests)

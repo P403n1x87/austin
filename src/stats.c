@@ -40,13 +40,12 @@
 #include "logging.h"
 #include "stats.h"
 
-
 #ifndef CLOCK_BOOTTIME
-  #ifdef CLOCK_REALTIME
-    #define CLOCK_BOOTTIME CLOCK_REALTIME
-  #else
-    #define CLOCK_BOOTTIME HIGHRES_CLOCK
-  #endif
+#ifdef CLOCK_REALTIME
+#define CLOCK_BOOTTIME CLOCK_REALTIME
+#else
+#define CLOCK_BOOTTIME HIGHRES_CLOCK
+#endif
 #endif
 
 // ---- PRIVATE ---------------------------------------------------------------
@@ -73,140 +72,128 @@ static clock_serv_t cclock;
 static ctime_t _period;
 #endif
 
-
 // ---- PUBLIC ----------------------------------------------------------------
 
 ctime_t
 gettime() {
-  #if defined PL_UNIX                                                 /* UNIX */
-  #ifdef PL_MACOS
-  mach_timespec_t ts;
-  clock_get_time(cclock, &ts);
-  #else
-  struct timespec ts;
-  clock_gettime(CLOCK_BOOTTIME, &ts);
-  #endif
+#if defined PL_UNIX /* UNIX */
+#ifdef PL_MACOS
+    mach_timespec_t ts;
+    clock_get_time(cclock, &ts);
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_BOOTTIME, &ts);
+#endif
 
-  return ts.tv_sec * 1e6 + ts.tv_nsec / 1e3;
+    return ts.tv_sec * 1e6 + ts.tv_nsec / 1e3;
 
-  #else                                                                /* WIN */
-  LARGE_INTEGER count;
-  QueryPerformanceCounter(&count);
-  return count.QuadPart * 1000000 / _period;
-  #endif
+#else /* WIN */
+    LARGE_INTEGER count;
+    QueryPerformanceCounter(&count);
+    return count.QuadPart * 1000000 / _period;
+#endif
 }
-
 
 void
 stats_reset() {
-  _sample_cnt = 0;
-  _error_cnt  = 0;
+    _sample_cnt = 0;
+    _error_cnt  = 0;
 
-  _min_sampling_time = ULONG_MAX;
-  _max_sampling_time = 0;
-  _avg_sampling_time = 0;
+    _min_sampling_time = ULONG_MAX;
+    _max_sampling_time = 0;
+    _avg_sampling_time = 0;
 
-  #if defined PL_MACOS
-  host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
-  #elif defined PL_WIN
-  LARGE_INTEGER freq;
-  if (QueryPerformanceFrequency(&freq) == 0) {
-    log_e("Failed to get frequency count");
-  }
-  _period = freq.QuadPart;
-  #endif
+#if defined PL_MACOS
+    host_get_clock_service(mach_host_self(), CALENDAR_CLOCK, &cclock);
+#elif defined PL_WIN
+    LARGE_INTEGER freq;
+    if (QueryPerformanceFrequency(&freq) == 0) {
+        log_e("Failed to get frequency count");
+    }
+    _period = freq.QuadPart;
+#endif
 }
-
 
 ctime_t
 stats_get_max_sampling_time() {
-  return _max_sampling_time;
+    return _max_sampling_time;
 }
-
 
 ctime_t
 stats_get_min_sampling_time() {
-  return _min_sampling_time;
+    return _min_sampling_time;
 }
-
 
 ctime_t
 stats_get_avg_sampling_time() {
-  return _avg_sampling_time / _sample_cnt;
+    return _avg_sampling_time / _sample_cnt;
 }
-
 
 void
 stats_start() {
-  _start_time = gettime();
+    _start_time = gettime();
 }
-
 
 ctime_t
 stats_duration() {
-  return gettime() - _start_time;
+    return gettime() - _start_time;
 }
-
 
 void
 stats_log_metrics() {
-  if (pargs.pipe) {
-    if (!_sample_cnt) {
-      goto release;
-    }
+    if (pargs.pipe) {
+        if (!_sample_cnt) {
+            goto release;
+        }
 
-    emit_metadata("sampling", "%lu,%lu,%lu",
-      stats_get_min_sampling_time(),
-      stats_get_avg_sampling_time(),
-      stats_get_max_sampling_time()
-    );
+        emit_metadata(
+            "sampling", "%lu,%lu,%lu", stats_get_min_sampling_time(), stats_get_avg_sampling_time(),
+            stats_get_max_sampling_time()
+        );
 
-    emit_metadata("saturation", "%ld/%ld", _long_cnt, _sample_cnt);
+        emit_metadata("saturation", "%ld/%ld", _long_cnt, _sample_cnt);
 
-    emit_metadata("errors", "%ld/%ld", _error_cnt, _sample_cnt);
-  }
-  else {
-    ctime_t duration = stats_duration();
+        emit_metadata("errors", "%ld/%ld", _error_cnt, _sample_cnt);
+    } else {
+        ctime_t duration = stats_duration();
 
-    log_m("");
-    if (!_sample_cnt) {
-      log_m("😣 No samples collected.");
-      goto release;
-    }
+        log_m("");
+        if (!_sample_cnt) {
+            log_m("😣 No samples collected.");
+            goto release;
+        }
 
-    log_m("\033[1mStatistics\033[0m");
+        log_m("\033[1mStatistics\033[0m");
 
-    log_m("⌛ Sampling duration : \033[1m%.2f s\033[0m", duration / 1000000.);
+        log_m("⌛ Sampling duration : \033[1m%.2f s\033[0m", duration / 1000000.);
 
-    if (pargs.gc) {
-      log_m("🗑️  Garbage collector : \033[1m%.2f s\033[0m (\033[1m%.2f %%\033[0m)", \
-        _gc_time / 1000000., \
-        (float) _gc_time / duration * 100 \
-      );
-    }
+        if (pargs.gc) {
+            log_m(
+                "🗑️  Garbage collector : \033[1m%.2f s\033[0m (\033[1m%.2f %%\033[0m)", _gc_time / 1000000.,
+                (float)_gc_time / duration * 100
+            );
+        }
 
-    log_m("⏱️  Frame sampling (min/avg/max) : \033[1m%lu/%lu/%lu μs\033[0m",
-      stats_get_min_sampling_time(),
-      stats_get_avg_sampling_time(),
-      stats_get_max_sampling_time()
-    );
+        log_m(
+            "⏱️  Frame sampling (min/avg/max) : \033[1m%lu/%lu/%lu μs\033[0m", stats_get_min_sampling_time(),
+            stats_get_avg_sampling_time(), stats_get_max_sampling_time()
+        );
 
-    log_m("🐢 Long sampling rate : \033[1m%d/%d\033[0m (\033[1m%.2f %%\033[0m) samples took longer than the sampling interval to collect", \
-      _long_cnt,                                           \
-      _sample_cnt,                                         \
-      (float) _long_cnt / _sample_cnt * 100                \
-    );
+        log_m(
+            "🐢 Long sampling rate : \033[1m%d/%d\033[0m (\033[1m%.2f %%\033[0m) samples took longer than the sampling "
+            "interval to collect",
+            _long_cnt, _sample_cnt, (float)_long_cnt / _sample_cnt * 100
+        );
 
-    log_m("💀 Error rate : \033[1m%d/%d\033[0m (\033[1m%.2f %%\033[0m) invalid samples",   \
-      _error_cnt,                                          \
-      _sample_cnt,                                         \
-      (float) _error_cnt / _sample_cnt * 100               \
-    );
-  };
+        log_m(
+            "💀 Error rate : \033[1m%d/%d\033[0m (\033[1m%.2f %%\033[0m) invalid samples", _error_cnt, _sample_cnt,
+            (float)_error_cnt / _sample_cnt * 100
+        );
+    };
 
 release:
-  #if defined PL_MACOS
-  mach_port_deallocate(mach_task_self(), cclock);
-  #endif
-  return;
+#if defined PL_MACOS
+    mach_port_deallocate(mach_task_self(), cclock);
+#endif
+    return;
 }

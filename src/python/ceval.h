@@ -32,8 +32,8 @@
 #include "misc.h"
 
 struct _ceval_runtime_state3_11 {
-  _Py_atomic_int signals_pending;
-  struct _gil_runtime_state3_11 gil;
+    _Py_atomic_int                signals_pending;
+    struct _gil_runtime_state3_11 gil;
 };
 
 #endif

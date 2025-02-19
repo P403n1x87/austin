@@ -39,74 +39,74 @@
 struct _ts; /* Forward */
 
 typedef struct _is2 {
-    struct _is2 *next;
-    struct _ts *tstate_head;
-    int64_t id;
-    void* gc;  /* Dummy */
+    struct _is2* next;
+    struct _ts*  tstate_head;
+    int64_t      id;
+    void*        gc; /* Dummy */
 } PyInterpreterState2;
 
 // ---- internal/pycore_interp.h ----------------------------------------------
 
-typedef void *PyThread_type_lock;
+typedef void* PyThread_type_lock;
 
 struct _pending_calls {
     PyThread_type_lock lock;
-    _Py_atomic_int calls_to_do;
-    int async_exc;
+    _Py_atomic_int     calls_to_do;
+    int                async_exc;
 #define NPENDINGCALLS 32
     struct {
-        int (*func)(void *);
-        void *arg;
+        int (*func)(void*);
+        void* arg;
     } calls[NPENDINGCALLS];
     int first;
     int last;
 };
 
 struct _ceval_state {
-    int recursion_limit;
-    int tracing_possible;
-    _Py_atomic_int eval_breaker;
-    _Py_atomic_int gil_drop_request;
+    int                   recursion_limit;
+    int                   tracing_possible;
+    _Py_atomic_int        eval_breaker;
+    _Py_atomic_int        gil_drop_request;
     struct _pending_calls pending;
 };
 
 typedef struct _is3_9 {
 
-    struct _is3_9 *next;
-    struct _ts *tstate_head;
+    struct _is3_9* next;
+    struct _ts*    tstate_head;
 
     /* Reference to the _PyRuntime global variable. This field exists
        to not have to pass runtime in addition to tstate to a function.
        Get runtime from tstate: tstate->interp->runtime. */
-    struct pyruntimestate *runtime;
+    struct pyruntimestate* runtime;
 
-    int64_t id;
-    int64_t id_refcount;
-    int requires_idref;
+    int64_t            id;
+    int64_t            id_refcount;
+    int                requires_idref;
     PyThread_type_lock id_mutex;
 
     int finalizing;
 
-    struct _ceval_state ceval;
+    struct _ceval_state         ceval;
     struct _gc_runtime_state3_8 gc;
 } PyInterpreterState3_9;
 
 typedef struct _is3_11 {
 
-    struct _is3_11 *next;
+    struct _is3_11* next;
 
     struct pythreads {
-        uint64_t next_unique_id;
-        struct _ts *head;  /* The linked list of threads, newest first. */
-        long count;
-        size_t stacksize;
+        uint64_t    next_unique_id;
+        struct _ts* head; /* The linked list of threads, newest first. */
+        long        count;
+        size_t      stacksize;
     } threads;
 
-    struct pyruntimestate3_11 *runtime;
+    struct pyruntimestate3_11* runtime;
 
-    int64_t id;
-    int64_t id_refcount;
-    int requires_idref;
+    int64_t            id;
+    int64_t            id_refcount;
+    int                requires_idref;
     PyThread_type_lock id_mutex;
 
     int _initialized;
@@ -115,17 +115,16 @@ typedef struct _is3_11 {
     /* Was this interpreter statically allocated? */
     bool _static;
 
-    struct _ceval_state ceval;
+    struct _ceval_state         ceval;
     struct _gc_runtime_state3_8 gc;
 } PyInterpreterState3_11;
 
-
 typedef struct {
-    void *next;
+    void* next;
 
-    int64_t id;
-    int64_t id_refcount;
-    int requires_idref;
+    int64_t            id;
+    int64_t            id_refcount;
+    int                requires_idref;
     PyThread_type_lock id_mutex;
 
     /* Has been initialized to a safe state.
@@ -140,43 +139,42 @@ typedef struct {
     struct {
         uint64_t next_unique_id;
         /* The linked list of threads, newest first. */
-        void *head;
+        void*    head;
         /* Used in Modules/_threadmodule.c. */
-        long count;
+        long     count;
         /* Support for runtime thread stack size tuning.
            A value of 0 means using the platform's default stack size
            or the size specified by the THREAD_STACK_SIZE macro. */
         /* Used in Python/thread.c. */
-        size_t stacksize;
+        size_t   stacksize;
     } threads;
 
-    void *runtime;
+    void* runtime;
 
     _Py_atomic_address _finalizing;
 
     struct _gc_runtime_state3_12 gc;
 
     // Dictionary of the sys module
-    PyObject *sysdict;
+    PyObject* sysdict;
 
     // Dictionary of the builtins module
-    PyObject *builtins;
+    PyObject* builtins;
 
     struct {
         _Py_atomic_int eval_breaker;
         _Py_atomic_int gil_drop_request;
-        int recursion_limit;
-        void *gil;
+        int            recursion_limit;
+        void*          gil;
         // ...
     } ceval;
 } PyInterpreterState3_12;
 
-
 typedef union {
-  PyInterpreterState2    v2;
-  PyInterpreterState3_9  v3_9;
-  PyInterpreterState3_11 v3_11;
-  PyInterpreterState3_12 v3_12;
+    PyInterpreterState2    v2;
+    PyInterpreterState3_9  v3_9;
+    PyInterpreterState3_11 v3_11;
+    PyInterpreterState3_12 v3_12;
 } PyInterpreterState;
 
 #endif
