@@ -10,7 +10,7 @@ _get_base_64(Elf64_Ehdr* ehdr, void* elf_map) {
 } /* _get_base_64 */
 
 static int
-_py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base) {
+_py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss) {
     register int symbols = 0;
 
     Elf64_Ehdr* ehdr = elf_map;
@@ -29,7 +29,7 @@ _py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base) {
     size_t bss_size = 0;
 
     if (base != UINT64_MAX) {
-        log_d("Base @ %p", base);
+        log_d("ELF base @ %p", base);
 
         for (Elf64_Off sh_off = ehdr->e_shoff; sh_off < elf_map_size; sh_off += ehdr->e_shentsize) {
             p_shdr = (Elf64_Shdr*)(elf_map + sh_off);
@@ -45,7 +45,7 @@ _py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base) {
             }
         }
 
-        if (p_dynsym != NULL) {
+        if (isvalid(p_dynsym)) {
             if (p_dynsym->sh_offset != 0) {
                 Elf64_Shdr* p_strtabsh = (Elf64_Shdr*)(elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
 
@@ -71,9 +71,9 @@ _py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base) {
     }
 
     // Communicate BSS data back to the caller
-    self->map.bss.base = bss_base;
-    self->map.bss.size = bss_size;
-    log_d("BSS @ %p (size %x, offset %x)", self->map.bss.base, self->map.bss.size, self->map.bss.base - elf_base);
+    bss->base = bss_base;
+    bss->size = bss_size;
+    log_d("BSS @ %p (size %x, offset %x)", bss_base, bss_size, bss_base - elf_base);
 
     SUCCESS;
 } /* _py_proc__analyze_elf64 */
