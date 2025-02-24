@@ -502,10 +502,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}-dev
 
-      - name: Install Python 3.10
+      - name: Install Python 3.12
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: "3.12"
 
       - name: Compile Austin
         run: |
@@ -515,7 +515,7 @@ jobs:
 
       - name: Install runtime dependencies
         run: |
-          python3.10 -m venv .venv
+          python3.12 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-val.txt
@@ -529,3 +529,11 @@ jobs:
           source .venv/bin/activate
           python scripts/validation.py --ignore-errors
           deactivate
+
+      - name: Upload profiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-validation-profiles-${{ matrix.python-version }}
+          path: "*.mojo"
+          overwrite: true
+        if: always()

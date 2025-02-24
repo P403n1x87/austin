@@ -211,23 +211,33 @@ def compare(
     return hotelling_two_sample_test(X, Y)
 
 
-def validate(args, variant: str = "austin", runs: int = 10) -> float:
-    austin_latest = common.download_latest(dest=Path("/tmp"), variant_name=variant)
-    austin_dev = common.get_dev(variant_name=variant)
+def tee(data: bytes, output: str) -> bytes:
+    Path(output.replace(" ", "_").lower()).with_suffix(".mojo").write_bytes(data)
+    return data
+
+
+def validate(scenario: Scenario, runs: int = 10) -> float:
+    austin_latest = common.download_latest(
+        dest=Path("/tmp"), variant_name=scenario.variant
+    )
+    austin_dev = common.get_dev(variant_name=scenario.variant)
 
     return compare(
         *(
             [
                 AustinFlameGraph.from_mojo(
-                    austin(
-                        *args,
-                        mojo=True,
-                        convert=False,
-                    ).stdout
+                    tee(
+                        austin(
+                            *scenario.args,
+                            mojo=True,
+                            convert=False,
+                        ).stdout,
+                        f"{scenario.title}-{version}-{n}",
+                    )
                 )
-                for _ in range(runs)
+                for n in range(runs)
             ]
-            for austin in (austin_latest, austin_dev)
+            for austin, version in zip((austin_latest, austin_dev), ("latest", "dev"))
         ),
         threshold=runs,  # Keep only the stacks that are present in all runs
     )
@@ -271,7 +281,7 @@ if __name__ == "__main__":
 
     print("# Austin Data Validation\n")
 
-    failures: t.List[Scenario] = []
+    failures: t.List[t.Tuple[Scenario, float]] = []
     for scenario in SCENARIOS:
         print(
             f"Validating {scenario.title} ...                                ",
@@ -279,7 +289,7 @@ if __name__ == "__main__":
             flush=True,
             file=sys.stderr,
         )
-        if (p := validate(scenario.args, scenario.variant, runs=opts.n)) < opts.p_value:
+        if (p := validate(scenario, runs=opts.n)) < opts.p_value:
             failures.append((scenario, p))
 
     if failures:
