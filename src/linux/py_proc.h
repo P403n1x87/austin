@@ -101,7 +101,7 @@ _get_base_64(Elf64_Ehdr* ehdr, void* elf_map) {
 } /* _get_base_64 */
 
 static int
-_py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base) {
+_py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss) {
     register int symbols = 0;
 
     Elf64_Ehdr* ehdr = elf_map;
@@ -120,7 +120,7 @@ _py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base) {
     size_t bss_size = 0;
 
     if (base != UINT64_MAX) {
-        log_d("Base @ %p", base);
+        log_d("ELF base @ %p", base);
 
         for (Elf64_Off sh_off = ehdr->e_shoff; sh_off < elf_map_size; sh_off += ehdr->e_shentsize) {
             p_shdr = (Elf64_Shdr*)(elf_map + sh_off);
@@ -136,7 +136,7 @@ _py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base) {
             }
         }
 
-        if (p_dynsym != NULL) {
+        if (isvalid(p_dynsym)) {
             if (p_dynsym->sh_offset != 0) {
                 Elf64_Shdr* p_strtabsh = (Elf64_Shdr*)(elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
 
@@ -162,9 +162,9 @@ _py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base) {
     }
 
     // Communicate BSS data back to the caller
-    self->map.bss.base = bss_base;
-    self->map.bss.size = bss_size;
-    log_d("BSS @ %p (size %x, offset %x)", self->map.bss.base, self->map.bss.size, self->map.bss.base - elf_base);
+    bss->base = bss_base;
+    bss->size = bss_size;
+    log_d("BSS @ %p (size %x, offset %x)", bss_base, bss_size, bss_base - elf_base);
 
     SUCCESS;
 } /* _py_proc__analyze_elf64 */
@@ -181,7 +181,7 @@ _get_base_32(Elf32_Ehdr* ehdr, void* elf_map) {
 } /* _get_base_32 */
 
 static int
-_py_proc__analyze_elf32(py_proc_t* self, void* elf_map, void* elf_base) {
+_py_proc__analyze_elf32(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss) {
     register int symbols = 0;
 
     Elf32_Ehdr* ehdr = elf_map;
@@ -200,7 +200,7 @@ _py_proc__analyze_elf32(py_proc_t* self, void* elf_map, void* elf_base) {
     size_t bss_size = 0;
 
     if (base != UINT32_MAX) {
-        log_d("Base @ %p", base);
+        log_d("ELF base @ %p", base);
 
         for (Elf32_Off sh_off = ehdr->e_shoff; sh_off < elf_map_size; sh_off += ehdr->e_shentsize) {
             p_shdr = (Elf32_Shdr*)(elf_map + sh_off);
@@ -216,7 +216,7 @@ _py_proc__analyze_elf32(py_proc_t* self, void* elf_map, void* elf_base) {
             }
         }
 
-        if (p_dynsym != NULL) {
+        if (isvalid(p_dynsym)) {
             if (p_dynsym->sh_offset != 0) {
                 Elf32_Shdr* p_strtabsh = (Elf32_Shdr*)(elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
 
@@ -242,9 +242,9 @@ _py_proc__analyze_elf32(py_proc_t* self, void* elf_map, void* elf_base) {
     }
 
     // Communicate BSS data back to the caller
-    self->map.bss.base = bss_base;
-    self->map.bss.size = bss_size;
-    log_d("BSS @ %p (size %x, offset %x)", self->map.bss.base, self->map.bss.size, self->map.bss.base - elf_base);
+    bss->base = bss_base;
+    bss->size = bss_size;
+    log_d("BSS @ %p (size %x, offset %x)", bss_base, bss_size, bss_base - elf_base);
 
     SUCCESS;
 } /* _py_proc__analyze_elf32 */
@@ -259,7 +259,7 @@ _elf_check(Elf64_Ehdr* ehdr) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__analyze_elf(py_proc_t* self, char* path, void* elf_base) {
+_py_proc__analyze_elf(py_proc_t* self, char* path, void* elf_base, proc_vm_map_block_t* bss) {
     cu_fd fd = open(path, O_RDONLY);
     if (fd == -1) {
         log_e("Cannot open binary file %s", path);
@@ -299,11 +299,11 @@ _py_proc__analyze_elf(py_proc_t* self, char* path, void* elf_base) {
     switch (ehdr->e_ident[EI_CLASS]) {
     case ELFCLASS64:
         log_d("%s is 64-bit ELF", path);
-        return _py_proc__analyze_elf64(self, binary_map->addr, elf_base);
+        return _py_proc__analyze_elf64(self, binary_map->addr, elf_base, bss);
 
     case ELFCLASS32:
         log_d("%s is 32-bit ELF", path);
-        return _py_proc__analyze_elf32(self, binary_map->addr, elf_base);
+        return _py_proc__analyze_elf32(self, binary_map->addr, elf_base, bss);
 
     default:
         log_e("%s has invalid ELF class", path);
@@ -314,9 +314,10 @@ _py_proc__analyze_elf(py_proc_t* self, char* path, void* elf_base) {
 
 // ----------------------------------------------------------------------------
 static int
-_py_proc__parse_maps_file(py_proc_t* self) {
-    int            maps_flag = 0;
-    struct vm_map* map       = NULL;
+_py_proc__inspect_vm_maps(py_proc_t* self) {
+    int                 maps_flag = 0;
+    struct vm_map*      map       = NULL;
+    proc_vm_map_block_t bss;
 
     cu_proc_map_t* proc_maps = proc_map_new(self->pid);
     if (!isvalid(proc_maps)) {
@@ -376,10 +377,10 @@ _py_proc__parse_maps_file(py_proc_t* self) {
     map->file_size   = _file_size(map->path);
     map->base        = first_binary_map->address;
     map->size        = first_binary_map->size;
-    map->has_symbols = success(_py_proc__analyze_elf(self, map->path, map->base));
+    map->has_symbols = success(_py_proc__analyze_elf(self, map->path, map->base, &bss));
     if (map->has_symbols) {
-        map->bss_base = self->map.bss.base;
-        map->bss_size = self->map.bss.size;
+        map->bss_base = bss.base;
+        map->bss_size = bss.size;
     }
     log_d("Binary path: %s (symbols: %d)", map->path, map->has_symbols);
 
@@ -413,7 +414,7 @@ _py_proc__parse_maps_file(py_proc_t* self) {
 
     proc_map_t* first_lib_map = proc_map__first_submatch(proc_maps, LIB_NEEDLE);
     if (isvalid(first_lib_map)) {
-        if (success(_py_proc__analyze_elf(self, first_lib_map->pathname, first_lib_map->address))) {
+        if (success(_py_proc__analyze_elf(self, first_lib_map->pathname, first_lib_map->address, &bss))) {
             // The library binary has symbols
             map = &(pd->maps[MAP_LIBSYM]);
 
@@ -427,8 +428,8 @@ _py_proc__parse_maps_file(py_proc_t* self) {
             map->base        = first_lib_map->address;
             map->size        = first_lib_map->size;
             map->has_symbols = TRUE;
-            map->bss_base    = self->map.bss.base;
-            map->bss_size    = self->map.bss.size;
+            map->bss_base    = bss.base;
+            map->bss_size    = bss.size;
 
             log_d("Library path: %s (with symbols)", map->path);
         } else {
@@ -512,7 +513,7 @@ _py_proc__parse_maps_file(py_proc_t* self) {
     log_d("VM maps parsing result: bin=%s lib=%s flags=%d", self->bin_path, self->lib_path, maps_flag);
 
     SUCCESS;
-} /* _py_proc__parse_maps_file */
+} /* _py_proc__inspect_vm_maps */
 
 // ----------------------------------------------------------------------------
 static ssize_t
@@ -536,21 +537,21 @@ _py_proc__get_resident_memory(py_proc_t* self) {
 
 #ifdef NATIVE
 // ----------------------------------------------------------------------------
+#define RANGES_MAX 256
+
 char        pathname[1024];
 char        prevpathname[1024];
-vm_range_t* ranges[256];
+vm_range_t* ranges[RANGES_MAX];
 
 static int
 _py_proc__get_vm_maps(py_proc_t* self) {
-    cu_FILE*         fp    = NULL;
-    cu_char*         line  = NULL;
-    size_t           len   = 0;
     vm_range_tree_t* tree  = NULL;
     hash_table_t*    table = NULL;
+    cu_proc_map_t*   maps  = NULL;
 
     if (pargs.where) {
         tree  = vm_range_tree_new();
-        table = hash_table_new(256);
+        table = hash_table_new(RANGES_MAX);
 
         vm_range_tree__destroy(self->maps_tree);
         hash_table__destroy(self->base_table);
@@ -559,8 +560,8 @@ _py_proc__get_vm_maps(py_proc_t* self) {
         self->base_table = table;
     }
 
-    fp = _procfs(self->pid, "maps");
-    if (!isvalid(fp)) {
+    maps = proc_map_new(self->pid);
+    if (!isvalid(maps)) {
         set_error(EPROC);
         FAIL;
     }
@@ -568,27 +569,31 @@ _py_proc__get_vm_maps(py_proc_t* self) {
     log_d("Rebuilding vm ranges tree");
 
     int nrange = 0;
-    while (getline(&line, &len, fp) != -1 && nrange < 256) {
-        ssize_t lower, upper;
+    PROC_MAP_ITER(maps, m) {
+        if (nrange >= RANGES_MAX) {
+            log_e("Too many ranges");
+            break;
+        }
 
-        if (sscanf(
-                line, ADDR_FMT "-" ADDR_FMT " %*s %*x %*x:%*x %*x %s\n", &lower, &upper, // Map bounds
-                pathname                                                                 // Binary path
-            ) == 3
-            && pathname[0] != '[') {
-            if (pargs.where) {
-                if (strcmp(pathname, prevpathname)) {
-                    ranges[nrange++] = vm_range_new(lower, upper, strdup(pathname));
-                    key_dt key       = string__hash(pathname);
-                    if (!isvalid(hash_table__get(table, key)))
-                        hash_table__set(table, key, (value_t)lower);
-                    strcpy(prevpathname, pathname);
-                } else
-                    ranges[nrange - 1]->hi = upper;
+        if (!isvalid(m->pathname))
+            continue;
+
+        if (pargs.where) {
+            if (strcmp(m->pathname, prevpathname)) {
+                ranges[nrange++]
+                    = vm_range_new((addr_t)m->address, ((addr_t)m->address) + m->size, strdup(m->pathname));
+                key_dt key = string__hash(m->pathname);
+                if (!isvalid(hash_table__get(table, key)))
+                    hash_table__set(table, key, (value_t)m->address);
+                strcpy(prevpathname, m->pathname);
             } else
-                // We print the maps instead so that we can resolve them later and use
-                // the CPU more efficiently to collect samples.
-                emit_metadata("map", ADDR_FMT "-" ADDR_FMT " %s", lower, upper, pathname);
+                ranges[nrange - 1]->hi = ((addr_t)m->address) + m->size;
+        } else {
+            // We print the maps instead so that we can resolve them later and use
+            // the CPU more efficiently to collect samples.
+            emit_metadata(
+                "map", ADDR_FMT "-" ADDR_FMT " %s", (addr_t)m->address, ((addr_t)m->address) + m->size, m->pathname
+            );
         }
     }
 
@@ -602,7 +607,7 @@ _py_proc__get_vm_maps(py_proc_t* self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t* self) {
-    if (!isvalid(self) || fail(_py_proc__parse_maps_file(self))) {
+    if (!isvalid(self) || fail(_py_proc__inspect_vm_maps(self))) {
         set_error(EPROC);
         FAIL;
     }

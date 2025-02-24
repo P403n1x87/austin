@@ -221,12 +221,6 @@ _find_version_in_binary(char* path, int* version) {
 } /* _find_version_in_binary */
 #endif
 
-#if defined PL_LINUX
-#define LIB_NEEDLE "libpython"
-#else
-#define LIB_NEEDLE "python"
-#endif
-
 static int
 _py_proc__infer_python_version(py_proc_t* self) {
     if (!isvalid(self)) {
@@ -418,14 +412,14 @@ _py_proc__check_interp_state(py_proc_t* self, void* raddr) {
 static int
 _py_proc__scan_bss(py_proc_t* self) {
     // Starting with Python 3.11, BSS scans fail because it seems that the
-    // interpreter state is stored in the data section. In this case, we shift our
-    // data queries into the data section. We then take steps of 64KB backwards
-    // and try to find the interpreter state. This is a bit of a hack for now, but
-    // it seems to work with decent performance. Note that if we fail the first
-    // scan, we then look for actual interpreter states rather than pointers to
-    // it. This make the search a little slower, since we now have to check every
-    // value in the range. However, the step size we chose seems to get us close
-    // enough in a few attempts.
+    // interpreter state is stored in the data section. In this case, we shift
+    // our data queries into the data section. We then take steps of 64KB
+    // backwards and try to find the interpreter state. This is a bit of a hack
+    // for now, but it seems to work with decent performance. Note that if we
+    // fail the first scan, we then look for actual interpreter states rather
+    // than pointers to it. This make the search a little slower, since we now
+    // have to check every value in the range. However, the step size we chose
+    // seems to get us close enough in a few attempts.
     if (!isvalid(self) || !isvalid(self->map.bss.base)) {
         set_error(EPROC);
         FAIL;
