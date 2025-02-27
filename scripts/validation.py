@@ -1,35 +1,52 @@
 # Run as python3 scripts/validation.py from the repository root directory.
 # Ensure dependencies from requirements-val.txt are installed.
 
-from argparse import ArgumentParser
-from collections import Counter, namedtuple
-from io import BytesIO
-from itertools import chain
+import codecs
 import os
-from pathlib import Path
 import re
 import sys
 import typing as t
-import codecs
+from argparse import ArgumentParser
+from dataclasses import dataclass
+from pathlib import Path
 
 import common
+from stats import AustinFlameGraph, compare
 
-import numpy as np
-from scipy.stats import f
-
-from austin.format.mojo import (
-    MojoFile,
-    MojoStack,
-    MojoFrameReference,
-    MojoMetric,
-    MojoFrame,
-)
 from test.utils import python, target
 
-Scenario = namedtuple("Scenario", ["title", "variant", "args"])
+
+def tee(data: bytes, output: str) -> bytes:
+    Path(output.replace(" ", "_").lower()).with_suffix(".mojo").write_bytes(data)
+    return data
+
+
+@dataclass
+class Scenario:
+    title: str
+    variant: str
+    args: tuple[str, ...]
+
+    def run(
+        self, austin: common.VersionedVariant, n: int = 10
+    ) -> t.List[AustinFlameGraph]:
+        return [
+            AustinFlameGraph.from_mojo(
+                tee(
+                    austin(
+                        *scenario.args,
+                        mojo=True,
+                        convert=False,
+                    ).stdout,
+                    f"{scenario.title}-{austin.version}-{i}",
+                )
+            )
+            for i in range(n)
+        ]
+
 
 PYTHON = (
-    python(os.getenv("AUSTIN_TESTS_PYTHON_VERSIONS"))
+    python(t.cast(str, os.getenv("AUSTIN_TESTS_PYTHON_VERSIONS")))
     if "AUSTIN_TESTS_PYTHON_VERSIONS" in os.environ
     else [sys.executable]
 )
@@ -78,168 +95,17 @@ SCENARIOS = [
 ]
 
 
-class AustinFlameGraph(dict):
-    def __call__(self, x):
-        return self.get(x, 0)
-
-    def __add__(self, other):
-        m = self.__class__(self)
-        for k, v in other.items():
-            n = m.setdefault(k, v.__class__()) + v
-            if not n and k in m:
-                del m[k]
-                continue
-            m[k] = n
-        return m
-
-    def __mul__(self, other):
-        m = self.__class__(self)
-        for k, v in self.items():
-            n = v * other
-            if not n and k in m:
-                del m[k]
-                continue
-            m[k] = n
-        return m
-
-    def __rmul__(self, other):
-        return self.__mul__(other)
-
-    def __truediv__(self, other):
-        return self * (1 / other)
-
-    def __rtruediv__(self, other):
-        return self.__div__(other)
-
-    def __sub__(self, other):
-        return self + (-other)
-
-    def __neg__(self):
-        m = self.__class__(self)
-        for k, v in m.items():
-            m[k] = -v
-        return m
-
-    def supp(self):
-        return set(self.keys())
-
-    def to_list(self, domain: list) -> list:
-        return [self(v) for v in domain]
-
-    @classmethod
-    def from_list(cls, stacks: t.List[t.Tuple[str, int]]) -> "AustinFlameGraph":
-        return sum((cls({stack: metric}) for stack, metric in stacks), cls())
-
-    @classmethod
-    def from_mojo(cls, data: bytes) -> "AustinFlameGraph":
-        fg = cls()
-
-        stack: t.List[str] = []
-        metric = 0
-
-        def serialize(frame: MojoFrame) -> str:
-            return ":".join(
-                (
-                    frame.filename.string.value,
-                    frame.scope.string.value,
-                    str(frame.line),
-                    str(frame.line_end),
-                    str(frame.column),
-                    str(frame.column_end),
-                )
-            )
-
-        for e in MojoFile(BytesIO(data)).parse():
-            if isinstance(e, MojoStack):
-                if stack:
-                    fg += cls({";".join(stack): metric})
-                stack.clear()
-                metric = 0
-            elif isinstance(e, MojoFrameReference):
-                stack.append(serialize(e.frame))
-            elif isinstance(e, MojoMetric):
-                metric = e.value
-
-        return fg
-
-
-def hotelling_two_sample_test(X, Y) -> float:
-    nx, p = X.shape
-    ny, q = Y.shape
-
-    assert p == q, "X and Y must have the same dimensionality"
-
-    dof = nx + ny - p - 1
-
-    assert (
-        dof > 0
-    ), f"X ({nx}x{p}) and Y ({ny}x{q}) must have at least p ({p}) + 1 samples"
-
-    g = dof / p / (nx + ny - 2) * (nx * ny) / (nx + ny)
-
-    x_mean = np.mean(X, axis=0)
-    y_mean = np.mean(Y, axis=0)
-    delta = x_mean - y_mean
-
-    x_cov = np.cov(X, rowvar=False)
-    y_cov = np.cov(Y, rowvar=False)
-    pooled_cov = ((nx - 1) * x_cov + (ny - 1) * y_cov) / (nx + ny - 2)
-
-    # Compute the F statistic from the Hotelling T^2 statistic
-    statistic = g * delta.transpose() @ np.linalg.inv(pooled_cov) @ delta
-    f_pdf = f(p, dof)
-
-    return 1 - f_pdf.cdf(statistic)
-
-
-def compare(
-    x: t.List[AustinFlameGraph],
-    y: t.List[AustinFlameGraph],
-    threshold: t.Optional[float] = None,
-) -> float:
-    domain = list(set().union(*(_.supp() for _ in chain(x, y))))
-
-    if threshold is not None:
-        c = Counter()
-        for _ in chain(x, y):
-            c.update(_.supp())
-        domain = sorted([k for k, v in c.items() if v >= threshold])
-
-    X = np.array([f.to_list(domain) for f in x], dtype=np.int32)
-    Y = np.array([f.to_list(domain) for f in y], dtype=np.int32)
-
-    return hotelling_two_sample_test(X, Y)
-
-
-def tee(data: bytes, output: str) -> bytes:
-    Path(output.replace(" ", "_").lower()).with_suffix(".mojo").write_bytes(data)
-    return data
-
-
 def validate(scenario: Scenario, runs: int = 10) -> float:
-    austin_latest = common.download_latest(
-        dest=Path("/tmp"), variant_name=scenario.variant
-    )
-    austin_dev = common.get_dev(variant_name=scenario.variant)
-
     return compare(
-        *(
-            [
-                AustinFlameGraph.from_mojo(
-                    tee(
-                        austin(
-                            *scenario.args,
-                            mojo=True,
-                            convert=False,
-                        ).stdout,
-                        f"{scenario.title}-{version}-{n}",
-                    )
-                )
-                for n in range(runs)
-            ]
-            for austin, version in zip((austin_latest, austin_dev), ("latest", "dev"))
+        # Latest release
+        x=scenario.run(
+            common.download_latest(dest=Path("/tmp"), variant_name=scenario.variant),
+            runs,
         ),
-        threshold=runs,  # Keep only the stacks that are present in all runs
+        # Development version
+        y=scenario.run(common.get_dev(variant_name=scenario.variant), runs),
+        # Keep only the stacks that are present in all runs
+        threshold=runs,
     )
 
 
@@ -281,7 +147,7 @@ if __name__ == "__main__":
 
     print("# Austin Data Validation\n")
 
-    failures: t.List[t.Tuple[Scenario, float]] = []
+    failures: t.List[tuple[Scenario, float]] = []
     for scenario in SCENARIOS:
         print(
             f"Validating {scenario.title} ...                                ",
