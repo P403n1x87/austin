@@ -579,4 +579,3 @@ jobs:
         with:
           header: validation
           path: validation.txt
-        if: always()
