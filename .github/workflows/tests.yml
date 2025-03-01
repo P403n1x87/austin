@@ -527,7 +527,7 @@ jobs:
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
 
           source .venv/bin/activate
-          python scripts/validation.py --ignore-errors
+          python scripts/validation.py --ignore-errors --report results-${{ matrix.python-version }}.txt
           deactivate
 
       - name: Upload profiles
@@ -536,4 +536,47 @@ jobs:
           name: data-validation-profiles-${{ matrix.python-version }}
           path: "*.mojo"
           overwrite: true
+        if: always()
+
+      - name: Upload data validation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-validation-results-${{ matrix.python-version }}
+          path: "results*.txt"
+          overwrite: true
+        if: always()
+
+  validation-report:
+    runs-on: ubuntu-24.04
+
+    needs: validation
+    if: always()
+
+    name: Data validation report
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download data validation results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: data-validation-results-*
+          merge-multiple: true
+          path: .
+
+      - name: Generate validation report
+        run: |
+          # Concatenate all the results*.txt files with the header
+          echo "## Austin Data Validation" > validation.txt
+          echo "" >> validation.txt
+          for file in $(ls results*.txt | sort -V); do
+            cat $file >> validation.txt
+            echo "" >> validation.txt
+          done
+
+      - name: Post results on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: validation
+          path: validation.txt
         if: always()
