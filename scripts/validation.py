@@ -45,11 +45,12 @@ class Scenario:
         ]
 
 
-PYTHON = (
-    python(t.cast(str, os.getenv("AUSTIN_TESTS_PYTHON_VERSIONS")))
-    if "AUSTIN_TESTS_PYTHON_VERSIONS" in os.environ
-    else [sys.executable]
-)
+if (PYTHON_VERSION := os.getenv("AUSTIN_TESTS_PYTHON_VERSIONS")) is None:
+    major, minor = sys.version_info[:2]
+    PYTHON_VERSION = f"{major}.{minor}"
+
+PYTHON = python(PYTHON_VERSION)
+
 
 SCENARIOS = [
     Scenario(
@@ -109,6 +110,23 @@ def validate(scenario: Scenario, runs: int = 10) -> float:
     )
 
 
+def generate_markdown_report(
+    failures: t.List[tuple[Scenario, float]], path: Path
+) -> None:
+    output = f"### Python {PYTHON_VERSION}\n\n"
+
+    if not failures:
+        output += "✨ All scenarios validated successfully! ✨"
+    else:
+        output += "🔴 The following scenarios did not pass data validation:\n\n"
+        output += "| Scenario | p-value |\n"
+        output += "|----------|---------|\n"
+        for scenario, p in failures:
+            output += f"| {scenario.title} | {p:.2%} |\n"
+
+    path.write_text(output)
+
+
 if __name__ == "__main__":
     argp = ArgumentParser()
 
@@ -140,6 +158,13 @@ if __name__ == "__main__":
         help="p-value threshold",
     )
 
+    argp.add_argument(
+        "-r",
+        "--report",
+        type=Path,
+        help="Path to store the validation report",
+    )
+
     opts = argp.parse_args()
 
     if opts.ignore_errors:
@@ -157,6 +182,9 @@ if __name__ == "__main__":
         )
         if (p := validate(scenario, runs=opts.n)) < opts.p_value:
             failures.append((scenario, p))
+
+    if opts.report:
+        generate_markdown_report(failures, opts.report)
 
     if failures:
         print("💥 The following scenarios failed to validate:\n")

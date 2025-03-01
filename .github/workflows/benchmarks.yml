@@ -49,4 +49,5 @@ jobs:
       - name: Post results on PR
         uses: marocchino/sticky-pull-request-comment@v2
         with:
+          header: benchmarks
           path: comment.txt
