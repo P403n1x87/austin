@@ -24,27 +24,24 @@ import importlib
 import os
 import platform
 from asyncio.subprocess import STDOUT
-from collections import Counter
-from collections import defaultdict
-from io import BytesIO
-from io import StringIO
+from collections import Counter, defaultdict
+from io import BytesIO, StringIO
 from pathlib import Path
 from shutil import rmtree
-from subprocess import PIPE
-from subprocess import CalledProcessError
-from subprocess import CompletedProcess
-from subprocess import Popen
-from subprocess import TimeoutExpired
-from subprocess import check_output
+from subprocess import (
+    PIPE,
+    CalledProcessError,
+    CompletedProcess,
+    Popen,
+    TimeoutExpired,
+    check_output,
+)
 from tempfile import gettempdir
-from test import PYTHON_VERSIONS
 from time import sleep
 from types import ModuleType
-from typing import Iterator
-from typing import List
-from typing import TypeVar
-from typing import Union
+from typing import Iterator, List, TypeVar, Union
 
+from test import PYTHON_VERSIONS
 
 try:
     import pytest
@@ -52,7 +49,6 @@ except ImportError:
     pytest = None
 
 from austin.format.mojo import MojoFile
-
 
 HERE = Path(__file__).parent
 
@@ -92,10 +88,10 @@ def python(version: str) -> list[str]:
         check_output([*py, "-V"], stderr=STDOUT)
         return py
     except FileNotFoundError:
-        pytest.skip(f"Python {version} not found")
+        return pytest.skip(f"Python {version} not found")
 
 
-def gdb(cmds: list[str], *args: tuple[str]) -> str:
+def gdb(cmds: list[str], *args: str) -> str:
     return check_output(
         ["gdb", "-q", "-batch"]
         + [_ for cs in (("-ex", _) for _ in cmds) for _ in cs]
@@ -126,7 +122,7 @@ def bt(binary: Path, pid: int) -> str:
             target_dir = Path(crash.stem)
             apport_unpack(crash, target_dir)
 
-            result = gdb(["bt full", "q"], str(binary), target_dir / "CoreDump")
+            result = gdb(["bt full", "q"], str(binary), str(target_dir / "CoreDump"))
 
             crash.unlink()
             rmtree(str(target_dir))
@@ -137,6 +133,7 @@ def bt(binary: Path, pid: int) -> str:
 
 
 def collect_logs(variant: str, pid: int) -> List[str]:
+    needles: tuple[str, ...]
     match platform.system():
         case "Linux":
             with Path("/var/log/syslog").open() as logfile:
@@ -184,7 +181,7 @@ def run(
     if capture_output:
         if kwargs.get("stdout") is not None or kwargs.get("stderr") is not None:
             raise ValueError(
-                "stdout and stderr arguments may not be used " "with capture_output."
+                "stdout and stderr arguments may not be used with capture_output."
             )
         kwargs["stdout"] = PIPE
         kwargs["stderr"] = PIPE
@@ -206,11 +203,11 @@ def run(
             raise
         retcode = process.poll()
         if check and retcode:
-            exc = CalledProcessError(
+            error = CalledProcessError(
                 retcode, process.args, output=stdout, stderr=stderr
             )
-            exc.pid = process.pid
-            raise exc
+            error.pid = process.pid
+            raise error
     result = CompletedProcess(process.args, retcode, stdout, stderr)
     result.pid = process.pid
 
@@ -225,7 +222,7 @@ def print_logs(logs: List[str]) -> None:
         print("<< no logs available >>")
 
 
-class Variant(str):
+class Variant:
     ALL: list["Variant"] = []
 
     def __init__(self, name: str) -> None:
@@ -289,13 +286,13 @@ austin = Variant("austin")
 austinp = Variant("austinp")
 
 
-def run_async(command: list[str], *args: tuple[str], env: dict | None = None) -> Popen:
+def run_async(command: list[str], *args: str, env: dict | None = None) -> Popen:
     return Popen(command + list(args), stdout=PIPE, stderr=PIPE, env=env)
 
 
 def run_python(
     version,
-    *args: tuple[str],
+    *args: str,
     env: dict | None = None,
     prefix: list[str] = [],
     sleep_after: float | None = None,
@@ -372,10 +369,10 @@ def sum_metric(data: str) -> int:
 
 def sum_metrics(data: str) -> tuple[int, int, int, int]:
     wall = cpu = alloc = dealloc = 0
-    for t, i, m in (
+    for _t, i, m in (
         _.rpartition(" ")[-1].split(",", maxsplit=2) for _ in samples(data)
     ):
-        time = int(t)
+        time = int(_t)
         wall += time
         if i == "0":
             cpu += time
@@ -432,7 +429,7 @@ def load_util(name: str) -> ModuleType:
 
 
 if pytest is not None:
-    variants = pytest.mark.parametrize("austin", Variant.ALL)
+    variants = pytest.mark.parametrize("austin", Variant.ALL, ids=lambda v: v.name)
 
     match platform.system():
         case "Windows":

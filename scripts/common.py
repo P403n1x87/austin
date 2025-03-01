@@ -1,15 +1,23 @@
 import sys
+import typing as t
 from itertools import product
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+import json
 import tarfile
 from io import BytesIO
-from test.utils import Variant
 from urllib.error import HTTPError
 from urllib.request import urlopen
-import json
+
+from test.utils import Variant
+
+
+class VersionedVariant(Variant):
+    def __init__(self, name: str, version: str) -> None:
+        super().__init__(name)
+        self.version = version
 
 
 def get_latest_release() -> str:
@@ -19,9 +27,15 @@ def get_latest_release() -> str:
         return json.loads(stream.read().decode("utf-8"))["tag_name"].strip("v")
 
 
-def download_release(version: str, dest: Path, variant_name: str = "austin") -> Variant:
+def download_release(
+    version: str, dest: t.Optional[Path], variant_name: str = "austin"
+) -> VersionedVariant:
     if version == "dev":
-        return Variant(f"src/{variant_name}")
+        return VersionedVariant(f"src/{variant_name}", version)
+
+    if dest is None:
+        msg = "Destination path must be provided for non-dev versions"
+        raise ValueError(msg)
 
     binary_dest = dest / version
     binary = binary_dest / variant_name
@@ -43,7 +57,7 @@ def download_release(version: str, dest: Path, variant_name: str = "austin") -> 
         else:
             raise RuntimeError(f"Could not download Austin version {version}")
 
-    variant = Variant(str(binary))
+    variant = VersionedVariant(str(binary), version)
 
     out = variant("-V").stdout
     assert f"{variant_name} {version}" in out, (f"{variant_name} {version}", out)
@@ -51,9 +65,9 @@ def download_release(version: str, dest: Path, variant_name: str = "austin") -> 
     return variant
 
 
-def download_latest(dest: Path, variant_name: str = "austin") -> Variant:
+def download_latest(dest: Path, variant_name: str = "austin") -> VersionedVariant:
     return download_release(get_latest_release(), dest, variant_name)
 
 
-def get_dev(variant_name: str = "austin") -> Variant:
+def get_dev(variant_name: str = "austin") -> VersionedVariant:
     return download_release("dev", None, variant_name)
