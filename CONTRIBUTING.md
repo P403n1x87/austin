@@ -34,7 +34,7 @@ separated by only one underscore `_`. For instance method, the separator is a
 double underscore `__`.
 
 Private methods, i.e. those that are used only within the translation unit,
-must be `static` and prefixed with an underscore `_` so that they can be easly
+must be `static` and prefixed with an underscore `_` so that they can be easily
 recognised in the code.
 
 To summarise, here is an example of the above rules in place for an object of

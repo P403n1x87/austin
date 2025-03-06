@@ -189,7 +189,7 @@
 
     - --memory, -m:
 
-        Switch to memory profling mode
+        Switch to memory profiling mode
 
     - --full, -f:
 
