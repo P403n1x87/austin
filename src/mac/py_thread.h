@@ -20,7 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifdef PY_THREAD_C
+#pragma once
 
 #include <libproc.h>
 
@@ -71,8 +71,8 @@ _infer_thread_id_offset(py_thread_t* py_thread) {
 }
 
 // ----------------------------------------------------------------------------
-static int
-_py_thread__is_idle(py_thread_t* self) {
+int
+py_thread__is_idle(py_thread_t* self) {
     if (unlikely(_silly_offset == 0)) {
         _infer_thread_id_offset(self);
     }
@@ -89,5 +89,3 @@ _py_thread__is_idle(py_thread_t* self) {
 
     return ti.pth_run_state != TH_STATE_RUNNING;
 }
-
-#endif

@@ -23,16 +23,17 @@
 #pragma once
 
 #include "cache.h"
+#include "events.h"
 #include "resources.h"
 
 typedef struct {
-    key_dt       key;
-    char*        filename;
-    char*        scope;
-    unsigned int line;
-    unsigned int line_end;
-    unsigned int column;
-    unsigned int column_end;
+    key_dt           key;
+    cached_string_t* filename;
+    cached_string_t* scope;
+    unsigned int     line;
+    unsigned int     line_end;
+    unsigned int     column;
+    unsigned int     column_end;
 } frame_t;
 
 typedef struct {
@@ -44,8 +45,8 @@ typedef struct {
 // ----------------------------------------------------------------------------
 static inline frame_t*
 frame_new(
-    key_dt key, char* filename, char* scope, unsigned int line, unsigned int line_end, unsigned int column,
-    unsigned int column_end
+    key_dt key, cached_string_t* filename, cached_string_t* scope, unsigned int line, unsigned int line_end,
+    unsigned int column, unsigned int column_end
 ) {
     frame_t* frame = (frame_t*)malloc(sizeof(frame_t));
     if (!isvalid(frame)) {
@@ -114,38 +115,40 @@ _frame_from_code_raddr(py_proc_t* py_proc, void* code_raddr, int lasti, python_v
 
     lru_cache_t* cache = py_proc->string_cache;
 
-    key_dt string_key = py_string_key(code, o_filename);
-    char*  filename   = (char*)lru_cache__maybe_hit(cache, string_key);
+    key_dt           string_key = py_string_key(code, o_filename);
+    cached_string_t* filename   = (cached_string_t*)lru_cache__maybe_hit(cache, string_key);
     if (!isvalid(filename)) {
-        filename = _code__get_filename(&code, pref, py_v);
-        if (!isvalid(filename)) {
+        char* filename_value = _code__get_filename(&code, pref, py_v);
+        if (!isvalid(filename_value)) {
             log_ie("Cannot get file name from PyCodeObject");
             return NULL;
         }
-        lru_cache__store(cache, string_key, filename);
-        if (pargs.binary) {
-            mojo_string_event(string_key, filename);
+        filename = cached_string_new(string_key, filename_value);
+        if (!isvalid(filename)) {
+            log_ie("Cannot create cached string for file name");
+            return NULL;
         }
-    }
-    if (pargs.binary) {
-        filename = (char*)string_key;
+        lru_cache__store(cache, string_key, filename);
+
+        event_handler__emit_new_string(filename);
     }
 
-    string_key  = V_MIN(3, 11) ? py_string_key(code, o_qualname) : py_string_key(code, o_name);
-    char* scope = (char*)lru_cache__maybe_hit(cache, string_key);
+    string_key             = V_MIN(3, 11) ? py_string_key(code, o_qualname) : py_string_key(code, o_name);
+    cached_string_t* scope = (cached_string_t*)lru_cache__maybe_hit(cache, string_key);
     if (!isvalid(scope)) {
-        scope = V_MIN(3, 11) ? _code__get_qualname(&code, pref, py_v) : _code__get_name(&code, pref, py_v);
-        if (!isvalid(scope)) {
+        char* scope_value = V_MIN(3, 11) ? _code__get_qualname(&code, pref, py_v) : _code__get_name(&code, pref, py_v);
+        if (!isvalid(scope_value)) {
             log_ie("Cannot get scope name from PyCodeObject");
             return NULL;
         }
-        lru_cache__store(cache, string_key, scope);
-        if (pargs.binary) {
-            mojo_string_event(string_key, scope);
+        scope = cached_string_new(string_key, scope_value);
+        if (!isvalid(scope)) {
+            log_ie("Cannot create cached string for scope name");
+            return NULL;
         }
-    }
-    if (pargs.binary) {
-        scope = (char*)string_key;
+        lru_cache__store(cache, string_key, scope);
+
+        event_handler__emit_new_string(scope);
     }
 
     ssize_t len = 0;

@@ -147,14 +147,14 @@ stats_log_metrics() {
             goto release;
         }
 
-        emit_metadata(
+        event_handler__emit_metadata(
             "sampling", MICROSECONDS_FMT "," MICROSECONDS_FMT "," MICROSECONDS_FMT, stats_get_min_sampling_time(),
             stats_get_avg_sampling_time(), stats_get_max_sampling_time()
         );
 
-        emit_metadata("saturation", "%ld/%ld", _long_cnt, _sample_cnt);
+        event_handler__emit_metadata("saturation", "%ld/%ld", _long_cnt, _sample_cnt);
 
-        emit_metadata("errors", "%ld/%ld", _error_cnt, _sample_cnt);
+        event_handler__emit_metadata("errors", "%ld/%ld", _error_cnt, _sample_cnt);
     } else {
         microseconds_t duration = stats_duration();
 

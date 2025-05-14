@@ -34,8 +34,14 @@
 #include "../resources.h"
 
 // ----------------------------------------------------------------------------
-static int
-_py_thread__is_idle(py_thread_t* self) {
+int
+py_thread__is_idle(py_thread_t* self) {
+#ifdef NATIVE
+    size_t index  = self->tid >> 3;
+    int    offset = self->tid & 7;
+
+    return _tids_idle[index] & (1 << offset);
+#else
     char file_name[64];
     char buffer[2048] = "";
 
@@ -63,4 +69,5 @@ _py_thread__is_idle(py_thread_t* self) {
         p++;
 
     return (*p != 'R');
+#endif
 }

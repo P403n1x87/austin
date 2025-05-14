@@ -211,23 +211,23 @@ logger_close(void) {
 
 void
 log_meta_header(void) {
-    emit_metadata("austin", VERSION);
-    emit_metadata("interval", "%lu", pargs.t_sampling_interval);
+    event_handler__emit_metadata("austin", VERSION);
+    event_handler__emit_metadata("interval", MICROSECONDS_FMT, pargs.t_sampling_interval);
 
     if (pargs.full) {
-        emit_metadata("mode", "full");
+        event_handler__emit_metadata("mode", "full");
     } else if (pargs.memory) {
-        emit_metadata("mode", "memory");
+        event_handler__emit_metadata("mode", "memory");
     } else if (pargs.sleepless) {
-        emit_metadata("mode", "cpu");
+        event_handler__emit_metadata("mode", "cpu");
     } else {
-        emit_metadata("mode", "wall");
+        event_handler__emit_metadata("mode", "wall");
     }
 
     if (pargs.memory || pargs.full) {
-        emit_metadata("memory", MEM_VALUE, get_total_memory());
+        event_handler__emit_metadata("memory", MEM_VALUE, get_total_memory());
     }
     if (pargs.children) {
-        emit_metadata("multiprocess", "on");
+        event_handler__emit_metadata("multiprocess", "on");
     }
 }

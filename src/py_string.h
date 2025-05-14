@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cache.h"
 #include "hints.h"
 #include "logging.h"
 #include "mem.h"
@@ -36,6 +37,35 @@
 #define MAGIC_TINY                7
 #define MAGIC_BIG                 1000003
 #define p_ascii_data(raddr, size) (raddr + size)
+
+#define UNKNOWN_SCOPE ((cached_string_t*)1)
+
+// ----------------------------------------------------------------------------
+typedef struct _string {
+    key_dt key;
+    char*  value;
+} cached_string_t;
+
+static inline cached_string_t*
+cached_string_new(key_dt key, char* value) {
+    cached_string_t* cached_string = (cached_string_t*)malloc(sizeof(cached_string_t));
+    if (!isvalid(cached_string)) {
+        return NULL;
+    }
+
+    cached_string->key   = key;
+    cached_string->value = value;
+
+    return cached_string;
+}
+
+static inline void
+cached_string_destroy(cached_string_t* cached_string) {
+    if (isvalid(cached_string)) {
+        sfree(cached_string->value);
+        sfree(cached_string);
+    }
+}
 
 // ----------------------------------------------------------------------------
 static inline long

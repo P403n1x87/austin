@@ -22,6 +22,8 @@
 
 #pragma once
 
+#include <stdio.h>
+
 #include "hints.h"
 #include "platform.h"
 

@@ -1,0 +1,407 @@
+// This file is part of "austin" which is released under GPL.
+//
+// See file LICENCE or go to http://www.gnu.org/licenses/ for full license
+// details.
+//
+// Austin is a Python frame stack sampler for CPython.
+//
+// Copyright (c) 2018-2025 Gabriele N. Tornetta <phoenix1987@gmail.com>.
+// All rights reserved.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+#define EVENTS_C
+
+#include "events.h"
+#include "argparse.h"
+#include "frame.h"
+#include "mojo.h"
+#include "platform.h"
+#include "stack.h"
+
+typedef struct {
+    event_handler_spec_t spec;        // Pointer to the event handler
+    sample_t             sample_data; // Sample data
+} base_event_handler_t;
+
+static inline void
+base_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sample) {
+    self->sample_data = *sample;
+}
+
+// ----------------------------------------------------------------------------
+// Collapsed stack event handler
+
+#if defined PL_WIN
+const char* COLLAPSED_HEAD_FORMAT = "P%I64d;T%I64x:%I64x";
+#else
+const char* COLLAPSED_HEAD_FORMAT = "P%d;T%ld:%ld";
+#endif
+
+static inline void
+collapsed_stack_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sample) {
+    base_event_handler__handle_stack_begin(self, sample);
+
+    fprintfp(pargs.output_file, COLLAPSED_HEAD_FORMAT, sample->pid, sample->iid, sample->tid);
+}
+
+static inline void
+collapsed_stack_event_handler__handle_metadata(base_event_handler_t* self, char* key, char* value, va_list args) {
+    fputs(META_HEAD, pargs.output_file);
+    fputs(key, pargs.output_file);
+    fputs(META_SEP, pargs.output_file);
+    vfprintf(pargs.output_file, value, args);
+    NL;
+}
+
+const char* SAMPLE_FORMAT = ";%s:%s:%d";
+#ifdef NATIVE
+const char* SAMPLE_FORMAT_KERNEL = ";kernel:%s:0";
+#endif
+
+static inline void
+collapsed_stack_frame_ref(const char* format, frame_t* frame) {
+    cached_string_t* scope = frame->scope;
+    fprintfp(
+        pargs.output_file, format, frame->filename->value, scope == UNKNOWN_SCOPE ? "<unknown>" : scope->value,
+        frame->line
+    );
+}
+
+#ifdef NATIVE
+static inline void
+collapsed_stack_kernel_frame_ref(const char* format, char* scope) {
+    fprintfp(pargs.output_file, format, scope);
+}
+#endif
+
+void
+collapsed_stack_event_handler__handle_stack_end(base_event_handler_t* self) {
+#ifdef NATIVE
+    int has_cframes = FALSE;
+    if (stack_top() == CFRAME_MAGIC) {
+        has_cframes = TRUE;
+        (void)stack_pop();
+    }
+
+    while (!stack_native_is_empty()) {
+        frame_t* native_frame = stack_native_pop();
+        if (!isvalid(native_frame)) {
+            log_e("Invalid native frame");
+            break;
+        }
+        cached_string_t* scope = native_frame->scope;
+
+        int is_frame_eval = (scope == UNKNOWN_SCOPE) ? FALSE : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
+        if (!stack_is_empty() && is_frame_eval) {
+            // TODO: if the py stack is empty we have a mismatch.
+            frame_t* frame = stack_pop();
+            if (has_cframes) {
+                while (frame != CFRAME_MAGIC) {
+                    collapsed_stack_frame_ref(SAMPLE_FORMAT, frame);
+
+                    if (stack_is_empty())
+                        break;
+
+                    frame = stack_pop();
+                }
+            } else {
+                collapsed_stack_frame_ref(SAMPLE_FORMAT, frame);
+            }
+        } else {
+            collapsed_stack_frame_ref(SAMPLE_FORMAT, native_frame);
+        }
+    }
+    if (!stack_is_empty()) {
+        log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
+        set_error(ETHREADINV);
+#ifdef DEBUG
+        fprintf(pargs.output_file, ";:%ld FRAMES LEFT:", stack_pointer());
+#endif
+    }
+    while (!stack_kernel_is_empty()) {
+        char* scope = stack_kernel_pop();
+        collapsed_stack_kernel_frame_ref(SAMPLE_FORMAT_KERNEL, scope);
+        free(scope);
+    }
+
+#else
+    while (!stack_is_empty()) {
+        frame_t* frame = stack_pop();
+        collapsed_stack_frame_ref(SAMPLE_FORMAT, frame);
+    }
+#endif
+
+    if (self->sample_data.gc_state == GC_STATE_COLLECTING) {
+        fprintf(pargs.output_file, ":GC:");
+    }
+
+    // Finish off sample with the metric(s)
+    sample_t* sample = &self->sample_data;
+    if (pargs.full) {
+        fprintf(
+            pargs.output_file, " " TIME_METRIC METRIC_SEP IDLE_METRIC METRIC_SEP MEM_METRIC "\n", sample->time,
+            sample->is_idle, sample->memory
+        );
+    } else {
+        if (pargs.memory) {
+            fprintf(pargs.output_file, " " MEM_METRIC "\n", sample->memory);
+        } else {
+            fprintf(pargs.output_file, " " TIME_METRIC "\n", sample->time);
+        }
+    }
+}
+
+event_handler_t*
+collapsed_stack_event_handler_new(void) {
+    event_handler_t* handler = (event_handler_t*)calloc(1, sizeof(base_event_handler_t));
+    if (!isvalid(handler)) {
+        log_e("Failed to allocate memory for event handler");
+        return NULL;
+    }
+
+    handler->spec.emit_stack_begin = (event_handler_stack_begin_t)collapsed_stack_event_handler__handle_stack_begin;
+    handler->spec.emit_metadata    = (event_handler_metadata_t)collapsed_stack_event_handler__handle_metadata;
+    handler->spec.emit_stack_end   = (event_handler_stack_end_t)collapsed_stack_event_handler__handle_stack_end;
+
+    return handler;
+}
+
+// ----------------------------------------------------------------------------
+// MOJO (binary mode) stack event handler
+
+static inline void
+mojo_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sample) {
+    base_event_handler__handle_stack_begin(self, sample);
+
+    mojo_event(MOJO_STACK);
+    mojo_integer(sample->pid, 0);
+    mojo_integer(sample->iid, 0);
+    fprintf(pargs.output_file, FORMAT_TID, sample->tid);
+    fputc('\0', pargs.output_file);
+}
+
+static inline void
+mojo_event_handler__handle_metadata(base_event_handler_t* self, char* key, char* value, va_list args) {
+    mojo_event(MOJO_METADATA);
+    mojo_string(key);
+    vfprintf(pargs.output_file, value, args);
+    fputc('\0', pargs.output_file);
+}
+
+static inline void
+mojo_event_handler__handle_new_string(base_event_handler_t* self, cached_string_t* string) {
+    mojo_event(MOJO_STRING);
+    mojo_ref(string->key);
+    mojo_string(string->value);
+}
+
+static inline void
+mojo_event_handler__handle_new_frame(base_event_handler_t* self, frame_t* frame) {
+    mojo_event(MOJO_FRAME);
+    mojo_integer(frame->key, 0);
+    mojo_ref(frame->filename->key);
+    mojo_ref(frame->scope->key);
+    mojo_integer(frame->line, 0);
+    mojo_integer(frame->line_end, 0);
+    mojo_integer(frame->column, 0);
+    mojo_integer(frame->column_end, 0);
+}
+
+static inline void
+mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
+#ifdef NATIVE
+    int has_cframes = FALSE;
+    if (stack_top() == CFRAME_MAGIC) {
+        has_cframes = TRUE;
+        (void)stack_pop();
+    }
+
+    while (!stack_native_is_empty()) {
+        frame_t* native_frame = stack_native_pop();
+        if (!isvalid(native_frame)) {
+            log_e("Invalid native frame");
+            break;
+        }
+        cached_string_t* scope = native_frame->scope;
+        int is_frame_eval = (scope == UNKNOWN_SCOPE) ? FALSE : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
+        if (!stack_is_empty() && is_frame_eval) {
+            // TODO: if the py stack is empty we have a mismatch.
+            frame_t* frame = stack_pop();
+            if (has_cframes) {
+                while (frame != CFRAME_MAGIC) {
+                    mojo_frame_ref(frame);
+
+                    if (stack_is_empty())
+                        break;
+
+                    frame = stack_pop();
+                }
+            } else {
+                mojo_frame_ref(frame);
+            }
+        } else {
+            mojo_frame_ref(native_frame);
+        }
+    }
+    if (!stack_is_empty()) {
+        log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
+        set_error(ETHREADINV);
+    }
+    while (!stack_kernel_is_empty()) {
+        char* scope = stack_kernel_pop();
+        mojo_frame_kernel(scope);
+        free(scope);
+    }
+
+#else
+    while (!stack_is_empty()) {
+        frame_t* frame = stack_pop();
+        mojo_frame_ref(frame);
+    }
+#endif
+
+    if (self->sample_data.gc_state == GC_STATE_COLLECTING) {
+        mojo_event(MOJO_GC);
+    }
+
+    // Finish off sample with the metric(s)
+    sample_t* sample = &self->sample_data;
+    if (pargs.full) {
+        mojo_metric_time(sample->time);
+        if (sample->is_idle) {
+            mojo_event(MOJO_IDLE);
+        }
+        mojo_metric_memory(sample->memory);
+    } else {
+        if (pargs.memory) {
+            mojo_metric_memory(sample->memory);
+        } else {
+            mojo_metric_time(sample->time);
+        }
+    }
+}
+
+event_handler_t*
+mojo_event_handler_new(void) {
+    event_handler_t* handler = (event_handler_t*)calloc(1, sizeof(base_event_handler_t));
+    if (!isvalid(handler)) {
+        log_e("Failed to allocate memory for event handler");
+        return NULL;
+    }
+
+    handler->spec.emit_stack_begin = (event_handler_stack_begin_t)mojo_event_handler__handle_stack_begin;
+    handler->spec.emit_metadata    = (event_handler_metadata_t)mojo_event_handler__handle_metadata;
+    handler->spec.emit_new_string  = (event_handler_new_string_t)mojo_event_handler__handle_new_string;
+    handler->spec.emit_new_frame   = (event_handler_new_frame_t)mojo_event_handler__handle_new_frame;
+    handler->spec.emit_stack_end   = (event_handler_stack_end_t)mojo_event_handler__handle_stack_end;
+
+    mojo_header();
+
+    return handler;
+}
+
+// ----------------------------------------------------------------------------
+// Where event handler
+
+const char* WHERE_SAMPLE_FORMAT = "    \033[33;1m%2$s\033[0m (\033[36;1m%1$s\033[0m:\033[32;1m%3$d\033[0m)\n";
+#ifdef NATIVE
+const char* WHERE_SAMPLE_FORMAT_NATIVE
+    = "    \033[38;5;246m%2$s\033[0m (\033[38;5;248;1m%1$s\033[0m:\033[38;5;246m%3$d\033[0m)\n";
+const char* WHERE_SAMPLE_FORMAT_KERNEL = "    \033[38;5;159m%s\033[0m 🐧\n";
+#endif
+#if defined PL_WIN
+const char* WHERE_HEAD_FORMAT
+    = "\n\n%4$s Process \033[35;1m%1$I64d\033[0m 🧵 Thread \033[34;1m%2$I64d:%3$I64d\033[0m\n\n";
+#else
+const char* WHERE_HEAD_FORMAT = "\n\n%4$s Process \033[35;1m%1$d\033[0m 🧵 Thread \033[34;1m%2$ld:%3$ld\033[0m\n\n";
+#endif
+
+static inline void
+where_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sample) {
+    fprintfp(
+        pargs.output_file, WHERE_HEAD_FORMAT, sample->pid, sample->iid, sample->tid, sample->is_idle ? "💤" : "🚀"
+    );
+}
+
+void
+where_event_handler__handle_stack_end(base_event_handler_t* self) {
+#ifdef NATIVE
+    int has_cframes = FALSE;
+    if (stack_top() == CFRAME_MAGIC) {
+        has_cframes = TRUE;
+        (void)stack_pop();
+    }
+
+    while (!stack_native_is_empty()) {
+        frame_t* native_frame = stack_native_pop();
+        if (!isvalid(native_frame)) {
+            log_e("Invalid native frame");
+            break;
+        }
+        cached_string_t* scope = native_frame->scope;
+        if (!isvalid(scope)) {
+            scope = UNKNOWN_SCOPE;
+        }
+
+        int is_frame_eval = (scope == UNKNOWN_SCOPE) ? FALSE : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
+        if (!stack_is_empty() && is_frame_eval) {
+            // TODO: if the py stack is empty we have a mismatch.
+            frame_t* frame = stack_pop();
+            if (has_cframes) {
+                while (frame != CFRAME_MAGIC) {
+                    collapsed_stack_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+
+                    if (stack_is_empty())
+                        break;
+
+                    frame = stack_pop();
+                }
+            } else {
+                collapsed_stack_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+            }
+        } else {
+            collapsed_stack_frame_ref(WHERE_SAMPLE_FORMAT_NATIVE, native_frame);
+        }
+    }
+    if (!stack_is_empty()) {
+        log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
+        set_error(ETHREADINV);
+    }
+    while (!stack_kernel_is_empty()) {
+        char* scope = stack_kernel_pop();
+        collapsed_stack_kernel_frame_ref(WHERE_SAMPLE_FORMAT_KERNEL, scope);
+        free(scope);
+    }
+
+#else
+    while (!stack_is_empty()) {
+        frame_t* frame = stack_pop();
+        collapsed_stack_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+    }
+#endif
+}
+
+event_handler_t*
+where_event_handler_new(void) {
+    event_handler_t* handler = (event_handler_t*)calloc(1, sizeof(base_event_handler_t));
+    if (!isvalid(handler)) {
+        log_e("Failed to allocate memory for event handler");
+        return NULL;
+    }
+
+    handler->spec.emit_stack_begin = (event_handler_stack_begin_t)where_event_handler__handle_stack_begin;
+    handler->spec.emit_stack_end   = (event_handler_stack_end_t)where_event_handler__handle_stack_end;
+
+    return handler;
+}

@@ -31,27 +31,23 @@
 #include "stats.h"
 
 typedef struct {
-    ctime_t t_sampling_interval;
-    ctime_t timeout;
-    pid_t   attach_pid;
-    int     where;
-    int     sleepless;
-    char*   format;
-    char*   head_format;
-    int     full;
-    int     memory;
-    int     binary;
-    FILE*   output_file;
-    char*   output_filename;
-    int     children;
-    ctime_t exposure;
-    int     pipe;
-    int     gc;
-    size_t  heap;
+    microseconds_t t_sampling_interval;
+    ctime_t        timeout;
+    pid_t          attach_pid;
+    int            where;
+    int            sleepless;
+    int            full;
+    int            memory;
+    int            binary;
+    FILE*          output_file;
+    char*          output_filename;
+    int            children;
+    ctime_t        exposure;
+    int            pipe;
+    int            gc;
+    size_t         heap;
 #ifdef NATIVE
-    char* native_format;
-    char* kernel_format;
-    int   kernel;
+    int kernel;
 #endif
 } parsed_args_t;
 

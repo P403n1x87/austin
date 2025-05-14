@@ -72,10 +72,6 @@ typedef unsigned long long mojo_int_t;
     fputs(string, pargs.output_file); \
     fputc('\0', pargs.output_file);
 
-#define mojo_fstring(...)                    \
-    fprintf(pargs.output_file, __VA_ARGS__); \
-    fputc('\0', pargs.output_file);
-
 static inline void
 mojo_integer(mojo_int_t integer, int sign) {
     unsigned char byte = integer & 0x3f;
@@ -112,27 +108,6 @@ mojo_integer(mojo_int_t integer, int sign) {
         mojo_integer(MOJO_VERSION, 0);   \
         fflush(pargs.output_file);       \
     }
-
-#define mojo_metadata(label, ...) \
-    mojo_event(MOJO_METADATA);    \
-    mojo_string(label);           \
-    mojo_fstring(__VA_ARGS__);
-
-#define mojo_stack(pid, iid, tid)  \
-    mojo_event(MOJO_STACK);        \
-    mojo_integer(pid, 0);          \
-    mojo_integer(iid, 0);          \
-    mojo_fstring(FORMAT_TID, tid);
-
-#define mojo_frame(frame)               \
-    mojo_event(MOJO_FRAME);             \
-    mojo_integer(frame->key, 0);        \
-    mojo_ref(frame->filename);          \
-    mojo_ref(frame->scope);             \
-    mojo_integer(frame->line, 0);       \
-    mojo_integer(frame->line_end, 0);   \
-    mojo_integer(frame->column, 0);     \
-    mojo_integer(frame->column_end, 0);
 
 #define mojo_frame_ref(frame)    \
     mojo_event(MOJO_FRAME_REF);  \

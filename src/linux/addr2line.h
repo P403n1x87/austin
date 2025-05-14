@@ -35,6 +35,7 @@
 #endif
 
 #include "../logging.h"
+#include "../py_string.h"
 #include "../stack.h"
 
 static asymbol** syms; /* Symbol table.  */
@@ -207,9 +208,11 @@ get_native_frame(const char* file_name, bfd_vma addr, key_dt frame_key) {
     free(syms);
     syms = NULL;
 
-    frame_t* frame = isvalid(filename) && isvalid(name)
-                       ? frame_new(frame_key, strdup(filename), strdup(name), line, 0, 0, 0)
-                       : NULL;
+    frame_t* frame = isvalid(filename) && isvalid(name) ? frame_new(
+                                                              frame_key, cached_string_new(0, (char*)filename),
+                                                              cached_string_new(0, (char*)name), line, 0, 0, 0
+                                                          )
+                                                        : NULL;
 
     bfd_close(abfd);
 

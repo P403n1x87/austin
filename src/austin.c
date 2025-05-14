@@ -298,6 +298,22 @@ main(int argc, char** argv) {
         goto finally;
     }
 
+    event_handler_t* handler = NULL;
+    if (pargs.where) {
+        handler = where_event_handler_new();
+    } else if (pargs.binary) {
+        handler = mojo_event_handler_new();
+    } else {
+        handler = collapsed_stack_event_handler_new();
+    }
+
+    if (!isvalid(handler)) {
+        log_e("Failed to create event handler");
+        retval = -1;
+        goto release;
+    }
+    event_handler_install(handler);
+
     py_proc = py_proc_new(FALSE);
     if (!isvalid(py_proc)) {
         log_ie("Cannot create process");
@@ -311,10 +327,6 @@ main(int argc, char** argv) {
 
     // Initialise sampling metrics.
     stats_reset();
-
-    if (pargs.binary) {
-        mojo_header();
-    }
 
     if (pargs.attach_pid == 0) {
         if ((fail(py_proc__start(py_proc, argv[exec_arg], (char**)&argv[exec_arg])) && !pargs.children)
@@ -344,7 +356,7 @@ main(int argc, char** argv) {
         // We use the exposure branch to emulate sampling once
         pargs.exposure            = 1;
     } else
-        log_i("Sampling interval: %lu μs", pargs.t_sampling_interval);
+        log_i("Sampling interval: " MICROSECONDS_FMT " μs", pargs.t_sampling_interval);
 
     if (pargs.heap)
         log_i("Maximum frame heap size: %d MB", pargs.heap >> 20);
@@ -383,19 +395,12 @@ main(int argc, char** argv) {
         goto finally;
     }
 
-    if (pargs.where)
-        goto finally;
-
-    // Log sampling metrics
-    NL;
-
-    emit_metadata("duration", MICROSECONDS_FMT, stats_duration());
+    event_handler__emit_metadata("duration", MICROSECONDS_FMT, stats_duration());
     if (pargs.gc) {
-        emit_metadata("gc", MICROSECONDS_FMT, _gc_time);
+        event_handler__emit_metadata("gc", MICROSECONDS_FMT, _gc_time);
     }
 
     stats_log_metrics();
-    NL;
 
 finally:
     py_thread_free();
@@ -410,6 +415,8 @@ release:
     }
 
     logger_close();
+
+    event_handler_free();
 
     if (interrupt < 0)
         // Interrupted  by signal
