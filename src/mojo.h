@@ -50,10 +50,8 @@ enum {
 
 #if defined PL_WIN
 #define FORMAT_TID "%llx"
-#elif defined __arm__
-#define FORMAT_TID "%x"
 #else
-#define FORMAT_TID "%lx"
+#define FORMAT_TID "%zx"
 #endif
 
 #if defined __arm__
@@ -104,7 +102,7 @@ mojo_integer(mojo_int_t integer, int sign) {
 
 // We expect the least significant bits to be varied enough to provide a valid
 // key. This way we can keep the size of references to a maximum of 4 bytes.
-#define mojo_ref(integer) (mojo_integer(MOJO_INT32 & ((mojo_int_t)integer), 0))
+#define mojo_ref(intorptr) (mojo_integer(MOJO_INT32 & ((mojo_int_t)(uintptr_t)intorptr), 0))
 
 // Mojo events
 

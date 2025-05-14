@@ -7,12 +7,6 @@
 static size_t max_pid = 0;
 #endif
 
-#if defined __arm__
-#define MAXPID_FORMAT "%d"
-#else
-#define MAXPID_FORMAT "%ld"
-#endif
-
 // ----------------------------------------------------------------------------
 size_t
 pid_max() {
@@ -24,7 +18,7 @@ pid_max() {
     if (!isvalid(pid_max_file))
         return 0;
 
-    int has_pid_max = (fscanf(pid_max_file, MAXPID_FORMAT, &max_pid) == 1);
+    int has_pid_max = (fscanf(pid_max_file, "%zu", &max_pid) == 1);
     fclose(pid_max_file);
     if (!has_pid_max)
         return 0;
