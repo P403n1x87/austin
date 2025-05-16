@@ -239,7 +239,7 @@ hash_table_new(int capacity) {
 }
 
 // ----------------------------------------------------------------------------
-#define MAGIC 2654435761
+#define MAGIC 2654435761u
 
 static inline index_t
 _hash_table__index(hash_table_t* self, key_dt key) {
