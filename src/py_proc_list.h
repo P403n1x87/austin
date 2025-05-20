@@ -38,7 +38,7 @@ typedef struct {
     py_proc_item_t* first;           // First item in the list
     lookup_t*       py_proc_for_pid; // PID to py_proc_t lookup table
     lookup_t*       ppid_for_pid;    // PID to PPID lookup table
-    ctime_t         timestamp;       // Timestamp of the last update
+    microseconds_t  timestamp;       // Timestamp of the last update
 } py_proc_list_t;
 
 /**

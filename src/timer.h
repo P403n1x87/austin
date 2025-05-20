@@ -45,7 +45,7 @@ yield() {
 #define TIMER_START(d)                \
     {                                 \
         __label__ _s;                 \
-        ctime_t _e = (gettime() + d); \
+        microseconds_t _e = (gettime() + d); \
         while (gettime() <= _e) {
 #define TIMER_END \
     yield();      \

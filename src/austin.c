@@ -90,7 +90,7 @@ do_single_process(py_proc_t* py_proc) {
     } else {
         if (!pargs.where && !pargs.pipe)
             log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
-        ctime_t end_time = gettime() + pargs.exposure * 1000000;
+        microseconds_t end_time = gettime() + pargs.exposure * 1000000;
         while (interrupt == FALSE) {
             stopwatch_start();
 
@@ -176,7 +176,7 @@ do_child_processes(py_proc_t* py_proc) {
     if (pargs.exposure == 0) {
         while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
 #ifndef NATIVE
-            ctime_t start_time = gettime();
+            microseconds_t start_time = gettime();
 #endif
             py_proc_list__update(list);
             py_proc_list__sample(list);
@@ -189,10 +189,10 @@ do_child_processes(py_proc_t* py_proc) {
     } else {
         if (!pargs.pipe && !pargs.where)
             log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
-        ctime_t end_time = gettime() + pargs.exposure * 1000000;
+        microseconds_t end_time = gettime() + pargs.exposure * 1000000;
         while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
 #ifndef NATIVE
-            ctime_t start_time = gettime();
+            microseconds_t start_time = gettime();
 #endif
             py_proc_list__update(list);
             py_proc_list__sample(list);
@@ -389,9 +389,9 @@ main(int argc, char** argv) {
     // Log sampling metrics
     NL;
 
-    emit_metadata("duration", "%lu", stats_duration());
+    emit_metadata("duration", MICROSECONDS_FMT, stats_duration());
     if (pargs.gc) {
-        emit_metadata("gc", "%lu", _gc_time);
+        emit_metadata("gc", MICROSECONDS_FMT, _gc_time);
     }
 
     stats_log_metrics();
