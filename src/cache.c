@@ -35,6 +35,8 @@
 queue_item_t*
 queue_item_new(value_t value, key_dt key) {
     queue_item_t* item = (queue_item_t*)calloc(1, sizeof(queue_item_t));
+    if (!isvalid(item))
+        return NULL;
 
     item->value = value;
     item->key   = key;
@@ -57,6 +59,8 @@ queue_item__destroy(queue_item_t* self, void (*deallocator)(value_t)) {
 queue_t*
 queue_new(int capacity, void (*deallocator)(value_t)) {
     queue_t* queue = (queue_t*)calloc(1, sizeof(queue_t));
+    if (!isvalid(queue))
+        return NULL;
 
     queue->capacity    = capacity;
     queue->deallocator = deallocator;
@@ -141,6 +145,8 @@ queue__destroy(queue_t* self) {
 chain_t*
 chain_new(key_dt key, value_t value) {
     chain_t* chain = (chain_t*)calloc(1, sizeof(chain_t));
+    if (!isvalid(chain))
+        return NULL;
 
     chain->key   = key;
     chain->value = value;
@@ -225,6 +231,8 @@ chain__destroy(chain_t* self) {
 hash_table_t*
 hash_table_new(int capacity) {
     hash_table_t* hash = (hash_table_t*)calloc(1, sizeof(hash_table_t));
+    if (!isvalid(hash))
+        return NULL;
 
     hash->capacity    = capacity;
     hash->load_factor = 0.75 * capacity;
@@ -340,6 +348,8 @@ hash_table__destroy(hash_table_t* self) {
 lru_cache_t*
 lru_cache_new(int capacity, void (*deallocator)(value_t)) {
     lru_cache_t* cache = (lru_cache_t*)calloc(1, sizeof(lru_cache_t));
+    if (!isvalid(cache))
+        return NULL;
 
     cache->capacity = capacity;
 
