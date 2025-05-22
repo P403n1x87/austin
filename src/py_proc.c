@@ -852,6 +852,11 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
         cmd_line_size += strlen(argv[i++]) + 3;
 
     char* cmd_line = malloc(sizeof(char) * cmd_line_size);
+    if (!isvalid(cmd_line)) {
+        log_e("Cannot allocate memory for command line");
+        set_error(ENOMEM);
+        FAIL;
+    }
     strcpy(cmd_line, exec);
 
     register int pos = strlen(exec);

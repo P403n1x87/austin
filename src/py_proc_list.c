@@ -24,6 +24,7 @@
 
 #if defined PL_LINUX
 #include <dirent.h>
+#include <inttypes.h>
 
 #include "linux/common.h"
 #elif defined PL_MACOS
@@ -236,14 +237,8 @@ py_proc_list__update(py_proc_list_t* self) {
         if (stat[0] == ' ')
             stat++;
 
-#ifdef __arm__
-#define STAT_FMT "%c %d"
-#else
-#define STAT_FMT "%c %ld"
-#endif
-
         uintptr_t ppid;
-        if (sscanf(stat, STAT_FMT, (char*)buffer, &ppid) != 2) {
+        if (sscanf(stat, "%c %" SCNdPTR, (char*)buffer, &ppid) != 2) {
             log_e("Failed to parse stat file for process %d", pid);
             return;
         }

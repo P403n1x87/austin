@@ -21,6 +21,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include <fcntl.h>
+#include <inttypes.h>
 #include <pthread.h>
 #include <stdio.h>
 #include <string.h>
@@ -38,7 +39,7 @@ _py_thread__is_idle(py_thread_t* self) {
     char file_name[64];
     char buffer[2048] = "";
 
-    sprintf(file_name, "/proc/%d/task/" SIZE_FMT "/stat", self->proc->pid, self->tid);
+    sprintf(file_name, "/proc/%d/task/%" PRIuPTR "/stat", self->proc->pid, self->tid);
 
     cu_fd fd = open(file_name, O_RDONLY);
     if (fd == -1) {

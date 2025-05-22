@@ -527,7 +527,7 @@ _py_proc__get_resident_memory(py_proc_t* self) {
     int ret = 0;
 
     ssize_t size, resident;
-    if (fscanf(statm, SIZE_FMT " " SIZE_FMT, &size, &resident) != 2)
+    if (fscanf(statm, "%zd %zd", &size, &resident) != 2)
         ret = -1;
 
     fclose(statm);
@@ -592,7 +592,7 @@ _py_proc__get_vm_maps(py_proc_t* self) {
             // We print the maps instead so that we can resolve them later and use
             // the CPU more efficiently to collect samples.
             emit_metadata(
-                "map", ADDR_FMT "-" ADDR_FMT " %s", (addr_t)m->address, ((addr_t)m->address) + m->size, m->pathname
+                "map", "%zx-%zx %s", (addr_t)m->address, ((addr_t)m->address) + m->size, m->pathname
             );
         }
     }

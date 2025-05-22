@@ -39,10 +39,8 @@
 
 #if defined PL_WIN
 #define MEM_METRIC "%lld"
-#elif defined __arm__
-#define MEM_METRIC "%d"
 #else
-#define MEM_METRIC "%ld"
+#define MEM_METRIC "%zd"
 #endif
 #define TIME_METRIC "%lu"
 #define IDLE_METRIC "%d"
@@ -148,7 +146,7 @@
 #define emit_frames_left(n)                                      \
     {                                                            \
         if (!pargs.binary) {                                     \
-            fprintf(pargs.output_file, ";:%ld FRAMES LEFT:", n); \
+            fprintf(pargs.output_file, ";:%zd FRAMES LEFT:", n); \
         }                                                        \
     }
 

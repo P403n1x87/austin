@@ -77,7 +77,7 @@ proc_map_new(pid_t pid) {
         ssize_t lower, upper;
 
         int has_pathname = sscanf(
-                               line, ADDR_FMT "-" ADDR_FMT " %s %*x %*x:%*x %*x %s\n", &lower,
+                               line, "%zx-%zx %s %*x %*x:%*x %*x %s\n", &lower,
                                &upper,  // Map bounds
                                perms,   // Permissions
                                pathname // Binary path
