@@ -34,14 +34,6 @@
 
 #define PTHREAD_BUFFER_ITEMS 200
 
-#if defined __arm__
-#define ADDR_FMT "%x"
-#define SIZE_FMT "%d"
-#else
-#define ADDR_FMT "%lx"
-#define SIZE_FMT "%ld"
-#endif
-
 struct _proc_extra_info {
     unsigned int page_size;
     char         statm_file[24];
