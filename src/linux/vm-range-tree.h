@@ -59,6 +59,8 @@ typedef struct {
 vm_range_t*
 vm_range_new(addr_t lo, addr_t hi, char* name) {
     vm_range_t* range = (vm_range_t*)malloc(sizeof(vm_range_t));
+    if (!isvalid(range))
+        return NULL;
 
     range->lo     = lo;
     range->hi     = hi;

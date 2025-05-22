@@ -136,7 +136,7 @@ def collect_logs(variant: str, pid: int) -> List[str]:
     needles: tuple[str, ...]
     match platform.system():
         case "Linux":
-            with Path("/var/log/syslog").open() as logfile:
+            with Path("/var/log/syslog").open(errors="replace") as logfile:
                 needles = (f"{variant}[{pid}]", f"systemd-coredump[{pid}]")
                 return [
                     f" logs for {variant}[{pid}] ".center(80, "="),

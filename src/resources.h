@@ -86,12 +86,12 @@ typedef struct {
 static inline map_t*
 map_new(int fd, size_t size, int flags) {
     void* addr = mmap(0, size, PROT_READ, flags, fd, 0);
-    if (!isvalid(addr))
+    if (addr == MAP_FAILED)
         return NULL;
 
     map_t* map = malloc(sizeof(map_t));
-    if (map == MAP_FAILED) {
-        munmap(map, size);
+    if (!isvalid(map)) {
+        munmap(addr, size);
         return NULL;
     }
 

@@ -22,6 +22,7 @@
 
 #define PY_THREAD_C
 
+#include <inttypes.h>
 #include <signal.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -468,12 +469,6 @@ py_thread__is_interrupted(py_thread_t* self) {
 // ----------------------------------------------------------------------------
 #define MAX_STACK_FILE_SIZE 2048
 
-#if defined __arm__
-#define TID_FMT "%d"
-#else
-#define TID_FMT "%ld"
-#endif
-
 int
 py_thread__save_kernel_stack(py_thread_t* self) {
     char stack_path[48];
@@ -486,7 +481,7 @@ py_thread__save_kernel_stack(py_thread_t* self) {
 
     sfree(_kstacks[self->tid]);
 
-    sprintf(stack_path, "/proc/%d/task/" TID_FMT "/stack", self->proc->pid, self->tid);
+    sprintf(stack_path, "/proc/%d/task/%" PRIuPTR "/stack", self->proc->pid, self->tid);
     cu_fd fd = open(stack_path, O_RDONLY);
     if (fd == -1) {
         log_e("Failed to open %s", stack_path);
@@ -644,7 +639,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
                     key_dt filename_key = (key_dt)pc;
                     filename            = lru_cache__maybe_hit(string_cache, filename_key);
                     if (!isvalid(filename)) {
-                        sprintf(_native_buf, "native@" ADDR_FMT, pc);
+                        sprintf(_native_buf, "native@%" PRIxPTR, pc);
                         filename = strdup(_native_buf);
                         lru_cache__store(string_cache, (key_dt)pc, filename);
                         if (pargs.binary) {
@@ -737,8 +732,9 @@ py_thread__fill_from_raddr(py_thread_t* self, raddr_t* raddr, py_proc_t* proc) {
 
     self->status = V_FIELD(tstate_status_t, ts, py_thread, o_status);
 
-    self->next_raddr = (raddr_t
-    ){raddr->pref, V_FIELD(void*, ts, py_thread, o_next) == raddr->addr ? NULL : V_FIELD(void*, ts, py_thread, o_next)};
+    self->next_raddr = (raddr_t){raddr->pref, V_FIELD(void*, ts, py_thread, o_next) == raddr->addr
+                                                  ? NULL
+                                                  : V_FIELD(void*, ts, py_thread, o_next)};
 
 #if defined PL_MACOS
     self->tid = V_FIELD(long, ts, py_thread, o_thread_id);
