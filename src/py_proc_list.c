@@ -190,7 +190,7 @@ py_proc_list__size(py_proc_list_t* self) {
 // ----------------------------------------------------------------------------
 void
 py_proc_list__update(py_proc_list_t* self) {
-    ctime_t now = gettime();
+    microseconds_t now = gettime();
     if (now - self->timestamp < UPDATE_INTERVAL)
         return; // Do not update too frequently as this is an expensive operation.
 

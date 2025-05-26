@@ -25,6 +25,7 @@
 #include "platform.h"
 
 #include <limits.h>
+#include <stdint.h>
 #include <time.h>
 
 #if defined PL_MACOS
@@ -52,16 +53,16 @@
 
 unsigned long _sample_cnt;
 
-ctime_t _min_sampling_time;
-ctime_t _max_sampling_time;
-ctime_t _avg_sampling_time;
+microseconds_t _min_sampling_time;
+microseconds_t _max_sampling_time;
+microseconds_t _avg_sampling_time;
 
-ctime_t _start_time;
+microseconds_t _start_time;
 
 ustat_t _error_cnt;
 ustat_t _long_cnt;
 
-ctime_t _gc_time;
+microseconds_t _gc_time;
 
 #if defined PL_MACOS
 static clock_serv_t cclock;
@@ -74,7 +75,7 @@ static ctime_t _period;
 
 // ---- PUBLIC ----------------------------------------------------------------
 
-ctime_t
+microseconds_t
 gettime() {
 #if defined PL_UNIX /* UNIX */
 #ifdef PL_MACOS
@@ -85,7 +86,7 @@ gettime() {
     clock_gettime(CLOCK_BOOTTIME, &ts);
 #endif
 
-    return ts.tv_sec * 1e6 + ts.tv_nsec / 1e3;
+    return ts.tv_sec * ((microseconds_t)1000000) + ts.tv_nsec / 1000;
 
 #else /* WIN */
     LARGE_INTEGER count;
@@ -99,7 +100,7 @@ stats_reset() {
     _sample_cnt = 0;
     _error_cnt  = 0;
 
-    _min_sampling_time = ULONG_MAX;
+    _min_sampling_time = MICROSECONDS_MAX;
     _max_sampling_time = 0;
     _avg_sampling_time = 0;
 
@@ -114,17 +115,17 @@ stats_reset() {
 #endif
 }
 
-ctime_t
+microseconds_t
 stats_get_max_sampling_time() {
     return _max_sampling_time;
 }
 
-ctime_t
+microseconds_t
 stats_get_min_sampling_time() {
     return _min_sampling_time;
 }
 
-ctime_t
+microseconds_t
 stats_get_avg_sampling_time() {
     return _avg_sampling_time / _sample_cnt;
 }
@@ -134,7 +135,7 @@ stats_start() {
     _start_time = gettime();
 }
 
-ctime_t
+microseconds_t
 stats_duration() {
     return gettime() - _start_time;
 }
@@ -147,15 +148,15 @@ stats_log_metrics() {
         }
 
         emit_metadata(
-            "sampling", "%lu,%lu,%lu", stats_get_min_sampling_time(), stats_get_avg_sampling_time(),
-            stats_get_max_sampling_time()
+            "sampling", MICROSECONDS_FMT "," MICROSECONDS_FMT "," MICROSECONDS_FMT,
+            stats_get_min_sampling_time(), stats_get_avg_sampling_time(), stats_get_max_sampling_time()
         );
 
         emit_metadata("saturation", "%ld/%ld", _long_cnt, _sample_cnt);
 
         emit_metadata("errors", "%ld/%ld", _error_cnt, _sample_cnt);
     } else {
-        ctime_t duration = stats_duration();
+        microseconds_t duration = stats_duration();
 
         log_m("");
         if (!_sample_cnt) {
@@ -175,8 +176,9 @@ stats_log_metrics() {
         }
 
         log_m(
-            "⏱️  Frame sampling (min/avg/max) : \033[1m%lu/%lu/%lu μs\033[0m", stats_get_min_sampling_time(),
-            stats_get_avg_sampling_time(), stats_get_max_sampling_time()
+            "⏱️  Frame sampling (min/avg/max) : \033[1m" MICROSECONDS_FMT "/" MICROSECONDS_FMT "/" MICROSECONDS_FMT " "
+            "μs\033[0m",
+            stats_get_min_sampling_time(), stats_get_avg_sampling_time(), stats_get_max_sampling_time()
         );
 
         log_m(

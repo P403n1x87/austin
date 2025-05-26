@@ -32,20 +32,20 @@
 #ifndef AUSTIN_C
 extern
 #endif
-    ctime_t _sample_timestamp;
+    microseconds_t _sample_timestamp;
 
 static inline void
 stopwatch_start(void) {
     _sample_timestamp = gettime();
 } /* timer_start */
 
-static inline ctime_t
+static inline microseconds_t
 stopwatch_duration(void) {
     return gettime() - _sample_timestamp;
 } /* timer_stop */
 
 static inline void
-stopwatch_pause(ctime_t delta) {
+stopwatch_pause(microseconds_t delta) {
     // Pause if sampling took less than the sampling interval.
     if (delta < pargs.t_sampling_interval)
         usleep(pargs.t_sampling_interval - delta);

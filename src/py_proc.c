@@ -1127,7 +1127,7 @@ _py_proc__resume_threads(py_proc_t* self, raddr_t* tstate_head_raddr) {
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_proc__sample_interpreter(py_proc_t* self, PyInterpreterState* is, ctime_t time_delta) {
+_py_proc__sample_interpreter(py_proc_t* self, PyInterpreterState* is, microseconds_t time_delta) {
     ssize_t mem_delta      = 0;
     void*   current_thread = NULL;
 
@@ -1182,6 +1182,9 @@ _py_proc__sample_interpreter(py_proc_t* self, PyInterpreterState* is, ctime_t ti
             }
         }
 
+        // In this call, the 64bit time_delta may be truncated to 32bit. That
+        // is ok most of the time as we expect the delta to express less than
+        // an hour.
         py_thread__emit_collapsed_stack(&py_thread, interp_id, time_delta, mem_delta);
     } while (success(py_thread__next(&py_thread)));
 
@@ -1196,7 +1199,7 @@ _py_proc__sample_interpreter(py_proc_t* self, PyInterpreterState* is, ctime_t ti
 // ----------------------------------------------------------------------------
 int
 py_proc__sample(py_proc_t* self) {
-    ctime_t time_delta     = gettime() - self->timestamp; // Time delta since last sample.
+    microseconds_t time_delta = gettime() - self->timestamp; // Time delta since last sample.
     void*   current_interp = self->is_raddr;
 
     V_DESC(self->py_v);

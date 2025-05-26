@@ -76,7 +76,7 @@ typedef struct {
     lru_cache_t* string_cache;
 
     // Temporal profiling support
-    ctime_t timestamp;
+    microseconds_t timestamp;
 
     // Memory profiling support
     ssize_t last_resident_memory;
