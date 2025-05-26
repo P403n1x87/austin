@@ -42,9 +42,9 @@ yield() {
 #endif
 }
 
-#define TIMER_START(d)                \
-    {                                 \
-        __label__ _s;                 \
+#define TIMER_START(d)                       \
+    {                                        \
+        __label__ _s;                        \
         microseconds_t _e = (gettime() + d); \
         while (gettime() <= _e) {
 #define TIMER_END \

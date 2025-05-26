@@ -1199,8 +1199,8 @@ _py_proc__sample_interpreter(py_proc_t* self, PyInterpreterState* is, microsecon
 // ----------------------------------------------------------------------------
 int
 py_proc__sample(py_proc_t* self) {
-    microseconds_t time_delta = gettime() - self->timestamp; // Time delta since last sample.
-    void*   current_interp = self->is_raddr;
+    microseconds_t time_delta     = gettime() - self->timestamp; // Time delta since last sample.
+    void*          current_interp = self->is_raddr;
 
     V_DESC(self->py_v);
 

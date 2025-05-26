@@ -535,8 +535,8 @@ static char _native_buf[MAXLEN];
 
 static inline int
 wait_unw_init_remote(unw_cursor_t* c, unw_addr_space_t as, void* arg) {
-    int     outcome = 0;
-    microseconds_t end = gettime() + 1000;
+    int            outcome = 0;
+    microseconds_t end     = gettime() + 1000;
     while (gettime() <= end && (outcome = unw_init_remote(c, as, arg)) == -UNW_EBADREG)
         sched_yield();
     if (fail(outcome))

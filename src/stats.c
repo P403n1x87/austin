@@ -148,8 +148,8 @@ stats_log_metrics() {
         }
 
         emit_metadata(
-            "sampling", MICROSECONDS_FMT "," MICROSECONDS_FMT "," MICROSECONDS_FMT,
-            stats_get_min_sampling_time(), stats_get_avg_sampling_time(), stats_get_max_sampling_time()
+            "sampling", MICROSECONDS_FMT "," MICROSECONDS_FMT "," MICROSECONDS_FMT, stats_get_min_sampling_time(),
+            stats_get_avg_sampling_time(), stats_get_max_sampling_time()
         );
 
         emit_metadata("saturation", "%ld/%ld", _long_cnt, _sample_cnt);

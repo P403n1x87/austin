@@ -50,8 +50,8 @@ struct _proc_extra_info {
 
 static inline int
 wait_ptrace(enum __ptrace_request request, pid_t pid, void* addr, void* data) {
-    int     outcome = 0;
-    microseconds_t end = gettime() + 100000; // Wait for 100ms
+    int            outcome = 0;
+    microseconds_t end     = gettime() + 100000; // Wait for 100ms
 
     while (gettime() < end && (outcome = ptrace(request, pid, addr, data)) && errno == 3)
         sched_yield();
