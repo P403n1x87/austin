@@ -1,5 +1,7 @@
+import platform
 import sys
 import typing as t
+import zipfile
 from itertools import product
 from pathlib import Path
 
@@ -12,6 +14,16 @@ from urllib.error import HTTPError
 from urllib.request import urlopen
 
 from test.utils import Variant
+
+if sys.platform.startswith("win32"):
+    RELEASE_ARCH_SUFFIX = "-win64.zip"
+elif sys.platform.startswith("darwin"):
+    if platform.machine == "arm64":
+        RELEASE_ARCH_SUFFIX = "mac-arm64.zip"
+    else:
+        RELEASE_ARCH_SUFFIX = "mac64.zip"
+else:
+    RELEASE_ARCH_SUFFIX = "linux-amd64.tar.xz"
 
 
 class VersionedVariant(Variant):
@@ -45,12 +57,16 @@ def download_release(
         for flavour, v in product({"-gnu", ""}, {"", "v"}):
             try:
                 with urlopen(
-                    f"{prefix}v{version}/{variant_name}-{v}{version}{flavour}-linux-amd64.tar.xz"
+                    f"{prefix}v{version}/{variant_name}-{v}{version}{flavour}-{RELEASE_ARCH_SUFFIX}"
                 ) as stream:
                     buffer = BytesIO(stream.read())
                     binary_dest.mkdir(parents=True, exist_ok=True)
-                    tar = tarfile.open(fileobj=buffer, mode="r:xz")
-                    tar.extract(variant_name, str(binary_dest))
+                    if RELEASE_ARCH_SUFFIX.endswith(".zip"):
+                        with zipfile.ZipFile(buffer) as zip_file:
+                            zip_file.extract(variant_name, str(binary_dest))
+                    else:
+                        tar = tarfile.open(fileobj=buffer, mode="r:xz")
+                        tar.extract(variant_name, str(binary_dest))
             except HTTPError:
                 continue
             break
