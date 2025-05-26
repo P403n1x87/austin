@@ -17,7 +17,9 @@ from test.utils import python, target
 
 
 def tee(data: bytes, output: str) -> bytes:
-    Path(output.replace(" ", "_").lower()).with_suffix(".mojo").write_bytes(data)
+    Path(output.replace(" ", "_").replace(".", "_").lower()).with_suffix(
+        ".mojo"
+    ).write_bytes(data)
     return data
 
 
@@ -174,14 +176,14 @@ if __name__ == "__main__":
 
     failures: t.List[tuple[Scenario, float]] = []
     for scenario in SCENARIOS:
-        print(
-            f"Validating {scenario.title} ...                                ",
-            end="\r",
-            flush=True,
-            file=sys.stderr,
-        )
+        print(f"Validating {scenario.title} ...", flush=True, file=sys.stderr, end=" ")
+
+        result_icon = "✅"
         if (p := validate(scenario, runs=opts.n)) < opts.p_value:
             failures.append((scenario, p))
+            result_icon = "❌"
+
+        print(result_icon, file=sys.stderr)
 
     if opts.report:
         generate_markdown_report(failures, opts.report)

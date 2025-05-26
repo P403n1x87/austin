@@ -1,0 +1,123 @@
+name: Data Validation
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/validation.yml
+      - scripts/requirements-val.txt
+      - scripts/validation.py
+      - src/**
+      - configure.ac
+      - Makefile.am
+
+concurrency: 
+  group: validation-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  validation:
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+    
+    env:
+      AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
+
+    name: Data validation with Python ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}-dev
+
+      - name: Install Python 3.12
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure
+          make
+
+      - name: Install runtime dependencies
+        run: |
+          python3.12 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-val.txt
+          deactivate
+
+      - name: Run data validation
+        run: |
+          ulimit -c unlimited
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+
+          source .venv/bin/activate
+          python scripts/validation.py --ignore-errors --report results-${{ matrix.python-version }}.txt
+          deactivate
+
+      - name: List collected samples
+        run: ls *.mojo
+        if: always()
+
+      - name: Upload profiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-validation-profiles-${{ matrix.python-version }}
+          path: "*.mojo"
+          overwrite: true
+        if: always()
+
+      - name: Upload data validation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-validation-results-${{ matrix.python-version }}
+          path: "results*.txt"
+          overwrite: true
+        if: always()
+
+  validation-report:
+    runs-on: ubuntu-24.04
+
+    needs: validation
+    if: always()
+
+    name: Data validation report
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download data validation results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: data-validation-results-*
+          merge-multiple: true
+          path: .
+
+      - name: Generate validation report
+        run: |
+          # Concatenate all the results*.txt files with the header
+          echo "## Austin Data Validation" > validation.txt
+          echo "" >> validation.txt
+          for file in $(ls results*.txt | sort -V); do
+            cat $file >> validation.txt
+            echo "" >> validation.txt
+          done
+
+      - name: Post results on PR
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: validation
+          path: validation.txt
