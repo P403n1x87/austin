@@ -93,19 +93,32 @@ esac], [coverage=false])
 
 AM_CONDITIONAL([COVERAGE], [test x$coverage = xtrue])
 
-# Debug symbols
-AC_ARG_ENABLE([debug-symbols], [
-  --enable-debug-symbols    Include debug symbols], [
+# Debug
+AC_ARG_ENABLE([debug], [
+  --enable-debug    Enable debug build. To include only debug symbols use "symbols"
+], [
 case "${enableval}" in
+    symbols)
+        debugsymbols=true
+        debug=false
+        ;;
     yes)
         debugsymbols=true
+        debug=true
         AUSTINP_LDADD+=" -lm"
         ;;
-    no)  debugsymbols=false ;;
-    *) AC_MSG_ERROR([bad value ${enableval} for --enable-debug-symbols]) ;;
-esac], [debugsymbols=false])
+    no)
+        debugsymbols=false
+        debug=false
+        ;;
+    *) AC_MSG_ERROR([bad value ${enableval} for --enable-debug]) ;;
+esac], [
+    debugsymbols=false
+    debug=false
+])
 
 AM_CONDITIONAL([DEBUG_SYMBOLS], [test x$debugsymbols = xtrue])
+AM_CONDITIONAL([DEBUG], [test x$debug = xtrue])
 
 AC_CONFIG_FILES([Makefile
                  src/Makefile])

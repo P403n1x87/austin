@@ -36,7 +36,7 @@ jobs:
       - name: Compile Austin
         run: |
           autoreconf --install
-          ./configure --enable-debug-symbols=yes
+          ./configure --enable-debug
           make
 
       - uses: actions/upload-artifact@v4
@@ -510,7 +510,7 @@ jobs:
       - name: Compile Austin
         run: |
           autoreconf --install
-          ./configure --enable-debug-symbols=yes
+          ./configure --enable-debug=symbols
           make
 
       - name: Install runtime dependencies
