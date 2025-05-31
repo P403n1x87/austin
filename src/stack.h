@@ -49,6 +49,8 @@ typedef struct {
 #endif
 } stack_dt;
 
+// Global stack pointer. This is a global variable that points to the allocated
+// memory for stack unwinding.
 #ifndef STACK_C
 extern
 #endif

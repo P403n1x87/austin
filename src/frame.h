@@ -24,6 +24,7 @@
 
 #include "cache.h"
 #include "events.h"
+#include "py_string.h"
 #include "resources.h"
 
 typedef struct {

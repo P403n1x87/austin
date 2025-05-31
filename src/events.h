@@ -100,16 +100,16 @@ event_handler__emit_stack_begin(sample_t* sample) {
 }
 
 static inline void
-event_handler__emit_metadata(char* key, char* value, ...) {
+event_handler__emit_metadata(char* key, char* fmt, ...) {
     if (!isvalid(event_handler))
         return; // GCOV_EXCL_LINE
 
     va_list args;
-    va_start(args, value);
+    va_start(args, fmt);
 
     event_handler_metadata_t handler = event_handler->spec.emit_metadata;
     if (isvalid(handler))
-        handler(event_handler, key, value, args);
+        handler(event_handler, key, fmt, args);
 
     va_end(args);
 }
