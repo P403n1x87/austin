@@ -308,9 +308,9 @@ main(int argc, char** argv) {
     }
 
     if (!isvalid(handler)) {
-        log_e("Failed to create event handler");
+        log_e("Failed to create event handler"); // GCOV_EXCL_START
         retval = -1;
-        goto release;
+        goto release; // GCOV_EXCL_STOP
     }
     event_handler_install(handler);
 

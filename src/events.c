@@ -98,7 +98,7 @@ collapsed_stack_event_handler__handle_stack_end(base_event_handler_t* self) {
         frame_t* native_frame = stack_native_pop();
         if (!isvalid(native_frame)) {
             log_e("Invalid native frame");
-            break;
+            break; // GCOV_EXCL_LINE
         }
         cached_string_t* scope = native_frame->scope;
 
@@ -166,8 +166,8 @@ event_handler_t*
 collapsed_stack_event_handler_new(void) {
     event_handler_t* handler = (event_handler_t*)calloc(1, sizeof(base_event_handler_t));
     if (!isvalid(handler)) {
-        log_e("Failed to allocate memory for event handler");
-        return NULL;
+        log_e("Failed to allocate memory for event handler"); // GCOV_EXCL_START
+        return NULL;                                          // GCOV_EXCL_STOP
     }
 
     handler->spec.emit_stack_begin = (event_handler_stack_begin_t)collapsed_stack_event_handler__handle_stack_begin;
@@ -230,8 +230,8 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
     while (!stack_native_is_empty()) {
         frame_t* native_frame = stack_native_pop();
         if (!isvalid(native_frame)) {
-            log_e("Invalid native frame");
-            break;
+            log_e("Invalid native frame"); // GCOV_EXCL_START
+            break;                         // GCOV_EXCL_STOP
         }
         cached_string_t* scope = native_frame->scope;
         int is_frame_eval = (scope == UNKNOWN_SCOPE) ? FALSE : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
@@ -296,8 +296,8 @@ event_handler_t*
 mojo_event_handler_new(void) {
     event_handler_t* handler = (event_handler_t*)calloc(1, sizeof(base_event_handler_t));
     if (!isvalid(handler)) {
-        log_e("Failed to allocate memory for event handler");
-        return NULL;
+        log_e("Failed to allocate memory for event handler"); // GCOV_EXCL_START
+        return NULL;                                          // GCOV_EXCL_STOP
     }
 
     handler->spec.emit_stack_begin = (event_handler_stack_begin_t)mojo_event_handler__handle_stack_begin;
@@ -346,12 +346,12 @@ where_event_handler__handle_stack_end(base_event_handler_t* self) {
     while (!stack_native_is_empty()) {
         frame_t* native_frame = stack_native_pop();
         if (!isvalid(native_frame)) {
-            log_e("Invalid native frame");
-            break;
+            log_e("Invalid native frame"); // GCOV_EXCL_START
+            break;                         // GCOV_EXCL_STOP
         }
         cached_string_t* scope = native_frame->scope;
         if (!isvalid(scope)) {
-            scope = UNKNOWN_SCOPE;
+            scope = UNKNOWN_SCOPE; // GCOV_EXCL_LINE
         }
 
         int is_frame_eval = (scope == UNKNOWN_SCOPE) ? FALSE : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
@@ -396,8 +396,8 @@ event_handler_t*
 where_event_handler_new(void) {
     event_handler_t* handler = (event_handler_t*)calloc(1, sizeof(base_event_handler_t));
     if (!isvalid(handler)) {
-        log_e("Failed to allocate memory for event handler");
-        return NULL;
+        log_e("Failed to allocate memory for event handler"); // GCOV_EXCL_START
+        return NULL;                                          // GCOV_EXCL_STOP
     }
 
     handler->spec.emit_stack_begin = (event_handler_stack_begin_t)where_event_handler__handle_stack_begin;

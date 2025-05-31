@@ -92,7 +92,7 @@ extern
 static inline void
 event_handler__emit_stack_begin(sample_t* sample) {
     if (!isvalid(event_handler))
-        return;
+        return; // GCOV_EXCL_LINE
 
     event_handler_stack_begin_t handler = event_handler->spec.emit_stack_begin;
     if (isvalid(handler))
@@ -102,7 +102,7 @@ event_handler__emit_stack_begin(sample_t* sample) {
 static inline void
 event_handler__emit_metadata(char* key, char* value, ...) {
     if (!isvalid(event_handler))
-        return;
+        return; // GCOV_EXCL_LINE
 
     va_list args;
     va_start(args, value);
@@ -117,7 +117,7 @@ event_handler__emit_metadata(char* key, char* value, ...) {
 static inline void
 event_handler__emit_new_string(cached_string_t* cached_string) {
     if (!isvalid(event_handler))
-        return;
+        return; // GCOV_EXCL_LINE
 
     event_handler_new_string_t handler = event_handler->spec.emit_new_string;
     if (isvalid(handler))
@@ -127,7 +127,7 @@ event_handler__emit_new_string(cached_string_t* cached_string) {
 static inline void
 event_handler__emit_new_frame(void* frame) {
     if (!isvalid(event_handler))
-        return;
+        return; // GCOV_EXCL_LINE
 
     event_handler_new_frame_t handler = event_handler->spec.emit_new_frame;
     if (isvalid(handler))
@@ -137,7 +137,7 @@ event_handler__emit_new_frame(void* frame) {
 static inline void
 event_handler__emit_stack_end(void) {
     if (!isvalid(event_handler))
-        return;
+        return; // GCOV_EXCL_LINE
 
     event_handler_stack_end_t handler = event_handler->spec.emit_stack_end;
     if (isvalid(handler))

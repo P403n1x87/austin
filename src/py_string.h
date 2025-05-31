@@ -50,7 +50,7 @@ static inline cached_string_t*
 cached_string_new(key_dt key, char* value) {
     cached_string_t* cached_string = (cached_string_t*)malloc(sizeof(cached_string_t));
     if (!isvalid(cached_string)) {
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
     }
 
     cached_string->key   = key;

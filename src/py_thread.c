@@ -613,9 +613,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
                         if (unw_get_proc_name(&cursor, _native_buf, MAXLEN, &offset) == 0) {
                             scope = cached_string_new(scope_key, strdup(_native_buf));
                             if (!isvalid(scope)) {
-                                log_ie("Failed to create scope string");
+                                log_ie("Failed to create scope string"); // GCOV_EXCL_START
                                 set_error(ETHREAD);
-                                FAIL;
+                                FAIL; // GCOV_EXCL_STOP
                             }
                             lru_cache__store(string_cache, scope_key, (value_t)scope);
                             event_handler__emit_new_string(scope);
@@ -630,9 +630,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
                 if (isvalid(range)) { // For now this is only relevant in `where` mode
                     filename = cached_string_new((key_dt)pc, range->name);
                     if (!isvalid(filename)) {
-                        log_ie("Failed to create filename string");
+                        log_ie("Failed to create filename string"); // GCOV_EXCL_START
                         set_error(ETHREAD);
-                        FAIL;
+                        FAIL; // GCOV_EXCL_STOP
                     }
                 } else {
                     // The program counter carries information about the file name *and*
@@ -647,9 +647,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
                         sprintf(_native_buf, "native@%" PRIxPTR, pc);
                         filename = cached_string_new(filename_key, strdup(_native_buf));
                         if (!isvalid(filename)) {
-                            log_ie("Failed to create filename string");
+                            log_ie("Failed to create filename string"); // GCOV_EXCL_START
                             set_error(ETHREAD);
-                            FAIL;
+                            FAIL; // GCOV_EXCL_STOP
                         }
                         lru_cache__store(string_cache, filename_key, (value_t)filename);
                         event_handler__emit_new_string(filename);

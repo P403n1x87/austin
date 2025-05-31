@@ -1036,14 +1036,14 @@ _py_proc__get_memory_delta(py_proc_t* self) {
 int
 py_proc__get_gc_state(py_proc_t* self) {
     if (!isvalid(self->gc_state_raddr))
-        return GC_STATE_UNKNOWN;
+        return GC_STATE_UNKNOWN; // GCOV_EXCL_LINE
 
     V_DESC(self->py_v);
 
     GCRuntimeState gc_state;
     if (fail(py_proc__get_type(self, self->gc_state_raddr, gc_state))) {
         log_d("Failed to get GC runtime state");
-        return GC_STATE_UNKNOWN;
+        return GC_STATE_UNKNOWN; // GCOV_EXCL_LINE
     }
 
     return V_FIELD(int, gc_state, py_gc, o_collecting);
