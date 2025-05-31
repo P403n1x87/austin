@@ -49,6 +49,4 @@
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #endif
 
-#define UNKNOWN_SCOPE ((char*)1)
-
 #endif

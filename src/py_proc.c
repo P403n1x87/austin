@@ -744,7 +744,7 @@ py_proc_new(int child) {
     py_proc->frame_cache->name = "frame cache";
 #endif
 
-    py_proc->string_cache = lru_cache_new(MAX_STRING_CACHE_SIZE, (void (*)(value_t))free);
+    py_proc->string_cache = lru_cache_new(MAX_STRING_CACHE_SIZE, (void (*)(value_t))cached_string_destroy);
     if (!isvalid(py_proc->string_cache)) {
         log_e("Failed to allocate string cache");
         goto error;
@@ -1034,16 +1034,16 @@ _py_proc__get_memory_delta(py_proc_t* self) {
 
 // ----------------------------------------------------------------------------
 int
-py_proc__is_gc_collecting(py_proc_t* self) {
+py_proc__get_gc_state(py_proc_t* self) {
     if (!isvalid(self->gc_state_raddr))
-        return FALSE;
+        return GC_STATE_UNKNOWN; // GCOV_EXCL_LINE
 
     V_DESC(self->py_v);
 
     GCRuntimeState gc_state;
     if (fail(py_proc__get_type(self, self->gc_state_raddr, gc_state))) {
         log_d("Failed to get GC runtime state");
-        return -1;
+        return GC_STATE_UNKNOWN; // GCOV_EXCL_LINE
     }
 
     return V_FIELD(int, gc_state, py_gc, o_collecting);
@@ -1168,6 +1168,9 @@ _py_proc__sample_interpreter(py_proc_t* self, PyInterpreterState* is, microsecon
 
     int64_t interp_id = V_FIELD_PTR(int64_t, is, py_is, o_id);
     do {
+        if (py_thread.invalid)
+            continue;
+
         if (pargs.memory) {
             mem_delta = 0;
             if (V_MAX(3, 11) && self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void*)-1) {
@@ -1180,12 +1183,52 @@ _py_proc__sample_interpreter(py_proc_t* self, PyInterpreterState* is, microsecon
                 mem_delta = _py_proc__get_memory_delta(self);
                 log_t("Thread %lx holds the GIL", py_thread.tid);
             }
+            if (!pargs.full && mem_delta == 0)
+                continue;
         }
 
-        // In this call, the 64bit time_delta may be truncated to 32bit. That
-        // is ok most of the time as we expect the delta to express less than
-        // an hour.
-        py_thread__emit_collapsed_stack(&py_thread, interp_id, time_delta, mem_delta);
+        if (mem_delta == 0 && time_delta == 0)
+            continue;
+
+        int is_idle = FALSE;
+        if (pargs.full || pargs.sleepless || unlikely(pargs.where)) {
+            is_idle = py_thread__is_idle(&py_thread);
+            if (!pargs.full && is_idle && pargs.sleepless) {
+                continue;
+            }
+        }
+
+        gc_state_t gc = GC_STATE_UNKNOWN;
+        if (pargs.gc) {
+            gc = py_proc__get_gc_state(self);
+            if (gc == GC_STATE_COLLECTING) {
+                stats_gc_time(time_delta);
+            }
+        }
+
+        sample_t sample = {
+            .pid      = self->pid,
+            .tid      = py_thread.tid,
+            .iid      = interp_id,
+            .time     = time_delta,
+            .memory   = mem_delta,
+            .is_idle  = is_idle,
+            .gc_state = gc,
+        };
+        event_handler__emit_stack_begin(&sample);
+
+        py_thread__unwind(&py_thread);
+
+#ifdef NATIVE
+        if (V_MIN(3, 11) && V_MAX(3, 12)) {
+            // We expect a CFrame to sit at the top of the stack
+            if (!stack_is_empty() && stack_top() != CFRAME_MAGIC) {
+                log_e("Invalid resolved Python stack");
+            }
+        }
+#endif
+
+        event_handler__emit_stack_end();
     } while (success(py_thread__next(&py_thread)));
 
     if (austin_errno != ETHREADNONEXT) {
@@ -1257,12 +1300,12 @@ py_proc__log_version(py_proc_t* self, int parent) {
     if (pargs.pipe) {
         if (patch == 0xFF) {
             if (parent) {
-                emit_metadata("python", "%d.%d.?", major, minor);
+                event_handler__emit_metadata("python", "%d.%d.?", major, minor);
             } else
                 log_m("# python: %d.%d.?", major, minor);
         } else {
             if (parent) {
-                emit_metadata("python", "%d.%d.%d", major, minor, patch);
+                event_handler__emit_metadata("python", "%d.%d.%d", major, minor, patch);
             } else
                 log_m("# python: %d.%d.%d", major, minor, patch);
         }

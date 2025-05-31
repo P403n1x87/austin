@@ -48,24 +48,6 @@
 #define DEFAULT_INIT_TIMEOUT_MS 1000 // 1 second
 #define DEFAULT_HEAP_SIZE       0
 
-const char SAMPLE_FORMAT_NORMAL[] = ";%s:%s:%d";
-const char SAMPLE_FORMAT_WHERE[]  = "    \033[33;1m%2$s\033[0m (\033[36;1m%1$s\033[0m:\033[32;1m%3$d\033[0m)\n";
-#ifdef NATIVE
-const char SAMPLE_FORMAT_WHERE_NATIVE[]
-    = "    \033[38;5;246m%2$s\033[0m (\033[38;5;248;1m%1$s\033[0m:\033[38;5;246m%3$d\033[0m)\n";
-const char SAMPLE_FORMAT_KERNEL[]       = ";kernel:%s:0";
-const char SAMPLE_FORMAT_WHERE_KERNEL[] = "    \033[38;5;159m%s\033[0m 🐧\n";
-#endif
-#if defined PL_WIN
-const char HEAD_FORMAT_DEFAULT[] = "P%I64d;T%I64x:%I64x";
-const char HEAD_FORMAT_WHERE[]
-    = "\n\n%4$s%5$s Process \033[35;1m%1$I64d\033[0m 🧵 Thread \033[34;1m%2$I64d:%3$I64d\033[0m\n\n";
-#else
-const char HEAD_FORMAT_DEFAULT[] = "P%d;T%ld:%ld";
-const char HEAD_FORMAT_WHERE[]
-    = "\n\n%4$s%5$s Process \033[35;1m%1$d\033[0m 🧵 Thread \033[34;1m%2$ld:%3$ld\033[0m\n\n";
-#endif
-
 // Globals for command line arguments
 parsed_args_t pargs = {
     /* t_sampling_interval */ DEFAULT_SAMPLING_INTERVAL,
@@ -73,8 +55,6 @@ parsed_args_t pargs = {
     /* attach_pid          */ 0,
     /* where               */ 0,
     /* sleepless           */ 0,
-    /* format              */ (char*)SAMPLE_FORMAT_NORMAL,
-    /* head_format         */ (char*)HEAD_FORMAT_DEFAULT,
     /* full                */ 0,
     /* memory              */ 0,
     /* binary              */ 0,
@@ -86,8 +66,6 @@ parsed_args_t pargs = {
     /* gc                  */ 0,
     /* heap                */ DEFAULT_HEAP_SIZE,
 #ifdef NATIVE
-    /* native_format       */ (char*)SAMPLE_FORMAT_NORMAL,
-    /* kernel_format       */ (char*)SAMPLE_FORMAT_KERNEL,
     /* kernel              */ 0,
 #endif
 };
@@ -372,12 +350,6 @@ parse_opt(int key, char* arg, struct argp_state* state) {
         pargs.attach_pid = (pid_t)l_pid;
         pargs.where      = TRUE;
 
-        pargs.head_format = (char*)HEAD_FORMAT_WHERE;
-        pargs.format      = (char*)SAMPLE_FORMAT_WHERE;
-#ifdef NATIVE
-        pargs.native_format = (char*)SAMPLE_FORMAT_WHERE_NATIVE;
-        pargs.kernel_format = (char*)SAMPLE_FORMAT_WHERE_KERNEL;
-#endif
         break;
 
 #ifdef NATIVE
@@ -666,8 +638,6 @@ cb(const char opt, const char* arg) {
         }
         pargs.where = TRUE;
 
-        pargs.head_format = (char*)HEAD_FORMAT_WHERE;
-        pargs.format      = (char*)SAMPLE_FORMAT_WHERE;
         break;
 
     case 'o':

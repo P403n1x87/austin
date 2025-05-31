@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef PY_THREAD_H
-#define PY_THREAD_H
+#pragma once
 
 #include <stdint.h>
 #include <sys/types.h>
@@ -84,15 +83,12 @@ int
 py_thread__next(py_thread_t*);
 
 /**
- * Print the frame stack using the collapsed format.
+ * Unwind the thread.
  *
  * @param  py_thread_t  self.
- * @param  int64_t      the interpreter ID.
- * @param  ctime_t      the time delta.
- * @param  ssize_t      the memory delta.
  */
 void
-py_thread__emit_collapsed_stack(py_thread_t*, int64_t, ctime_t, ssize_t);
+py_thread__unwind(py_thread_t*);
 
 /**
  * Allocate memory for dumping the thread data.
@@ -122,4 +118,5 @@ int
 py_thread__save_kernel_stack(py_thread_t*);
 #endif
 
-#endif // PY_THREAD_H
+int
+py_thread__is_idle(py_thread_t*);

@@ -53,7 +53,9 @@ austin_SOURCES = \
   austin.c       \
   cache.c        \
   error.c        \
+  events.c       \
   logging.c      \
+  stack.c        \
   stats.c        \
   platform.c     \
   py_proc_list.c \

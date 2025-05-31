@@ -29,8 +29,8 @@ static PVOID _pi_buffer      = NULL;
 static ULONG _pi_buffer_size = 0;
 
 // ----------------------------------------------------------------------------
-static int
-_py_thread__is_idle(py_thread_t* self) {
+int
+py_thread__is_idle(py_thread_t* self) {
     ULONG    n;
     NTSTATUS status = NtQuerySystemInformation(SystemProcessInformation, _pi_buffer, _pi_buffer_size, &n);
     if (status == STATUS_INFO_LENGTH_MISMATCH) {
@@ -42,7 +42,7 @@ _py_thread__is_idle(py_thread_t* self) {
             return -1;
         }
         _pi_buffer = _new_buffer;
-        return _py_thread__is_idle(self);
+        return py_thread__is_idle(self);
     }
     if (status != STATUS_SUCCESS) {
         log_d("[NtQuerySystemInformation] Cannot get the status of running threads: %d.", status);

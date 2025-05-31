@@ -49,42 +49,18 @@ typedef struct {
 #endif
 } stack_dt;
 
-static stack_dt* _stack;
-
-static inline int
-stack_allocate(size_t size) {
-    if (isvalid(_stack))
-        SUCCESS;
-
-    _stack = (stack_dt*)calloc(1, sizeof(stack_dt));
-    if (!isvalid(_stack))
-        FAIL;
-
-    _stack->size    = size;
-    _stack->base    = (frame_t**)calloc(size, sizeof(frame_t*));
-    _stack->py_base = (py_frame_t*)calloc(size, sizeof(py_frame_t));
-#ifdef NATIVE
-    _stack->native_base = (frame_t**)calloc(size, sizeof(frame_t*));
-    _stack->kernel_base = (char**)calloc(size, sizeof(char*));
+// Global stack pointer. This is a global variable that points to the allocated
+// memory for stack unwinding.
+#ifndef STACK_C
+extern
 #endif
+    stack_dt* _stack;
 
-    SUCCESS;
-}
+int
+stack_allocate(size_t size);
 
-static inline void
-stack_deallocate(void) {
-    if (!isvalid(_stack))
-        return;
-
-    free(_stack->base);
-    free(_stack->py_base);
-#ifdef NATIVE
-    free(_stack->native_base);
-    free(_stack->kernel_base);
-#endif
-
-    free(_stack);
-}
+void
+stack_deallocate(void);
 
 static inline int
 stack_has_cycle(void) {

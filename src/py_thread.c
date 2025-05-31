@@ -44,8 +44,23 @@
 #include "heap.h"
 #include "py_thread.h"
 
+// ---- PRIVATE ---------------------------------------------------------------
+
+#define NULL_HEAP ((_heap_t){NULL, 0})
+
+static _heap_t _frames      = NULL_HEAP;
+static _heap_t _frames_heap = NULL_HEAP;
+
+static size_t max_pid = 0;
+#ifdef NATIVE
+static void**         _tids      = NULL;
+static unsigned char* _tids_idle = NULL;
+static unsigned char* _tids_int  = NULL;
+static char**         _kstacks   = NULL;
+#endif
+
 // ----------------------------------------------------------------------------
-// -- Platform-dependent implementations of _py_thread__is_idle
+// -- Platform-dependent implementations of py_thread__is_idle
 // ----------------------------------------------------------------------------
 
 #if defined(PL_LINUX)
@@ -63,21 +78,6 @@
 
 #include "mac/py_thread.h"
 
-#endif
-
-// ---- PRIVATE ---------------------------------------------------------------
-
-#define NULL_HEAP ((_heap_t){NULL, 0})
-
-static _heap_t _frames      = NULL_HEAP;
-static _heap_t _frames_heap = NULL_HEAP;
-
-static size_t max_pid = 0;
-#ifdef NATIVE
-static void**         _tids      = NULL;
-static unsigned char* _tids_idle = NULL;
-static unsigned char* _tids_int  = NULL;
-static char**         _kstacks   = NULL;
 #endif
 
 // ----------------------------------------------------------------------------
@@ -158,9 +158,8 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
                 FAIL;
             }
             lru_cache__store(cache, frame_key, frame);
-            if (pargs.binary) {
-                mojo_frame(frame);
-            }
+
+            event_handler__emit_new_frame(frame);
         }
 
         stack_set(i, frame);
@@ -436,7 +435,7 @@ py_thread__set_idle(py_thread_t* self) {
         FAIL;
     }
 
-    if (_py_thread__is_idle(self)) {
+    if (py_thread__is_idle(self)) {
         _tids_idle[index] |= bit;
     } else {
         _tids_idle[index] &= ~bit;
@@ -586,9 +585,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
 
         frame_t* frame = lru_cache__maybe_hit(cache, frame_key);
         if (!isvalid(frame)) {
-            char*       scope    = NULL;
-            char*       filename = NULL;
-            vm_range_t* range    = NULL;
+            cached_string_t* scope    = NULL;
+            cached_string_t* filename = NULL;
+            vm_range_t*      range    = NULL;
             if (pargs.where) {
                 range = vm_range_tree__find(self->proc->maps_tree, pc);
 // TODO: A failed attempt to find a range is an indication that we need
@@ -612,24 +611,30 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
                     scope            = lru_cache__maybe_hit(string_cache, scope_key);
                     if (!isvalid(scope)) {
                         if (unw_get_proc_name(&cursor, _native_buf, MAXLEN, &offset) == 0) {
-                            scope = strdup(_native_buf);
-                            lru_cache__store(string_cache, scope_key, scope);
-                            if (pargs.binary) {
-                                mojo_string_event(scope_key, scope);
+                            scope = cached_string_new(scope_key, strdup(_native_buf));
+                            if (!isvalid(scope)) {
+                                log_ie("Failed to create scope string"); // GCOV_EXCL_START
+                                set_error(ETHREAD);
+                                FAIL; // GCOV_EXCL_STOP
                             }
+                            lru_cache__store(string_cache, scope_key, (value_t)scope);
+                            event_handler__emit_new_string(scope);
                         }
-                    }
-                    if (pargs.binary && isvalid(scope)) {
-                        scope = (char*)scope_key;
                     }
                 }
                 if (!isvalid(scope)) {
                     scope  = UNKNOWN_SCOPE;
                     offset = 0;
                 }
-                if (isvalid(range)) // For now this is only relevant in `where` mode
-                    filename = strdup(range->name);
-                else {
+
+                if (isvalid(range)) { // For now this is only relevant in `where` mode
+                    filename = cached_string_new((key_dt)pc, range->name);
+                    if (!isvalid(filename)) {
+                        log_ie("Failed to create filename string"); // GCOV_EXCL_START
+                        set_error(ETHREAD);
+                        FAIL; // GCOV_EXCL_STOP
+                    }
+                } else {
                     // The program counter carries information about the file name *and*
                     // the line number. Given that we don't resolve the file name using
                     // memory ranges at runtime for performance reasons, we need to store
@@ -640,14 +645,14 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
                     filename            = lru_cache__maybe_hit(string_cache, filename_key);
                     if (!isvalid(filename)) {
                         sprintf(_native_buf, "native@%" PRIxPTR, pc);
-                        filename = strdup(_native_buf);
-                        lru_cache__store(string_cache, (key_dt)pc, filename);
-                        if (pargs.binary) {
-                            mojo_string_event(filename_key, filename);
+                        filename = cached_string_new(filename_key, strdup(_native_buf));
+                        if (!isvalid(filename)) {
+                            log_ie("Failed to create filename string"); // GCOV_EXCL_START
+                            set_error(ETHREAD);
+                            FAIL; // GCOV_EXCL_STOP
                         }
-                    }
-                    if (pargs.binary) {
-                        filename = (char*)filename_key;
+                        lru_cache__store(string_cache, filename_key, (value_t)filename);
+                        event_handler__emit_new_string(filename);
                     }
                 }
 
@@ -660,9 +665,8 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
             }
 
             lru_cache__store(cache, frame_key, (value_t)frame);
-            if (pargs.binary) {
-                mojo_frame(frame);
-            }
+
+            event_handler__emit_new_frame(frame);
         }
 
         stack_native_push(frame);
@@ -809,38 +813,7 @@ py_thread__next(py_thread_t* self) {
 
 // ----------------------------------------------------------------------------
 void
-py_thread__emit_collapsed_stack(py_thread_t* self, int64_t interp_id, ctime_t time_delta, ssize_t mem_delta) {
-    if (!pargs.full && pargs.memory && mem_delta == 0)
-        return;
-
-    if (self->invalid)
-        return;
-
-    if (mem_delta == 0 && time_delta == 0)
-        return;
-
-    int is_idle = FALSE;
-    if (pargs.full || pargs.sleepless || unlikely(pargs.where)) {
-#ifdef NATIVE
-        size_t index  = self->tid >> 3;
-        int    offset = self->tid & 7;
-
-        is_idle = _tids_idle[index] & (1 << offset);
-#else
-        is_idle = _py_thread__is_idle(self);
-#endif
-        if (!pargs.full && is_idle && pargs.sleepless) {
-            return;
-        }
-    }
-
-    // Group entries by thread.
-    emit_stack(
-        pargs.head_format, self->proc->pid, interp_id, self->tid,
-        // These are relevant only in `where` mode
-        is_idle ? "💤" : "🚀", self->proc->child ? "🧒" : ""
-    );
-
+py_thread__unwind(py_thread_t* self) {
     int error = FALSE;
 
 #ifdef NATIVE
@@ -853,7 +826,6 @@ py_thread__emit_collapsed_stack(py_thread_t* self, int64_t interp_id, ctime_t ti
         _py_thread__unwind_kernel_frame_stack(self);
     }
     if (fail(_py_thread__unwind_native_frame_stack(self))) {
-        emit_invalid_frame();
         error = TRUE;
     }
 
@@ -866,103 +838,20 @@ py_thread__emit_collapsed_stack(py_thread_t* self, int64_t interp_id, ctime_t ti
     if (isvalid(self->top_frame)) {
         if (V_MIN(3, 13)) {
             if (fail(_py_thread__unwind_iframe_stack(self, self->top_frame))) {
-                emit_invalid_frame();
                 error = TRUE;
             }
         } else if (V_MIN(3, 11)) {
             if (fail(_py_thread__unwind_cframe_stack(self))) {
-                emit_invalid_frame();
                 error = TRUE;
             }
         } else {
             if (fail(_py_thread__unwind_frame_stack(self))) {
-                emit_invalid_frame();
                 error = TRUE;
             }
         }
 
         if (fail(_py_thread__resolve_py_stack(self))) {
-            emit_invalid_frame();
             error = TRUE;
-        }
-    }
-
-#ifdef NATIVE
-
-    if (V_MIN(3, 11)) {
-        // We expect a CFrame to sit at the top of the stack
-        if (!stack_is_empty() && stack_pop() != CFRAME_MAGIC) {
-            log_e("Invalid resolved Python stack");
-        }
-    }
-    while (!stack_native_is_empty()) {
-        frame_t* native_frame = stack_native_pop();
-        if (!isvalid(native_frame)) {
-            log_e("Invalid native frame");
-            break;
-        }
-        char* scope = pargs.binary ? lru_cache__maybe_hit(self->proc->string_cache, (key_dt)native_frame->scope)
-                                   : native_frame->scope;
-        if (!isvalid(scope)) {
-            scope = UNKNOWN_SCOPE;
-        }
-
-        int is_frame_eval = (scope == UNKNOWN_SCOPE) ? FALSE : isvalid(strstr(scope, "PyEval_EvalFrameDefault"));
-        if (!stack_is_empty() && is_frame_eval) {
-            // TODO: if the py stack is empty we have a mismatch.
-            frame_t* frame = stack_pop();
-            if (V_MIN(3, 11)) {
-                while (frame != CFRAME_MAGIC) {
-                    emit_frame_ref(pargs.format, frame);
-
-                    if (stack_is_empty())
-                        break;
-
-                    frame = stack_pop();
-                }
-            } else {
-                emit_frame_ref(pargs.format, frame);
-            }
-        } else {
-            emit_frame_ref(pargs.native_format, native_frame);
-        }
-    }
-    if (!stack_is_empty()) {
-        log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
-        set_error(ETHREADINV);
-#ifdef DEBUG
-        emit_frames_left(stack_pointer());
-#endif
-    }
-    while (!stack_kernel_is_empty()) {
-        char* scope = stack_kernel_pop();
-        emit_kernel_frame(pargs.kernel_format, scope);
-        free(scope);
-    }
-
-#else
-    while (!stack_is_empty()) {
-        frame_t* frame = stack_pop();
-        emit_frame_ref(pargs.format, frame);
-    }
-#endif
-
-    if (pargs.gc && py_proc__is_gc_collecting(self->proc) == TRUE) {
-        emit_gc();
-        stats_gc_time(time_delta);
-    }
-
-    if (unlikely(pargs.where))
-        return;
-
-    // Finish off sample with the metric(s)
-    if (pargs.full) {
-        emit_full_metrics(time_delta, !!is_idle, mem_delta);
-    } else {
-        if (pargs.memory) {
-            emit_memory_metric(mem_delta);
-        } else {
-            emit_time_metric(time_delta);
         }
     }
 
