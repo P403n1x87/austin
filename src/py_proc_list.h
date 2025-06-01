@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef PY_PROC_LIST_H
-#define PY_PROC_LIST_H
+#pragma once
 
 #include "cache.h"
 #include "py_proc.h"
@@ -124,5 +123,3 @@ py_proc_list__destroy(py_proc_list_t*);
 
 CLEANUP_TYPE(py_proc_list_t, py_proc_list__destroy);
 #define cu_py_proc_list_t __attribute__((cleanup(py_proc_list__destroyt))) py_proc_list_t
-
-#endif

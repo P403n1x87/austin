@@ -25,8 +25,7 @@
 //                   Python. The authors of those sources hold the copyright
 //                   for most of the content of this header file.
 
-#ifndef PYTHON_OBJECT_H
-#define PYTHON_OBJECT_H
+#pragma once
 
 // ---- object.h --------------------------------------------------------------
 
@@ -56,5 +55,3 @@ typedef struct {
     PyObject   ob_base;
     Py_ssize_t ob_size; /* Number of items in variable part */
 } PyVarObject;
-
-#endif

@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef PY_SYMBOLS_H
-#define PY_SYMBOLS_H
+#pragma once
 
 #include "../platform.h"
 #include "../py_string.h"
@@ -64,5 +63,3 @@ _prehash_symbols(void) {
 }
 
 #endif // PY_PROC_C
-
-#endif // PY_SYMBOLS_H

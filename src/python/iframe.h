@@ -25,8 +25,7 @@
 //                   Python. The authors of those sources hold the copyright
 //                   for most of the content of this header file.
 
-#ifndef PYTHON_IFRAME_H
-#define PYTHON_IFRAME_H
+#pragma once
 
 #include <stdint.h>
 
@@ -88,5 +87,3 @@ typedef union {
     _PyInterpreterFrame3_11 v3_11;
     _PyInterpreterFrame3_12 v3_12;
 } PyInterpreterFrame;
-
-#endif

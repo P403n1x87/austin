@@ -25,8 +25,7 @@
 //                   Python. The authors of those sources hold the copyright
 //                   for most of the content of this header file.
 
-#ifndef PYTHON_MISC_H
-#define PYTHON_MISC_H
+#pragma once
 
 #include <stdint.h>
 
@@ -133,5 +132,3 @@ typedef struct _stack_chunk {
     size_t               top;
     PyObject*            data[1]; /* Variable sized */
 } _PyStackChunk;
-
-#endif

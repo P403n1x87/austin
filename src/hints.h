@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef HINTS_H
-#define HINTS_H
+#pragma once
 
 #define SUCCESS return 0
 #define FAIL    return 1
@@ -47,6 +46,4 @@
 
 #ifndef unlikely
 #define unlikely(x) __builtin_expect(!!(x), 0)
-#endif
-
 #endif

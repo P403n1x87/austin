@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef CACHE_H
-#define CACHE_H
+#pragma once
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -498,5 +497,3 @@ lookup__clear(lookup_t*);
  */
 void
 lookup__destroy(lookup_t*);
-
-#endif

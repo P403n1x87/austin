@@ -25,8 +25,7 @@
 //                   Python. The authors of those sources hold the copyright
 //                   for most of the content of this header file.
 
-#ifndef PYTHON_RUNTIME_H
-#define PYTHON_RUNTIME_H
+#pragma once
 
 #include "ceval.h"
 #include "gil.h"
@@ -296,5 +295,3 @@ typedef struct _Py_DebugOffsets3_13 {
 typedef union {
     _Py_DebugOffsets3_13 v3_13;
 } _Py_DebugOffsets;
-
-#endif

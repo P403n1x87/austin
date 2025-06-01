@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef PY_PROC_H
-#define PY_PROC_H
+#pragma once
 
 #include <sys/types.h>
 
@@ -240,5 +239,3 @@ py_proc__terminate(py_proc_t*);
 
 void
 py_proc__destroy(py_proc_t*);
-
-#endif // PY_PROC_H

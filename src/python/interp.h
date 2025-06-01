@@ -25,8 +25,7 @@
 //                   Python. The authors of those sources hold the copyright
 //                   for most of the content of this header file.
 
-#ifndef PYTHON_INTERP_H
-#define PYTHON_INTERP_H
+#pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -176,5 +175,3 @@ typedef union {
     PyInterpreterState3_11 v3_11;
     PyInterpreterState3_12 v3_12;
 } PyInterpreterState;
-
-#endif

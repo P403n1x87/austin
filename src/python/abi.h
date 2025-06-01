@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef PYTHON_ABI_H
-#define PYTHON_ABI_H
+#pragma once
 
 #include "code.h"
 #include "frame.h"
@@ -31,5 +30,3 @@
 #include "runtime.h"
 #include "string.h"
 #include "thread.h"
-
-#endif

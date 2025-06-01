@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef HEAP_H
-#define HEAP_H
+#pragma once
 
 #include <sys/types.h>
 
@@ -38,5 +37,3 @@ typedef struct {
 } _heap_t;
 
 #define NULL_MEM_BLOCK ((_mem_block_t){(void*)-1, NULL, (void*)-1, NULL})
-
-#endif

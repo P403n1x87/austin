@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ERROR_H
-#define ERROR_H
+#pragma once
 
 #include <errno.h>
 
@@ -116,5 +115,3 @@ const int is_fatal(error_t);
         austin_errno = (x); \
         log_error();        \
     }
-
-#endif // ERROR_H

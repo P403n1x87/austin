@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef MOJO_H
-#define MOJO_H
+#pragma once
 
 #include <stdio.h>
 
@@ -133,5 +132,3 @@ mojo_integer(mojo_int_t integer, int sign) {
 #define mojo_string_ref(key)     \
     mojo_event(MOJO_STRING_REF); \
     mojo_ref(key);
-
-#endif

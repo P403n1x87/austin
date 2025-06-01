@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef ARGPARSE_H
-#define ARGPARSE_H
+#pragma once
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,5 +68,3 @@ int
 parse_args(int argc, char** argv);
 
 // TODO: Implement error.
-
-#endif

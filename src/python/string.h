@@ -25,8 +25,7 @@
 //                   Python. The authors of those sources hold the copyright
 //                   for most of the content of this header file.
 
-#ifndef PYTHON_STRING_H
-#define PYTHON_STRING_H
+#pragma once
 
 #include <stdint.h>
 
@@ -113,5 +112,3 @@ typedef struct {
     PyObject_VAR_HEAD Py_hash_t ob_shash;
     char                        ob_sval[1];
 } PyBytesObject;
-
-#endif

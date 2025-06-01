@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef PY_STRING_H
-#define PY_STRING_H
+#pragma once
 
 #include <stdlib.h>
 #include <string.h>
@@ -162,5 +161,3 @@ error:
     sfree(array);
     return NULL;
 }
-
-#endif
