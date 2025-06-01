@@ -25,8 +25,7 @@
 //                   Python. The authors of those sources hold the copyright
 //                   for most of the content of this header file.
 
-#ifndef PYTHON_CODE_H
-#define PYTHON_CODE_H
+#pragma once
 
 #include "object.h"
 
@@ -143,5 +142,3 @@ typedef union {
     PyCodeObject3_11 v3_11;
     PyCodeObject3_12 v3_12;
 } PyCodeObject;
-
-#endif

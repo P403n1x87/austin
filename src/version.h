@@ -26,8 +26,7 @@
 // different versions of the same structures are available, to de-reference
 // structure fields at the correct location.
 
-#ifndef VERSION_H
-#define VERSION_H
+#pragma once
 
 #include <stddef.h>
 #include <stdlib.h>
@@ -459,5 +458,3 @@ init_version_descriptor(python_v* py_v, _Py_DebugOffsets* py_d) {
 }
 
 #endif // PY_PROC_C
-
-#endif

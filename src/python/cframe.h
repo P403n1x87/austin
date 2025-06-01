@@ -25,8 +25,7 @@
 //                   Python. The authors of those sources hold the copyright
 //                   for most of the content of this header file.
 
-#ifndef PYTHON_CFRAME_H
-#define PYTHON_CFRAME_H
+#pragma once
 
 #include <stdint.h>
 
@@ -49,5 +48,3 @@ typedef union {
     _PyCFrame3_11 v3_11;
     _PyCFrame3_12 v3_12;
 } PyCFrame;
-
-#endif

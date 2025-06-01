@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef VM_RANGE_TREE_H
-#define VM_RANGE_TREE_H
+#pragma once
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -221,5 +220,3 @@ vm_range_tree__find(vm_range_tree_t* self, addr_t addr) {
 }
 
 #endif // PY_THREAD_C
-
-#endif

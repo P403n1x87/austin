@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef TIMER_H
-#define TIMER_H
+#pragma once
 
 #include <unistd.h>
 
@@ -50,5 +49,3 @@ stopwatch_pause(microseconds_t delta) {
     if (delta < pargs.t_sampling_interval)
         usleep(pargs.t_sampling_interval - delta);
 }
-
-#endif

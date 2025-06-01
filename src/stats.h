@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef STATS_H
-#define STATS_H
+#pragma once
 
 #include <inttypes.h>
 #include <stdint.h>
@@ -131,5 +130,3 @@ stats_start();
  */
 microseconds_t
 stats_duration();
-
-#endif

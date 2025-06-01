@@ -25,8 +25,7 @@
 //                   Python. The authors of those sources hold the copyright
 //                   for most of the content of this header file.
 
-#ifndef PYTHON_GC_H
-#define PYTHON_GC_H
+#pragma once
 
 #include <stdint.h>
 
@@ -108,5 +107,3 @@ typedef union {
     struct _gc_runtime_state3_8  v3_8;
     struct _gc_runtime_state3_12 v3_12;
 } GCRuntimeState;
-
-#endif

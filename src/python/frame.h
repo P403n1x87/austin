@@ -25,8 +25,7 @@
 //                   Python. The authors of those sources hold the copyright
 //                   for most of the content of this header file.
 
-#ifndef PYTHON_FRAME_H
-#define PYTHON_FRAME_H
+#pragma once
 
 #include "code.h"
 #include "object.h"
@@ -73,5 +72,3 @@ typedef union {
     PyFrameObject3_7  v3_7;
     PyFrameObject3_10 v3_10;
 } PyFrameObject;
-
-#endif

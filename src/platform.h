@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef PLATFORM_H
-#define PLATFORM_H
+#pragma once
 
 #include <stddef.h>
 
@@ -84,5 +83,3 @@ typedef HANDLE proc_ref_t;
  */
 size_t
 pid_max();
-
-#endif

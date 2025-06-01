@@ -20,8 +20,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifndef AUSTIN_H
-#define AUSTIN_H
+#pragma once
 
 #include "platform.h"
 
@@ -36,5 +35,3 @@ print(f'#define VERSION "{version()}"')
 ]]] */
 #define VERSION "3.7.0"
 // [[[end]]]
-
-#endif

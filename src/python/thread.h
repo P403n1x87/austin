@@ -25,8 +25,7 @@
 //                   Python. The authors of those sources hold the copyright
 //                   for most of the content of this header file.
 
-#ifndef PYTHON_THREAD_H
-#define PYTHON_THREAD_H
+#pragma once
 
 #include <stdint.h>
 
@@ -245,5 +244,3 @@ typedef union {
     PyThreadState3_11 v3_11;
     PyThreadState3_12 v3_12;
 } PyThreadState;
-
-#endif
