@@ -69,13 +69,13 @@ queue_new(int capacity, void (*deallocator)(value_t)) {
 }
 
 // ----------------------------------------------------------------------------
-int
+bool
 queue__is_full(queue_t* queue) {
     return queue->count == queue->capacity;
 }
 
 // ----------------------------------------------------------------------------
-int
+bool
 queue__is_empty(queue_t* queue) {
     return queue->rear == NULL;
 }
@@ -177,7 +177,7 @@ chain__add(chain_t* self, key_dt key, value_t value) {
 int
 chain__remove(chain_t* self, key_dt key) {
     if (!isvalid(self) || !isvalid(self->next))
-        return FALSE;
+        return false;
 
     if (self->next->key == key) {
         chain_t* next = self->next;
@@ -186,7 +186,7 @@ chain__remove(chain_t* self, key_dt key) {
 
         free(next);
 
-        return TRUE;
+        return true;
     }
 
     return chain__remove(self->next, key);
@@ -205,13 +205,13 @@ chain__find(chain_t* self, key_dt key) {
 }
 
 // ----------------------------------------------------------------------------
-int
+bool
 chain__has(chain_t* self, key_dt key) {
     if (!isvalid(self))
-        return FALSE;
+        return false;
 
     if (self->key == key)
-        return TRUE;
+        return true;
 
     return chain__has(self->next, key);
 }
@@ -268,7 +268,7 @@ hash_table__get(hash_table_t* self, key_dt key) {
 }
 
 // ----------------------------------------------------------------------------
-int
+bool
 hash_table__is_full(hash_table_t* self) {
     if (!isvalid(self))
         return -1;
@@ -405,7 +405,7 @@ lru_cache__maybe_hit(lru_cache_t* self, key_dt key) {
 }
 
 // ----------------------------------------------------------------------------
-int
+bool
 lru_cache__is_full(lru_cache_t* self) {
     return queue__is_full(self->queue);
 }

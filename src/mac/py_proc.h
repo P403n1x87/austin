@@ -338,7 +338,7 @@ _py_proc__analyze_macho(py_proc_t* self, char* path, void* base, mach_vm_size_t 
         return _py_proc__analyze_fat(self, base, map_addr);
 
     default:
-        self->sym_loaded = FALSE;
+        self->sym_loaded = false;
     }
 
     return 0;
@@ -503,7 +503,7 @@ _py_proc__get_maps(py_proc_t* self) {
                 map->file_size   = size;
                 map->base        = (void*)address;
                 map->size        = size;
-                map->has_symbols = TRUE;
+                map->has_symbols = true;
                 map->bss_base    = self->map.bss.base;
                 map->bss_size    = self->map.bss.size;
 
@@ -528,7 +528,7 @@ _py_proc__get_maps(py_proc_t* self) {
                         map->file_size   = size;
                         map->base        = (void*)address;
                         map->size        = size;
-                        map->has_symbols = FALSE;
+                        map->has_symbols = false;
                         log_d("Library map: %s (needle)", map->path);
                     }
                 }
@@ -557,7 +557,7 @@ _py_proc__get_maps(py_proc_t* self) {
         if (map->has_symbols) {
             self->map.exe.base = map->base;
             self->map.exe.size = map->size;
-            self->sym_loaded   = TRUE;
+            self->sym_loaded   = true;
             break;
         }
     }

@@ -25,9 +25,6 @@
 #define SUCCESS return 0
 #define FAIL    return 1
 
-#define TRUE  1
-#define FALSE 0
-
 #define success(x) (!(x))
 #define fail(x)    (x)
 #define sfree(x)           \

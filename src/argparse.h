@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -34,20 +35,20 @@ typedef struct {
     ctime_t        timeout;
     pid_t          attach_pid;
     int            cmd_index;
-    int            where;
-    int            sleepless;
-    int            full;
-    int            memory;
-    int            binary;
+    bool           where;
+    bool           sleepless;
+    bool           full;
+    bool           memory;
+    bool           binary;
     FILE*          output_file;
     char*          output_filename;
-    int            children;
+    bool           children;
     ctime_t        exposure;
-    int            pipe;
-    int            gc;
+    bool           pipe;
+    bool           gc;
     size_t         heap;
 #ifdef NATIVE
-    int kernel;
+    bool kernel;
 #endif
 } parsed_args_t;
 

@@ -52,7 +52,7 @@ FILE* logfile = NULL;
 #include "austin.h"
 #include "logging.h"
 
-int logging = 1;
+bool logging = true;
 
 void
 _log_writer(int prio, const char* fmt, va_list ap) {
@@ -91,7 +91,7 @@ _log_writer(int prio, const char* fmt, va_list ap) {
 #endif
 }
 
-static int
+static bool
 has_nonempty_env(const char* s) {
     const char* v = getenv(s);
     return v != NULL && *v != '\0';
@@ -100,7 +100,7 @@ has_nonempty_env(const char* s) {
 void
 logger_init(void) {
     if (has_nonempty_env("AUSTIN_NO_LOGGING"))
-        logging = 0;
+        logging = false;
     if (!logging)
         return;
 #ifdef PL_UNIX

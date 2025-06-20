@@ -266,7 +266,7 @@ _py_proc__get_modules(py_proc_t* self) {
         // The first memory map of the shared library (if any)
         char* needle = strstr(module.szExePath, "python");
         if (!isvalid(pd->maps[MAP_LIBSYM].path) && isvalid(needle)) {
-            int has_symbols = success(_py_proc__analyze_pe(self, module.szExePath, (void*)module.modBaseAddr));
+            bool has_symbols = success(_py_proc__analyze_pe(self, module.szExePath, (void*)module.modBaseAddr));
             if (has_symbols) {
                 map       = &(pd->maps[MAP_LIBSYM]);
                 map->path = strdup(module.szExePath);
@@ -278,7 +278,7 @@ _py_proc__get_modules(py_proc_t* self) {
                 map->file_size   = module.modBaseSize;
                 map->base        = (void*)module.modBaseAddr;
                 map->size        = module.modBaseSize;
-                map->has_symbols = TRUE;
+                map->has_symbols = true;
                 map->bss_base    = self->map.bss.base;
                 map->bss_size    = self->map.bss.size;
 
@@ -302,7 +302,7 @@ _py_proc__get_modules(py_proc_t* self) {
                         map->file_size   = module.modBaseSize;
                         map->base        = (void*)module.modBaseAddr;
                         map->size        = module.modBaseSize;
-                        map->has_symbols = FALSE;
+                        map->has_symbols = false;
                         log_d("Library map: %s (needle)", map->path);
                         continue;
                     }

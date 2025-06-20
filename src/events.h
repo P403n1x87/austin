@@ -23,6 +23,7 @@
 #pragma once
 
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 
 #include "argparse.h"
@@ -60,7 +61,7 @@ typedef struct {
     microseconds_t time;     // Time of the sample
     ssize_t        memory;   // Memory usage
     gc_state_t     gc_state; // GC state
-    int            is_idle;  // Is the thread idle?
+    bool           is_idle;  // Is the thread idle?
 } sample_t;
 
 struct _eh;

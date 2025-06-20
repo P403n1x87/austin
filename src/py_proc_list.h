@@ -22,6 +22,8 @@
 
 #pragma once
 
+#include <stdbool.h>
+
 #include "cache.h"
 #include "py_proc.h"
 #include "resources.h"
@@ -56,9 +58,9 @@ py_proc_list_new(py_proc_t*);
  *
  * @param  py_proc_list_t  the list.
  *
- * @return 1 if empty; 0 otherwise.
+ * @return true if empty; false otherwise.
  */
-int
+bool
 py_proc_list__is_empty(py_proc_list_t*);
 
 /**

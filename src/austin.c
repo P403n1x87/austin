@@ -24,6 +24,7 @@
 #define AUSTIN_C
 
 #include <signal.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -51,7 +52,7 @@
 
 // ---- SIGNAL HANDLING -------------------------------------------------------
 
-static int interrupt = FALSE;
+static int interrupt = 0;
 
 static void
 signal_callback_handler(int signum) {
@@ -70,12 +71,12 @@ do_single_process(py_proc_t* py_proc) {
     if (!pargs.where)
         log_meta_header();
 
-    py_proc__log_version(py_proc, TRUE);
+    py_proc__log_version(py_proc, true);
     if (!pargs.where)
         NL;
 
     if (pargs.exposure == 0) {
-        while (interrupt == FALSE) {
+        while (interrupt == false) {
             stopwatch_start();
 
             if (fail(py_proc__sample(py_proc)))
@@ -91,7 +92,7 @@ do_single_process(py_proc_t* py_proc) {
         if (!pargs.where && !pargs.pipe)
             log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
         microseconds_t end_time = gettime() + pargs.exposure * 1000000;
-        while (interrupt == FALSE) {
+        while (interrupt == false) {
             stopwatch_start();
 
             if (fail(py_proc__sample(py_proc)))
@@ -158,10 +159,10 @@ do_child_processes(py_proc_t* py_proc) {
             return;
         }
     } else {
-        py_proc__log_version(py_proc, TRUE);
+        py_proc__log_version(py_proc, true);
     }
 
-    if (!py_proc_list__is_empty(list) && interrupt == FALSE) {
+    if (!py_proc_list__is_empty(list) && interrupt == false) {
         if (!pargs.pipe) {
             log_m("");
             log_m("\033[1mChild processes\033[0m");
@@ -174,7 +175,7 @@ do_child_processes(py_proc_t* py_proc) {
     }
 
     if (pargs.exposure == 0) {
-        while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
+        while (!py_proc_list__is_empty(list) && interrupt == false) {
 #ifndef NATIVE
             microseconds_t start_time = gettime();
 #endif
@@ -190,7 +191,7 @@ do_child_processes(py_proc_t* py_proc) {
         if (!pargs.pipe && !pargs.where)
             log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
         microseconds_t end_time = gettime() + pargs.exposure * 1000000;
-        while (!py_proc_list__is_empty(list) && interrupt == FALSE) {
+        while (!py_proc_list__is_empty(list) && interrupt == false) {
 #ifndef NATIVE
             microseconds_t start_time = gettime();
 #endif
@@ -317,7 +318,7 @@ main(int argc, char** argv) {
     }
     event_handler_install(handler);
 
-    py_proc = py_proc_new(FALSE);
+    py_proc = py_proc_new(false);
     if (!isvalid(py_proc)) {
         log_ie("Cannot create process");
         goto finally;
@@ -370,11 +371,11 @@ main(int argc, char** argv) {
         if (pargs.sleepless)
             log_w("The sleepless switch is redundant in full mode");
         log_i("Producing full set of metrics (time +mem -mem)");
-        pargs.memory = TRUE;
+        pargs.memory = true;
     } else if (pargs.memory) {
         if (pargs.sleepless)
             log_w("The sleepless switch is incompatible with memory mode.");
-        pargs.sleepless = FALSE;
+        pargs.sleepless = false;
     }
 
     // Register signal handler for Ctrl+C and terminate signals.

@@ -82,56 +82,56 @@ const char* _error_msg_tab[MAXERROR] = {
     "Non-Python parent process has no Python children",
 };
 
-const int _fatal_error_tab[MAXERROR] = {
+const bool _fatal_error_tab[MAXERROR] = {
     // generic error messages
-    0,
-    1,
-    1,
-    1,
-    0,
-    1,
-    0,
-    0,
+    false,
+    true,
+    true,
+    true,
+    false,
+    true,
+    false,
+    false,
 
     // PyCodeObject
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
 
     // PyFrameObject
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
 
     // py_thread_t
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
-    0,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
 
     // py_proc_t
-    0,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
-    1,
+    false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
 };
 
 const char*
@@ -142,10 +142,10 @@ error_get_msg(error_t n) {
     return _error_msg_tab[n];
 }
 
-const int
+const bool
 is_fatal(error_t n) {
     if (n >= MAXERROR)
-        return FALSE;
+        return false;
 
     return _fatal_error_tab[n];
 }

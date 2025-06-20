@@ -435,7 +435,7 @@ py_thread__set_idle(py_thread_t* self) {
 
 // ----------------------------------------------------------------------------
 int
-py_thread__set_interrupted(py_thread_t* self, int state) {
+py_thread__set_interrupted(py_thread_t* self, bool state) {
     unsigned char bit   = 1 << (self->tid & 7);
     size_t        index = self->tid >> 3;
 
@@ -703,7 +703,7 @@ py_thread__fill_from_raddr(py_thread_t* self, raddr_t* raddr, py_proc_t* proc) {
 
     PyThreadState ts;
 
-    self->invalid = TRUE;
+    self->invalid = true;
 
     if (fail(copy_from_raddr(raddr, ts))) {
         log_ie("Cannot read remote PyThreadState");
@@ -771,7 +771,7 @@ py_thread__fill_from_raddr(py_thread_t* self, raddr_t* raddr, py_proc_t* proc) {
     }
 #endif
 
-    self->invalid = FALSE;
+    self->invalid = false;
     SUCCESS;
 } /* py_thread__fill_from_raddr */
 
@@ -803,7 +803,7 @@ py_thread__next(py_thread_t* self) {
 // ----------------------------------------------------------------------------
 void
 py_thread__unwind(py_thread_t* self) {
-    int error = FALSE;
+    bool error = false;
 
 #ifdef NATIVE
 
@@ -815,7 +815,7 @@ py_thread__unwind(py_thread_t* self) {
         _py_thread__unwind_kernel_frame_stack(self);
     }
     if (fail(_py_thread__unwind_native_frame_stack(self))) {
-        error = TRUE;
+        error = true;
     }
 
     // Update the thread state to improve guarantees that it will be in sync with
@@ -827,20 +827,20 @@ py_thread__unwind(py_thread_t* self) {
     if (isvalid(self->top_frame)) {
         if (V_MIN(3, 13)) {
             if (fail(_py_thread__unwind_iframe_stack(self, self->top_frame))) {
-                error = TRUE;
+                error = true;
             }
         } else if (V_MIN(3, 11)) {
             if (fail(_py_thread__unwind_cframe_stack(self))) {
-                error = TRUE;
+                error = true;
             }
         } else {
             if (fail(_py_thread__unwind_frame_stack(self))) {
-                error = TRUE;
+                error = true;
             }
         }
 
         if (fail(_py_thread__resolve_py_stack(self))) {
-            error = TRUE;
+            error = true;
         }
     }
 
