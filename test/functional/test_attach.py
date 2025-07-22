@@ -110,6 +110,21 @@ def test_where(py, mojo):
         assert "<module>" in result.stdout
 
 
+@requires_sudo
+@allpythons()
+def test_where_multiple_times(py):
+    n = 10
+    with run_python(py, target("sleepy.py"), str(n), sleep_after=1) as p:
+        for _ in range(n):
+            result = austin("-w", str(p.pid))
+            assert result.returncode == 0
+
+            assert "Process" in result.stdout
+            assert "Thread" in result.stdout
+            assert "sleepy.py" in result.stdout
+            assert "<module>" in result.stdout
+
+
 @flaky
 @requires_sudo
 @pytest.mark.xfail(platform.system() == "Windows", reason="Does not pass in Windows CI")

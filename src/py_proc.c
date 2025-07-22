@@ -1361,6 +1361,10 @@ py_proc__destroy(py_proc_t* self) {
     hash_table__destroy(self->base_table);
 #endif
 
+#if defined PL_MACOS
+    mach_port_deallocate(mach_task_self(), self->proc_ref);
+#endif
+
     _py_proc__free_local_buffers(self);
 
     sfree(self->bin_path);
