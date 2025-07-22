@@ -111,35 +111,10 @@ _py_proc__analyze_macho64(py_proc_t* self, void* base, void* map) {
     int                        cmd_cnt = 0;
     struct segment_command_64* cmd     = map + sizeof(struct mach_header_64);
 
-    mach_vm_size_t                 size    = 0;
-    mach_msg_type_number_t         count   = sizeof(vm_region_basic_info_data_64_t);
-    mach_vm_address_t              address = (mach_vm_address_t)base;
-    vm_region_basic_info_data_64_t region_info;
-    mach_port_t                    object_name;
-
     for (register int i = 0; cmd_cnt < 2 && i < ncmds; i++) {
         switch (cmd->cmd) {
         case LC_SEGMENT_64:
             if (strcmp(cmd->segname, "__DATA") == 0) {
-                // Get the address of the data segment. This way we can compute the base
-                // address of the binary.
-                // NOTE: Here we are vulnerable to size collisions. Unfortunately, we
-                // can't check for the same byte content as the data section is not
-                // read-only.
-                while (cmd->filesize != size) {
-                    address += size;
-                    if (mach_vm_region(
-                            self->proc_ref, &address, &size, VM_REGION_BASIC_INFO_64,
-                            (vm_region_info_t)&region_info, // cppcheck-suppress [uninitvar]
-                            &count, &object_name
-                        )
-                        != KERN_SUCCESS) {
-                        log_e("Cannot get any more VM maps.");
-                        return 0;
-                    }
-                }
-                base = (void*)address - cmd->vmaddr;
-
                 int                nsects = cmd->nsects;
                 struct section_64* sec    = (struct section_64*)((void*)cmd + sizeof(struct segment_command_64));
                 self->map.bss.size        = 0;
@@ -211,35 +186,10 @@ _py_proc__analyze_macho32(py_proc_t* self, void* base, void* map) {
     int                     cmd_cnt = 0;
     struct segment_command* cmd     = map + sizeof(struct mach_header);
 
-    mach_vm_size_t              size    = 0;
-    mach_msg_type_number_t      count   = sizeof(vm_region_basic_info_data_t);
-    mach_vm_address_t           address = (mach_vm_address_t)base;
-    vm_region_basic_info_data_t region_info;
-    mach_port_t                 object_name;
-
     for (register int i = 0; cmd_cnt < 2 && i < ncmds; i++) {
         switch (cmd->cmd) {
         case LC_SEGMENT:
             if (strcmp(cmd->segname, "__DATA") == 0) {
-                // Get the address of the data segment. This way we can compute the base
-                // address of the binary.
-                // NOTE: Here we are vulnerable to size collisions. Unfortunately, we
-                // can't check for the same byte content as the data section is not
-                // read-only.
-                while (cmd->filesize != size) {
-                    address += size;
-                    if (mach_vm_region(
-                            self->proc_ref, &address, &size, VM_REGION_BASIC_INFO,
-                            (vm_region_info_t)&region_info, // cppcheck-suppress [uninitvar]
-                            &count, &object_name
-                        )
-                        != KERN_SUCCESS) {
-                        log_e("Cannot get any more VM maps.");
-                        return 0;
-                    }
-                }
-                base = (void*)address - cmd->vmaddr;
-
                 int             nsects = cmd->nsects;
                 struct section* sec    = (struct section*)((void*)cmd + sizeof(struct segment_command));
                 self->map.bss.size     = 0;
@@ -493,6 +443,13 @@ _py_proc__get_maps(py_proc_t* self) {
            )
            == KERN_SUCCESS) {
         int path_len = proc_regionfilename(self->pid, address, path, MAXPATHLEN);
+
+        // We assume that the first segment is the executable part. Under this
+        // assumption, the address of this map will be the base address.
+        if (!(region_info.protection & VM_PROT_EXECUTE)) {
+            address += size;
+            continue;
+        }
 
         if (isvalid(prev_path) && strcmp(path, prev_path) == 0) { // Avoid analysing a binary multiple times
             goto next;
