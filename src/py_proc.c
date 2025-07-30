@@ -1278,7 +1278,7 @@ py_proc__sample(py_proc_t* self) {
 #endif
 
         if (fail(result))
-            FAIL;
+            continue;
     } while (isvalid(current_interp = V_FIELD_PTR(void*, self->is, py_is, o_next)));
 
 #ifdef NATIVE
