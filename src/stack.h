@@ -143,8 +143,13 @@ static inline stack_chunk_t*
 stack_chunk_new(proc_ref_t pref, void* origin) {
     _PyStackChunk original_chunk;
 
+    if (!isvalid(origin)) {
+        // Not a valid datastack chunk.
+        return NULL;
+    }
+
     if (copy_datatype(pref, origin, original_chunk)) {
-        log_e("Failed to copy _PyStackChunk");
+        log_e("Failed to copy _PyStackChunk from %p", origin);
         return NULL;
     }
 
