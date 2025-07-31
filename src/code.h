@@ -91,7 +91,8 @@ _code_from_code_raddr(py_proc_t* py_proc, void* code_raddr) {
 
     proc_ref_t pref = py_proc->proc_ref;
 
-    PyCodeObject code;
+    V_ALLOCA(code, code);
+
     if (fail(copy_py(pref, code_raddr, py_code, code))) {
         log_ie("Cannot read remote PyCodeObject");
         return NULL;

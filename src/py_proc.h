@@ -98,11 +98,6 @@ typedef struct {
     hash_table_t*    base_table;
 #endif
 
-    // Local buffers
-    _PyRuntimeState*    rs;
-    PyInterpreterState* is;
-    PyThreadState*      ts;
-
     com_t interpreter_state_com;
 
     // Platform-dependent fields

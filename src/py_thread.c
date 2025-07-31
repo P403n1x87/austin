@@ -151,7 +151,7 @@ static unsigned int _stack_chunk_misses = 0;
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_thread__push_iframe_from_addr(py_thread_t* self, PyInterpreterFrame* iframe, void** prev) {
+_py_thread__push_iframe_from_addr(py_thread_t* self, void* iframe, void** prev) {
     V_DESC(self->proc->py_v);
 
     void* origin     = *prev;
@@ -193,9 +193,9 @@ _py_thread__push_iframe_from_addr(py_thread_t* self, PyInterpreterFrame* iframe,
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__push_iframe_from_raddr(py_thread_t* self, void** prev) {
-    PyInterpreterFrame iframe;
-
     V_DESC(self->proc->py_v);
+
+    V_ALLOCA(iframe, iframe);
 
     if (fail(copy_py(self->raddr.pref, *prev, py_iframe, iframe))) {
         log_ie("Cannot read remote PyInterpreterFrame");
@@ -588,7 +588,7 @@ py_thread__fill_from_raddr(py_thread_t* self, raddr_t* raddr, py_proc_t* proc) {
 
     V_DESC(proc->py_v);
 
-    PyThreadState ts;
+    V_ALLOCA(thread, ts);
 
     self->invalid = true;
 
