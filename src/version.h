@@ -346,8 +346,9 @@ get_version_descriptor(int major, int minor, int patch) {
             py_v = &python_v3_12;
             break;
 
-        // 3.13+
+        // 3.13+ (filled in at runtime)
         case 13:
+        case 14:
             py_v = &python_v3_13;
             break;
 
@@ -443,6 +444,19 @@ init_version_descriptor(python_v* py_v, _Py_DebugOffsets* py_d) {
         PY_RUNTIME_313(3_13);
         PY_IS_313(3_13);
         PY_GC_313(3_13);
+        break;
+
+    case 14:
+        PY_CODE_313(3_14);
+        PY_IFRAME_313(3_14);
+        PY_THREAD_313(3_14);
+        PY_RUNTIME_313(3_14);
+        PY_IS_313(3_14);
+        PY_GC_313(3_14);
+        break;
+
+    default:
+        log_e("Unsupported Python version %d.%d detected.", py_v->major, py_v->minor);
     }
 }
 
