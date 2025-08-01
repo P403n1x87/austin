@@ -213,6 +213,18 @@ py_proc__sample(py_proc_t*);
 #define py_proc__copy_v(self, type, raddr, dest) (py_proc__memcpy(self, raddr, py_v->py_##type.size, dest))
 
 /**
+ * Copy a field from a versioned Python data structure.
+ * @param self   the process object.
+ * @param type   the versioned Python type (e.g. runtime).
+ * @param field  the field name (e.g. interp_head).
+ * @param raddr  the remote address of the versioned Python data structure.
+ * @param dst    the destination variable.
+
+ * @return        zero on success, otherwise non-zero.
+ */
+#define py_proc__copy_field_v(self, type, field, raddr, dst) copy_field_v(self->proc_ref, type, field, raddr, dst)
+
+/**
  * Log the Python interpreter version
  * @param self  the process object.
  * @param int   whether the process is the parent process.
