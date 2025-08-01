@@ -88,6 +88,18 @@ __declspec(dllimport) extern BOOL GetPhysicallyInstalledSystemMemory(PULONGLONG)
  */
 #define copy_py(pref, addr, py_type, dest) copy_memory(pref, addr, py_v->py_type.size, &dest)
 
+/**
+ * Copy a field from a versioned Python data structure.
+ * @param  pref   the process reference
+ * @param  type   the versioned Python type (e.g. runtime).
+ * @param  field  the field name (e.g. interp_head).
+ * @param  raddr  the remote address of the versioned Python data structure.
+ * @param  dst    the destination variable.
+ * @return        zero on success, otherwise non-zero.
+ */
+#define copy_field_v(pref, type, field, raddr, dst)                         \
+    copy_memory(pref, raddr + py_v->py_##type.o_##field, sizeof(dst), &dst)
+
 // Whilst the PID is generally used to identify processes across platforms,
 // operations can only be performed on other process references, like a Win32
 // HANDLE or a OSX mach_port_t. We use this structure to abstract the process

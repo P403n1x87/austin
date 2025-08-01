@@ -1127,13 +1127,18 @@ _py_proc__resume_threads(py_proc_t* self, raddr_t* tstate_head_raddr) {
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_proc__sample_interpreter(py_proc_t* self, PyInterpreterState* is, microseconds_t time_delta) {
+_py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_delta) {
     ssize_t mem_delta      = 0;
     void*   current_thread = NULL;
 
     V_DESC(self->py_v);
 
-    void* tstate_head = V_FIELD_PTR(void*, is, py_is, o_tstate_head);
+    void* tstate_head;
+    if (fail(py_proc__copy_field_v(self, is, tstate_head, interp, tstate_head))) {
+        log_ie("Failed to get pointer to thread state head while sampling");
+        FAIL;
+    }
+
     if (!isvalid(tstate_head))
         // Maybe the interpreter state is in an invalid state. We'll try again
         // unless there is a fatal error.
@@ -1153,7 +1158,11 @@ _py_proc__sample_interpreter(py_proc_t* self, PyInterpreterState* is, microsecon
     if (pargs.memory) {
         // Use the current thread to determine which thread is manipulating memory
         if (V_MIN(3, 12)) {
-            void* gil_state_raddr = V_FIELD_PTR(void*, is, py_is, o_gil_state);
+            void* gil_state_raddr;
+            if (fail(py_proc__copy_field_v(self, is, gil_state, interp, gil_state_raddr))) {
+                log_ie("Failed to get pointer to gil_state");
+                FAIL;
+            }
             if (!isvalid(gil_state_raddr))
                 SUCCESS;
             gil_state_t gil_state;
@@ -1166,7 +1175,11 @@ _py_proc__sample_interpreter(py_proc_t* self, PyInterpreterState* is, microsecon
             current_thread = _py_proc__get_current_thread_state_raddr(self);
     }
 
-    int64_t interp_id = V_FIELD_PTR(int64_t, is, py_is, o_id);
+    int64_t interp_id;
+    if (fail(py_proc__copy_field_v(self, is, id, interp, interp_id))) {
+        log_ie("Failed to get interpreter ID");
+        FAIL;
+    }
     do {
         if (py_thread.invalid)
             continue;
@@ -1248,12 +1261,12 @@ py_proc__sample(py_proc_t* self) {
     V_DESC(self->py_v);
 
     do {
-        if (fail(py_proc__copy_v(self, is, current_interp, self->is))) {
-            log_ie("Failed to get interpreter state while sampling");
+        void* tstate_head;
+        if (fail(py_proc__copy_field_v(self, is, tstate_head, current_interp, tstate_head))) {
+            log_ie("Failed to get pointer to thread state head");
             FAIL;
         }
 
-        void* tstate_head = V_FIELD_PTR(void*, self->is, py_is, o_tstate_head);
         if (!isvalid(tstate_head))
             // Maybe the interpreter state is in an invalid state. We'll try again
             // unless there is a fatal error.
@@ -1267,8 +1280,7 @@ py_proc__sample(py_proc_t* self) {
         }
         time_delta = gettime() - self->timestamp;
 #endif
-
-        int result = _py_proc__sample_interpreter(self, self->is, time_delta);
+        int result = _py_proc__sample_interpreter(self, current_interp, time_delta);
 
 #ifdef NATIVE
         if (fail(_py_proc__resume_threads(self, &raddr))) {
@@ -1279,7 +1291,12 @@ py_proc__sample(py_proc_t* self) {
 
         if (fail(result))
             continue;
-    } while (isvalid(current_interp = V_FIELD_PTR(void*, self->is, py_is, o_next)));
+
+        if (fail(py_proc__copy_field_v(self, is, next, current_interp, current_interp))) {
+            log_ie("Failed to get next interpreter state");
+            FAIL;
+        }
+    } while (isvalid(current_interp));
 
 #ifdef NATIVE
     self->timestamp = gettime();
