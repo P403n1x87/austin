@@ -860,7 +860,7 @@ py_thread__unwind(py_thread_t* self) {
     if (error)
         stats_count_error();
     stats_check_duration(stopwatch_duration());
-} /* py_thread__emit_collapsed_stack */
+}
 
 // ----------------------------------------------------------------------------
 int
