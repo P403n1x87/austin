@@ -77,15 +77,12 @@ static ctime_t _period;
 
 microseconds_t
 gettime() {
-#if defined PL_UNIX /* UNIX */
 #ifdef PL_MACOS
-    mach_timespec_t ts;
-    clock_get_time(cclock, &ts);
-#else
+    return clock_gettime_nsec_np(CLOCK_UPTIME_RAW) / 1000;
+
+#elif defined PL_LINUX
     struct timespec ts;
     clock_gettime(CLOCK_BOOTTIME, &ts);
-#endif
-
     return ts.tv_sec * ((microseconds_t)1000000) + ts.tv_nsec / 1000;
 
 #else /* WIN */
