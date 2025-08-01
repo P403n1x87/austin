@@ -373,9 +373,11 @@ get_version_descriptor(int major, int minor, int patch) {
         }
     }
 
-    py_v->major = major;
-    py_v->minor = minor;
-    py_v->patch = patch;
+    if (isvalid(py_v)) {
+        py_v->major = major;
+        py_v->minor = minor;
+        py_v->patch = patch;
+    }
 
     return py_v;
 }

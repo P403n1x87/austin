@@ -247,11 +247,17 @@ _py_proc__infer_python_version(py_proc_t* self) {
             log_d("Python version (from debug offsets): %d.%d.%d", major, minor, patch);
 
             self->py_v = get_version_descriptor(major, minor, patch);
+            if (!isvalid(self->py_v)) {
+                log_e("Unsupported Python version %d.%d.%d", major, minor, patch);
+                set_error(ENOVERSION);
+                FAIL;
+            }
 
             init_version_descriptor(self->py_v, &py_d);
 
             SUCCESS;
         }
+        log_d("PyRuntimeState structure does not match expected cookie");
     }
 
     // Starting with Python 3.11 we can rely on the Py_Version symbol
@@ -270,6 +276,11 @@ _py_proc__infer_python_version(py_proc_t* self) {
         log_d("Python version (from symbol): %d.%d.%d", major, minor, patch);
 
         self->py_v = get_version_descriptor(major, minor, patch);
+        if (!isvalid(self->py_v)) {
+            log_e("Unsupported Python version %d.%d.%d", major, minor, patch);
+            set_error(ENOVERSION);
+            FAIL;
+        }
 
         SUCCESS;
     }
@@ -303,6 +314,12 @@ _py_proc__infer_python_version(py_proc_t* self) {
         if (isvalid(self->bin_path) && (success(_find_version_in_binary(self->bin_path, &version)))) {
             log_d("Python version (from binary content): %d.%d.%d", major, minor, patch);
             self->py_v = get_version_descriptor(MAJOR(version), MINOR(version), PATCH(version));
+            if (!isvalid(self->py_v)) {
+                log_e("Unsupported Python version %d.%d.%d", major, minor, patch);
+                set_error(ENOVERSION);
+                FAIL;
+            }
+
             SUCCESS;
         }
     }
@@ -321,6 +338,12 @@ from_filename:
 
 set_version:
     self->py_v = get_version_descriptor(major, minor, patch);
+    if (!isvalid(self->py_v)) {
+        log_e("Unsupported Python version %d.%d.%d", major, minor, patch);
+        set_error(ENOVERSION);
+        FAIL;
+    }
+
     SUCCESS;
 }
 
@@ -530,7 +553,7 @@ _py_proc__deref_interp_head(py_proc_t* self) {
 // ----------------------------------------------------------------------------
 static inline void*
 _py_proc__get_current_thread_state_raddr(py_proc_t* self) {
-    void* p_tstate_current;
+    void* p_tstate_current = NULL;
 
     if (self->symbols[DYNSYM_RUNTIME] != NULL) {
         if (self->tstate_current_offset == 0
@@ -982,7 +1005,7 @@ _py_proc__find_current_thread_offset(py_proc_t* self, void* thread_raddr) {
     // Search offset of current thread in _PyRuntimeState structure
     PyInterpreterState is;
     py_proc__get_type(self, interp_head_raddr, is);
-    void* current_thread_raddr;
+    void* current_thread_raddr = NULL;
 
     register int hit_count = 0;
     for (register void** raddr = (void**)self->symbols[DYNSYM_RUNTIME];
@@ -1133,7 +1156,7 @@ _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_
 
     V_DESC(self->py_v);
 
-    void* tstate_head;
+    void* tstate_head = NULL;
     if (fail(py_proc__copy_field_v(self, is, tstate_head, interp, tstate_head))) {
         log_ie("Failed to get pointer to thread state head while sampling");
         FAIL;
@@ -1158,14 +1181,14 @@ _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_
     if (pargs.memory) {
         // Use the current thread to determine which thread is manipulating memory
         if (V_MIN(3, 12)) {
-            void* gil_state_raddr;
+            void* gil_state_raddr = NULL;
             if (fail(py_proc__copy_field_v(self, is, gil_state, interp, gil_state_raddr))) {
                 log_ie("Failed to get pointer to gil_state");
                 FAIL;
             }
             if (!isvalid(gil_state_raddr))
                 SUCCESS;
-            gil_state_t gil_state;
+            gil_state_t gil_state = {0};
             if (fail(copy_datatype(self->proc_ref, gil_state_raddr, gil_state))) {
                 log_ie("Failed to copy GIL state");
                 FAIL;
@@ -1175,7 +1198,7 @@ _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_
             current_thread = _py_proc__get_current_thread_state_raddr(self);
     }
 
-    int64_t interp_id;
+    int64_t interp_id = 0;
     if (fail(py_proc__copy_field_v(self, is, id, interp, interp_id))) {
         log_ie("Failed to get interpreter ID");
         FAIL;
@@ -1261,7 +1284,7 @@ py_proc__sample(py_proc_t* self) {
     V_DESC(self->py_v);
 
     do {
-        void* tstate_head;
+        void* tstate_head = NULL;
         if (fail(py_proc__copy_field_v(self, is, tstate_head, current_interp, tstate_head))) {
             log_ie("Failed to get pointer to thread state head");
             FAIL;
