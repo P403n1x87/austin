@@ -141,7 +141,7 @@ typedef struct stack_chunk {
 // ----------------------------------------------------------------------------
 static inline stack_chunk_t*
 stack_chunk_new(proc_ref_t pref, void* origin) {
-    _PyStackChunk original_chunk;
+    _PyStackChunk original_chunk = {0};
 
     if (!isvalid(origin)) {
         // Not a valid datastack chunk.
