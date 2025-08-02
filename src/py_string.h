@@ -131,7 +131,7 @@ failed:
 // ----------------------------------------------------------------------------
 static inline unsigned char*
 _bytes_from_raddr(proc_ref_t pref, void* raddr, ssize_t* size, python_v* py_v) {
-    PyBytesObject  bytes;
+    PyBytesObject  bytes = {0};
     ssize_t        len   = 0;
     unsigned char* array = NULL;
 
