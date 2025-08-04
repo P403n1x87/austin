@@ -445,6 +445,23 @@ lru_cache__store(lru_cache_t* self, key_dt key, value_t value) {
 
 // ----------------------------------------------------------------------------
 void
+lru_cache__invalidate(lru_cache_t* self) {
+    if (!isvalid(self))
+        return;
+
+    unsigned queue_capacity            = self->queue->capacity;
+    void (*queue_deallocator)(value_t) = self->queue->deallocator;
+    unsigned hash_table_capacity       = self->hash->capacity;
+
+    queue__destroy(self->queue);
+    hash_table__destroy(self->hash);
+
+    self->queue = queue_new(queue_capacity, queue_deallocator);
+    self->hash  = hash_table_new(hash_table_capacity);
+}
+
+// ----------------------------------------------------------------------------
+void
 lru_cache__destroy(lru_cache_t* self) {
     if (!isvalid(self))
         return;
