@@ -377,32 +377,26 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_iframe_stack(py_thread_t* self, void* iframe_raddr) {
-    int   invalid = FALSE;
-    void* curr    = iframe_raddr;
+    void* curr = iframe_raddr;
 
     while (isvalid(curr)) {
         if (fail(_py_thread__push_iframe(self, &curr))) {
             log_d("Failed to retrieve iframe #%d", stack_pointer());
-            invalid = TRUE;
-            break;
+            FAIL;
         }
 
         if (stack_full()) {
             log_w("Invalid frame stack: too tall");
-            invalid = TRUE;
-            break;
+            FAIL;
         }
 
         if (stack_has_cycle()) {
             log_d("Circular frame reference detected");
-            invalid = TRUE;
-            break;
+            FAIL;
         }
     }
 
-    invalid = fail(_py_thread__resolve_py_stack(self)) || invalid;
-
-    return invalid;
+    SUCCESS;
 }
 
 // ----------------------------------------------------------------------------
