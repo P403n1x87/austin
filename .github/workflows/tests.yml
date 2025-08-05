@@ -177,7 +177,7 @@ jobs:
         run: |
           ulimit -c unlimited
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
-          sudo -E env PATH="$PATH" .venv/bin/pytest -sv test/support
+          sudo -E env PATH="$PATH" .venv/bin/pytest -n 0 -sv test/support
         if: always()
 
   wheels-linux:
@@ -320,7 +320,7 @@ jobs:
       - name: Run support tests
         run: |
           source .venv/bin/activate
-          sudo -E pytest --pastebin=failed -svr a -n auto test/support
+          sudo -E pytest --pastebin=failed -svr a test/support
         if: always()
 
       - name: Run Darwin-only tests
