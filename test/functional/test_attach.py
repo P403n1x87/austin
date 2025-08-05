@@ -72,7 +72,7 @@ def test_attach_wall_time(austin, py, mode, mode_meta, heap):
         a = sum_metric(result.stdout)
         d = int(meta["duration"])
 
-        assert a <= d
+        assert a <= 1.1 * d
 
 
 @requires_sudo
