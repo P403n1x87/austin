@@ -171,8 +171,6 @@ typedef struct {
 
 #define UNSUPPORTED_VERSION log_w("Unsupported Python version detected. Austin might not work as expected.")
 
-#define LATEST_VERSION (&python_v3_11)
-
 #define PY_CODE(s)                                                                                                   \
     {sizeof(s), offsetof(s, co_filename), offsetof(s, co_name), offsetof(s, co_lnotab), offsetof(s, co_firstlineno)}
 
@@ -327,16 +325,6 @@ get_version_descriptor(int major, int minor, int patch) {
     // ---- Python 3 ------------------------------------------------------------
     case 3:
         switch (minor) {
-        case 0:
-        case 1:
-        case 2:
-        case 3:
-        case 4:
-        case 5:
-        case 6:
-        case 7:
-            UNSUPPORTED_VERSION; // NOTE: These versions haven't been tested.
-
         // 3.8
         case 8:
             py_v = &python_v3_8;
@@ -368,7 +356,6 @@ get_version_descriptor(int major, int minor, int patch) {
             break;
 
         default:
-            py_v = LATEST_VERSION;
             UNSUPPORTED_VERSION;
         }
     }
