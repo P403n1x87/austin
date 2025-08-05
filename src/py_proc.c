@@ -391,10 +391,8 @@ _py_proc__check_interp_state(py_proc_t* self, void* raddr) {
 
     log_d("Stack trace constructed from possible interpreter state");
 
-    if (V_MIN(3, 9)) {
-        self->gc_state_raddr = (void*)(((char*)raddr) + py_v->py_is.o_gc);
-        log_d("GC runtime state @ %p", self->gc_state_raddr);
-    }
+    self->gc_state_raddr = (void*)(((char*)raddr) + py_v->py_is.o_gc);
+    log_d("GC runtime state @ %p", self->gc_state_raddr);
 
     if (V_MIN(3, 11)) {
         // In Python 3.11 we can make use of the native_thread_id field on Linux
@@ -528,11 +526,6 @@ _py_proc__deref_interp_head(py_proc_t* self) {
         }
 
         interp_head_raddr = V_FIELD_PTR(void*, self->rs, py_runtime, o_interp_head);
-        if (V_MAX(3, 8)) {
-            self->gc_state_raddr = current_addr + py_v->py_runtime.o_gc;
-            log_d("GC runtime state @ %p", self->gc_state_raddr);
-        }
-
         if (fail(_py_proc__check_interp_state(self, interp_head_raddr))) {
             log_d("Interpreter state check failed while dereferencing runtime state");
             interp_head_raddr = NULL;

@@ -33,18 +33,9 @@
 #include "gc.h"
 #include "misc.h"
 
-// ---- pystate.h -------------------------------------------------------------
+// ---- internal/pycore_interp.h ----------------------------------------------
 
 struct _ts; /* Forward */
-
-typedef struct _is2 {
-    struct _is2* next;
-    struct _ts*  tstate_head;
-    int64_t      id;
-    void*        gc; /* Dummy */
-} PyInterpreterState2;
-
-// ---- internal/pycore_interp.h ----------------------------------------------
 
 typedef void* PyThread_type_lock;
 
@@ -170,7 +161,6 @@ typedef struct {
 } PyInterpreterState3_12;
 
 typedef union {
-    PyInterpreterState2    v2;
     PyInterpreterState3_9  v3_9;
     PyInterpreterState3_11 v3_11;
     PyInterpreterState3_12 v3_12;

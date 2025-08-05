@@ -559,7 +559,7 @@ folder in either the SVG, PDF or PNG format
 
 # Compatibility
 
-Austin supports Python 3.8 through 3.13, and has been tested on the following
+Austin supports Python 3.9 through 3.13, and has been tested on the following
 platforms and architectures
 
 |             | <img src="art/tux.svg" /> | <img src="art/win.svg"/> | <img src="art/apple.svg"/> |
@@ -569,6 +569,14 @@ platforms and architectures
 | **armv7**   | ✓                         |                          |                            |
 | **arm64**   | ✓                         |                          | ✓                          |
 | **ppc64le** | ✓                         |                          |                            |
+
+If you are looking for support for older versions of CPython, the following table
+summarises the compatibility of Austin with CPython versions
+
+| CPython Versions  | Austin Version |
+| ----------------- | -------------- |
+| 2.3-2.7, 3.3-3.11 | 3.5            |
+| 3.8-3.13          | 3.7            |
 
 > **NOTE** Austin *might* work with other versions of Python on all the
 > platforms and architectures above. So it is worth giving it a try even if
