@@ -129,7 +129,7 @@ jobs:
         run: |
           ulimit -c unlimited
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
-          .venv/bin/pytest -sv test/cunit
+          .venv/bin/pytest -vv test/cunit
   
       - name: Run functional Austin tests (with sudo)
         run: |
@@ -304,7 +304,14 @@ jobs:
           python3.10 -m pip install -r test/requirements.txt
           python${{ matrix.python-version }} -m venv .venv \
             || (python${{ matrix.python-version }} -m pip install virtualenv && python${{ matrix.python-version }} -m virtualenv .venv)
-      
+
+      - name: Run unit tests
+        env:
+          CC: gcc-12
+        run: |
+          source .venv/bin/activate
+          pytest -vv test/cunit
+
       - name: Run functional tests
         run: |
           source .venv/bin/activate
