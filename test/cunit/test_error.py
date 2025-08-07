@@ -1,3 +1,4 @@
+import sys
 from test.cunit.error import cglobal
 from test.cunit.error import error_get_msg
 from test.cunit.error import is_fatal
@@ -38,5 +39,6 @@ def test_error_is_fatal(code, fatal):
     assert is_fatal(code) == fatal
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Only applicable on Linux")
 def test_error_austin_errno_global():
     assert cglobal("austin_errno", "int") == 0
