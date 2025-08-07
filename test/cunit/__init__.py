@@ -139,9 +139,7 @@ class CFunction:
 
         # Prevent argument values from being truncated/mangled
         self.__cfunc__.argtypes = [_[1] for _ in cfuncdef.args]
-        self.__cfunc__.restype = (
-            cfuncdef.rtype if cfuncdef.rtype is not None else c_long
-        )
+        self.__cfunc__.restype = cfuncdef.rtype
 
         self._posonly = all(_ is None for _ in self.__args__)
 
@@ -246,11 +244,20 @@ class DeclCollector(c_ast.NodeVisitor):
             func_name = node.name
             ret_type = node.type.type
             rtype = None
-            if isinstance(ret_type, c_ast.PtrDecl):
-                if "".join(ret_type.type.type.names) == "char":
-                    rtype = c_char_p
-                else:
-                    rtype = c_void_p
+
+            if isinstance(ret_type, c_ast.TypeDecl) and isinstance(
+                ret_type.type, c_ast.IdentifierType
+            ):  # Non-pointer return type
+                rtype = getattr(ctypes, f"c_{''.join(ret_type.type.names)}", c_long)
+
+            elif isinstance(ret_type, c_ast.PtrDecl) and isinstance(
+                ret_type.type.type, c_ast.IdentifierType
+            ):  # Pointer return type
+                rtype = (
+                    c_char_p
+                    if "".join(ret_type.type.type.names) == "char"
+                    else c_void_p
+                )
 
             args = (
                 [

@@ -271,9 +271,10 @@ handle_error() {
 // ----------------------------------------------------------------------------
 int
 main(int argc, char** argv) {
-    int        retval   = 0;
-    py_proc_t* py_proc  = NULL;
-    int        exec_arg = parse_args(argc, argv);
+    int        retval  = 0;
+    py_proc_t* py_proc = NULL;
+
+    parse_args(argc, argv);
 
 #if defined PL_MACOS
     // On MacOS, we need to be root to use Austin.
@@ -286,6 +287,8 @@ main(int argc, char** argv) {
     logger_init();
     if (!pargs.pipe)
         log_header(); // cppcheck-suppress [unknownMacro]
+
+    int exec_arg = pargs.cmd_index;
 
     if (exec_arg <= 0 && pargs.attach_pid == 0) {
         _msg(MCMDLINE);

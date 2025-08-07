@@ -53,6 +53,7 @@ parsed_args_t pargs = {
     /* t_sampling_interval */ DEFAULT_SAMPLING_INTERVAL,
     /* timeout             */ DEFAULT_INIT_TIMEOUT_MS * 1000,
     /* attach_pid          */ 0,
+    /* cmd_index           */ 0,
     /* where               */ 0,
     /* sleepless           */ 0,
     /* full                */ 0,
@@ -69,8 +70,6 @@ parsed_args_t pargs = {
     /* kernel              */ 0,
 #endif
 };
-
-static int exec_arg = 0;
 
 // ---- PRIVATE ---------------------------------------------------------------
 
@@ -278,8 +277,8 @@ parse_opt(int key, char* arg, struct argp_state* state) {
     // that they can be passed to the command to execute
     if ((state->next == 0 && state->argv[1][0] != '-')
         || (state->next > 0 && state->next < state->argc && state->argv[state->next][0] != '-')) {
-        exec_arg    = state->next == 0 ? 1 : state->next;
-        state->next = state->argc;
+        pargs.cmd_index = state->next == 0 ? 1 : state->next;
+        state->next     = state->argc;
     }
 
     long l_pid;
@@ -360,7 +359,7 @@ parse_opt(int key, char* arg, struct argp_state* state) {
 
     case ARGP_KEY_ARG:
     case ARGP_KEY_END:
-        if (pargs.attach_pid != 0 && exec_arg != 0)
+        if (pargs.attach_pid != 0 && pargs.cmd_index != 0)
             argp_error(state, "the -p option is incompatible with the command argument");
         break;
 
@@ -375,9 +374,6 @@ parse_opt(int key, char* arg, struct argp_state* state) {
 #include <stdio.h>
 #include <string.h>
 
-#define argp_error(state, msg) \
-    { puts(msg); }
-
 // Argument callback. Called on every argument parser event.
 //
 // The first argument is the option character, or 0 for a non-option argument.
@@ -386,7 +382,7 @@ parse_opt(int key, char* arg, struct argp_state* state) {
 // argument.
 //
 // Return 0 to continue parsing the arguments, or otherwise to stop.
-typedef int (*arg_callback)(const char opt, const char* arg);
+typedef int (*arg_callback)(const char opt, const char* arg, const int index);
 
 // ----------------------------------------------------------------------------
 static arg_option*
@@ -442,7 +438,7 @@ _handle_opt(arg_option* opt, arg_callback cb, int argi, int argc, char** argv) {
         } else if (equal != NULL)
             return ARG_UNEXPECTED_OPT_ARG;
 
-        return cb(opt->opt, opt_arg);
+        return cb(opt->opt, opt_arg, argi);
     }
 
     return ARG_UNRECOGNISED_LONG_OPT;
@@ -555,13 +551,13 @@ arg_error(const char* message) {
     fputs(message, stderr);
     fputc('\n', stderr);
     fputs("Try `austin --help' or `austin --usage' for more information.\n", stderr);
-    exit(ARG_INVALID_VALUE);
+    exit(ARG_ERR_EXIT_STATUS);
 }
 
 // ----------------------------------------------------------------------------
 // Return 0 if all the arguments have been parsed. If interrupted, returns the
 // number of arguments consumed so far. Otherwise return an error code.
-static int
+static void
 arg_parse(arg_option* opts, arg_callback cb, int argc, char** argv) {
     int a      = 1;
     int cb_res = 0;
@@ -582,19 +578,25 @@ arg_parse(arg_option* opts, arg_callback cb, int argc, char** argv) {
             }
         } else {
             // Argument
-            cb_res = cb(0, argv[a++]);
+            cb_res = cb(ARG_ARGUMENT, argv[a], a);
+            a++;
         }
 
-        if (cb_res)
-            return cb_res < 0 ? cb_res : a;
+        if (cb_res == ARG_STOP_PARSING)
+            return;
+
+        if (cb_res != ARG_CONTINUE_PARSING) {
+            puts(usage_msg);
+            exit(1);
+        }
     }
 
-    return 0;
+    return;
 }
 
 // ----------------------------------------------------------------------------
 static int
-cb(const char opt, const char* arg) {
+cb(const char opt, const char* arg, const int index) {
     switch (opt) {
     case 'i':
         if (fail(parse_interval((char*)arg, (long*)&(pargs.t_sampling_interval)))
@@ -681,6 +683,7 @@ cb(const char opt, const char* arg) {
         exit(0);
 
     case ARG_ARGUMENT:
+        pargs.cmd_index = index;
         return ARG_STOP_PARSING;
 
     default:
@@ -718,7 +721,7 @@ validate() {
 // ---- PUBLIC ----------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-int
+void
 parse_args(int argc, char** argv) {
     pargs.output_file = stdout;
 
@@ -727,10 +730,8 @@ parse_args(int argc, char** argv) {
     argp_parse(&args, argc, argv, 0, 0, 0);
 
 #else
-    exec_arg = arg_parse(options, cb, argc, argv) - 1;
+    arg_parse(options, cb, argc, argv);
 #endif
 
     validate();
-
-    return exec_arg;
 }

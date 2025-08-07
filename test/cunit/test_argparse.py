@@ -10,10 +10,13 @@ def parse_args(argv):
 
 
 def test_parse_args_command():
-    assert parse_args(["austin", "python"])
+    parse_args(["austin", "python"])
 
 
-# FIXME
-@pytest.mark.exitcode(1)
 def test_parse_args_process():
-    assert parse_args(["austin", "-p", "123"])
+    parse_args(["austin", "-p", "123"])
+
+
+@pytest.mark.exitcode(64)
+def test_parse_args_invalid_process_id():
+    parse_args(["austin", "-p", "abc123"])
