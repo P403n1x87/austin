@@ -793,7 +793,7 @@ py_proc__attach(py_proc_t* self, pid_t pid) {
     log_d("Attaching to process with PID %d", pid);
 
 #if defined PL_WIN /* WIN */
-    self->proc_ref = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, false, pid);
+    self->proc_ref = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
     if (self->proc_ref == INVALID_HANDLE_VALUE) {
         set_error(EPROCATTACH);
         FAIL;
@@ -836,7 +836,7 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
     ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
 
     saAttr.nLength              = sizeof(SECURITY_ATTRIBUTES);
-    saAttr.bInheritHandle       = true;
+    saAttr.bInheritHandle       = TRUE;
     saAttr.lpSecurityDescriptor = NULL;
 
     CreatePipe(&hChildStdInRd, &hChildStdInWr, &saAttr, 0);
@@ -898,7 +898,7 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
 
     log_t("Computed command line: %s", cmd_line);
 
-    BOOL process_created = CreateProcess(NULL, cmd_line, NULL, NULL, true, 0, NULL, NULL, &siStartInfo, &piProcInfo);
+    BOOL process_created = CreateProcess(NULL, cmd_line, NULL, NULL, TRUE, 0, NULL, NULL, &siStartInfo, &piProcInfo);
 
     sfree(cmd_line);
 
