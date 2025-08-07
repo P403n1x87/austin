@@ -33,6 +33,7 @@ typedef struct {
     microseconds_t t_sampling_interval;
     ctime_t        timeout;
     pid_t          attach_pid;
+    int            cmd_index;
     int            where;
     int            sleepless;
     int            full;
@@ -56,6 +57,7 @@ extern parsed_args_t pargs;
 
 #define ARG_ARGUMENT 0
 
+#define ARG_ERR_EXIT_STATUS       64
 #define ARG_STOP_PARSING          1
 #define ARG_CONTINUE_PARSING      0
 #define ARG_MISSING_OPT_ARG       -1
@@ -64,7 +66,7 @@ extern parsed_args_t pargs;
 #define ARG_INVALID_VALUE         -4
 #define ARG_UNEXPECTED_OPT_ARG    -5
 
-int
+void
 parse_args(int argc, char** argv);
 
 // TODO: Implement error.
