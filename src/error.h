@@ -23,6 +23,7 @@
 #pragma once
 
 #include <errno.h>
+#include <stdbool.h>
 
 #include "logging.h"
 
@@ -95,9 +96,9 @@ const char* error_get_msg(error_t);
  *
  * @param  error_t  the error number
  *
- * @return 1 if the error is fatal, 0 otherwise.
+ * @return true if the error is fatal, false otherwise.
  */
-const int is_fatal(error_t);
+const bool is_fatal(error_t);
 
 /**
  * Log the last error

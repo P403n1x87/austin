@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <sys/types.h>
 
 #ifdef NATIVE
@@ -55,7 +56,7 @@ typedef struct _proc_extra_info proc_extra_info; // Forward declaration.
 typedef struct {
     pid_t      pid;
     proc_ref_t proc_ref;
-    int        child;
+    bool       child;
 
     char* bin_path;
     char* lib_path;
@@ -113,7 +114,7 @@ typedef struct {
  * @return a pointer to the newly created py_proc_t object.
  */
 py_proc_t*
-py_proc_new(int child);
+py_proc_new(bool child);
 
 /**
  * Start the process
@@ -151,9 +152,9 @@ py_proc__wait(py_proc_t*);
  *
  * @param py_proc_t * the process object.
  *
- * @return 1 if the process is still running, 0 otherwise.
+ * @return true if the process is still running, false otherwise.
  */
-int
+bool
 py_proc__is_running(py_proc_t*);
 
 /**
@@ -161,9 +162,9 @@ py_proc__is_running(py_proc_t*);
  *
  * @param py_proc_t * the process object.
  *
- * @return 1 if the process is a Python process, 0 otherwise.
+ * @return true if the process is a Python process, false otherwise.
  */
-int
+bool
 py_proc__is_python(py_proc_t*);
 
 /**
@@ -173,10 +174,10 @@ py_proc__is_python(py_proc_t*);
  *
  * @param py_proc_t * the process object.
  *
- * @return TRUE if the GC is collecting, FALSE otherwise.
+ * @return true if the GC is collecting, false otherwise.
  *
  */
-int
+bool
 py_proc__is_gc_collecting(py_proc_t*);
 
 /**
@@ -227,7 +228,7 @@ py_proc__sample(py_proc_t*);
 /**
  * Log the Python interpreter version
  * @param self  the process object.
- * @param int   whether the process is the parent process.
+ * @param bool  whether the process is the parent process.
  */
 void
 py_proc__log_version(py_proc_t*, int);

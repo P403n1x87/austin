@@ -70,8 +70,8 @@
  * @param  M  requested major version
  * @param  m  requested minor version
  *
- * @return    TRUE if the current version is at least/at most the requested one,
- *            FALSE otherwise.
+ * @return    true if the current version is at least/at most the requested one,
+ *            false otherwise.
  */
 #define V_MIN(M, m) (((py_v->major << 8) | py_v->minor) >= ((M << 8) | m))
 #define V_MAX(M, m) (((py_v->major << 8) | py_v->minor) <= ((M << 8) | m))

@@ -295,19 +295,19 @@ parse_opt(int key, char* arg, struct argp_state* state) {
         break;
 
     case 'b':
-        pargs.binary = 1;
+        pargs.binary = true;
         break;
 
     case 's':
-        pargs.sleepless = 1;
+        pargs.sleepless = true;
         break;
 
     case 'm':
-        pargs.memory = 1;
+        pargs.memory = true;
         break;
 
     case 'f':
-        pargs.full = 1;
+        pargs.full = true;
         break;
 
     case 'p':
@@ -321,7 +321,7 @@ parse_opt(int key, char* arg, struct argp_state* state) {
         break;
 
     case 'C':
-        pargs.children = 1;
+        pargs.children = true;
         break;
 
     case 'x':
@@ -330,11 +330,11 @@ parse_opt(int key, char* arg, struct argp_state* state) {
         break;
 
     case 'P':
-        pargs.pipe = 1;
+        pargs.pipe = true;
         break;
 
     case 'g':
-        pargs.gc = 1;
+        pargs.gc = true;
         break;
 
     case 'h':
@@ -347,13 +347,13 @@ parse_opt(int key, char* arg, struct argp_state* state) {
         if (str_to_num(arg, &l_pid) == 1 || l_pid <= 0)
             argp_error(state, "invalid PID");
         pargs.attach_pid = (pid_t)l_pid;
-        pargs.where      = TRUE;
+        pargs.where      = true;
 
         break;
 
 #ifdef NATIVE
     case 'k':
-        pargs.kernel = 1;
+        pargs.kernel = true;
         break;
 #endif
 
@@ -613,19 +613,19 @@ cb(const char opt, const char* arg, const int index) {
         break;
 
     case 'b':
-        pargs.binary = 1;
+        pargs.binary = true;
         break;
 
     case 's':
-        pargs.sleepless = 1;
+        pargs.sleepless = true;
         break;
 
     case 'm':
-        pargs.memory = 1;
+        pargs.memory = true;
         break;
 
     case 'f':
-        pargs.full = 1;
+        pargs.full = true;
         break;
 
     case 'p':
@@ -638,7 +638,7 @@ cb(const char opt, const char* arg, const int index) {
         if (str_to_num((char*)arg, (long*)&pargs.attach_pid) == 1 || pargs.attach_pid <= 0) {
             arg_error("invalid PID");
         }
-        pargs.where = TRUE;
+        pargs.where = true;
 
         break;
 
@@ -647,7 +647,7 @@ cb(const char opt, const char* arg, const int index) {
         break;
 
     case 'C':
-        pargs.children = 1;
+        pargs.children = true;
         break;
 
     case 'x':
@@ -657,11 +657,11 @@ cb(const char opt, const char* arg, const int index) {
         break;
 
     case 'P':
-        pargs.pipe = 1;
+        pargs.pipe = true;
         break;
 
     case 'g':
-        pargs.gc = 1;
+        pargs.gc = true;
         break;
 
     case 'h':
@@ -700,7 +700,7 @@ static inline void
 validate() {
     if (pargs.binary && pargs.where) {
         // silently ignore the binary option
-        pargs.binary = 0;
+        pargs.binary = false;
     }
 
     if (isvalid(pargs.output_filename)) {

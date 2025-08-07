@@ -62,10 +62,10 @@ stack_allocate(size_t size);
 void
 stack_deallocate(void);
 
-static inline int
+static inline bool
 stack_has_cycle(void) {
     if (_stack->pointer < 2)
-        return FALSE;
+        return false;
 
     // This sucks! :( Worst case is quadratic in the stack height, but if the
     // sampled stacks are short on average, it might still be faster than the
@@ -77,9 +77,9 @@ stack_has_cycle(void) {
 #else
         if (top.origin == _stack->py_base[i].origin)
 #endif
-            return TRUE;
+            return true;
     }
-    return FALSE;
+    return false;
 }
 
 static inline void

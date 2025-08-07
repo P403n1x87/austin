@@ -71,7 +71,7 @@ _infer_thread_id_offset(py_thread_t* py_thread) {
 }
 
 // ----------------------------------------------------------------------------
-int
+bool
 py_thread__is_idle(py_thread_t* self) {
     if (unlikely(_silly_offset == 0)) {
         _infer_thread_id_offset(self);

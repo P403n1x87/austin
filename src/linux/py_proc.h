@@ -427,7 +427,7 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
             map->file_size   = _file_size(map->path);
             map->base        = first_lib_map->address;
             map->size        = first_lib_map->size;
-            map->has_symbols = TRUE;
+            map->has_symbols = true;
             map->bss_base    = bss.base;
             map->bss_size    = bss.size;
 
@@ -449,7 +449,7 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
                     map->file_size   = _file_size(map->path);
                     map->base        = m->address;
                     map->size        = m->size;
-                    map->has_symbols = FALSE;
+                    map->has_symbols = false;
 
                     log_d("Library path: %s (from pattern match)", map->path);
 
@@ -476,7 +476,7 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
             self->map.exe.base  = map->base;
             self->map.exe.size  = map->size;
             maps_flag          |= BIN_MAP;
-            self->sym_loaded    = TRUE;
+            self->sym_loaded    = true;
             break;
         }
     }

@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
 
@@ -54,7 +55,7 @@ typedef struct thread {
 
     void* top_frame;
 
-    int invalid;
+    bool invalid;
 
     /* The per-thread datastack was introduced in Python 3.11 */
     stack_chunk_t* stack;
@@ -109,7 +110,7 @@ int
 py_thread__set_idle(py_thread_t*);
 
 int
-py_thread__set_interrupted(py_thread_t*, int);
+py_thread__set_interrupted(py_thread_t*, bool);
 
 int
 py_thread__is_interrupted(py_thread_t* self);
@@ -118,5 +119,5 @@ int
 py_thread__save_kernel_stack(py_thread_t*);
 #endif
 
-int
+bool
 py_thread__is_idle(py_thread_t*);

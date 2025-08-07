@@ -89,10 +89,10 @@ _py_proc__check_sym(py_proc_t* self, char* name, void* value) {
         if (success(symcmp(name, i))) {
             self->symbols[i] = value;
             log_d("Symbol %s found @ %p", name, value);
-            return TRUE;
+            return true;
         }
     }
-    return FALSE;
+    return false;
 }
 
 // ----------------------------------------------------------------------------
@@ -201,7 +201,7 @@ _find_version_in_binary(char* path, int* version) {
     char*  current_pos  = binary_map->addr;
     int    major, minor, patch;
     major = 0;
-    while (TRUE) {
+    while (true) {
         char* p = memmem(current_pos, current_size, needle, sizeof(needle));
         if (!isvalid(p))
             break;
@@ -652,9 +652,9 @@ _py_proc__find_interpreter_state(py_proc_t* self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__run(py_proc_t* self) {
-    int try_once = self->child;
-    int init     = FALSE;
-    int attempts = 0;
+    bool try_once = self->child;
+    bool init     = false;
+    int  attempts = 0;
 
 #ifdef DEBUG
     if (!try_once)
@@ -678,10 +678,10 @@ _py_proc__run(py_proc_t* self) {
 
     sfree(self->bin_path);
     sfree(self->lib_path);
-    self->sym_loaded = FALSE;
+    self->sym_loaded = false;
 
     if (success(_py_proc__find_interpreter_state(self))) {
-        init = TRUE;
+        init = true;
 
         log_d("Interpreter State de-referenced @ raddr: %p after %d attempts", self->is_raddr, attempts);
 
@@ -741,7 +741,7 @@ _py_proc__run(py_proc_t* self) {
 
 // ----------------------------------------------------------------------------
 py_proc_t*
-py_proc_new(int child) {
+py_proc_new(bool child) {
     py_proc_t* py_proc = (py_proc_t*)calloc(1, sizeof(py_proc_t));
     if (!isvalid(py_proc))
         return NULL;
@@ -885,7 +885,7 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
     register int pos = strlen(exec);
     i                = 1;
     while (argv[i]) {
-        int has_space   = isvalid(strchr(argv[i], ' '));
+        bool has_space  = isvalid(strchr(argv[i], ' '));
         cmd_line[pos++] = ' ';
         if (has_space)
             cmd_line[pos++] = '"';
@@ -1025,7 +1025,7 @@ _py_proc__find_current_thread_offset(py_proc_t* self, void* thread_raddr) {
 }
 
 // ----------------------------------------------------------------------------
-int
+bool
 py_proc__is_running(py_proc_t* self) {
 #if defined PL_WIN /* WIN */
     DWORD ec = 0;
@@ -1040,7 +1040,7 @@ py_proc__is_running(py_proc_t* self) {
 }
 
 // ----------------------------------------------------------------------------
-int
+bool
 py_proc__is_python(py_proc_t* self) {
     return self->is_raddr != NULL;
 }
@@ -1097,7 +1097,7 @@ _py_proc__interrupt_threads(py_proc_t* self, raddr_t* tstate_head_raddr) {
             FAIL;
         }
 
-        if (fail(py_thread__set_interrupted(&py_thread, TRUE))) {
+        if (fail(py_thread__set_interrupted(&py_thread, true))) {
             if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
                 log_d("ptrace: failed to resume interrupted thread %d (errno: %d)", py_thread.tid, errno);
             }
@@ -1132,7 +1132,7 @@ _py_proc__resume_threads(py_proc_t* self, raddr_t* tstate_head_raddr) {
                 FAIL;
             }
             log_t("ptrace: thread %d resumed", py_thread.tid);
-            if (fail(py_thread__set_interrupted(&py_thread, FALSE))) {
+            if (fail(py_thread__set_interrupted(&py_thread, false))) {
                 log_ie("Failed to mark thread as interrupted");
                 FAIL;
             }
@@ -1226,7 +1226,7 @@ _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_
         if (mem_delta == 0 && time_delta == 0)
             continue;
 
-        int is_idle = FALSE;
+        bool is_idle = false;
         if (pargs.full || pargs.sleepless || unlikely(pargs.where)) {
             is_idle = py_thread__is_idle(&py_thread);
             if (!pargs.full && is_idle && pargs.sleepless) {

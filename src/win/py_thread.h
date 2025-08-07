@@ -29,7 +29,7 @@ static PVOID _pi_buffer      = NULL;
 static ULONG _pi_buffer_size = 0;
 
 // ----------------------------------------------------------------------------
-int
+bool
 py_thread__is_idle(py_thread_t* self) {
     ULONG    n;
     NTSTATUS status = NtQuerySystemInformation(SystemProcessInformation, _pi_buffer, _pi_buffer_size, &n);

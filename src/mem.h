@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <sys/types.h>
 
 #include "hints.h"
@@ -211,7 +212,7 @@ get_total_memory(void) {
 
 #elif defined PL_WIN /* WIN */
     ULONGLONG size;
-    return GetPhysicallyInstalledSystemMemory(&size) == TRUE ? size : 0;
+    return GetPhysicallyInstalledSystemMemory(&size) ? size : 0;
 
 #endif
 
@@ -225,7 +226,7 @@ struct vm_map {
     size_t  size;
     void*   bss_base;
     size_t  bss_size;
-    int     has_symbols;
+    bool    has_symbols;
 };
 
 enum {

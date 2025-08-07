@@ -5,6 +5,7 @@ import sys
 from ctypes import CDLL
 from ctypes import POINTER
 from ctypes import Structure
+from ctypes import c_bool
 from ctypes import c_char_p
 from ctypes import c_long
 from ctypes import c_void_p
@@ -196,6 +197,9 @@ class CMethod(CFunction):
         self.__ctype__ = ctype
 
     def __get__(self, obj: Any, objtype: Optional[Type] = None) -> None:
+        if obj is None:
+            return self
+
         def _(*args, **kwargs):
             cargs = [obj.__cself__, *args]
             self.check_args(cargs, kwargs)
@@ -203,11 +207,16 @@ class CMethod(CFunction):
             return self.__cfunc__(*cargs, **kwargs)
 
         _.__cmethod__ = self
+        _.__name__ = (
+            f"<bound CMethod '{self.__ctype__.__name__}.{self.__name__}' "
+            f"of {obj.__cself__}>"
+        )
+        _.__repr__ = lambda self: self.__name__
 
         return _
 
     def __repr__(self) -> str:
-        return f"<CMethod '{self.__name__}' of CType '{self.__ctype__.__name__}'>"
+        return f"<CMethod '{self.__ctype__.__name__}.{self.__name__}'>"
 
 
 class CStaticMethod(CFunction):
@@ -218,7 +227,7 @@ class CStaticMethod(CFunction):
         self.__ctype__ = ctype
 
     def __repr__(self) -> str:
-        return f"<CStaticMethod '{self.__name__}' of CType '{self.__ctype__.__name__}'>"
+        return f"<CStaticMethod '{self.__ctype__.__name__}.{self.__name__}'>"
 
 
 class CMetaType(type(Structure)):
@@ -270,12 +279,17 @@ class DeclCollector(c_ast.NodeVisitor):
         if isinstance(node.type, c_ast.FuncDecl):
             func_name = node.name
             ret_type = node.type.type
-            rtype = None
+            rtype: Optional[Any] = None
 
             if isinstance(ret_type, c_ast.TypeDecl) and isinstance(
                 ret_type.type, c_ast.IdentifierType
             ):  # Non-pointer return type
-                rtype = getattr(ctypes, f"c_{''.join(ret_type.type.names)}", c_long)
+                type_name = "".join(ret_type.type.names)
+                rtype = (
+                    c_bool
+                    if type_name == "_Bool"
+                    else getattr(ctypes, f"c_{type_name}", c_long)
+                )
 
             elif isinstance(ret_type, c_ast.PtrDecl) and isinstance(
                 ret_type.type.type, c_ast.IdentifierType

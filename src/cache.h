@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -89,9 +90,9 @@ queue_new(int, void (*)(value_t));
  *
  * @param self  the queue
  *
- * @return TRUE if the queue is full, else FALSE.
+ * @return true if the queue is full, else false.
  */
-int
+bool
 queue__is_full(queue_t*);
 
 /**
@@ -99,9 +100,9 @@ queue__is_full(queue_t*);
  *
  * @param self  the queue
  *
- * @return TRUE if the queue is empty, else FALSE.
+ * @return true if the queue is empty, else false.
  */
-int
+bool
 queue__is_empty(queue_t*);
 
 /**
@@ -191,7 +192,7 @@ chain_t* chain_new(key_dt, value_t);
  *
  * @param self  the chain.
  *
- * @return TRUE if the chain is empty (i.e. there is no next element), FALSE
+ * @return true if the chain is empty (i.e. there is no next element), false
  *         otherwise.
  */
 #define chain__is_empty(chain) (!isvalid(chain->next))
@@ -237,9 +238,9 @@ chain__find(chain_t*, key_dt);
  * @param self  the chain to check
  * @param key   the key to match.
  *
- * @return TRUE if the chain has an item with the given key, FALSE otherwise.
+ * @return true if the chain has an item with the given key, false otherwise.
  */
-int
+bool
 chain__has(chain_t*, key_dt);
 
 /**
@@ -282,10 +283,10 @@ hash_table__get(hash_table_t*, key_dt);
  *
  * @param self  the hash table
  *
- * @return TRUE if the hash table has grown over the load factor, FALSE
+ * @return true if the hash table has grown over the load factor, false
  * otherwise.
  */
-int
+bool
 hash_table__is_full(hash_table_t*);
 
 /**
@@ -393,9 +394,9 @@ lru_cache__maybe_hit(lru_cache_t*, key_dt);
  *
  * @param self  the cache
  *
- * @return TRUE if the cache is full, else FALSE.
+ * @return true if the cache is full, else false.
  */
-int
+bool
 lru_cache__is_full(lru_cache_t*);
 
 /**

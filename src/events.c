@@ -88,9 +88,9 @@ collapsed_stack_kernel_frame_ref(const char* format, char* scope) {
 void
 collapsed_stack_event_handler__handle_stack_end(base_event_handler_t* self) {
 #ifdef NATIVE
-    int has_cframes = FALSE;
+    bool has_cframes = false;
     if (stack_top() == CFRAME_MAGIC) {
-        has_cframes = TRUE;
+        has_cframes = true;
         (void)stack_pop();
     }
 
@@ -102,7 +102,8 @@ collapsed_stack_event_handler__handle_stack_end(base_event_handler_t* self) {
         }
         cached_string_t* scope = native_frame->scope;
 
-        int is_frame_eval = (scope == UNKNOWN_SCOPE) ? FALSE : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
+        bool is_frame_eval
+            = (scope == UNKNOWN_SCOPE) ? false : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
         if (!stack_is_empty() && is_frame_eval) {
             // TODO: if the py stack is empty we have a mismatch.
             frame_t* frame = stack_pop();
@@ -221,9 +222,9 @@ mojo_event_handler__handle_new_frame(base_event_handler_t* self, frame_t* frame)
 static inline void
 mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
 #ifdef NATIVE
-    int has_cframes = FALSE;
+    bool has_cframes = false;
     if (stack_top() == CFRAME_MAGIC) {
-        has_cframes = TRUE;
+        has_cframes = true;
         (void)stack_pop();
     }
 
@@ -234,7 +235,8 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
             break;                         // GCOV_EXCL_STOP
         }
         cached_string_t* scope = native_frame->scope;
-        int is_frame_eval = (scope == UNKNOWN_SCOPE) ? FALSE : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
+        bool             is_frame_eval
+            = (scope == UNKNOWN_SCOPE) ? false : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
         if (!stack_is_empty() && is_frame_eval) {
             // TODO: if the py stack is empty we have a mismatch.
             frame_t* frame = stack_pop();
@@ -337,9 +339,9 @@ where_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sa
 void
 where_event_handler__handle_stack_end(base_event_handler_t* self) {
 #ifdef NATIVE
-    int has_cframes = FALSE;
+    bool has_cframes = false;
     if (stack_top() == CFRAME_MAGIC) {
-        has_cframes = TRUE;
+        has_cframes = true;
         (void)stack_pop();
     }
 
@@ -354,7 +356,8 @@ where_event_handler__handle_stack_end(base_event_handler_t* self) {
             scope = UNKNOWN_SCOPE; // GCOV_EXCL_LINE
         }
 
-        int is_frame_eval = (scope == UNKNOWN_SCOPE) ? FALSE : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
+        bool is_frame_eval
+            = (scope == UNKNOWN_SCOPE) ? false : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
         if (!stack_is_empty() && is_frame_eval) {
             // TODO: if the py stack is empty we have a mismatch.
             frame_t* frame = stack_pop();

@@ -34,7 +34,7 @@
 #include "../resources.h"
 
 // ----------------------------------------------------------------------------
-int
+bool
 py_thread__is_idle(py_thread_t* self) {
 #ifdef NATIVE
     size_t index  = self->tid >> 3;

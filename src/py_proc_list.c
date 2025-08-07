@@ -74,7 +74,7 @@ _py_proc_list__add(py_proc_list_t* self, py_proc_t* py_proc) {
 } /* _py_proc_list__add */
 
 // ----------------------------------------------------------------------------
-static int
+static bool
 _py_proc_list__has_pid(py_proc_list_t* self, pid_t pid) {
     return isvalid(lookup__get(self->py_proc_for_pid, pid));
 } /* _py_proc_list__has_pid */
@@ -139,7 +139,7 @@ void
 py_proc_list__add_proc_children(py_proc_list_t* self, uintptr_t ppid) {
     lookup__iteritems_start(self->ppid_for_pid, key_dt, pid, value_t, pid_ppid) {
         if (pid_ppid == (value_t)ppid && !_py_proc_list__has_pid(self, pid)) {
-            py_proc_t* child_proc = py_proc_new(TRUE);
+            py_proc_t* child_proc = py_proc_new(true);
             if (child_proc == NULL)
                 continue;
 
@@ -149,7 +149,7 @@ py_proc_list__add_proc_children(py_proc_list_t* self, uintptr_t ppid) {
             }
 
             _py_proc_list__add(self, child_proc);
-            py_proc__log_version(child_proc, FALSE);
+            py_proc__log_version(child_proc, false);
             py_proc_list__add_proc_children(self, pid);
         }
     }
@@ -157,7 +157,7 @@ py_proc_list__add_proc_children(py_proc_list_t* self, uintptr_t ppid) {
 } /* py_proc_list__add_proc_children */
 
 // ----------------------------------------------------------------------------
-int
+bool
 py_proc_list__is_empty(py_proc_list_t* self) {
     return !isvalid(self->first);
 } /* py_proc_list__is_empty */
