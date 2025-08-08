@@ -732,6 +732,25 @@ _py_proc__run(py_proc_t* self) {
     self->unwind.as = unw_create_addr_space(&_UPT_accessors, 0);
 #endif
 
+    V_DESC(self->py_v);
+
+    size_t page_size = get_page_size();
+    size_t com       = (py_v->py_is.o_gc + py_v->py_is.o_gil_state + py_v->py_is.o_id + py_v->py_is.o_next
+                  + py_v->py_is.o_tstate_head)
+               / 5;
+
+    self->interpreter_state_com.base_offset = com & ~(page_size - 1);
+    self->interpreter_state_com.size        = page_size;
+    if (unlikely(self->interpreter_state_com.base_offset + page_size > py_v->py_is.size)) {
+        self->interpreter_state_com.size = py_v->py_is.size - self->interpreter_state_com.base_offset;
+    }
+    self->interpreter_state_com.data = malloc(self->interpreter_state_com.size);
+
+    log_d(
+        "Interpreter state CoM(base=%zu, size=%zu)", self->interpreter_state_com.base_offset,
+        self->interpreter_state_com.size
+    );
+
     log_d("Python process initialization successful");
 
     SUCCESS;
@@ -1149,6 +1168,21 @@ _py_proc__resume_threads(py_proc_t* self, raddr_t* tstate_head_raddr) {
 #endif
 
 // ----------------------------------------------------------------------------
+// Get an interpreter state field from the prefetch buffer or fall back to
+// copying the field from the remote process.
+#define _py_proc__get_interpreter_state_field(self, interp, field, dst)                          \
+    (self->py_v->py_is.o_##field >= self->interpreter_state_com.base_offset                      \
+             && self->py_v->py_is.o_##field                                                      \
+                    < self->interpreter_state_com.base_offset + self->interpreter_state_com.size \
+         ? memcpy(                                                                               \
+               &dst,                                                                             \
+               self->interpreter_state_com.data                                                  \
+                   + (self->py_v->py_is.o_##field - self->interpreter_state_com.base_offset),    \
+               sizeof(dst)                                                                       \
+           ) != &dst                                                                             \
+         : py_proc__copy_field_v(self, is, field, interp, dst))
+
+// ----------------------------------------------------------------------------
 static inline int
 _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_delta) {
     ssize_t mem_delta      = 0;
@@ -1157,7 +1191,7 @@ _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_
     V_DESC(self->py_v);
 
     void* tstate_head = NULL;
-    if (fail(py_proc__copy_field_v(self, is, tstate_head, interp, tstate_head))) {
+    if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, tstate_head))) {
         log_ie("Failed to get pointer to thread state head while sampling");
         FAIL;
     }
@@ -1182,7 +1216,7 @@ _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_
         // Use the current thread to determine which thread is manipulating memory
         if (V_MIN(3, 12)) {
             void* gil_state_raddr = NULL;
-            if (fail(py_proc__copy_field_v(self, is, gil_state, interp, gil_state_raddr))) {
+            if (fail(_py_proc__get_interpreter_state_field(self, interp, gil_state, gil_state_raddr))) {
                 log_ie("Failed to get pointer to gil_state");
                 FAIL;
             }
@@ -1199,7 +1233,7 @@ _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_
     }
 
     int64_t interp_id = 0;
-    if (fail(py_proc__copy_field_v(self, is, id, interp, interp_id))) {
+    if (fail(_py_proc__get_interpreter_state_field(self, interp, id, interp_id))) {
         log_ie("Failed to get interpreter ID");
         FAIL;
     }
@@ -1276,6 +1310,26 @@ _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_
 } /* _py_proc__sample_interpreter */
 
 // ----------------------------------------------------------------------------
+static inline int
+_py_proc__prefetch_interpreter_state(py_proc_t* self, void* interp) {
+    if (!isvalid(self)) {
+        set_error(EPROC);
+        FAIL;
+    }
+
+    // The interpreter state structure is quite large, so we prefetch the
+    // chunk that we are more likely to need.
+    if (fail(copy_memory(
+            self->proc_ref, interp + self->interpreter_state_com.base_offset, self->interpreter_state_com.size,
+            self->interpreter_state_com.data
+        ))) {
+        FAIL;
+    }
+
+    SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
 int
 py_proc__sample(py_proc_t* self) {
     microseconds_t time_delta     = gettime() - self->timestamp; // Time delta since last sample.
@@ -1284,8 +1338,11 @@ py_proc__sample(py_proc_t* self) {
     V_DESC(self->py_v);
 
     do {
+        if (fail(_py_proc__prefetch_interpreter_state(self, current_interp)))
+            FAIL;
+
         void* tstate_head = NULL;
-        if (fail(py_proc__copy_field_v(self, is, tstate_head, current_interp, tstate_head))) {
+        if (fail(_py_proc__get_interpreter_state_field(self, current_interp, tstate_head, tstate_head))) {
             log_ie("Failed to get pointer to thread state head");
             FAIL;
         }
@@ -1315,7 +1372,7 @@ py_proc__sample(py_proc_t* self) {
         if (fail(result))
             continue;
 
-        if (fail(py_proc__copy_field_v(self, is, next, current_interp, current_interp))) {
+        if (fail(_py_proc__get_interpreter_state_field(self, current_interp, next, current_interp))) {
             log_ie("Failed to get next interpreter state");
             FAIL;
         }
@@ -1409,6 +1466,7 @@ py_proc__destroy(py_proc_t* self) {
 
     sfree(self->bin_path);
     sfree(self->lib_path);
+    sfree(self->interpreter_state_com.data);
     sfree(self->extra);
 
     lru_cache__destroy(self->string_cache);

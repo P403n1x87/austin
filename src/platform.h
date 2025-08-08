@@ -83,3 +83,9 @@ typedef HANDLE proc_ref_t;
  */
 size_t
 pid_max();
+
+/**
+ * Get the page size for the platform.
+ */
+size_t
+get_page_size();

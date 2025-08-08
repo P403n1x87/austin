@@ -22,6 +22,7 @@
 
 #include <stdbool.h>
 #include <stdio.h>
+#include <unistd.h>
 
 #include "hints.h"
 #include "platform.h"
@@ -56,5 +57,18 @@ pid_max() {
 
 #endif
 
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+size_t
+get_page_size() {
+#if defined PL_UNIX /* UNIX */
+    return sysconf(_SC_PAGESIZE);
+#elif defined PL_WIN /* WIN */
+    SYSTEM_INFO si;
+    GetSystemInfo(&si);
+    return si.dwPageSize;
+#endif
     return 0;
 }
