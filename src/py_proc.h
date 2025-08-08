@@ -51,6 +51,12 @@ typedef struct {
     proc_vm_map_block_t runtime; // Added in Python 3.11
 } proc_vm_map_t;
 
+typedef struct {
+    size_t base_offset;
+    size_t size;
+    void*  data;
+} com_t;
+
 typedef struct _proc_extra_info proc_extra_info; // Forward declaration.
 
 typedef struct {
@@ -100,6 +106,8 @@ typedef struct {
     _PyRuntimeState*    rs;
     PyInterpreterState* is;
     PyThreadState*      ts;
+
+    com_t interpreter_state_com;
 
     // Platform-dependent fields
     proc_extra_info* extra;
