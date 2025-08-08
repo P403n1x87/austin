@@ -73,6 +73,9 @@ typedef unsigned long long mojo_int_t;
 
 static inline void
 mojo_integer(mojo_int_t integer, int sign) {
+    char  buffer[sizeof(mojo_int_t) << 1];
+    char* ptr = buffer;
+
     unsigned char byte = integer & 0x3f;
     if (sign) {
         byte |= 0x40;
@@ -83,7 +86,7 @@ mojo_integer(mojo_int_t integer, int sign) {
         byte |= 0x80;
     }
 
-    fputc(byte, pargs.output_file);
+    *ptr++ = byte;
 
     while (integer) {
         byte      = integer & 0x7f;
@@ -91,8 +94,10 @@ mojo_integer(mojo_int_t integer, int sign) {
         if (integer) {
             byte |= 0x80;
         }
-        fputc(byte, pargs.output_file);
+        *ptr++ = byte;
     }
+
+    fwrite(buffer, ptr - buffer, 1, pargs.output_file);
 }
 
 // We expect the least significant bits to be varied enough to provide a valid
