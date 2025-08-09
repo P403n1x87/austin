@@ -4,6 +4,7 @@ import typing as t
 import zipfile
 from itertools import product
 from pathlib import Path
+from subprocess import CompletedProcess
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -30,6 +31,32 @@ class VersionedVariant(Variant):
     def __init__(self, name: str, version: str) -> None:
         super().__init__(name)
         self.version = version
+
+    @property
+    def version_info(self) -> t.Tuple[int, ...]:
+        if self.version == "dev":
+            return (float("inf"), float("inf"), float("inf"))
+        return tuple(int(part) for part in self.version.split("."))
+
+    def __call__(
+        self,
+        *args: str,
+        timeout: int = 60,
+        mojo: bool = False,
+        convert: bool = True,
+        expect_fail: t.Union[bool, int] = False,
+    ) -> CompletedProcess:
+        # Convert `-c` to `-s` for versions < 4.0.0
+        if self.version_info < (4, 0, 0):
+            args = tuple(a.replace("c", "s") if a.startswith("-") else a for a in args)
+
+        return super().__call__(
+            *args,
+            timeout=timeout,
+            mojo=mojo,
+            convert=convert,
+            expect_fail=expect_fail,
+        )
 
     def __repr__(self) -> str:
         return f"VersionedVariant(name={self.name!r}, version={self.version!r})"

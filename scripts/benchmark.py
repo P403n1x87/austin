@@ -29,7 +29,7 @@ SCENARIOS = [
         (
             "austin",
             f"CPU time [sampling interval: {i}]",
-            ["-Psi", str(i), sys.executable, target("target34.py")],
+            ["-Pci", str(i), sys.executable, target("target34.py")],
         )
         for i in (1, 10, 100, 1000)
     ],
@@ -37,7 +37,7 @@ SCENARIOS = [
         (
             "austin",
             f"RSA keygen [sampling interval: {i}]",
-            ["-Psi", str(i), sys.executable, "-m", "test.bm.rsa_key_generator"],
+            ["-Pci", str(i), sys.executable, "-m", "test.bm.rsa_key_generator"],
         )
         for i in (1, 10, 100, 1000)
     ],
