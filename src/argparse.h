@@ -23,18 +23,24 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
 
 #include "platform.h"
-#include "stats.h"
+
+typedef uint64_t microseconds_t;
+typedef uint64_t milliseconds_t;
+typedef uint64_t seconds_t;
+
+#define MICROSECONDS_MAX UINT64_MAX
 
 typedef struct {
     microseconds_t t_sampling_interval;
-    ctime_t        timeout;
+    milliseconds_t timeout;
     pid_t          attach_pid;
-    int            cmd_index;
+    char**         cmd;
     bool           where;
     bool           cpu;
     bool           full;
@@ -42,7 +48,7 @@ typedef struct {
     FILE*          output_file;
     char*          output_filename;
     bool           children;
-    ctime_t        exposure;
+    seconds_t      exposure;
     bool           pipe;
     bool           gc;
 #ifdef NATIVE
@@ -65,7 +71,7 @@ extern parsed_args_t pargs;
 #define ARG_INVALID_VALUE         -4
 #define ARG_UNEXPECTED_OPT_ARG    -5
 
-void
+int
 parse_args(int argc, char** argv);
 
 // TODO: Implement error.

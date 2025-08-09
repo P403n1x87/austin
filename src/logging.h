@@ -26,6 +26,8 @@
 #define DEBUG
 #endif
 
+#include <inttypes.h>
+
 #include "argparse.h"
 #include "austin.h"
 
@@ -50,6 +52,8 @@
 #define COMPILER_MINOR _MSC_VER % 100
 #define COMPILER_PATCH _MSC_BUILD
 #endif
+
+#define MICROSECONDS_FMT "%" PRIu64
 
 #ifdef NATIVE
 #define log_header()                                                                                               \
@@ -105,15 +109,6 @@ log_i(const char*, ...);
 
 void
 log_m(const char*, ...); // metrics
-
-/**
- * Log indirect error.
- *
- * Messages logged this way are prepended with a symbol that indicates that
- * they are a consequence of the error right above. A root cause is then an
- * unprefixed error/fatal log entry.
- */
-#define log_ie(msg) log_e("> " msg)
 
 #ifdef DEBUG
 void

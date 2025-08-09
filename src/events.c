@@ -120,10 +120,11 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
             mojo_frame_ref(native_frame);
         }
     }
+#ifdef DEBUG
     if (!stack_is_empty()) {
         log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
-        set_error(ETHREADINV);
     }
+#endif
     while (!stack_kernel_is_empty()) {
         char* scope = stack_kernel_pop();
         mojo_frame_kernel(scope);
@@ -263,10 +264,11 @@ where_event_handler__handle_stack_end(base_event_handler_t* self) {
             format_frame_ref(WHERE_SAMPLE_FORMAT_NATIVE, native_frame);
         }
     }
+#ifdef DEBUG
     if (!stack_is_empty()) {
         log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
-        set_error(ETHREADINV);
     }
+#endif
     while (!stack_kernel_is_empty()) {
         char* scope = stack_kernel_pop();
         format_kernel_frame_ref(WHERE_SAMPLE_FORMAT_KERNEL, scope);

@@ -22,8 +22,24 @@
 
 #pragma once
 
+#include "error.h"
+
 #define SUCCESS return 0
-#define FAIL    return 1
+#define FAIL            \
+    {                   \
+        log_location(); \
+        return 1;       \
+    }
+#define STOP(x)                     \
+    {                               \
+        austin_errno = AUSTIN_E##x; \
+        return 1;                   \
+    }
+#define RETURN_NULL     \
+    {                   \
+        log_location(); \
+        return NULL;    \
+    }
 
 #define success(x) (!(x))
 #define fail(x)    (x)

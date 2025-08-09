@@ -27,30 +27,14 @@
 #include "error.h"
 #include "platform.h"
 
-#define MAXERROR 15
+#define MAXERROR [[max_error]]
 
 typedef struct {
     char* msg;
     bool  fatal;
 } error_info_t;
 
-const error_info_t _error_info_tab[MAXERROR] = {
-    {"No error",                false}, /* OK */
-    {"Operating system error",  true }, /* OS */
-    {"Permission error",        true }, /* PERM */
-    {"Memory copy error",       true }, /* MEMCOPY */
-    {"Memory allocation error", true }, /* MALLOC */
-    {"I/O error",               true }, /* IO */
-    {"Command line error",      true }, /* CMDLINE */
-    {"Environment error",       true }, /* ENV */
-    {"Value error",             false}, /* VALUE */
-    {"Null pointer error",      true }, /* NULL */
-    {"Python version error",    true }, /* VERSION */
-    {"Binary analysis error",   false}, /* BINARY */
-    {"Python object error",     false}, /* PYOBJECT */
-    {"VM maps error",           false}, /* VM */
-    {"Iteration ended error",   false}, /* ITEREND */
-};
+const error_info_t _error_info_tab[MAXERROR] = {[[error_info_table]]};
 
 const char*
 error_get_msg(error_t n) {

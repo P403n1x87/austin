@@ -46,8 +46,6 @@ typedef struct thread {
 
     void* top_frame;
 
-    bool invalid;
-
     /* The per-thread datastack was introduced in Python 3.11 */
     stack_chunk_t* stack;
 

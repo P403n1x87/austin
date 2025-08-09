@@ -83,7 +83,7 @@ _py_proc__analyze_pe(py_proc_t* self, char* path, void* base) {
     IMAGE_SECTION_HEADER* s_hdr   = (IMAGE_SECTION_HEADER*)(pMapping + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
 
     if (nt_hdr->Signature != IMAGE_NT_SIGNATURE) {
-        set_error(EPROC);
+        set_error(BINARY, "Invalid PE file");
         FAIL;
     }
 
@@ -114,7 +114,7 @@ _py_proc__analyze_pe(py_proc_t* self, char* path, void* base) {
     }
 
     if (!self->sym_loaded) {
-        set_error(EPROC);
+        set_error(BINARY, "No symbols found");
         FAIL;
     }
 
@@ -133,8 +133,7 @@ static int
 _py_proc__try_child_proc(py_proc_t* self) {
     cu_HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (h == INVALID_HANDLE_VALUE) {
-        log_e("Cannot inspect processes details");
-        set_error(EPROC);
+        set_error(OS, "Failed to create process snapshot");
         FAIL;
     }
 
@@ -184,7 +183,7 @@ rollback:
     self->pid      = orig_pid;
     self->proc_ref = orig_hproc;
 
-    set_error(EPROC);
+    set_error(OS, "Failed to find a single Python child process");
     FAIL;
 }
 
@@ -194,7 +193,7 @@ _py_proc__get_modules(py_proc_t* self) {
     cu_HANDLE mod_hdl;
     mod_hdl = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, self->pid);
     if (mod_hdl == INVALID_HANDLE_VALUE) {
-        set_error(EPROC);
+        set_error(OS, "Failed to create module snapshot");
         FAIL;
     }
 
@@ -206,8 +205,7 @@ _py_proc__get_modules(py_proc_t* self) {
 
     cu_void* pd_mem = calloc(1, sizeof(struct proc_desc));
     if (!isvalid(pd_mem)) {
-        log_ie("Cannot allocate memory for proc_desc");
-        set_error(EPROC);
+        set_error(MALLOC, "Failed to allocate memory for proc_desc");
         FAIL;
     }
     struct proc_desc* pd          = pd_mem;
@@ -216,15 +214,13 @@ _py_proc__get_modules(py_proc_t* self) {
     struct vm_map*    map         = NULL;
 
     if (GetModuleFileNameEx(self->proc_ref, NULL, pd->exe_path, sizeof(pd->exe_path)) == 0) {
-        log_ie("Cannot get executable path");
-        set_error(EPROC);
+        set_error(OS, "Failed to get executable path from module");
         FAIL;
     }
     log_d("Executable path: %s", pd->exe_path);
 
     if (!Module32First(mod_hdl, &module)) {
-        log_ie("Cannot get first module");
-        set_error(EPROC);
+        set_error(OS, "Failed to get first module");
         FAIL;
     }
     do {
@@ -235,8 +231,7 @@ _py_proc__get_modules(py_proc_t* self) {
         sfree(prev_path);
         prev_path = strdup(module.szExePath);
         if (!isvalid(prev_path)) {
-            log_ie("Cannot duplicate path name");
-            set_error(EPROC);
+            set_error(MALLOC, "Failed to allocate memory for previous path");
             FAIL;
         }
 
@@ -247,8 +242,7 @@ _py_proc__get_modules(py_proc_t* self) {
             map       = &(pd->maps[MAP_BIN]);
             map->path = strdup(module.szExePath);
             if (!isvalid(map->path)) {
-                log_ie("Cannot duplicate path name");
-                set_error(EPROC);
+                set_error(MALLOC, "Failed to allocate memory for map path");
                 FAIL;
             }
             map->file_size   = module.modBaseSize;
@@ -271,8 +265,7 @@ _py_proc__get_modules(py_proc_t* self) {
                 map       = &(pd->maps[MAP_LIBSYM]);
                 map->path = strdup(module.szExePath);
                 if (!isvalid(map->path)) {
-                    log_ie("Cannot duplicate path name");
-                    set_error(EPROC);
+                    set_error(MALLOC, "Failed to allocate memory for map path");
                     FAIL;
                 }
                 map->file_size   = module.modBaseSize;
@@ -295,8 +288,7 @@ _py_proc__get_modules(py_proc_t* self) {
                         map       = &(pd->maps[MAP_LIBNEEDLE]);
                         map->path = needle_path = strdup(module.szExePath);
                         if (!isvalid(map->path)) {
-                            log_ie("Cannot duplicate path name");
-                            set_error(EPROC);
+                            set_error(MALLOC, "Failed to allocate memory for map path");
                             FAIL;
                         }
                         map->file_size   = module.modBaseSize;
@@ -340,7 +332,7 @@ _py_proc__get_modules(py_proc_t* self) {
     log_d("VM maps parsing result: bin=%s lib=%s symbols=%d", self->bin_path, self->lib_path, self->sym_loaded);
 
     if (!self->sym_loaded) {
-        set_error(EPROC);
+        set_error(BINARY, "Cannot find symbols in binary");
         FAIL;
     }
 
@@ -359,7 +351,7 @@ _py_proc__get_resident_memory(py_proc_t* self) {
 static int
 _py_proc__init(py_proc_t* self) {
     if (!isvalid(self)) {
-        set_error(EPROC);
+        set_error(NULL, "Invalid process structure");
         FAIL;
     }
 

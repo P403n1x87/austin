@@ -23,6 +23,7 @@
 #pragma once
 
 #include "cache.h"
+#include "error.h"
 #include "events.h"
 #include "py_proc.h"
 #include "py_string.h"
@@ -52,7 +53,8 @@ frame_new(
 ) {
     frame_t* frame = (frame_t*)malloc(sizeof(frame_t));
     if (!isvalid(frame)) {
-        return NULL;
+        set_error(MALLOC, "Cannot allocate memory for frame");
+        RETURN_NULL;
     }
 
     frame->key      = key;
@@ -115,7 +117,7 @@ _frame_from_code_raddr(py_proc_t* py_proc, void* code_raddr, int lasti) {
     if (!isvalid(code)) {
         code = _code_from_code_raddr(py_proc, code_raddr);
         if (!isvalid(code))
-            return NULL;
+            RETURN_NULL;
         lru_cache__store(py_proc->code_cache, (key_dt)code_raddr, code);
     }
 
@@ -129,8 +131,8 @@ _frame_from_code_raddr(py_proc_t* py_proc, void* code_raddr, int lasti) {
 
     if (V_MIN(3, 11)) {
         if (!isvalid(lnotab) || len == 0) {
-            log_ie("Cannot get line information from PyCodeObject");
-            return NULL;
+            set_error(PYOBJECT, "Invalid code location table");
+            RETURN_NULL;
         }
 
         for (size_t i = 0, bc = 0; i < len; i++) {
@@ -176,8 +178,8 @@ _frame_from_code_raddr(py_proc_t* py_proc, void* code_raddr, int lasti) {
         }
     } else {
         if (!isvalid(lnotab) || len % 2) {
-            log_ie("Cannot get line information from PyCodeObject");
-            return NULL;
+            set_error(PYOBJECT, "Invalid code location table");
+            RETURN_NULL;
         }
 
         if (V_MIN(3, 10)) {

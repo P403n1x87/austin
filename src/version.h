@@ -317,8 +317,7 @@ python_v python_v3_13;
 // ----------------------------------------------------------------------------
 static inline python_v*
 get_version_descriptor(int major, int minor, int patch) {
-    if (major == 0 && minor == 0)
-        return NULL;
+    log_d("Requested version descriptor for Python version %d.%d.%d", major, minor, patch);
 
     python_v* py_v = NULL;
 
@@ -361,6 +360,10 @@ get_version_descriptor(int major, int minor, int patch) {
         py_v->major = major;
         py_v->minor = minor;
         py_v->patch = patch;
+    }
+
+    if (!isvalid(py_v)) {
+        set_error(VERSION, "Unsupported Python version");
     }
 
     return py_v;

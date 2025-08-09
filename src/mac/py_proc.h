@@ -311,15 +311,12 @@ _py_proc__analyze_macho(py_proc_t* self, char* path, void* base, mach_vm_size_t 
     struct stat* fs        = (struct stat*)fs_buffer;
     cu_map_t*    map       = NULL;
     if (fstat(fd, fs) == -1) { // Get file size
-        log_e("Cannot get size of binary %s", path);
-        set_error(EPROC);
+        set_error(IO, "Cannot determine size of binary file");
         FAIL; // cppcheck-suppress [memleak]
     }
 
     map = map_new(fd, fs->st_size, MAP_SHARED);
     if (!isvalid(map)) {
-        log_e("Cannot map binary %s", path);
-        set_error(EPROC);
         FAIL; // cppcheck-suppress [memleak]
     }
 
@@ -359,14 +356,14 @@ check_pid(pid_t pid) {
     proc.pbi_status = SIDL;
 
     if (proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &proc, PROC_PIDTBSDINFO_SIZE) == -1) {
-        set_error(EPROCNPID);
+        set_error(OS, "Cannot retrieve process information");
         FAIL;
     }
 
     log_t("check_pid :: %d", proc.pbi_status);
 
     if (proc.pbi_status == SIDL || proc.pbi_status == 32767) {
-        set_error(EPROCNPID);
+        set_error(OS, "Process has unexpected status");
         FAIL;
     }
 
@@ -386,8 +383,8 @@ pid_to_task(pid_t pid) {
 
     result = task_for_pid(mach_task_self(), pid, &task);
     if (result != KERN_SUCCESS) {
-        log_d("Call to task_for_pid failed on PID %d: %s", pid, mach_error_string(result));
-        set_error(EPROCPERM);
+        set_error(PERM, "Cannot obtain task for PID");
+        log_location();
         return 0;
     }
     return task;
@@ -410,7 +407,7 @@ _py_proc__get_maps(py_proc_t* self) {
     cu_char* needle_path = NULL;
     cu_char* path        = (char*)calloc(MAXPATHLEN + 1, sizeof(char));
     if (!isvalid(path)) {
-        set_error(EPROC);
+        set_error(MALLOC, "Cannot allocate memory for map path");
         FAIL;
     }
 
@@ -419,24 +416,22 @@ _py_proc__get_maps(py_proc_t* self) {
 
     cu_void* pd_mem = calloc(1, sizeof(struct proc_desc));
     if (!isvalid(pd_mem)) {
-        log_ie("Cannot allocate memory for proc_desc");
-        set_error(EPROC);
+        set_error(MALLOC, "Cannot allocate memory for proc_desc");
         FAIL; // cppcheck-suppress [memleak]
     }
     struct proc_desc* pd = pd_mem;
 
-    if (proc_pidpath(self->pid, pd->exe_path, sizeof(pd->exe_path)) < 0) {
-        log_w("Cannot get executable path for process %d", self->pid);
+    if (proc_pidpath(self->pid, pd->exe_path, sizeof(pd->exe_path)) <= 0) {
+        log_w("Cannot get executable path for process %d: %s", self->pid, strerror(errno));
     }
     if (strlen(pd->exe_path) == 0) {
-        set_error(EPROC);
+        set_error(OS, "Invalid process executable path");
         FAIL; // cppcheck-suppress [memleak]
     }
     log_d("Executable path: '%s'", pd->exe_path);
 
     self->proc_ref = pid_to_task(self->pid);
     if (self->proc_ref == 0) {
-        log_ie("Cannot get task for PID");
         FAIL; // cppcheck-suppress [memleak]
     }
 
@@ -464,8 +459,7 @@ _py_proc__get_maps(py_proc_t* self) {
         sfree(prev_path);
         prev_path = strndup(path, path_len);
         if (!isvalid(prev_path)) {
-            log_ie("Cannot duplicate path name");
-            set_error(EPROC);
+            set_error(MALLOC, "Cannot duplicate path name");
             FAIL;
         }
 
@@ -477,8 +471,7 @@ _py_proc__get_maps(py_proc_t* self) {
             map       = &(pd->maps[MAP_BIN]);
             map->path = strndup(path, strlen(path));
             if (!isvalid(map->path)) {
-                log_ie("Cannot duplicate path name");
-                set_error(EPROC);
+                set_error(MALLOC, "Cannot duplicate executable path name");
                 FAIL;
             }
 
@@ -502,8 +495,7 @@ _py_proc__get_maps(py_proc_t* self) {
                 map       = &(pd->maps[MAP_LIBSYM]);
                 map->path = strndup(path, strlen(path));
                 if (!isvalid(map->path)) {
-                    log_ie("Cannot duplicate path name");
-                    set_error(EPROC);
+                    set_error(MALLOC, "Cannot duplicate library path name");
                     FAIL;
                 }
                 map->file_size   = size;
@@ -527,8 +519,7 @@ _py_proc__get_maps(py_proc_t* self) {
                         map       = &(pd->maps[MAP_LIBNEEDLE]);
                         map->path = needle_path = strndup(path, strlen(path));
                         if (!isvalid(map->path)) {
-                            log_ie("Cannot duplicate path name");
-                            set_error(EPROC);
+                            set_error(MALLOC, "Cannot duplicate library (needle) path name");
                             FAIL;
                         }
                         map->file_size   = size;
@@ -574,7 +565,7 @@ _py_proc__get_maps(py_proc_t* self) {
     self->map.bss.size = pd->maps[map_index].bss_size;
 
     if (!self->sym_loaded) {
-        set_error(EPROC);
+        set_error(BINARY, "Cannot detect symbols in library");
         FAIL;
     }
 
@@ -599,7 +590,7 @@ static int
 _py_proc__init(py_proc_t* self) {
     log_t("macOS: py_proc init");
     if (!isvalid(self)) {
-        set_error(EPROC);
+        set_error(NULL, "Invalid process structure");
         FAIL;
     }
 

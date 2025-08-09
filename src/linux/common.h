@@ -62,7 +62,12 @@ wait_ptrace(enum __ptrace_request request, pid_t pid, void* addr, void* data) {
         log_d("ptrace long wait for request %d: " MICROSECONDS_FMT " microseconds", request, wait);
 #endif
 
-    return outcome;
+    if (fail(outcome)) {
+        set_error(OS, "wait for ptrace request failed");
+        FAIL;
+    }
+
+    SUCCESS;
 }
 
 #endif
@@ -79,13 +84,13 @@ _procfs(pid_t pid, char* file) {
     if (fp == NULL) {
         switch (errno) {
         case EACCES: // Needs elevated privileges
-            set_error(EPROCPERM);
+            set_error(PERM, "Cannot read from procfs");
             break;
         case ENOENT: // Invalid pid
-            set_error(EPROCNPID);
+            set_error(OS, "No such process");
             break;
         default:
-            set_error(EPROCVM);
+            set_error(OS, "Unknown error");
         }
     }
 
@@ -96,17 +101,20 @@ _procfs(pid_t pid, char* file) {
 static inline char*
 proc_root(pid_t pid, char* file) {
     if (file[0] != '/') {
-        log_e("File path is not absolute"); // GCOV_EXCL_START
-        return NULL;                        // GCOV_EXCL_STOP
+        set_error(IO, "File path is not absolute"); // GCOV_EXCL_START
+        RETURN_NULL;                                // GCOV_EXCL_STOP
     }
 
     char* proc_root = calloc(1, strlen(file) + 24);
-    if (!isvalid(proc_root))
-        return NULL; // GCOV_EXCL_LINE
+    if (!isvalid(proc_root)) {
+        set_error(MALLOC, "Cannot allocate memory for proc root path"); // GCOV_EXCL_START
+        RETURN_NULL;                                                    // GCOV_EXCL_STOP
+    }
 
     if (sprintf(proc_root, "/proc/%d/root%s", pid, file) < 0) {
         free(proc_root); // GCOV_EXCL_START
-        return NULL;     // GCOV_EXCL_STOP
+        set_error(MALLOC, "Cannot format proc root path");
+        RETURN_NULL; // GCOV_EXCL_STOP
     }
 
     return proc_root;

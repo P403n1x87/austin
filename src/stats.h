@@ -22,14 +22,9 @@
 
 #pragma once
 
-#include <inttypes.h>
 #include <stdint.h>
 
-typedef unsigned long ctime_t; /* Forward */
 typedef unsigned long ustat_t; /* non-negative statistics metric */
-typedef uint64_t      microseconds_t;
-#define MICROSECONDS_MAX UINT64_MAX
-#define MICROSECONDS_FMT "%" PRIu64
 
 #include "argparse.h"
 

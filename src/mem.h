@@ -123,7 +123,7 @@ typedef struct {
  * @return  zero on success, otherwise non-zero.
  */
 static inline int
-copy_memory(proc_ref_t proc_ref, void* addr, ssize_t len, void* buf) {
+copy_memory(proc_ref_t proc_ref, void* restrict addr, ssize_t len, void* restrict buf) {
     ssize_t result = -1;
 
 #if defined(PL_LINUX) /* LINUX */
@@ -139,13 +139,13 @@ copy_memory(proc_ref_t proc_ref, void* addr, ssize_t len, void* buf) {
     if (result == -1) {
         switch (errno) {
         case ESRCH:
-            set_error(EPROCNPID);
+            set_error(OS, "No such process");
             break;
         case EPERM:
-            set_error(EPROCPERM);
+            set_error(PERM, "Remote memory read access denied");
             break;
         default:
-            set_error(EMEMCOPY);
+            set_error(MEMCOPY, "Cannot copy remote memory");
         }
     }
 
@@ -155,13 +155,13 @@ copy_memory(proc_ref_t proc_ref, void* addr, ssize_t len, void* buf) {
     if (result == -1) {
         switch (GetLastError()) {
         case ERROR_ACCESS_DENIED:
-            set_error(EPROCPERM);
+            set_error(PERM, "Remote memory read access denied");
             break;
         case ERROR_INVALID_HANDLE:
-            set_error(EPROCNPID);
+            set_error(OS, "No such process");
             break;
         default:
-            set_error(EMEMCOPY);
+            set_error(MEMCOPY, "Cannot copy remote memory");
         }
     }
 
@@ -177,13 +177,13 @@ copy_memory(proc_ref_t proc_ref, void* addr, ssize_t len, void* buf) {
         // MACH_SEND_INVALID_DEST, we probably tried an invalid memory area.
         switch (kr) {
         case KERN_PROTECTION_FAILURE:
-            set_error(EPROCPERM);
+            set_error(PERM, "Protection failure on remote memory read");
             break;
         case KERN_INVALID_ARGUMENT:
-            set_error(EPROCNPID);
+            set_error(OS, "No such process");
             break;
         default:
-            set_error(EMEMCOPY);
+            set_error(MEMCOPY, "Could not copy remote memory");
         }
         FAIL;
     }

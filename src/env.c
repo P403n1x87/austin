@@ -73,6 +73,7 @@ parse_env() {
     long page_size_cap;
     if (fail(_to_number("AUSTIN_PAGE_SIZE_CAP", &page_size_cap, env.page_size_cap))) {
         _env_error("AUSTIN_PAGE_SIZE_CAP");
+        set_error(ENV, "Invalid page size cap");
         FAIL;
     }
     env.page_size_cap = (size_t)page_size_cap;

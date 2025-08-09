@@ -50,7 +50,6 @@
 FILE* logfile = NULL;
 #endif
 
-#include "austin.h"
 #include "logging.h"
 
 void

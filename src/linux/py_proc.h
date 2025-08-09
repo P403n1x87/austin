@@ -156,8 +156,7 @@ _py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_
     }
 
     if (symbols < DYNSYM_MANDATORY) {
-        log_e("ELF binary has not all the mandatory Python symbols");
-        set_error(ESYM);
+        set_error(BINARY, "Not all required symbols found");
         FAIL;
     }
 
@@ -236,8 +235,7 @@ _py_proc__analyze_elf32(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_
     }
 
     if (symbols < DYNSYM_MANDATORY) {
-        log_e("ELF binary has not all the mandatory Python symbols");
-        set_error(ESYM);
+        set_error(BINARY, "Not all required symbols found");
         FAIL;
     }
 
@@ -262,8 +260,7 @@ static int
 _py_proc__analyze_elf(py_proc_t* self, char* path, void* elf_base, proc_vm_map_block_t* bss) {
     cu_fd fd = open(path, O_RDONLY);
     if (fd == -1) {
-        log_e("Cannot open binary file %s", path);
-        set_error(EPROC);
+        set_error(IO, "Cannot open binary file");
         FAIL;
     }
 
@@ -272,8 +269,7 @@ _py_proc__analyze_elf(py_proc_t* self, char* path, void* elf_base, proc_vm_map_b
     struct stat s;
 
     if (fstat(fd, &s) == -1) {
-        log_ie("Cannot determine size of binary file");
-        set_error(EPROC);
+        set_error(IO, "Cannot determine size of binary file");
         FAIL;
     }
 
@@ -281,8 +277,7 @@ _py_proc__analyze_elf(py_proc_t* self, char* path, void* elf_base, proc_vm_map_b
 
     binary_map = map_new(fd, binary_size, MAP_PRIVATE);
     if (!isvalid(binary_map)) {
-        log_ie("Cannot map binary file to memory");
-        set_error(EPROC);
+        set_error(IO, "Cannot map binary file to memory");
         FAIL;
     }
 
@@ -290,8 +285,7 @@ _py_proc__analyze_elf(py_proc_t* self, char* path, void* elf_base, proc_vm_map_b
     log_t("Analysing ELF");
 
     if (fail(_elf_check(ehdr))) {
-        log_e("Bad ELF header");
-        set_error(EPROC);
+        set_error(BINARY, "Bad ELF header");
         FAIL;
     }
 
@@ -306,8 +300,7 @@ _py_proc__analyze_elf(py_proc_t* self, char* path, void* elf_base, proc_vm_map_b
         return _py_proc__analyze_elf32(self, binary_map->addr, elf_base, bss);
 
     default:
-        log_e("%s has invalid ELF class", path);
-        set_error(EPROC);
+        set_error(BINARY, "Invalid ELF class");
         FAIL;
     }
 } /* _py_proc__analyze_elf */
@@ -321,8 +314,6 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
 
     cu_proc_map_t* proc_maps = proc_map_new(self->pid);
     if (!isvalid(proc_maps)) {
-        log_e("Cannot get memory maps for pid %d", self->pid);
-        set_error(EPROC);
         FAIL;
     }
 
@@ -334,8 +325,7 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
 
     cu_void* pd_mem = calloc(1, sizeof(struct proc_desc));
     if (!isvalid(pd_mem)) {
-        log_ie("Cannot allocate memory for proc_desc");
-        set_error(EPROC);
+        set_error(MALLOC, "Cannot allocate memory for proc_desc");
         FAIL;
     }
     struct proc_desc* pd = pd_mem;
@@ -352,17 +342,13 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
             }
         }
         if (!isvalid(first_binary_map)) {
-            log_ie("Cannot infer the executable path");
-            set_error(EPROC);
+            set_error(OS, "Failed to infer the executable path");
             FAIL;
         }
     } else {
         first_binary_map = proc_map__first(proc_maps, pd->exe_path);
-        if (!isvalid(first_binary_map)) {
-            log_ie("Cannot find the first binary map");
-            set_error(EPROC);
+        if (!isvalid(first_binary_map))
             FAIL;
-        }
     }
 
     log_d("Executable path: %s", pd->exe_path);
@@ -370,9 +356,7 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
     map       = &(pd->maps[MAP_BIN]);
     map->path = proc_root(self->pid, pd->exe_path);
     if (!isvalid(map->path)) {
-        log_e("Cannot get proc root path for %s", pd->exe_path); // GCOV_EXCL_START
-        set_error(EPROC);
-        FAIL; // GCOV_EXCL_STOP
+        FAIL; // GCOV_EXCL_LINE
     }
     map->file_size   = _file_size(map->path);
     map->base        = first_binary_map->address;
@@ -420,9 +404,7 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
 
             map->path = proc_root(self->pid, first_lib_map->pathname);
             if (!isvalid(map->path)) {
-                log_e("Cannot get proc root path for %s", first_lib_map->pathname); // GCOV_EXCL_START
-                set_error(EPROC);
-                FAIL; // GCOV_EXCL_STOP
+                FAIL; // GCOV_EXCL_LINE
             }
             map->file_size   = _file_size(map->path);
             map->base        = first_lib_map->address;
@@ -441,11 +423,9 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
                     map = &(pd->maps[MAP_LIBNEEDLE]);
 
                     map->path = proc_root(self->pid, m->pathname);
-                    if (!isvalid(map->path)) {
-                        log_e("Cannot get proc root path for %s", m->pathname); // GCOV_EXCL_START
-                        set_error(EPROC);
-                        FAIL; // GCOV_EXCL_STOP
-                    }
+                    if (!isvalid(map->path))
+                        FAIL; // GCOV_EXCL_LINE
+
                     map->file_size   = _file_size(map->path);
                     map->base        = m->address;
                     map->size        = m->size;
@@ -498,14 +478,12 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
     self->map.bss.base = pd->maps[map_index].bss_base;
     self->map.bss.size = pd->maps[map_index].bss_size;
     if (!isvalid(self->map.bss.base)) {
-        log_e("Cannot find valid BSS map");
-        set_error(EPROCVM);
+        set_error(OS, "Failed to find valid BSS map");
         FAIL;
     }
 
     if (!(maps_flag & (BIN_MAP))) {
-        log_e("No usable Python binary found");
-        set_error(EPROC);
+        set_error(OS, "No usable Python binary found");
         FAIL;
     }
 
@@ -518,21 +496,19 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
 // ----------------------------------------------------------------------------
 static ssize_t
 _py_proc__get_resident_memory(py_proc_t* self) {
-    FILE* statm = fopen(self->extra->statm_file, "rb");
+    cu_FILE* statm = fopen(self->extra->statm_file, "rb");
     if (statm == NULL) {
-        set_error(EPROCVM);
-        return -1;
+        set_error(IO, "Cannot open statm file");
+        return -1; // cppcheck-suppress [resourceLeak]
     }
 
-    int ret = 0;
-
     ssize_t size, resident;
-    if (fscanf(statm, "%zd %zd", &size, &resident) != 2)
-        ret = -1;
+    if (fscanf(statm, "%zd %zd", &size, &resident) != 2) {
+        set_error(OS, "Failed to parse statm file");
+        return -1; // cppcheck-suppress [resourceLeak]
+    }
 
-    fclose(statm);
-
-    return ret ? ret : resident * self->extra->page_size;
+    return resident * self->extra->page_size; // cppcheck-suppress [resourceLeak]
 } /* _py_proc__get_resident_memory */
 
 #ifdef NATIVE
@@ -561,10 +537,8 @@ _py_proc__get_vm_maps(py_proc_t* self) {
     }
 
     maps = proc_map_new(self->pid);
-    if (!isvalid(maps)) {
-        set_error(EPROC);
+    if (!isvalid(maps))
         FAIL;
-    }
 
     log_d("Rebuilding vm ranges tree");
 
@@ -607,12 +581,16 @@ _py_proc__get_vm_maps(py_proc_t* self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t* self) {
-    if (!isvalid(self) || fail(_py_proc__inspect_vm_maps(self))) {
-        set_error(EPROC);
+    if (!isvalid(self)) {
+        set_error(NULL, "Invalid process structure");
         FAIL;
     }
 
-    self->extra->page_size = getpagesize();
+    if (fail(_py_proc__inspect_vm_maps(self))) {
+        FAIL;
+    }
+
+    self->extra->page_size = get_page_size();
     log_d("Page size: %u", self->extra->page_size);
 
     sprintf(self->extra->statm_file, "/proc/%d/statm", self->pid);
@@ -660,8 +638,6 @@ _get_nspid(pid_t pid) {
 static int
 _infer_tid_field_offset(py_thread_t* py_thread) {
     if (fail(read_pthread_t(py_thread->proc, (void*)py_thread->tid))) {
-        log_d("> Cannot copy pthread_t structure (pid: %u)", py_thread->raddr.pref);
-        set_error(EMMAP);
         FAIL;
     }
 
@@ -690,7 +666,7 @@ _infer_tid_field_offset(py_thread_t* py_thread) {
         }
     }
 
-    set_error(ETHREAD);
+    set_error(OS, "Failed to find TID field offset");
     FAIL;
 }
 

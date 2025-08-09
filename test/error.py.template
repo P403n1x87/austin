@@ -1,0 +1,23 @@
+from enum import Enum
+
+
+class AustinError(int, Enum):
+    __message__ = {
+[[error_messages]]
+    }
+
+    __fatal__ = {
+[[error_fatals]]
+    }
+
+[[errors]]
+
+    @classmethod
+    def message(cls, code: "AustinError") -> str:
+        """Return the error message for the given error code."""
+        return cls.__message__[code]
+
+    @classmethod
+    def is_fatal(cls, code: "AustinError") -> bool:
+        """Return True if the error code is fatal."""
+        return cls.__fatal__[code]

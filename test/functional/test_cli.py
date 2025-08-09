@@ -20,14 +20,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 import platform
 import sys
-from test.utils import austin
-from test.utils import no_sudo
-from test.utils import run_python
-from test.utils import target
+from pathlib import Path
+from subprocess import run
 
 import pytest
+
+from test.error import AustinError
+from test.utils import austin, no_sudo, run_python, target
 
 
 def test_cli_no_arguments():
@@ -38,16 +40,28 @@ def test_cli_no_arguments():
 
 
 def test_cli_no_python():
-    match platform.system():
-        case "Windows":
-            cmd = ["cmd.exe", "/c", "sleep 2"]
-        case _:
-            cmd = ["bash", "-c", "sleep 2"]
+    CC = os.getenv("CC", "gcc")
 
-    result = austin(*cmd, expect_fail=32)
+    if platform.system() == "Windows":
+        exe_name = "notpython.exe"
+    else:
+        exe_name = "notpython"
+    dest = Path(target("notpython.c")).parent / exe_name
+    if not dest.exists():
+        result = run([CC, target("notpython.c"), "-o", str(dest)])
+        assert result.returncode == 0
+        dest.chmod(0o755)
 
-    assert result.returncode == 32
-    assert "not a Python" in result.stderr or "Cannot launch" in result.stderr
+    result = austin(
+        str(dest),
+        expect_fail=(
+            AustinError.VERSION if sys.platform == "linux" else AustinError.BINARY
+        ),
+    )
+
+    assert (
+        "Cannot determine" if sys.platform == "linux" else "not a Python"
+    ) in result.stderr
 
 
 def test_cli_short_lived():
@@ -56,22 +70,21 @@ def test_cli_short_lived():
         sys.executable,
         "-c",
         "print('Hello World')",
-        expect_fail=33,
+        expect_fail=AustinError.OS,
     )
-    assert result.returncode == 33
+
     assert "too quickly" in result.stderr
 
 
 def test_cli_invalid_command():
-    result = austin("snafubar", expect_fail=33)
-    assert result.returncode == 33
+    result = austin("snafubar", expect_fail=AustinError.OS)
+
     assert "Cannot launch" in (result.stderr or result.stdout)
 
 
 def test_cli_invalid_pid():
-    result = austin("-p", "9999999", expect_fail=36)
+    result = austin("-p", "9999999", expect_fail=AustinError.OS)
 
-    assert result.returncode == 36
     assert "Cannot attach" in result.stderr
 
 
@@ -81,8 +94,7 @@ def test_cli_invalid_pid():
 @no_sudo
 def test_cli_permissions():
     with run_python("3", target("sleepy.py")) as p:
-        result = austin("-i", "1ms", "-p", str(p.pid), expect_fail=37)
-        assert result.returncode == 37, result.stderr
+        result = austin("-i", "1ms", "-p", str(p.pid), expect_fail=AustinError.PERM)
         assert "Insufficient permissions" in result.stderr, result.stderr
 
 
@@ -98,7 +110,7 @@ def test_cli_permissions_darwin():
         "python3.10",
         "-c",
         "from time import sleep; sleep(1)",
-        expect_fail=37,
+        expect_fail=AustinError.PERM,
     )
-    assert result.returncode == 37, result.stderr
+
     assert "Insufficient permissions" in result.stderr, result.stderr
