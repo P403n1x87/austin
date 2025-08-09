@@ -6032,7 +6032,7 @@
            y="57.51564"
            style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.264583">austin <tspan
    style="font-weight:bold;fill:#eeff81;fill-opacity:1"
-   id="tspan1787">-s</tspan> python myscript.py</tspan></text>
+   id="tspan1787">-c</tspan> python myscript.py</tspan></text>
     </g>
     <g
        id="g8656"
@@ -6546,7 +6546,7 @@
            id="tspan9827"
            sodipodi:role="line">austin <tspan
    id="tspan9825"
-   style="font-weight:bold;fill:#eeff81;fill-opacity:1">-sg</tspan> python myscript.py</tspan></text>
+   style="font-weight:bold;fill:#eeff81;fill-opacity:1">-cg</tspan> python myscript.py</tspan></text>
     </g>
     <g
        id="g8673"

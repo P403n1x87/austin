@@ -54,7 +54,7 @@ parsed_args_t pargs = {
     /* attach_pid          */ 0,
     /* cmd_index           */ 0,
     /* where               */ 0,
-    /* sleepless           */ 0,
+    /* cpu                 */ 0,
     /* full                */ 0,
     /* memory              */ 0,
     /* binary              */ 0,
@@ -189,8 +189,8 @@ static struct argp_option options[] = {
     "Start up wait time in milliseconds (default is 100). Accepted units: s, ms."
   },
   {
-    "sleepless",    's', NULL,          0,
-    "Suppress idle samples to estimate CPU time."
+    "cpu",          'c', NULL,          0,
+    "Sample on-CPU stacks only."
   },
   {
     "memory",       'm', NULL,          0,
@@ -291,8 +291,8 @@ parse_opt(int key, char* arg, struct argp_state* state) {
         pargs.binary = true;
         break;
 
-    case 's':
-        pargs.sleepless = true;
+    case 'c':
+        pargs.cpu = true;
         break;
 
     case 'm':
@@ -488,6 +488,7 @@ print(";")
 "  -b, --binary               Emit data in the MOJO binary format. See\n"
 "                             https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format\n"
 "                             for more details.\n"
+"  -c, --cpu                  Sample on-CPU stacks only.\n"
 "  -C, --children             Attach to child processes.\n"
 "  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
 "  -g, --gc                   Sample the garbage collector state.\n"
@@ -497,7 +498,6 @@ print(";")
 "  -o, --output=FILE          Specify an output file for the collected samples.\n"
 "  -p, --pid=PID              Attach to the process with the given PID.\n"
 "  -P, --pipe                 Pipe mode. Use when piping Austin output.\n"
-"  -s, --sleepless            Suppress idle samples to estimate CPU time.\n"
 "  -t, --timeout=n_ms         Start up wait time in milliseconds (default is\n"
 "                             100). Accepted units: s, ms.\n"
 "  -w, --where=PID            Dump the stacks of all the threads within the\n"
@@ -521,11 +521,11 @@ for line in check_output(["src/austin", "--usage"]).decode().strip().splitlines(
     print(f'"{line}\\n"')
 print(";")
 ]]]*/
-"Usage: austin [-bCfgmPs?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-w PID]\n"
-"            [-x n_sec] [--binary] [--children] [--full] [--gc]\n"
+"Usage: austin [-bcCfgmP?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-w PID]\n"
+"            [-x n_sec] [--binary] [--cpu] [--children] [--full] [--gc]\n"
 "            [--interval=n_us] [--memory] [--output=FILE] [--pid=PID] [--pipe]\n"
-"            [--sleepless] [--timeout=n_ms] [--where=PID] [--exposure=n_sec]\n"
-"            [--help] [--usage] [--version] command [ARG...]\n"
+"            [--timeout=n_ms] [--where=PID] [--exposure=n_sec] [--help]\n"
+"            [--usage] [--version] command [ARG...]\n"
 ;
 /*[[[end]]]*/
 // clang-format on
@@ -601,8 +601,8 @@ cb(const int opt, const char* arg, const int index) {
         pargs.binary = true;
         break;
 
-    case 's':
-        pargs.sleepless = true;
+    case 'c':
+        pargs.cpu = true;
         break;
 
     case 'm':

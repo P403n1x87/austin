@@ -299,6 +299,7 @@ requires no instrumentation and has practically no impact on the tracee.
   -b, --binary               Emit data in the MOJO binary format. See
                              https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format
                              for more details.
+  -c, --cpu                  Sample on-CPU stacks only.
   -C, --children             Attach to child processes.
   -f, --full                 Produce the full set of metrics (time +mem -mem).
   -g, --gc                   Sample the garbage collector state.
@@ -308,7 +309,6 @@ requires no instrumentation and has practically no impact on the tracee.
   -o, --output=FILE          Specify an output file for the collected samples.
   -p, --pid=PID              Attach to the process with the given PID.
   -P, --pipe                 Pipe mode. Use when piping Austin output.
-  -s, --sleepless            Suppress idle samples to estimate CPU time.
   -t, --timeout=n_ms         Start up wait time in milliseconds (default is
                              100). Accepted units: s, ms.
   -w, --where=PID            Dump the stacks of all the threads within the

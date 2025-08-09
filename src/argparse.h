@@ -36,7 +36,7 @@ typedef struct {
     pid_t          attach_pid;
     int            cmd_index;
     bool           where;
-    bool           sleepless;
+    bool           cpu;
     bool           full;
     bool           memory;
     bool           binary;

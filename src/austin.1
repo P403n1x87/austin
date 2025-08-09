@@ -15,6 +15,9 @@ Emit data in the MOJO binary format. See
 https://github.com/P403n1x87/austin/wiki/The\-MOJO\-file\-format
 for more details.
 .TP
+\fB\-c\fR, \fB\-\-cpu\fR
+Sample on\-CPU stacks only.
+.TP
 \fB\-C\fR, \fB\-\-children\fR
 Attach to child processes.
 .TP
@@ -39,9 +42,6 @@ Attach to the process with the given PID.
 .TP
 \fB\-P\fR, \fB\-\-pipe\fR
 Pipe mode. Use when piping Austin output.
-.TP
-\fB\-s\fR, \fB\-\-sleepless\fR
-Suppress idle samples to estimate CPU time.
 .TP
 \fB\-t\fR, \fB\-\-timeout\fR=\fI\,n_ms\/\fR
 Start up wait time in milliseconds (default is
@@ -76,7 +76,7 @@ $ austin python3 \fI\,myscript.py\fR
 Profile CPU time of an executable Python script
 .PP
 .RS
-$ austin -s \fI\,./myscript.py\/\fR
+$ austin -c \fI\,./myscript.py\/\fR
 .RE
 .PP
 Profile a Python application
@@ -118,7 +118,7 @@ Set the sampling interval
 Save collected on-CPU samples to file
 .PP
 .RS
-$ austin -so \fI/path/to/file.austin\fR ./myscript.py
+$ austin -co \fI/path/to/file.austin\fR ./myscript.py
 .RE
 .PP
 Sample for 5 seconds only

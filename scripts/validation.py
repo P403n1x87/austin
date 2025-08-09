@@ -69,7 +69,7 @@ SCENARIOS = [
         "CPU time",
         "austin",
         (
-            "-si",
+            "-ci",
             "500",
             *PYTHON,
             target("target34.py"),
@@ -89,7 +89,7 @@ SCENARIOS = [
         "CPU time [multiprocessing]",
         "austin",
         (
-            "-Csi",
+            "-Cci",
             "500",
             *PYTHON,
             target("target_mp.py"),

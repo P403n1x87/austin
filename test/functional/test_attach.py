@@ -46,7 +46,7 @@ import pytest
 
 @requires_sudo
 @pytest.mark.parametrize(
-    "mode,mode_meta", [("-i", "wall"), ("-si", "cpu"), ("-Ci", "wall"), ("-Csi", "cpu")]
+    "mode,mode_meta", [("-i", "wall"), ("-ci", "cpu"), ("-Ci", "wall"), ("-Cci", "cpu")]
 )
 @allpythons()
 @variants

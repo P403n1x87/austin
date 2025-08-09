@@ -9,7 +9,7 @@ $ austin python3 \fI\,myscript.py\fR
 Profile CPU time of an executable Python script
 .PP
 .RS
-$ austin -s \fI\,./myscript.py\/\fR
+$ austin -c \fI\,./myscript.py\/\fR
 .RE
 .PP
 Profile a Python application
@@ -51,7 +51,7 @@ Set the sampling interval
 Save collected on-CPU samples to file
 .PP
 .RS
-$ austin -so \fI/path/to/file.austin\fR ./myscript.py
+$ austin -co \fI/path/to/file.austin\fR ./myscript.py
 .RE
 .PP
 Sample for 5 seconds only

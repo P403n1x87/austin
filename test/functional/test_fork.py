@@ -78,7 +78,7 @@ def test_fork_wall_time(austin, py, mojo):
 @variants
 @mojo
 def test_fork_cpu_time_cpu_bound(py, austin, mojo):
-    result = austin("-si", "1ms", *python(py), target("target34.py"), mojo=mojo)
+    result = austin("-ci", "1ms", *python(py), target("target34.py"), mojo=mojo)
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_pattern(result.stdout, "target34.py:keep_cpu_busy:3"), compress(
@@ -99,7 +99,7 @@ def test_fork_cpu_time_cpu_bound(py, austin, mojo):
 @allpythons()
 @variants
 def test_fork_cpu_time_idle(py, austin):
-    result = austin("-si", "1ms", *python(py), target("sleepy.py"))
+    result = austin("-ci", "1ms", *python(py), target("sleepy.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_pattern(result.stdout, "sleepy.py:<module>:"), compress(result.stdout)
