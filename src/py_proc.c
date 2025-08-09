@@ -1252,9 +1252,9 @@ _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_
             continue;
 
         bool is_idle = false;
-        if (pargs.full || pargs.sleepless || unlikely(pargs.where)) {
+        if (pargs.full || pargs.cpu || unlikely(pargs.where)) {
             is_idle = py_thread__is_idle(&py_thread);
-            if (!pargs.full && is_idle && pargs.sleepless) {
+            if (!pargs.full && is_idle && pargs.cpu) {
                 continue;
             }
         }

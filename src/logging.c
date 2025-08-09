@@ -218,7 +218,7 @@ log_meta_header(void) {
         event_handler__emit_metadata("mode", "full");
     } else if (pargs.memory) {
         event_handler__emit_metadata("mode", "memory");
-    } else if (pargs.sleepless) {
+    } else if (pargs.cpu) {
         event_handler__emit_metadata("mode", "cpu");
     } else {
         event_handler__emit_metadata("mode", "wall");

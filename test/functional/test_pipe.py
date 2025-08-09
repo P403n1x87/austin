@@ -64,7 +64,7 @@ def test_pipe_wall_time(py):
 
 @allpythons()
 def test_pipe_cpu_time(py):
-    result = austin("-sPi", "1ms", *python(py), target())
+    result = austin("-cPi", "1ms", *python(py), target())
     assert result.returncode == 0
 
     meta = metadata(result.stdout)

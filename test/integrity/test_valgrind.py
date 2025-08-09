@@ -56,7 +56,7 @@ def valgrind(python_args: list[str], mode: str):
         pytest.skip("Valgrind not available")
 
 
-@pytest.mark.parametrize("mode", ["", "s", "C", "Cs"])
+@pytest.mark.parametrize("mode", ["", "c", "C", "Cc"])
 @allpythons()
 def test_valgrind_fork(py, mode):
     result = valgrind([*python(py), target()], mode)
@@ -64,7 +64,7 @@ def test_valgrind_fork(py, mode):
 
 
 @requires_sudo
-@pytest.mark.parametrize("mode", ["", "s", "C", "Cs"])
+@pytest.mark.parametrize("mode", ["", "c", "C", "Cc"])
 @allpythons()
 def test_valgrind_attach(py, mode):
     with run_python(py, target("sleepy.py"), "2") as p:
