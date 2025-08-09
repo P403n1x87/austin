@@ -41,15 +41,9 @@
 #include "timing.h"
 #include "version.h"
 
-#include "heap.h"
 #include "py_thread.h"
 
 // ---- PRIVATE ---------------------------------------------------------------
-
-#define NULL_HEAP ((_heap_t){NULL, 0})
-
-static _heap_t _frames      = NULL_HEAP;
-static _heap_t _frames_heap = NULL_HEAP;
 
 static size_t max_pid = 0;
 #ifdef NATIVE
@@ -81,54 +75,6 @@ static char**         _kstacks   = NULL;
 #endif
 
 // ----------------------------------------------------------------------------
-#define _use_heaps (pargs.heap > 0)
-
-static inline void
-_py_thread__read_frames(py_thread_t* self) {
-    if (!pargs.heap)
-        return;
-
-    size_t newsize;
-    size_t maxsize = pargs.heap >> 1;
-
-    if (isvalid(self->proc->frames.newhi)) {
-        newsize = self->proc->frames.newhi - self->proc->frames.newlo;
-        if (newsize > maxsize) {
-            newsize = maxsize + sizeof(PyFrameObject);
-        }
-        if (newsize > _frames.size) {
-            _frames.content       = realloc(_frames.content, newsize);
-            _frames.size          = newsize;
-            self->proc->frames.hi = self->proc->frames.newhi;
-            self->proc->frames.lo = self->proc->frames.newlo;
-        }
-        if (fail(copy_memory(self->raddr.pref, self->proc->frames.lo, newsize, _frames.content))) {
-            log_d("Failed to read remote frame area; will reset");
-            sfree(_frames.content);
-            _frames            = NULL_HEAP;
-            self->proc->frames = NULL_MEM_BLOCK;
-        }
-    }
-
-    if (isvalid(self->proc->frames_heap.newhi)) {
-        newsize = self->proc->frames_heap.newhi - self->proc->frames_heap.newlo;
-        if (newsize > maxsize) {
-            newsize = maxsize + sizeof(PyFrameObject);
-        }
-        if (newsize > _frames_heap.size) {
-            _frames_heap.content       = realloc(_frames_heap.content, newsize);
-            _frames_heap.size          = newsize;
-            self->proc->frames_heap.hi = self->proc->frames_heap.newhi;
-            self->proc->frames_heap.lo = self->proc->frames_heap.newlo;
-        }
-        if (fail(copy_memory(self->raddr.pref, self->proc->frames_heap.lo, newsize, _frames_heap.content))) {
-            log_d("Failed to read remote frame area near heap; will reset");
-            sfree(_frames_heap.content);
-            _frames_heap            = NULL_HEAP;
-            self->proc->frames_heap = NULL_MEM_BLOCK;
-        }
-    }
-} /* _py_thread__read_frames */
 
 // ----------------------------------------------------------------------------
 static inline int
@@ -170,33 +116,6 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_thread__push_frame_from_addr(py_thread_t* self, PyFrameObject* frame_obj, void** prev) {
-    if (!isvalid(self)) {
-        log_e("Not pushing frame from invalid thread");
-        set_error(ETHREAD);
-        FAIL;
-    }
-
-    V_DESC(self->proc->py_v);
-
-    void* origin = *prev;
-
-    *prev = V_FIELD_PTR(void*, frame_obj, py_frame, o_back);
-    if (unlikely(origin == *prev)) {
-        log_d("Frame points to itself!");
-        set_error(ETHREAD);
-        FAIL;
-    }
-
-    stack_py_push(
-        origin, V_FIELD_PTR(void*, frame_obj, py_frame, o_code), V_FIELD_PTR(int, frame_obj, py_frame, o_lasti)
-    );
-
-    SUCCESS;
-}
-
-// ----------------------------------------------------------------------------
-static inline int
 _py_thread__push_frame_from_raddr(py_thread_t* self, void** prev) {
     PyFrameObject frame;
 
@@ -206,59 +125,29 @@ _py_thread__push_frame_from_raddr(py_thread_t* self, void** prev) {
         FAIL;
     }
 
-    return _py_thread__push_frame_from_addr(self, &frame, prev);
+    V_DESC(self->proc->py_v);
+
+    void* origin = *prev;
+
+    *prev = V_FIELD(void*, frame, py_frame, o_back);
+    if (unlikely(origin == *prev)) {
+        log_d("Frame points to itself!");
+        set_error(ETHREAD);
+        FAIL;
+    }
+
+    stack_py_push(origin, V_FIELD(void*, frame, py_frame, o_code), V_FIELD(int, frame, py_frame, o_lasti));
+
+    SUCCESS;
 }
 
 // ----------------------------------------------------------------------------
 #define REL(raddr, block, base) (raddr - block.lo + base)
 
 #ifdef DEBUG
-static unsigned int _frames_total = 0;
-static unsigned int _frames_miss  = 0;
+static unsigned int _stack_chunk_count  = 0;
+static unsigned int _stack_chunk_misses = 0;
 #endif
-
-static inline int
-_py_thread__push_frame(py_thread_t* self, void** prev) {
-    void* raddr = *prev;
-    if (_use_heaps) {
-#ifdef DEBUG
-        _frames_total++;
-#endif
-        py_proc_t* proc = self->proc;
-
-        if (isvalid(_frames.content) && raddr >= proc->frames.lo && raddr < proc->frames.lo + _frames.size) {
-            return _py_thread__push_frame_from_addr(self, REL(raddr, proc->frames, _frames.content), prev);
-        } else if (isvalid(_frames_heap.content) && raddr >= proc->frames_heap.lo
-                   && raddr < proc->frames_heap.lo + _frames_heap.size) {
-            return _py_thread__push_frame_from_addr(self, REL(raddr, proc->frames_heap, _frames_heap.content), prev);
-        }
-
-#ifdef DEBUG
-        _frames_miss++;
-#endif
-
-        // Miss: update ranges
-        // We quite likely set the bss map data so this should be a pretty reliable
-        // platform-independent way of dualising the frame heap.
-        if (raddr >= proc->map.bss.base && raddr <= proc->map.bss.base + (1 << 27)) {
-            if (raddr + sizeof(PyFrameObject) > proc->frames_heap.newhi) {
-                proc->frames_heap.newhi = raddr + sizeof(PyFrameObject);
-            }
-            if (raddr < proc->frames_heap.newlo) {
-                proc->frames_heap.newlo = raddr;
-            }
-        } else {
-            if (raddr + sizeof(PyFrameObject) > proc->frames.newhi) {
-                proc->frames.newhi = raddr + sizeof(PyFrameObject);
-            }
-            if (raddr < proc->frames.newlo) {
-                proc->frames.newlo = raddr;
-            }
-        }
-    }
-
-    return _py_thread__push_frame_from_raddr(self, prev);
-} /* _py_thread__push_frame */
 
 // ----------------------------------------------------------------------------
 static inline int
@@ -322,7 +211,7 @@ _py_thread__push_iframe(py_thread_t* self, void** prev) {
     void* raddr = *prev;
     if (isvalid(self->stack)) {
 #ifdef DEBUG
-        _frames_total++;
+        _stack_chunk_count++;
 #endif
 
         void* resolved_addr = isvalid(self->stack) ? stack_chunk__resolve(self->stack, raddr) : NULL;
@@ -331,7 +220,7 @@ _py_thread__push_iframe(py_thread_t* self, void** prev) {
         }
 
 #ifdef DEBUG
-        _frames_miss++;
+        _stack_chunk_misses++;
 #endif
     }
 
@@ -341,18 +230,16 @@ _py_thread__push_iframe(py_thread_t* self, void** prev) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_frame_stack(py_thread_t* self) {
-    _py_thread__read_frames(self);
-
     stack_reset();
 
     void* prev = self->top_frame;
-    if (fail(_py_thread__push_frame(self, &prev))) {
+    if (fail(_py_thread__push_frame_from_raddr(self, &prev))) {
         log_ie("Failed to fill top frame");
         FAIL;
     }
 
     while (isvalid(prev)) {
-        if (fail(_py_thread__push_frame(self, &prev))) {
+        if (fail(_py_thread__push_frame_from_raddr(self, &prev))) {
             log_d("Failed to retrieve frame #%d (from top).", stack_pointer());
             FAIL;
         }
@@ -922,17 +809,15 @@ py_thread_free(void) {
 #endif
 
 #ifdef DEBUG
-    if (_frames_total) {
+    if (_stack_chunk_count) {
         log_d(
-            "Frame heaps hit ratio: %d/%d (%0.2f%%)\n", _frames_total - _frames_miss, _frames_total,
-            (_frames_total - _frames_miss) * 100.0 / _frames_total
+            "Stack chunk hit ratio: %d/%d (%0.2f%%)\n", _stack_chunk_count - _stack_chunk_misses, _stack_chunk_count,
+            (_stack_chunk_count - _stack_chunk_misses) * 100.0 / _stack_chunk_count
         );
     }
 #endif
 
     stack_deallocate();
-    sfree(_frames.content);
-    sfree(_frames_heap.content);
 
 #ifdef NATIVE
     for (pid_t tid = 0; tid < max_pid; tid++) {

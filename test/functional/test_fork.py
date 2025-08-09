@@ -42,12 +42,11 @@ from test.utils import variants
 import pytest
 
 
-@pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @allpythons()
 @variants
 @mojo
-def test_fork_wall_time(austin, py, heap, mojo):
-    result = austin("-i", "2ms", *heap, *python(py), target("target34.py"), mojo=mojo)
+def test_fork_wall_time(austin, py, mojo):
+    result = austin("-i", "2ms", *python(py), target("target34.py"), mojo=mojo)
     assert py in (result.stderr or result.stdout), result.stderr or result.stdout
 
     assert len(processes(result.stdout)) == 1, compress(result.stdout)
@@ -75,12 +74,11 @@ def test_fork_wall_time(austin, py, heap, mojo):
         assert [_ for _ in ms if "python" in _], ms
 
 
-@pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @allpythons()
 @variants
 @mojo
-def test_fork_cpu_time_cpu_bound(py, heap, austin, mojo):
-    result = austin("-si", "1ms", *heap, *python(py), target("target34.py"), mojo=mojo)
+def test_fork_cpu_time_cpu_bound(py, austin, mojo):
+    result = austin("-si", "1ms", *python(py), target("target34.py"), mojo=mojo)
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_pattern(result.stdout, "target34.py:keep_cpu_busy:3"), compress(

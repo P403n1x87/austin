@@ -21,9 +21,13 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 from pathlib import Path
-from test.utils import allpythons, austin, python, target
+from test.utils import allpythons
+from test.utils import austin
+from test.utils import python
+from test.utils import target
 
-from austin.format.mojo import MojoFile, MojoFrame
+from austin.format.mojo import MojoFile
+from austin.format.mojo import MojoFrame
 
 
 @allpythons(min=(3, 11))

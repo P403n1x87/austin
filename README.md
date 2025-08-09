@@ -302,8 +302,6 @@ requires no instrumentation and has practically no impact on the tracee.
   -C, --children             Attach to child processes.
   -f, --full                 Produce the full set of metrics (time +mem -mem).
   -g, --gc                   Sample the garbage collector state.
-  -h, --heap=n_mb            Maximum heap size to allocate to increase sampling
-                             accuracy, in MB (default is 0).
   -i, --interval=n_us        Sampling interval in microseconds (default is
                              100). Accepted units: s, ms, us.
   -m, --memory               Profile memory usage.
@@ -466,19 +464,10 @@ not.
 
 ## Sampling Accuracy
 
-Austin tries to keep perturbations to the tracee at a minimum. To do so, the
-tracee is never halted. To improve sampling accuracy, Austin can allocate a heap
-that is used to get large snapshots of the private VM of the tracee that is
-likely to contain frame information in a single attempt. The larger the heap is
-allowed the grow, the more accurate the results. The maximum size of the heap
-that Austin is allowed to allocate can be controlled with the `-h/--heap`
-option, followed by the maximum size in bytes. By default, Austin does not
-allocate a heap, which is ideal for systems with limited resources. If you think
-your results are not accurate, try setting this parameter.
-
-*Since Austin 3.2.0*.
-
-*Changed in Austin 3.3.0*: the default heap size is 0.
+Austin can sample stacks very rapidly, guaranteeing high accuracy, as well as
+allowing to reach very high sampling rates, if required. This makes Austin
+suitable for profiling applications in production with almost no compromise
+between accuracy and performance.
 
 
 ## Native Frame Stack

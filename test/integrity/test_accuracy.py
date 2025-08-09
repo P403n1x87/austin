@@ -28,13 +28,10 @@ from test.utils import python
 from test.utils import samples
 from test.utils import target
 
-import pytest
 
-
-@pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @allpythons()
-def test_accuracy_fast_recursive(py, heap):
-    result = austin("-i", "1ms", "-P", *heap, *python(py), target("recursive.py"))
+def test_accuracy_fast_recursive(py):
+    result = austin("-i", "1ms", "-P", *python(py), target("recursive.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_pattern(result.stdout, "sum_up_to"), compress(result.stdout)

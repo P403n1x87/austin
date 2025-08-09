@@ -46,7 +46,6 @@ typedef struct {
     ctime_t        exposure;
     bool           pipe;
     bool           gc;
-    size_t         heap;
 #ifdef NATIVE
     bool kernel;
 #endif

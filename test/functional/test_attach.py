@@ -45,17 +45,16 @@ import pytest
 
 
 @requires_sudo
-@pytest.mark.parametrize("heap", [tuple(), ("-h", "0"), ("-h", "64")])
 @pytest.mark.parametrize(
     "mode,mode_meta", [("-i", "wall"), ("-si", "cpu"), ("-Ci", "wall"), ("-Csi", "cpu")]
 )
 @allpythons()
 @variants
-def test_attach_wall_time(austin, py, mode, mode_meta, heap):
+def test_attach_wall_time(austin, py, mode, mode_meta):
     with run_python(py, target("sleepy.py"), "2") as p:
         sleep(0.5)
 
-        result = austin(mode, "2ms", *heap, "-p", str(p.pid))
+        result = austin(mode, "2ms", "-p", str(p.pid))
         assert result.returncode == 0
 
         ts = threads(result.stdout)

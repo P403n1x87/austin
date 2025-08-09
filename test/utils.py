@@ -24,24 +24,27 @@ import importlib
 import os
 import platform
 from asyncio.subprocess import STDOUT
-from collections import Counter, defaultdict
-from io import BytesIO, StringIO
+from collections import Counter
+from collections import defaultdict
+from io import BytesIO
+from io import StringIO
 from pathlib import Path
 from shutil import rmtree
-from subprocess import (
-    PIPE,
-    CalledProcessError,
-    CompletedProcess,
-    Popen,
-    TimeoutExpired,
-    check_output,
-)
+from subprocess import PIPE
+from subprocess import CalledProcessError
+from subprocess import CompletedProcess
+from subprocess import Popen
+from subprocess import TimeoutExpired
+from subprocess import check_output
 from tempfile import gettempdir
+from test import PYTHON_VERSIONS
 from time import sleep
 from types import ModuleType
-from typing import Iterator, List, TypeVar, Union
+from typing import Iterator
+from typing import List
+from typing import TypeVar
+from typing import Union
 
-from test import PYTHON_VERSIONS
 
 try:
     import pytest
