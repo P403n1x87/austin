@@ -1,4 +1,6 @@
-2025-10-xx v3.8.0
+2025-10-xx v4.0.0
+
+  Removed the heap option.
 
   Dropped support for CPython 3.8.
 

@@ -46,7 +46,6 @@
 #define DEFAULT_SAMPLING_INTERVAL 100
 #endif
 #define DEFAULT_INIT_TIMEOUT_MS 1000 // 1 second
-#define DEFAULT_HEAP_SIZE       0
 
 // Globals for command line arguments
 parsed_args_t pargs = {
@@ -65,7 +64,6 @@ parsed_args_t pargs = {
     /* exposure            */ 0,
     /* pipe                */ 0,
     /* gc                  */ 0,
-    /* heap                */ DEFAULT_HEAP_SIZE,
 #ifdef NATIVE
     /* kernel              */ 0,
 #endif
@@ -231,11 +229,6 @@ static struct argp_option options[] = {
     "Sample the garbage collector state."
   },
   {
-    "heap",         'h', "n_mb",        0,
-    "Maximum heap size to allocate to increase sampling accuracy, in MB "
-    "(default is 0)."
-  },
-  {
     "binary",       'b', NULL,          0,
     "Emit data in the MOJO binary format. "
     "See https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format for more details.",
@@ -335,12 +328,6 @@ parse_opt(int key, char* arg, struct argp_state* state) {
 
     case 'g':
         pargs.gc = true;
-        break;
-
-    case 'h':
-        if (fail(str_to_num(arg, (long*)&(pargs.heap))) || pargs.heap > LONG_MAX)
-            argp_error(state, "the heap size must be a positive integer");
-        pargs.heap <<= 20;
         break;
 
     case 'w':
@@ -504,8 +491,6 @@ print(";")
 "  -C, --children             Attach to child processes.\n"
 "  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
 "  -g, --gc                   Sample the garbage collector state.\n"
-"  -h, --heap=n_mb            Maximum heap size to allocate to increase sampling\n"
-"                             accuracy, in MB (default is 0).\n"
 "  -i, --interval=n_us        Sampling interval in microseconds (default is\n"
 "                             100). Accepted units: s, ms, us.\n"
 "  -m, --memory               Profile memory usage.\n"
@@ -536,11 +521,11 @@ for line in check_output(["src/austin", "--usage"]).decode().strip().splitlines(
     print(f'"{line}\\n"')
 print(";")
 ]]]*/
-"Usage: austin [-bCfgmPs?V] [-h n_mb] [-i n_us] [-o FILE] [-p PID] [-t n_ms]\n"
-"            [-w PID] [-x n_sec] [--binary] [--children] [--full] [--gc]\n"
-"            [--heap=n_mb] [--interval=n_us] [--memory] [--output=FILE]\n"
-"            [--pid=PID] [--pipe] [--sleepless] [--timeout=n_ms] [--where=PID]\n"
-"            [--exposure=n_sec] [--help] [--usage] [--version] command [ARG...]\n"
+"Usage: austin [-bCfgmPs?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-w PID]\n"
+"            [-x n_sec] [--binary] [--children] [--full] [--gc]\n"
+"            [--interval=n_us] [--memory] [--output=FILE] [--pid=PID] [--pipe]\n"
+"            [--sleepless] [--timeout=n_ms] [--where=PID] [--exposure=n_sec]\n"
+"            [--help] [--usage] [--version] command [ARG...]\n"
 ;
 /*[[[end]]]*/
 // clang-format on
@@ -662,12 +647,6 @@ cb(const int opt, const char* arg, const int index) {
 
     case 'g':
         pargs.gc = true;
-        break;
-
-    case 'h':
-        if (fail(str_to_num((char*)arg, (long*)&(pargs.heap))) || pargs.heap > LONG_MAX)
-            arg_error("the heap size must be a positive integer");
-        pargs.heap <<= 20;
         break;
 
     case '?':

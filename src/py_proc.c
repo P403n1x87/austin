@@ -768,8 +768,6 @@ py_proc_new(bool child) {
 
     _prehash_symbols();
 
-    py_proc->frames_heap = py_proc->frames = NULL_MEM_BLOCK;
-
     py_proc->frame_cache = lru_cache_new(MAX_FRAME_CACHE_SIZE, (void (*)(value_t))frame__destroy);
     if (!isvalid(py_proc->frame_cache)) {
         log_e("Failed to allocate frame cache");
