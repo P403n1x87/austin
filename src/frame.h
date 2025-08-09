@@ -24,6 +24,7 @@
 
 #include "cache.h"
 #include "events.h"
+#include "py_proc.h"
 #include "py_string.h"
 #include "resources.h"
 
@@ -69,6 +70,10 @@ frame_new(
 // ----------------------------------------------------------------------------
 static inline void
 frame__destroy(frame_t* self) {
+    if (!isvalid(self)) {
+        return;
+    }
+
     sfree(self);
 }
 
@@ -80,8 +85,7 @@ frame__destroy(frame_t* self) {
 #include "mojo.h"
 #include "py_proc.h"
 
-#define py_frame_key(code, lasti)  (((key_dt)(((key_dt)code) & MOJO_INT32) << 16) | lasti)
-#define py_string_key(code, field) ((key_dt) * ((void**)((void*)&code + py_v->py_code.field)))
+#define py_frame_key(code, lasti) (((key_dt)(((key_dt)code) & MOJO_INT32) << 16) | lasti)
 
 // ----------------------------------------------------------------------------
 static inline int
@@ -104,63 +108,26 @@ _read_signed_varint(unsigned char* lnotab, size_t* i) {
 
 // ----------------------------------------------------------------------------
 static inline frame_t*
-_frame_from_code_raddr(py_proc_t* py_proc, void* code_raddr, int lasti, python_v* py_v) {
-    cu_uchar*    lnotab = NULL;
-    proc_ref_t   pref   = py_proc->proc_ref;
-    PyCodeObject code;
+_frame_from_code_raddr(py_proc_t* py_proc, void* code_raddr, int lasti) {
+    V_DESC(py_proc->py_v);
 
-    if (fail(copy_py(pref, code_raddr, py_code, code))) {
-        log_ie("Cannot read remote PyCodeObject");
-        return NULL;
+    code_t* code = lru_cache__maybe_hit(py_proc->code_cache, (key_dt)code_raddr);
+    if (!isvalid(code)) {
+        code = _code_from_code_raddr(py_proc, code_raddr);
+        if (!isvalid(code))
+            return NULL;
+        lru_cache__store(py_proc->code_cache, (key_dt)code_raddr, code);
     }
 
-    lru_cache_t* cache = py_proc->string_cache;
-
-    key_dt           string_key = py_string_key(code, o_filename);
-    cached_string_t* filename   = (cached_string_t*)lru_cache__maybe_hit(cache, string_key);
-    if (!isvalid(filename)) {
-        char* filename_value = _code__get_filename(&code, pref, py_v);
-        if (!isvalid(filename_value)) {
-            log_ie("Cannot get file name from PyCodeObject");
-            return NULL;
-        }
-        filename = cached_string_new(string_key, filename_value);
-        if (!isvalid(filename)) {
-            log_ie("Cannot create cached string for file name");
-            return NULL;
-        }
-        lru_cache__store(cache, string_key, filename);
-
-        event_handler__emit_new_string(filename);
-    }
-
-    string_key             = V_MIN(3, 11) ? py_string_key(code, o_qualname) : py_string_key(code, o_name);
-    cached_string_t* scope = (cached_string_t*)lru_cache__maybe_hit(cache, string_key);
-    if (!isvalid(scope)) {
-        char* scope_value = V_MIN(3, 11) ? _code__get_qualname(&code, pref, py_v) : _code__get_name(&code, pref, py_v);
-        if (!isvalid(scope_value)) {
-            log_ie("Cannot get scope name from PyCodeObject");
-            return NULL;
-        }
-        scope = cached_string_new(string_key, scope_value);
-        if (!isvalid(scope)) {
-            log_ie("Cannot create cached string for scope name");
-            return NULL;
-        }
-        lru_cache__store(cache, string_key, scope);
-
-        event_handler__emit_new_string(scope);
-    }
-
-    ssize_t len = 0;
-
-    unsigned int lineno     = V_FIELD(unsigned int, code, py_code, o_firstlineno);
+    // Compute the code location information
+    line_table_t lnotab     = code->line_table;
+    ssize_t      len        = code->line_table_size;
+    unsigned int lineno     = code->first_line_number;
     unsigned int line_end   = 0;
     unsigned int column     = 0;
     unsigned int column_end = 0;
 
     if (V_MIN(3, 11)) {
-        lnotab = _code__get_lnotab(&code, pref, &len, py_v);
         if (!isvalid(lnotab) || len == 0) {
             log_ie("Cannot get line information from PyCodeObject");
             return NULL;
@@ -208,7 +175,6 @@ _frame_from_code_raddr(py_proc_t* py_proc, void* code_raddr, int lasti, python_v
                 break;
         }
     } else {
-        lnotab = _code__get_lnotab(&code, pref, &len, py_v);
         if (!isvalid(lnotab) || len % 2) {
             log_ie("Cannot get line information from PyCodeObject");
             return NULL;
@@ -247,11 +213,7 @@ _frame_from_code_raddr(py_proc_t* py_proc, void* code_raddr, int lasti, python_v
         }
     }
 
-    frame_t* frame = frame_new(py_frame_key(code_raddr, lasti), filename, scope, lineno, line_end, column, column_end);
-    if (!isvalid(frame)) {
-        log_e("Failed to create frame object");
-        return NULL;
-    }
-
-    return frame;
+    return frame_new(
+        py_frame_key(code_raddr, lasti), code->filename, code->scope, lineno, line_end, column, column_end
+    );
 }

@@ -161,3 +161,5 @@ error:
     sfree(array);
     return NULL;
 }
+
+#define py_string_key(code, field) ((key_dt) * ((void**)((void*)&code + py_v->py_code.field)))
