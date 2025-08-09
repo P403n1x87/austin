@@ -91,6 +91,7 @@ _maybe_script_execute(const char* file, char* const argv[]) {
 static bin_attr_t
 _py_proc__analyze_macho64(py_proc_t* self, void* base, void* map) {
     bin_attr_t bin_attrs = 0;
+    int64_t    offset    = 0;
 
     struct mach_header_64* hdr = (struct mach_header_64*)map;
 
@@ -114,20 +115,22 @@ _py_proc__analyze_macho64(py_proc_t* self, void* base, void* map) {
     for (register int i = 0; cmd_cnt < 2 && i < ncmds; i++) {
         switch (cmd->cmd) {
         case LC_SEGMENT_64:
-            if (strcmp(cmd->segname, "__DATA") == 0) {
+            if (strcmp(cmd->segname, "__TEXT") == 0) {
+                offset = (int64_t)base - cmd->vmaddr;
+            } else if (strcmp(cmd->segname, "__DATA") == 0) {
                 int                nsects = cmd->nsects;
                 struct section_64* sec    = (struct section_64*)((void*)cmd + sizeof(struct segment_command_64));
                 self->map.bss.size        = 0;
                 for (register int j = 0; j < nsects; j++) {
                     if (strcmp(sec[j].sectname, "__bss") == 0) {
-                        self->map.bss.base  = base + sec[j].addr;
+                        self->map.bss.base  = (void*)(offset + sec[j].addr);
                         self->map.bss.size  = sec[j].size;
                         bin_attrs          |= B_BSS;
                         continue;
                     }
                     // This section was added in Python 3.11
                     if (strcmp(sec[j].sectname, "PyRuntime") == 0) {
-                        self->map.runtime.base = base + sec[j].addr;
+                        self->map.runtime.base = (void*)(offset + sec[j].addr);
                         self->map.runtime.size = sec[j].size;
                         continue;
                     }
@@ -146,7 +149,7 @@ _py_proc__analyze_macho64(py_proc_t* self, void* base, void* map) {
                     continue;
 
                 char* sym_name = (char*)(str_tab + sym_tab[i].n_un.n_strx);
-                if (_py_proc__check_sym(self, sym_name, (void*)(base + sym_tab[i].n_value))) {
+                if (_py_proc__check_sym(self, sym_name, (void*)(offset + sym_tab[i].n_value))) {
                     self->sym_loaded++;
                 }
             }
@@ -166,6 +169,7 @@ _py_proc__analyze_macho64(py_proc_t* self, void* base, void* map) {
 static bin_attr_t
 _py_proc__analyze_macho32(py_proc_t* self, void* base, void* map) {
     bin_attr_t bin_attrs = 0;
+    int64_t    offset    = 0;
 
     struct mach_header* hdr = (struct mach_header*)map;
 
@@ -189,20 +193,22 @@ _py_proc__analyze_macho32(py_proc_t* self, void* base, void* map) {
     for (register int i = 0; cmd_cnt < 2 && i < ncmds; i++) {
         switch (cmd->cmd) {
         case LC_SEGMENT:
-            if (strcmp(cmd->segname, "__DATA") == 0) {
+            if (strcmp(cmd->segname, "__TEXT") == 0) {
+                offset = (int64_t)base - cmd->vmaddr;
+            } else if (strcmp(cmd->segname, "__DATA") == 0) {
                 int             nsects = cmd->nsects;
                 struct section* sec    = (struct section*)((void*)cmd + sizeof(struct segment_command));
                 self->map.bss.size     = 0;
                 for (register int j = 0; j < nsects; j++) {
                     if (strcmp(sec[j].sectname, "__bss") == 0) {
-                        self->map.bss.base  = base + sec[j].addr;
+                        self->map.bss.base  = (void*)(offset + sec[j].addr);
                         self->map.bss.size  = sec[j].size;
                         bin_attrs          |= B_BSS;
                         continue;
                     }
                     // This section was added in Python 3.11
                     if (strcmp(sec[j].sectname, "PyRuntime") == 0) {
-                        self->map.runtime.base = base + sec[j].addr;
+                        self->map.runtime.base = (void*)(offset + sec[j].addr);
                         self->map.runtime.size = sec[j].size;
                         continue;
                     }
@@ -221,7 +227,7 @@ _py_proc__analyze_macho32(py_proc_t* self, void* base, void* map) {
                     continue;
 
                 char* sym_name = (char*)(str_tab + sym_tab[i].n_un.n_strx);
-                if (_py_proc__check_sym(self, sym_name, (void*)(base + sym_tab[i].n_value))) {
+                if (_py_proc__check_sym(self, sym_name, (void*)(offset + sym_tab[i].n_value))) {
                     self->sym_loaded++;
                 }
             }
@@ -298,7 +304,7 @@ _py_proc__analyze_macho(py_proc_t* self, char* path, void* base, mach_vm_size_t 
         return INVALID_ATTR;
     }
 
-    log_d("Analysing binary %s", path);
+    log_d("Analysing binary %s with base %p", path, base);
 
     // This would cause problem if allocated in the stack frame
     cu_void*     fs_buffer = malloc(sizeof(struct stat));
