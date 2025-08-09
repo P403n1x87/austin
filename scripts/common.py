@@ -31,6 +31,9 @@ class VersionedVariant(Variant):
         super().__init__(name)
         self.version = version
 
+    def __repr__(self) -> str:
+        return f"VersionedVariant(name={self.name!r}, version={self.version!r})"
+
 
 def get_latest_release() -> str:
     with urlopen(

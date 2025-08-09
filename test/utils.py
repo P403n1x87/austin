@@ -249,7 +249,7 @@ class Variant:
         expect_fail: Union[bool, int] = False,
     ) -> CompletedProcess:
         if not self.path.is_file():
-            pytest.skip(f"Variant '{self}' not available")
+            pytest.skip(f"{self} not available")
 
         mojo_args = ["-b"] if mojo else []
 
@@ -283,6 +283,9 @@ class Variant:
             print_logs(logs)
 
         return result
+
+    def __repr__(self) -> str:
+        return f"Variant({self.name!r})"
 
 
 austin = Variant("austin")
