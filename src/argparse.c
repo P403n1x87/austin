@@ -382,7 +382,7 @@ parse_opt(int key, char* arg, struct argp_state* state) {
 // argument.
 //
 // Return 0 to continue parsing the arguments, or otherwise to stop.
-typedef int (*arg_callback)(const char opt, const char* arg, const int index);
+typedef int (*arg_callback)(const int opt, const char* arg, const int index);
 
 // ----------------------------------------------------------------------------
 static arg_option*
@@ -596,7 +596,7 @@ arg_parse(arg_option* opts, arg_callback cb, int argc, char** argv) {
 
 // ----------------------------------------------------------------------------
 static int
-cb(const char opt, const char* arg, const int index) {
+cb(const int opt, const char* arg, const int index) {
     switch (opt) {
     case 'i':
         if (fail(parse_interval((char*)arg, (long*)&(pargs.t_sampling_interval)))
