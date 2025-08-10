@@ -162,9 +162,6 @@ event_handler_free(void) {
 }
 
 event_handler_t*
-collapsed_stack_event_handler_new(void);
-
-event_handler_t*
 mojo_event_handler_new(void);
 
 event_handler_t*

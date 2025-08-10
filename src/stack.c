@@ -28,7 +28,6 @@
 #include "cache.h"
 #include "frame.h"
 #include "hints.h"
-#include "mojo.h"
 #include "platform.h"
 #include "py_proc.h"
 #include "py_string.h"

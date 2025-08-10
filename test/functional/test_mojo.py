@@ -34,9 +34,7 @@ from austin.format.mojo import MojoFrame
 def test_mojo_column_data(py, tmp_path: Path):
     datafile = tmp_path / "test_mojo_column.austin"
 
-    result = austin(
-        "-i", "100", "-o", str(datafile), *python(py), target("column.py"), mojo=True
-    )
+    result = austin("-i", "100", "-o", str(datafile), *python(py), target("column.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
     def strip(f):
@@ -66,9 +64,7 @@ def test_mojo_no_column_data(py, tmp_path: Path):
     """
     datafile = tmp_path / "test_mojo_column.austin"
 
-    result = austin(
-        "-i", "100", "-o", str(datafile), *python(py), target("column.py"), mojo=True
-    )
+    result = austin("-i", "100", "-o", str(datafile), *python(py), target("column.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
     def strip(f):

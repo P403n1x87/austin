@@ -1411,24 +1411,25 @@ py_proc__log_version(py_proc_t* self, int parent) {
     int minor = self->py_v->minor;
     int patch = self->py_v->patch;
 
-    if (pargs.pipe) {
+    if (parent) {
         if (patch == 0xFF) {
-            if (parent) {
-                event_handler__emit_metadata("python", "%d.%d.?", major, minor);
-            } else
-                log_m("# python: %d.%d.?", major, minor);
-        } else {
-            if (parent) {
-                event_handler__emit_metadata("python", "%d.%d.%d", major, minor, patch);
-            } else
-                log_m("# python: %d.%d.%d", major, minor, patch);
-        }
+            event_handler__emit_metadata("python", "%d.%d.?", major, minor);
+        } else
+            event_handler__emit_metadata("python", "%d.%d.%d", major, minor, patch);
+    }
+
+    if (pargs.pipe) {
+        if (patch == 0xFF)
+            log_m("# python: %d.%d.?", major, minor);
+        else
+            log_m("# python: %d.%d.%d", major, minor, patch);
     } else {
         log_m("");
         if (patch == 0xFF)
             log_m("🐍 \033[1mPython\033[0m version: \033[33;1m%d.%d.?\033[0m (from shared library)", major, minor);
         else
             log_m("🐍 \033[1mPython\033[0m version: \033[33;1m%d.%d.%d\033[0m", major, minor, patch);
+        log_m("");
     }
 }
 

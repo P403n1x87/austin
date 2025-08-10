@@ -245,7 +245,6 @@ class Variant:
         self,
         *args: str,
         timeout: int = 60,
-        mojo: bool = False,
         convert: bool = True,
         expect_fail: Union[bool, int] = False,
     ) -> CompletedProcess:
@@ -255,7 +254,7 @@ class Variant:
             else:
                 raise FileNotFoundError(f"Binary {self.path} not found for {self}")
 
-        extra_args = ["-b"] if mojo and "-b, --binary" in self("--help").stdout else []
+        extra_args = ["-b"] if "-b, --binary" in self("--help").stdout else []
 
         try:
             result = run(
@@ -271,13 +270,12 @@ class Variant:
         if result.returncode in (-11, 139):  # SIGSEGV
             print(bt(self.path, result.pid))
 
-        if mojo and not ({"-o", "-w", "--output", "--where"} & set(args)):
-            # We produce MOJO binary data only if we are not writing to file
-            # or using the "where" option.
+        # If we are writing to stdout, check if we need to convert the stream
+        if result.stdout.startswith(b"MOJ"):
             if convert:
                 result.stdout = demojo(result.stdout)
         else:
-            result.stdout = result.stdout.decode(errors="ignore")
+            result.stdout = result.stdout.decode()
         result.stderr = result.stderr.decode()
 
         logs = collect_logs(self.name, result.pid)
@@ -456,5 +454,3 @@ if pytest is not None:
             no_sudo = pytest.mark.skipif(
                 os.geteuid() == 0, reason="Must not have superuser privileges"
             )
-
-    mojo = pytest.mark.parametrize("mojo", [False, True])

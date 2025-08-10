@@ -31,7 +31,6 @@ from test.utils import austinp
 from test.utils import compress
 from test.utils import has_pattern
 from test.utils import metadata
-from test.utils import mojo
 from test.utils import requires_sudo
 from test.utils import run_python
 from test.utils import sum_metric
@@ -97,10 +96,9 @@ def test_attach_exposure(py, exposure):
 
 @requires_sudo
 @allpythons()
-@mojo
-def test_where(py, mojo):
+def test_where(py):
     with run_python(py, target("sleepy.py"), sleep_after=1) as p:
-        result = austin("-w", str(p.pid), mojo=mojo)
+        result = austin("-w", str(p.pid))
         assert result.returncode == 0
 
         assert "Process" in result.stdout

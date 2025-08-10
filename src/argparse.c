@@ -57,7 +57,6 @@ parsed_args_t pargs = {
     /* cpu                 */ 0,
     /* full                */ 0,
     /* memory              */ 0,
-    /* binary              */ 0,
     /* output_file         */ NULL,
     /* output_filename     */ NULL,
     /* children            */ 0,
@@ -228,11 +227,6 @@ static struct argp_option options[] = {
     "gc",           'g', NULL,          0,
     "Sample the garbage collector state."
   },
-  {
-    "binary",       'b', NULL,          0,
-    "Emit data in the MOJO binary format. "
-    "See https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format for more details.",
-  },
 
   #ifdef NATIVE
   {
@@ -285,10 +279,6 @@ parse_opt(int key, char* arg, struct argp_state* state) {
         if (fail(parse_timeout(arg, (long*)&(pargs.timeout))) || pargs.timeout > LONG_MAX / 1000)
             argp_error(state, "timeout must be a positive integer");
         pargs.timeout *= 1000;
-        break;
-
-    case 'b':
-        pargs.binary = true;
         break;
 
     case 'c':
@@ -597,10 +587,6 @@ cb(const int opt, const char* arg, const int index) {
         pargs.timeout *= 1000;
         break;
 
-    case 'b':
-        pargs.binary = true;
-        break;
-
     case 'c':
         pargs.cpu = true;
         break;
@@ -677,24 +663,16 @@ cb(const int opt, const char* arg, const int index) {
 
 static inline void
 validate() {
-    if (pargs.binary && pargs.where) {
-        // silently ignore the binary option
-        pargs.binary = false;
-    }
-
     if (isvalid(pargs.output_filename)) {
-        pargs.output_file = fopen(pargs.output_filename, pargs.binary ? "wb" : "w");
+        pargs.output_file = fopen(pargs.output_filename, "wb");
         if (pargs.output_file == NULL) {
             puts("Unable to create the given output file");
             exit(-1);
         }
-    }
 #ifdef PL_WIN
-    else if (pargs.binary) {
-        // Set binary mode to prevent CR/LF conversion
         setmode(fileno(pargs.output_file), O_BINARY);
-    }
 #endif
+    }
 }
 
 // ---- PUBLIC ----------------------------------------------------------------

@@ -29,7 +29,6 @@ from test.utils import demojo
 from test.utils import has_pattern
 from test.utils import maps
 from test.utils import metadata
-from test.utils import mojo
 from test.utils import processes
 from test.utils import python
 from test.utils import samples
@@ -44,9 +43,8 @@ import pytest
 
 @allpythons()
 @variants
-@mojo
-def test_fork_wall_time(austin, py, mojo):
-    result = austin("-i", "2ms", *python(py), target("target34.py"), mojo=mojo)
+def test_fork_wall_time(austin, py):
+    result = austin("-i", "2ms", *python(py), target("target34.py"))
     assert py in (result.stderr or result.stdout), result.stderr or result.stdout
 
     assert len(processes(result.stdout)) == 1, compress(result.stdout)
@@ -76,9 +74,8 @@ def test_fork_wall_time(austin, py, mojo):
 
 @allpythons()
 @variants
-@mojo
-def test_fork_cpu_time_cpu_bound(py, austin, mojo):
-    result = austin("-ci", "1ms", *python(py), target("target34.py"), mojo=mojo)
+def test_fork_cpu_time_cpu_bound(py, austin):
+    result = austin("-ci", "1ms", *python(py), target("target34.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_pattern(result.stdout, "target34.py:keep_cpu_busy:3"), compress(
@@ -113,9 +110,8 @@ def test_fork_cpu_time_idle(py, austin):
 
 
 @allpythons()
-@mojo
-def test_fork_memory(py, mojo):
-    result = austin("-mi", "1ms", *python(py), target("target34.py"), mojo=mojo)
+def test_fork_memory(py):
+    result = austin("-mi", "1ms", *python(py), target("target34.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_pattern(result.stdout, "target34.py:keep_cpu_busy:32")
@@ -135,18 +131,17 @@ def test_fork_memory(py, mojo):
 
 
 @allpythons()
-@mojo
-def test_fork_output(py, tmp_path: Path, mojo):
+def test_fork_output(py, tmp_path: Path):
     datafile = tmp_path / "test_fork_output.austin"
 
     result = austin(
-        "-i", "1ms", "-o", str(datafile), *python(py), target("target34.py"), mojo=mojo
+        "-i", "1ms", "-o", str(datafile), *python(py), target("target34.py")
     )
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert "Unwanted" in result.stdout
 
-    data = demojo(datafile.read_bytes()) if mojo else datafile.read_text()
+    data = demojo(datafile.read_bytes())
 
     assert has_pattern(data, "target34.py:keep_cpu_busy:32")
 
@@ -164,9 +159,8 @@ def test_fork_output(py, tmp_path: Path, mojo):
 # issues as attach tests on Windows.
 @pytest.mark.xfail(platform.system() == "Windows", reason="Does not pass in Windows CI")
 @allpythons()
-@mojo
-def test_fork_multiprocess(py, mojo):
-    result = austin("-Ci", "1ms", *python(py), target("target_mp.py"), mojo=mojo)
+def test_fork_multiprocess(py):
+    result = austin("-Ci", "1ms", *python(py), target("target_mp.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
     ps = processes(result.stdout)
@@ -181,9 +175,8 @@ def test_fork_multiprocess(py, mojo):
 
 
 @allpythons()
-@mojo
-def test_fork_full_metrics(py, mojo):
-    result = austin("-i", "10ms", "-f", *python(py), target("target34.py"), mojo=mojo)
+def test_fork_full_metrics(py):
+    result = austin("-i", "10ms", "-f", *python(py), target("target34.py"))
     assert py in (result.stderr or result.stdout), result.stderr or result.stdout
 
     assert len(processes(result.stdout)) == 1

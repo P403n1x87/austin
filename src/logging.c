@@ -219,4 +219,24 @@ log_meta_header(void) {
     if (pargs.children) {
         event_handler__emit_metadata("multiprocess", "on");
     }
+
+    if (pargs.pipe) {
+        log_m("# austin: " VERSION);
+        log_m("# interval: " MICROSECONDS_FMT, pargs.t_sampling_interval);
+        if (pargs.full) {
+            log_m("# mode: full");
+        } else if (pargs.memory) {
+            log_m("# mode: memory");
+        } else if (pargs.cpu) {
+            log_m("# mode: cpu");
+        } else {
+            log_m("# mode: wall");
+        }
+        if (pargs.memory || pargs.full) {
+            log_m("# memory: " MEM_VALUE, get_total_memory());
+        }
+        if (pargs.children) {
+            log_m("# multiprocess: on");
+        }
+    }
 }

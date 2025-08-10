@@ -73,8 +73,6 @@ do_single_process(py_proc_t* py_proc) {
         log_meta_header();
 
     py_proc__log_version(py_proc, true);
-    if (!pargs.where)
-        NL;
 
     if (pargs.exposure == 0) {
         while (interrupt == false) {
@@ -172,7 +170,6 @@ do_child_processes(py_proc_t* py_proc) {
 
     if (!pargs.where) {
         log_meta_header();
-        NL;
     }
 
     if (pargs.exposure == 0) {
@@ -308,13 +305,10 @@ main(int argc, char** argv) {
     }
 
     event_handler_t* handler = NULL;
-    if (pargs.where) {
+    if (pargs.where)
         handler = where_event_handler_new();
-    } else if (pargs.binary) {
+    else
         handler = mojo_event_handler_new();
-    } else {
-        handler = collapsed_stack_event_handler_new();
-    }
 
     if (!isvalid(handler)) {
         log_e("Failed to create event handler"); // GCOV_EXCL_START
