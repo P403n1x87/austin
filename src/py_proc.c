@@ -55,6 +55,17 @@
 
 // ---- PRIVATE ---------------------------------------------------------------
 
+// In native mode we have both the Python and native stacks (the kernel stack
+// is negligible). We make sure we have a cache large enough to hold the full.
+// stack.
+#ifdef NATIVE
+#define MAX_FRAME_CACHE_SIZE (MAX_STACK_SIZE << 1)
+#else
+#define MAX_FRAME_CACHE_SIZE MAX_STACK_SIZE
+#endif
+#define MAX_STRING_CACHE_SIZE LRU_CACHE_EXPAND
+#define MAX_CODE_CACHE_SIZE   LRU_CACHE_EXPAND
+
 #define py_proc__memcpy(self, raddr, size, dest) copy_memory(self->proc_ref, raddr, size, dest)
 
 // ----------------------------------------------------------------------------
@@ -786,6 +797,15 @@ py_proc_new(bool child) {
     py_proc->string_cache->name = "string cache";
 #endif
 
+    py_proc->code_cache = lru_cache_new(MAX_CODE_CACHE_SIZE, (void (*)(value_t))code__destroy);
+    if (!isvalid(py_proc->code_cache)) {
+        log_e("Failed to allocate code cache");
+        goto error;
+    }
+#ifdef DEBUG
+    py_proc->code_cache->name = "code cache";
+#endif
+
     py_proc->extra = (proc_extra_info*)calloc(1, sizeof(proc_extra_info));
     if (!isvalid(py_proc->extra))
         goto error;
@@ -1462,6 +1482,7 @@ py_proc__destroy(py_proc_t* self) {
 
     lru_cache__destroy(self->string_cache);
     lru_cache__destroy(self->frame_cache);
+    lru_cache__destroy(self->code_cache);
 
     free(self);
 }

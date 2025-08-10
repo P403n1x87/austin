@@ -79,6 +79,7 @@ typedef struct {
 
     lru_cache_t* frame_cache;
     lru_cache_t* string_cache;
+    lru_cache_t* code_cache;
 
     // Temporal profiling support
     microseconds_t timestamp;
