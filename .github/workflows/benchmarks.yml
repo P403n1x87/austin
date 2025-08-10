@@ -12,8 +12,6 @@ jobs:
   benchmarks:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v3
-
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -24,7 +22,20 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Compile Austin
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+
+      - name: Compile Austin from the base branch
+        run: |
+          autoreconf --install
+          ./configure --enable-debug=symbols
+          make
+          mv src/austin src/austin.base
+
+      - uses: actions/checkout@v3
+
+      - name: Compile Austin from the PR
         run: |
           autoreconf --install
           ./configure --enable-debug=symbols
@@ -44,7 +55,7 @@ jobs:
           ulimit -c unlimited
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           source .venv/bin/activate
-          python scripts/benchmark.py --format markdown --last | tee comment.txt
+          python scripts/benchmark.py --format markdown | tee comment.txt
 
       - name: Post results on PR
         uses: marocchino/sticky-pull-request-comment@v2

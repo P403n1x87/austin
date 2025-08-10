@@ -35,7 +35,9 @@ class VersionedVariant(Variant):
     @property
     def version_info(self) -> t.Tuple[int, ...]:
         if self.version == "dev":
-            return (float("inf"), float("inf"), float("inf"))
+            return (float("inf"), float("inf"), float("inf"), float("inf"))
+        if self.version == "base":
+            return (float("inf"), float("inf"), float("inf"), 0)
         return tuple(int(part) for part in self.version.split("."))
 
     def __call__(
@@ -74,6 +76,9 @@ def download_release(
 ) -> VersionedVariant:
     if version == "dev":
         return VersionedVariant(f"src/{variant_name}", version)
+
+    if version == "base":
+        return VersionedVariant(f"src/{variant_name}.base", version)
 
     if dest is None:
         msg = "Destination path must be provided for non-dev versions"

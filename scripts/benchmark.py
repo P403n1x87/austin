@@ -15,7 +15,7 @@ from scipy.stats import ttest_ind
 
 from test.utils import metadata, target
 
-VERSIONS = ("3.6.0", "3.7.0", "dev")
+VERSIONS = ("base", "dev")
 SCENARIOS = [
     *[
         (
@@ -161,7 +161,9 @@ class TerminalRenderer(Renderer):
 
     def render_summary(self, summary):
         self.render_header("Benchmark Summary", level=2)
-        self.render_paragraph(f"Comparison of {VERSIONS[-1]} against {VERSIONS[-2]}.")
+        self.render_paragraph(
+            f"Comparison of **{VERSIONS[-1]}** against **{VERSIONS[-2]}**."
+        )
 
         if not summary:
             self.render_paragraph(
@@ -282,48 +284,7 @@ def summarize(results: t.List[t.Tuple[str, t.List[Results]]]):
     return summary
 
 
-def main():
-    argp = ArgumentParser()
-
-    argp.add_argument(
-        "-k",
-        type=re.compile,
-        help="Run benchmark scenarios that match the given regular expression",
-    )
-
-    argp.add_argument(
-        "-n",
-        type=int,
-        default=10,
-        help="Number of times to run each scenario",
-    )
-
-    argp.add_argument(
-        "-f",
-        "--format",
-        type=str,
-        choices=["terminal", "markdown"],
-        default="terminal",
-        help="The output format",
-    )
-
-    argp.add_argument(
-        "-l",
-        "--last",
-        action="store_true",
-        help="Run only with the last release of Austin",
-    )
-
-    argp.add_argument(
-        "-p",
-        "--pvalue",
-        type=float,
-        default=0.025,
-        help="The p-value to use when testing for statistical significance",
-    )
-
-    opts = argp.parse_args()
-
+def benchmark(opts: ArgumentParser) -> None:
     Outcome.__critical_p__ = opts.pvalue
 
     renderer = {"terminal": TerminalRenderer, "markdown": MarkdownRenderer}[
@@ -342,7 +303,7 @@ def main():
             continue
 
         table: t.List[Results] = []
-        for version in VERSIONS[-2:] if opts.last else VERSIONS:
+        for version in VERSIONS:
             print(f"> Running with Austin {version} ...    ", end="\r", file=sys.stderr)
             try:
                 austin = download_release(version, Path("/tmp"), variant_name=variant)
@@ -376,6 +337,44 @@ def main():
     renderer.render_header("Benchmark Results", level=2)
     for title, table in results:
         renderer.render_scenario(title, table)
+
+
+def main():
+    argp = ArgumentParser()
+
+    argp.add_argument(
+        "-k",
+        type=re.compile,
+        help="Run benchmark scenarios that match the given regular expression",
+    )
+
+    argp.add_argument(
+        "-n",
+        type=int,
+        default=10,
+        help="Number of times to run each scenario",
+    )
+
+    argp.add_argument(
+        "-f",
+        "--format",
+        type=str,
+        choices=["terminal", "markdown"],
+        default="terminal",
+        help="The output format",
+    )
+
+    argp.add_argument(
+        "-p",
+        "--pvalue",
+        type=float,
+        default=0.025,
+        help="The p-value to use when testing for statistical significance",
+    )
+
+    opts = argp.parse_args()
+
+    benchmark(opts)
 
 
 if __name__ == "__main__":
