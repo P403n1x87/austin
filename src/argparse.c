@@ -475,9 +475,6 @@ print(";")
 "data out of a running Python process (and all its children, if required) that\n"
 "requires no instrumentation and has practically no impact on the tracee.\n"
 "\n"
-"  -b, --binary               Emit data in the MOJO binary format. See\n"
-"                             https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format\n"
-"                             for more details.\n"
 "  -c, --cpu                  Sample on-CPU stacks only.\n"
 "  -C, --children             Attach to child processes.\n"
 "  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
@@ -511,11 +508,11 @@ for line in check_output(["src/austin", "--usage"]).decode().strip().splitlines(
     print(f'"{line}\\n"')
 print(";")
 ]]]*/
-"Usage: austin [-bcCfgmP?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-w PID]\n"
-"            [-x n_sec] [--binary] [--cpu] [--children] [--full] [--gc]\n"
-"            [--interval=n_us] [--memory] [--output=FILE] [--pid=PID] [--pipe]\n"
-"            [--timeout=n_ms] [--where=PID] [--exposure=n_sec] [--help]\n"
-"            [--usage] [--version] command [ARG...]\n"
+"Usage: austin [-cCfgmP?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-w PID]\n"
+"            [-x n_sec] [--cpu] [--children] [--full] [--gc] [--interval=n_us]\n"
+"            [--memory] [--output=FILE] [--pid=PID] [--pipe] [--timeout=n_ms]\n"
+"            [--where=PID] [--exposure=n_sec] [--help] [--usage] [--version]\n"
+"            command [ARG...]\n"
 ;
 /*[[[end]]]*/
 // clang-format on

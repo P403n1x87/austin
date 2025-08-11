@@ -296,9 +296,6 @@ Austin is a frame stack sampler for CPython that is used to extract profiling
 data out of a running Python process (and all its children, if required) that
 requires no instrumentation and has practically no impact on the tracee.
 
-  -b, --binary               Emit data in the MOJO binary format. See
-                             https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format
-                             for more details.
   -c, --cpu                  Sample on-CPU stacks only.
   -C, --children             Attach to child processes.
   -f, --full                 Produce the full set of metrics (time +mem -mem).
