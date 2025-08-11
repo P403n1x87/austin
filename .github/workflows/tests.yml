@@ -450,6 +450,18 @@ jobs:
           python -m pytest --full-trace --pastebin=failed -svr a test\support
         if: always()
 
+      - name: Show collected dumps
+        run: |
+          ls -R ${{ github.workspace }}\dumps || echo "No dumps collected"
+        if: failure()
+
+      - name: Store dumps
+        uses: actions/upload-artifact@v4
+        with:
+          name: dumps-${{ runner.os }}-${{ matrix.python-version }}
+          path: ${{ github.workspace }}\dumps
+        if: failure()
+
   wheels-win:
     runs-on: windows-latest
 
