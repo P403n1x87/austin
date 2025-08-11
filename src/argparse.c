@@ -669,10 +669,13 @@ validate() {
             puts("Unable to create the given output file");
             exit(-1);
         }
-#ifdef PL_WIN
-        setmode(fileno(pargs.output_file), O_BINARY);
-#endif
     }
+#ifdef PL_WIN
+    else {
+        // Set binary mode to prevent CR/LF conversion
+        setmode(fileno(pargs.output_file), O_BINARY);
+    }
+#endif
 }
 
 // ---- PUBLIC ----------------------------------------------------------------
