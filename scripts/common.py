@@ -122,3 +122,7 @@ def download_latest(dest: Path, variant_name: str = "austin") -> VersionedVarian
 
 def get_dev(variant_name: str = "austin") -> VersionedVariant:
     return download_release("dev", None, variant_name)
+
+
+def get_base(variant_name: str = "austin") -> VersionedVariant:
+    return download_release("base", None, variant_name)

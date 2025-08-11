@@ -32,19 +32,23 @@ class Scenario:
     def run(
         self, austin: common.VersionedVariant, n: int = 10
     ) -> t.List[AustinFlameGraph]:
-        return [
-            AustinFlameGraph.from_mojo(
-                tee(
-                    austin(
-                        *scenario.args,
-                        mojo=True,
-                        convert=False,
-                    ).stdout,
-                    f"{scenario.title}-{austin.version}-{i}",
+        try:
+            return [
+                AustinFlameGraph.from_mojo(
+                    tee(
+                        austin(
+                            *scenario.args,
+                            mojo=True,
+                            convert=False,
+                        ).stdout,
+                        f"{scenario.title}-{austin.version}-{i}",
+                    )
                 )
-            )
-            for i in range(n)
-        ]
+                for i in range(n)
+            ]
+        except Exception as e:
+            msg = f"Error running scenario {self.title} with {austin} and arguments {self.args}: {e}"
+            raise RuntimeError(msg) from e
 
 
 if (PYTHON_VERSION := os.getenv("AUSTIN_TESTS_PYTHON_VERSIONS")) is None:
@@ -100,11 +104,8 @@ SCENARIOS = [
 
 def validate(scenario: Scenario, runs: int = 10) -> float:
     return compare(
-        # Latest release
-        x=scenario.run(
-            common.download_latest(dest=Path("/tmp"), variant_name=scenario.variant),
-            runs,
-        ),
+        # Base branch version
+        x=scenario.run(common.get_base(variant_name=scenario.variant), runs),
         # Development version
         y=scenario.run(common.get_dev(variant_name=scenario.variant), runs),
         # Keep only the stacks that are present in all runs
