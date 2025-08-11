@@ -315,9 +315,18 @@ def benchmark(opts: ArgumentParser) -> None:
 
             stats = [
                 _
-                for _ in (get_stats(austin(*args).stdout) for _ in range(opts.n))
+                for _ in (
+                    get_stats(run.stderr) or get_stats(run.stdout)
+                    for run in (austin(*args) for _ in range(opts.n))
+                )
                 if _ is not None
             ]
+            if not stats:
+                print(
+                    f"WARNING: No valid stats for {variant} {version} with args {args}",
+                    file=sys.stderr,
+                )
+                continue
             table.append(
                 (
                     version,

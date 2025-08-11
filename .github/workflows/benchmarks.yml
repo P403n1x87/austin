@@ -25,28 +25,36 @@ jobs:
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.event.pull_request.base.ref }}
+          path: austin-base
 
       - name: Compile Austin from the base branch
         run: |
+          cd austin-base
           autoreconf --install
           ./configure --enable-debug=symbols
           make
-          mv src/austin src/austin.base
+          cd -
 
       - uses: actions/checkout@v3
+        with:
+          path: austin
 
       - name: Compile Austin from the PR
         run: |
+          cd austin
           autoreconf --install
           ./configure --enable-debug=symbols
           make
+          cd -
 
       - name: Install runtime dependencies
         run: |
           python3.13 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
+          cd austin
           pip install -r scripts/requirements-bm.txt
+          cd -
 
       - name: Run benchmarks
         env:
@@ -55,10 +63,13 @@ jobs:
           ulimit -c unlimited
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           source .venv/bin/activate
-          python scripts/benchmark.py --format markdown | tee comment.txt
+          mv ${{ github.workspace}}/austin-base/src/austin ${{ github.workspace}}/austin/src/austin-base
+          cd austin
+          python scripts/benchmark.py --format markdown | tee ${{ github.workspace}}/comment.txt
+          cd -
 
       - name: Post results on PR
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: benchmarks
-          path: comment.txt
+          path: ${{ github.workspace}}/comment.txt

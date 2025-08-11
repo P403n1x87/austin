@@ -53,6 +53,7 @@ except ImportError:
 
 from austin.format.mojo import MojoFile
 
+
 HERE = Path(__file__).parent
 
 
@@ -249,7 +250,10 @@ class Variant:
         expect_fail: Union[bool, int] = False,
     ) -> CompletedProcess:
         if not self.path.is_file():
-            pytest.skip(f"{self} not available")
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                pytest.skip(f"{self} not available")
+            else:
+                raise FileNotFoundError(f"Binary {self.path} not found for {self}")
 
         mojo_args = ["-b"] if mojo else []
 
@@ -281,6 +285,11 @@ class Variant:
 
         if result.returncode != int(expect_fail):
             print_logs(logs)
+            raise RuntimeError(
+                f"Command {self.name} returned {result.returncode} "
+                f"while expecting {expect_fail}. Output:\n{result.stdout}\n"
+                f"Error:\n{result.stderr}"
+            )
 
         return result
 
