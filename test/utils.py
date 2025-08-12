@@ -255,11 +255,11 @@ class Variant:
             else:
                 raise FileNotFoundError(f"Binary {self.path} not found for {self}")
 
-        mojo_args = ["-b"] if mojo else []
+        extra_args = ["-b"] if mojo and "-b, --binary" in self("--help").stdout else []
 
         try:
             result = run(
-                [str(self.path)] + mojo_args + list(args),
+                [str(self.path)] + extra_args + list(args),
                 capture_output=True,
                 timeout=timeout,
             )
