@@ -52,6 +52,7 @@ austin_SOURCES = \
   argparse.c     \
   austin.c       \
   cache.c        \
+  env.c          \
   error.c        \
   events.c       \
   logging.c      \
