@@ -345,9 +345,10 @@ process ID, the sub-interpreter ID, and the thread ID respectively.
 
 Some behaviour of Austin can be configured via environment variables.
 
-| Variable            | Effect                                                      |
-| ------------------- | ----------------------------------------------------------- |
-| `AUSTIN_NO_LOGGING` | Disables all [log messages](#logging) (since Austin 3.4.0). |
+| Variable               | Effect                                                               |
+| ---------------------- | -------------------------------------------------------------------- |
+| `AUSTIN_NO_LOGGING`    | Disables all [log messages](#logging) (since Austin 3.4.0).          |
+| `AUSTIN_PAGE_SIZE_CAP` | Cap the page size used to perform remote reads (since Austin 4.0.0). |
 
 
 ## Normal Mode

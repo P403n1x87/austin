@@ -40,6 +40,7 @@
 
 #include "argparse.h"
 #include "bin.h"
+#include "env.h"
 #include "error.h"
 #include "events.h"
 #include "hints.h"
@@ -739,7 +740,12 @@ _py_proc__run(py_proc_t* self) {
     V_DESC(self->py_v);
 
     size_t page_size = get_page_size();
-    size_t com       = (py_v->py_is.o_gc + py_v->py_is.o_gil_state + py_v->py_is.o_id + py_v->py_is.o_next
+    if (page_size > env.page_size_cap) {
+        log_d("Page size %zu is larger than the configured cap %zu, using cap instead", page_size, env.page_size_cap);
+        page_size = env.page_size_cap;
+    }
+
+    size_t com = (py_v->py_is.o_gc + py_v->py_is.o_gil_state + py_v->py_is.o_id + py_v->py_is.o_next
                   + py_v->py_is.o_tstate_head)
                / 5;
 

@@ -33,6 +33,7 @@
 
 #include "argparse.h"
 #include "austin.h"
+#include "env.h"
 #include "error.h"
 #include "events.h"
 #include "hints.h"
@@ -275,6 +276,10 @@ main(int argc, char** argv) {
     int        retval  = 0;
     py_proc_t* py_proc = NULL;
 
+    if (fail(parse_env())) {
+        log_e("Failed to parse environment variables");
+        return EENV;
+    }
     parse_args(argc, argv);
 
 #if defined PL_MACOS

@@ -23,6 +23,7 @@
 #define _DEFAULT_SOURCE
 
 #include "austin.h"
+#include "env.h"
 #include "events.h"
 #include "mem.h"
 #include "platform.h"
@@ -52,11 +53,9 @@ FILE* logfile = NULL;
 #include "austin.h"
 #include "logging.h"
 
-bool logging = true;
-
 void
 _log_writer(int prio, const char* fmt, va_list ap) {
-    if (!logging)
+    if (!env.logging)
         return;
 #ifdef PL_UNIX
     vsyslog(prio, fmt, ap);
@@ -91,18 +90,8 @@ _log_writer(int prio, const char* fmt, va_list ap) {
 #endif
 }
 
-static bool
-has_nonempty_env(const char* s) {
-    const char* v = getenv(s);
-    return v != NULL && *v != '\0';
-}
-
 void
 logger_init(void) {
-    if (has_nonempty_env("AUSTIN_NO_LOGGING"))
-        logging = false;
-    if (!logging)
-        return;
 #ifdef PL_UNIX
     setlogmask(LOG_UPTO(LOG_DEBUG));
     openlog(PROGRAM_NAME, LOG_CONS | LOG_PID | LOG_NDELAY, LOG_LOCAL1);
@@ -192,7 +181,7 @@ log_t(const char* fmt, ...) {
 
 void
 logger_close(void) {
-    if (!logging)
+    if (!env.logging)
         return;
 #ifdef PL_UNIX
     closelog();
