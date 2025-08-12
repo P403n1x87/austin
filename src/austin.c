@@ -291,6 +291,17 @@ main(int argc, char** argv) {
     if (!pargs.pipe)
         log_header(); // cppcheck-suppress [unknownMacro]
 
+    if (is_tty(pargs.output_file)) {
+        printf(
+            "\n⚠️  \033[1;33mWARNING\033[0m  Austin is about to generate binary output to terminal.\n\n"
+            "Do you want to continue without specifying an output file? [y/N] "
+        );
+        char answer[2];
+        if (fgets(answer, sizeof(answer), stdin) == NULL || !(answer[0] == 'y' || answer[0] == 'Y')) {
+            goto release;
+        }
+    }
+
     int exec_arg = pargs.cmd_index;
 
     if (exec_arg <= 0 && pargs.attach_pid == 0) {

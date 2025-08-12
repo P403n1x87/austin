@@ -27,6 +27,7 @@ import sys
 from asyncio.subprocess import STDOUT
 from collections import Counter
 from collections import defaultdict
+from functools import cached_property
 from io import BytesIO
 from io import StringIO
 from itertools import count
@@ -267,6 +268,16 @@ class Variant:
 
         self.ALL.append(self)
 
+    @cached_property
+    def help(self) -> str:
+        try:
+            return run(
+                [str(self.path), "--help"],
+                capture_output=True,
+            ).stdout.decode()
+        except (FileNotFoundError, RuntimeError):
+            return "No help available for this variant."
+
     def __call__(
         self,
         *args: str,
@@ -280,7 +291,7 @@ class Variant:
             else:
                 raise FileNotFoundError(f"Binary {self.path} not found for {self}")
 
-        extra_args = ["-b"] if "-b, --binary" in self("--help").stdout else []
+        extra_args = ["-b"] if "-b, --binary" in self.help else []
 
         try:
             result = run(
