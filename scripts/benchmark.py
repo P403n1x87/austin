@@ -302,6 +302,8 @@ def benchmark(opts: ArgumentParser) -> None:
         if opts.k is not None and not opts.k.match(title):
             continue
 
+        print(f"Running scenario {title} with {variant} ...", file=sys.stderr)
+
         table: t.List[Results] = []
         for version in VERSIONS:
             print(f"> Running with Austin {version} ...    ", end="\r", file=sys.stderr)
