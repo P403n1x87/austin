@@ -22,8 +22,6 @@
 
 #pragma once
 
-#include <stddef.h>
-
 #if defined(__linux__)
 #define PL_LINUX
 #define _GNU_SOURCE
@@ -78,6 +76,12 @@ typedef HANDLE proc_ref_t;
 #define PID_MAX 99999 // From sys/proc_internal.h
 #endif
 
+// ----------------------------------------------------------------------------
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdio.h>
+
 /**
  * Get the maximum PID for the platform.
  */
@@ -89,3 +93,11 @@ pid_max();
  */
 size_t
 get_page_size();
+
+/**
+ * Check if the stream is a TTY.
+ * @param  FILE*  The output stream to check.
+ * @return true if the stream is a TTY, false otherwise.
+ */
+bool
+is_tty(FILE*);

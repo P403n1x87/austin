@@ -25,7 +25,6 @@
 #include "events.h"
 #include "argparse.h"
 #include "frame.h"
-#include "mojo.h"
 #include "platform.h"
 #include "stack.h"
 
@@ -37,145 +36,6 @@ typedef struct {
 static inline void
 base_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sample) {
     self->sample_data = *sample;
-}
-
-// ----------------------------------------------------------------------------
-// Collapsed stack event handler
-
-#if defined PL_WIN
-const char* COLLAPSED_HEAD_FORMAT = "P%I64d;T%I64x:%I64x";
-#else
-const char* COLLAPSED_HEAD_FORMAT = "P%d;T%ld:%ld";
-#endif
-
-static inline void
-collapsed_stack_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sample) {
-    base_event_handler__handle_stack_begin(self, sample);
-
-    fprintfp(pargs.output_file, COLLAPSED_HEAD_FORMAT, sample->pid, sample->iid, sample->tid);
-}
-
-static inline void
-collapsed_stack_event_handler__handle_metadata(base_event_handler_t* self, char* key, char* value, va_list args) {
-    fputs(META_HEAD, pargs.output_file);
-    fputs(key, pargs.output_file);
-    fputs(META_SEP, pargs.output_file);
-    vfprintf(pargs.output_file, value, args);
-    NL;
-}
-
-const char* SAMPLE_FORMAT = ";%s:%s:%d";
-#ifdef NATIVE
-const char* SAMPLE_FORMAT_KERNEL = ";kernel:%s:0";
-#endif
-
-static inline void
-collapsed_stack_frame_ref(const char* format, frame_t* frame) {
-    cached_string_t* scope = frame->scope;
-    fprintfp(
-        pargs.output_file, format, frame->filename->value, scope == UNKNOWN_SCOPE ? "<unknown>" : scope->value,
-        frame->line
-    );
-}
-
-#ifdef NATIVE
-static inline void
-collapsed_stack_kernel_frame_ref(const char* format, char* scope) {
-    fprintfp(pargs.output_file, format, scope);
-}
-#endif
-
-void
-collapsed_stack_event_handler__handle_stack_end(base_event_handler_t* self) {
-#ifdef NATIVE
-    bool has_cframes = false;
-    if (stack_top() == CFRAME_MAGIC) {
-        has_cframes = true;
-        (void)stack_pop();
-    }
-
-    while (!stack_native_is_empty()) {
-        frame_t* native_frame = stack_native_pop();
-        if (!isvalid(native_frame)) {
-            log_e("Invalid native frame");
-            break; // GCOV_EXCL_LINE
-        }
-        cached_string_t* scope = native_frame->scope;
-
-        bool is_frame_eval
-            = (scope == UNKNOWN_SCOPE) ? false : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
-        if (!stack_is_empty() && is_frame_eval) {
-            // TODO: if the py stack is empty we have a mismatch.
-            frame_t* frame = stack_pop();
-            if (has_cframes) {
-                while (frame != CFRAME_MAGIC) {
-                    collapsed_stack_frame_ref(SAMPLE_FORMAT, frame);
-
-                    if (stack_is_empty())
-                        break;
-
-                    frame = stack_pop();
-                }
-            } else {
-                collapsed_stack_frame_ref(SAMPLE_FORMAT, frame);
-            }
-        } else {
-            collapsed_stack_frame_ref(SAMPLE_FORMAT, native_frame);
-        }
-    }
-    if (!stack_is_empty()) {
-        log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
-        set_error(ETHREADINV);
-#ifdef DEBUG
-        fprintf(pargs.output_file, ";:%ld FRAMES LEFT:", stack_pointer());
-#endif
-    }
-    while (!stack_kernel_is_empty()) {
-        char* scope = stack_kernel_pop();
-        collapsed_stack_kernel_frame_ref(SAMPLE_FORMAT_KERNEL, scope);
-        free(scope);
-    }
-
-#else
-    while (!stack_is_empty()) {
-        frame_t* frame = stack_pop();
-        collapsed_stack_frame_ref(SAMPLE_FORMAT, frame);
-    }
-#endif
-
-    if (self->sample_data.gc_state == GC_STATE_COLLECTING) {
-        fprintf(pargs.output_file, ":GC:");
-    }
-
-    // Finish off sample with the metric(s)
-    sample_t* sample = &self->sample_data;
-    if (pargs.full) {
-        fprintf(
-            pargs.output_file, " " TIME_METRIC METRIC_SEP IDLE_METRIC METRIC_SEP MEM_METRIC "\n", sample->time,
-            sample->is_idle, sample->memory
-        );
-    } else {
-        if (pargs.memory) {
-            fprintf(pargs.output_file, " " MEM_METRIC "\n", sample->memory);
-        } else {
-            fprintf(pargs.output_file, " " TIME_METRIC "\n", sample->time);
-        }
-    }
-}
-
-event_handler_t*
-collapsed_stack_event_handler_new(void) {
-    event_handler_t* handler = (event_handler_t*)calloc(1, sizeof(base_event_handler_t));
-    if (!isvalid(handler)) {
-        log_e("Failed to allocate memory for event handler"); // GCOV_EXCL_START
-        return NULL;                                          // GCOV_EXCL_STOP
-    }
-
-    handler->spec.emit_stack_begin = (event_handler_stack_begin_t)collapsed_stack_event_handler__handle_stack_begin;
-    handler->spec.emit_metadata    = (event_handler_metadata_t)collapsed_stack_event_handler__handle_metadata;
-    handler->spec.emit_stack_end   = (event_handler_stack_end_t)collapsed_stack_event_handler__handle_stack_end;
-
-    return handler;
 }
 
 // ----------------------------------------------------------------------------
@@ -329,6 +189,24 @@ const char* WHERE_HEAD_FORMAT
 const char* WHERE_HEAD_FORMAT = "\n\n%4$s Process \033[35;1m%1$d\033[0m 🧵 Thread \033[34;1m%2$ld:%3$ld\033[0m\n\n";
 #endif
 
+// ----------------------------------------------------------------------------
+static inline void
+format_frame_ref(const char* format, frame_t* frame) {
+    cached_string_t* scope = frame->scope;
+    fprintfp(
+        pargs.output_file, format, frame->filename->value, scope == UNKNOWN_SCOPE ? "<unknown>" : scope->value,
+        frame->line
+    );
+}
+
+#ifdef NATIVE
+// ----------------------------------------------------------------------------
+static inline void
+format_kernel_frame_ref(const char* format, char* scope) {
+    fprintfp(pargs.output_file, format, scope);
+}
+#endif
+
 static inline void
 where_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sample) {
     fprintfp(
@@ -363,7 +241,7 @@ where_event_handler__handle_stack_end(base_event_handler_t* self) {
             frame_t* frame = stack_pop();
             if (has_cframes) {
                 while (frame != CFRAME_MAGIC) {
-                    collapsed_stack_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+                    format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
 
                     if (stack_is_empty())
                         break;
@@ -371,10 +249,10 @@ where_event_handler__handle_stack_end(base_event_handler_t* self) {
                     frame = stack_pop();
                 }
             } else {
-                collapsed_stack_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+                format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
             }
         } else {
-            collapsed_stack_frame_ref(WHERE_SAMPLE_FORMAT_NATIVE, native_frame);
+            format_frame_ref(WHERE_SAMPLE_FORMAT_NATIVE, native_frame);
         }
     }
     if (!stack_is_empty()) {
@@ -383,14 +261,14 @@ where_event_handler__handle_stack_end(base_event_handler_t* self) {
     }
     while (!stack_kernel_is_empty()) {
         char* scope = stack_kernel_pop();
-        collapsed_stack_kernel_frame_ref(WHERE_SAMPLE_FORMAT_KERNEL, scope);
+        format_kernel_frame_ref(WHERE_SAMPLE_FORMAT_KERNEL, scope);
         free(scope);
     }
 
 #else
     while (!stack_is_empty()) {
         frame_t* frame = stack_pop();
-        collapsed_stack_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+        format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
     }
 #endif
 }

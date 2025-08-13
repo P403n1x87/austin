@@ -57,7 +57,6 @@ parsed_args_t pargs = {
     /* cpu                 */ 0,
     /* full                */ 0,
     /* memory              */ 0,
-    /* binary              */ 0,
     /* output_file         */ NULL,
     /* output_filename     */ NULL,
     /* children            */ 0,
@@ -228,11 +227,6 @@ static struct argp_option options[] = {
     "gc",           'g', NULL,          0,
     "Sample the garbage collector state."
   },
-  {
-    "binary",       'b', NULL,          0,
-    "Emit data in the MOJO binary format. "
-    "See https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format for more details.",
-  },
 
   #ifdef NATIVE
   {
@@ -285,10 +279,6 @@ parse_opt(int key, char* arg, struct argp_state* state) {
         if (fail(parse_timeout(arg, (long*)&(pargs.timeout))) || pargs.timeout > LONG_MAX / 1000)
             argp_error(state, "timeout must be a positive integer");
         pargs.timeout *= 1000;
-        break;
-
-    case 'b':
-        pargs.binary = true;
         break;
 
     case 'c':
@@ -485,9 +475,6 @@ print(";")
 "data out of a running Python process (and all its children, if required) that\n"
 "requires no instrumentation and has practically no impact on the tracee.\n"
 "\n"
-"  -b, --binary               Emit data in the MOJO binary format. See\n"
-"                             https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format\n"
-"                             for more details.\n"
 "  -c, --cpu                  Sample on-CPU stacks only.\n"
 "  -C, --children             Attach to child processes.\n"
 "  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
@@ -521,11 +508,11 @@ for line in check_output(["src/austin", "--usage"]).decode().strip().splitlines(
     print(f'"{line}\\n"')
 print(";")
 ]]]*/
-"Usage: austin [-bcCfgmP?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-w PID]\n"
-"            [-x n_sec] [--binary] [--cpu] [--children] [--full] [--gc]\n"
-"            [--interval=n_us] [--memory] [--output=FILE] [--pid=PID] [--pipe]\n"
-"            [--timeout=n_ms] [--where=PID] [--exposure=n_sec] [--help]\n"
-"            [--usage] [--version] command [ARG...]\n"
+"Usage: austin [-cCfgmP?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-w PID]\n"
+"            [-x n_sec] [--cpu] [--children] [--full] [--gc] [--interval=n_us]\n"
+"            [--memory] [--output=FILE] [--pid=PID] [--pipe] [--timeout=n_ms]\n"
+"            [--where=PID] [--exposure=n_sec] [--help] [--usage] [--version]\n"
+"            command [ARG...]\n"
 ;
 /*[[[end]]]*/
 // clang-format on
@@ -595,10 +582,6 @@ cb(const int opt, const char* arg, const int index) {
             arg_error("the timeout must be a positive integer");
         }
         pargs.timeout *= 1000;
-        break;
-
-    case 'b':
-        pargs.binary = true;
         break;
 
     case 'c':
@@ -677,20 +660,15 @@ cb(const int opt, const char* arg, const int index) {
 
 static inline void
 validate() {
-    if (pargs.binary && pargs.where) {
-        // silently ignore the binary option
-        pargs.binary = false;
-    }
-
     if (isvalid(pargs.output_filename)) {
-        pargs.output_file = fopen(pargs.output_filename, pargs.binary ? "wb" : "w");
+        pargs.output_file = fopen(pargs.output_filename, "wb");
         if (pargs.output_file == NULL) {
             puts("Unable to create the given output file");
             exit(-1);
         }
     }
 #ifdef PL_WIN
-    else if (pargs.binary) {
+    else {
         // Set binary mode to prevent CR/LF conversion
         setmode(fileno(pargs.output_file), O_BINARY);
     }

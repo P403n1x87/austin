@@ -44,7 +44,6 @@ class VersionedVariant(Variant):
         self,
         *args: str,
         timeout: int = 60,
-        mojo: bool = False,
         convert: bool = True,
         expect_fail: t.Union[bool, int] = False,
     ) -> CompletedProcess:
@@ -55,7 +54,6 @@ class VersionedVariant(Variant):
         return super().__call__(
             *args,
             timeout=timeout,
-            mojo=mojo,
             convert=convert,
             expect_fail=expect_fail,
         )

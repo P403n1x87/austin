@@ -29,22 +29,6 @@
 #include "argparse.h"
 #include "austin.h"
 
-#define META_HEAD "# "
-#define META_SEP  ": "
-
-#define NL                                  \
-    {                                       \
-        if (!pargs.binary)                  \
-            fputc('\n', pargs.output_file); \
-    }
-
-#define meta(key, ...)                       \
-    fputs(META_HEAD, pargs.output_file);     \
-    fputs(key, pargs.output_file);           \
-    fputs(META_SEP, pargs.output_file);      \
-    fprintf(pargs.output_file, __VA_ARGS__); \
-    NL;
-
 #if defined __clang__
 #define COMPILER       "clang"
 #define COMPILER_MAJOR __clang_major__

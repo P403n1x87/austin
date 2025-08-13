@@ -73,8 +73,6 @@ do_single_process(py_proc_t* py_proc) {
         log_meta_header();
 
     py_proc__log_version(py_proc, true);
-    if (!pargs.where)
-        NL;
 
     if (pargs.exposure == 0) {
         while (interrupt == false) {
@@ -172,7 +170,6 @@ do_child_processes(py_proc_t* py_proc) {
 
     if (!pargs.where) {
         log_meta_header();
-        NL;
     }
 
     if (pargs.exposure == 0) {
@@ -294,6 +291,17 @@ main(int argc, char** argv) {
     if (!pargs.pipe)
         log_header(); // cppcheck-suppress [unknownMacro]
 
+    if (is_tty(pargs.output_file)) {
+        printf(
+            "\n⚠️  \033[1;33mWARNING\033[0m  Austin is about to generate binary output to terminal.\n\n"
+            "Do you want to continue without specifying an output file? [y/N] "
+        );
+        char answer[2];
+        if (fgets(answer, sizeof(answer), stdin) == NULL || !(answer[0] == 'y' || answer[0] == 'Y')) {
+            goto release;
+        }
+    }
+
     int exec_arg = pargs.cmd_index;
 
     if (exec_arg <= 0 && pargs.attach_pid == 0) {
@@ -308,13 +316,10 @@ main(int argc, char** argv) {
     }
 
     event_handler_t* handler = NULL;
-    if (pargs.where) {
+    if (pargs.where)
         handler = where_event_handler_new();
-    } else if (pargs.binary) {
+    else
         handler = mojo_event_handler_new();
-    } else {
-        handler = collapsed_stack_event_handler_new();
-    }
 
     if (!isvalid(handler)) {
         log_e("Failed to create event handler"); // GCOV_EXCL_START

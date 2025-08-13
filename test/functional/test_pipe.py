@@ -25,12 +25,10 @@ from subprocess import check_output
 
 from test.utils import allpythons
 from test.utils import austin
-from test.utils import compress
 from test.utils import has_pattern
 from test.utils import metadata
 from test.utils import processes
 from test.utils import python
-from test.utils import samples
 from test.utils import sum_metric
 from test.utils import target
 from test.utils import threads
@@ -96,23 +94,14 @@ def test_pipe_wall_time_multiprocess_output(py, tmp_path):
     result = austin("-CPi", "1ms", "-o", str(datafile), *python(py), target())
     assert result.returncode == 0
 
-    with datafile.open() as f:
-        data = f.read()
-        meta = metadata(data)
+    meta = metadata(result.stderr)
 
-        assert meta, meta
-        assert meta["mode"] == "wall", meta
-        assert int(meta["duration"]) > 100000, meta
-        assert meta["interval"] == "1000", meta
-        assert meta["multiprocess"] == "on", meta
-        assert ".".join((str(_) for _ in meta["python"])).startswith(py), meta
-
-        assert has_pattern(data, "target34.py:keep_cpu_busy:32"), compress(data)
-
-        a = sum(int(_.rpartition(" ")[-1]) for _ in samples(data))
-        d = int(meta["duration"])
-
-        assert 0 < 0.8 * d < a < 2.2 * d
+    assert meta, meta
+    assert meta["mode"] == "wall", meta
+    assert int(meta["duration"]) > 100000, meta
+    assert meta["interval"] == "1000", meta
+    assert meta["multiprocess"] == "on", meta
+    assert ".".join((str(_) for _ in meta["python"])).startswith(py), meta
 
 
 @allpythons(min=(3, 11))

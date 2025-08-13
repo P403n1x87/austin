@@ -39,7 +39,6 @@ typedef struct {
     bool           cpu;
     bool           full;
     bool           memory;
-    bool           binary;
     FILE*          output_file;
     char*          output_filename;
     bool           children;

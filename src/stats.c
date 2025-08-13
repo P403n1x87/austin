@@ -139,22 +139,33 @@ stats_duration() {
 
 void
 stats_log_metrics() {
-    if (pargs.pipe) {
-        if (!_sample_cnt) {
-            goto release;
-        }
+    microseconds_t duration = stats_duration();
 
+    if (_sample_cnt) {
         event_handler__emit_metadata(
             "sampling", MICROSECONDS_FMT "," MICROSECONDS_FMT "," MICROSECONDS_FMT, stats_get_min_sampling_time(),
             stats_get_avg_sampling_time(), stats_get_max_sampling_time()
         );
-
         event_handler__emit_metadata("saturation", "%ld/%ld", _long_cnt, _sample_cnt);
-
         event_handler__emit_metadata("errors", "%ld/%ld", _error_cnt, _sample_cnt);
-    } else {
-        microseconds_t duration = stats_duration();
+        event_handler__emit_metadata("duration", MICROSECONDS_FMT, duration);
+        if (pargs.gc) {
+            event_handler__emit_metadata("gc", MICROSECONDS_FMT, _gc_time);
+        }
+    }
 
+    if (pargs.pipe && _sample_cnt) {
+        log_m(
+            "# sampling: " MICROSECONDS_FMT "," MICROSECONDS_FMT "," MICROSECONDS_FMT, stats_get_min_sampling_time(),
+            stats_get_avg_sampling_time(), stats_get_max_sampling_time()
+        );
+        log_m("# saturation: %ld/%ld", _long_cnt, _sample_cnt);
+        log_m("# errors: %ld/%ld", _error_cnt, _sample_cnt);
+        log_m("# duration: " MICROSECONDS_FMT, duration);
+        if (pargs.gc) {
+            log_m("# gc: " MICROSECONDS_FMT, _gc_time);
+        }
+    } else {
         log_m("");
         if (!_sample_cnt) {
             log_m("😣 No samples collected.");

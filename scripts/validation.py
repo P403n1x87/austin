@@ -38,7 +38,6 @@ class Scenario:
                     tee(
                         austin(
                             *scenario.args,
-                            mojo=True,
                             convert=False,
                         ).stdout,
                         f"{scenario.title}-{austin.version}-{i}",

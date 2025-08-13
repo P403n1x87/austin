@@ -72,3 +72,15 @@ get_page_size() {
 #endif
     return 0;
 }
+
+// ----------------------------------------------------------------------------
+#if defined PL_WIN
+#include <io.h>
+#define isatty _isatty
+#define fileno _fileno
+#endif
+
+bool
+is_tty(FILE* output) {
+    return isatty(fileno(output));
+}

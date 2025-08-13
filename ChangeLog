@@ -1,5 +1,8 @@
 2025-10-xx v4.0.0
 
+  The MOJO binary output format is now the default. The augmented collapsed
+  stack format is no longer supported.
+
   The --sleepless/-s option has been replaced with the --cpu/-c option.
 
   Removed the heap option.

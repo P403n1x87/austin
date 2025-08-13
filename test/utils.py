@@ -23,11 +23,14 @@
 import importlib
 import os
 import platform
+import sys
 from asyncio.subprocess import STDOUT
 from collections import Counter
 from collections import defaultdict
+from functools import cached_property
 from io import BytesIO
 from io import StringIO
+from itertools import count
 from pathlib import Path
 from shutil import rmtree
 from subprocess import PIPE
@@ -39,9 +42,11 @@ from subprocess import check_output
 from tempfile import gettempdir
 from test import PYTHON_VERSIONS
 from time import sleep
+from types import FrameType
 from types import ModuleType
 from typing import Iterator
 from typing import List
+from typing import Optional
 from typing import TypeVar
 from typing import Union
 
@@ -226,6 +231,28 @@ def print_logs(logs: List[str]) -> None:
         print("<< no logs available >>")
 
 
+(DUMP_PATH := HERE.parent / "dumps").mkdir(exist_ok=True)
+
+
+def dump_mojo(data: bytes) -> None:
+    frame: Optional[FrameType] = sys._getframe(1)
+
+    while not (frame is None or frame.f_code.co_name.startswith("test_")):
+        frame = frame.f_back
+
+    if frame is None:
+        return
+
+    test_name = frame.f_code.co_name
+
+    for i in count(1):
+        dump_file = DUMP_PATH / f"{test_name}_{i}.mojo"
+        if not dump_file.is_file():
+            dump_file.write_bytes(data)
+            print(f"Dumped mojo data to {dump_file}")
+            return
+
+
 class Variant:
     ALL: list["Variant"] = []
 
@@ -241,11 +268,20 @@ class Variant:
 
         self.ALL.append(self)
 
+    @cached_property
+    def help(self) -> str:
+        try:
+            return run(
+                [str(self.path), "--help"],
+                capture_output=True,
+            ).stdout.decode()
+        except (FileNotFoundError, RuntimeError):
+            return "No help available for this variant."
+
     def __call__(
         self,
         *args: str,
         timeout: int = 60,
-        mojo: bool = False,
         convert: bool = True,
         expect_fail: Union[bool, int] = False,
     ) -> CompletedProcess:
@@ -255,7 +291,7 @@ class Variant:
             else:
                 raise FileNotFoundError(f"Binary {self.path} not found for {self}")
 
-        extra_args = ["-b"] if mojo and "-b, --binary" in self("--help").stdout else []
+        extra_args = ["-b"] if "-b, --binary" in self.help else []
 
         try:
             result = run(
@@ -271,13 +307,16 @@ class Variant:
         if result.returncode in (-11, 139):  # SIGSEGV
             print(bt(self.path, result.pid))
 
-        if mojo and not ({"-o", "-w", "--output", "--where"} & set(args)):
-            # We produce MOJO binary data only if we are not writing to file
-            # or using the "where" option.
+        # If we are writing to stdout, check if we need to convert the stream
+        if result.stdout.startswith(b"MOJ"):
             if convert:
-                result.stdout = demojo(result.stdout)
+                try:
+                    result.stdout = demojo(result.stdout)
+                except Exception as e:
+                    dump_mojo(result.stdout)
+                    raise e
         else:
-            result.stdout = result.stdout.decode(errors="ignore")
+            result.stdout = result.stdout.decode()
         result.stderr = result.stderr.decode()
 
         logs = collect_logs(self.name, result.pid)
@@ -456,5 +495,3 @@ if pytest is not None:
             no_sudo = pytest.mark.skipif(
                 os.geteuid() == 0, reason="Must not have superuser privileges"
             )
-
-    mojo = pytest.mark.parametrize("mojo", [False, True])
