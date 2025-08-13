@@ -57,9 +57,11 @@ jobs:
           cd -
 
       - name: Run benchmarks
+        shell: bash
         env:
           PYTHONPATH: "."
         run: |
+          set -eo pipefail
           ulimit -c unlimited
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           source .venv/bin/activate
