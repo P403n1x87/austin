@@ -17,6 +17,7 @@ from subprocess import run
 from types import ModuleType
 from typing import Any
 from typing import Callable
+from typing import Iterable
 from typing import Optional
 from typing import Type
 
@@ -85,6 +86,15 @@ match sys.platform:
         SHARED_OBJECT_SUFFIX = ".dll"
 
 
+def needs_build(sources: Iterable[Path], target: Path) -> bool:
+    if not target.exists():
+        return True
+
+    target_mtime = target.stat().st_mtime
+
+    return any(source.stat().st_mtime > target_mtime for source in sources)
+
+
 def compile(
     source: Path,
     cflags: list[str] = [],
@@ -93,8 +103,7 @@ def compile(
     force: bool = False,
 ) -> None:
     binary = source.with_suffix(SHARED_OBJECT_SUFFIX)
-
-    if not force and binary.is_file():
+    if not (force or needs_build([source, *extra_sources], binary)):
         return
 
     result = run(
