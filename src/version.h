@@ -65,6 +65,15 @@
 #define V_DESC(desc) python_v* py_v = (desc)
 
 /**
+ * Allocate a variable of the given type on the stack, using the size
+ * specified in the versioned Python structure.
+ *
+ * @param type the type of the variable to allocate, e.g. thread for py_thread.
+ * @param var  the name of the variable to allocate.
+ */
+#define V_ALLOCA(type, var) char var[py_v->py_##type.size];
+
+/**
  * Ensure the current version of Python is at least/at most the request version.
  *
  * @param  M  requested major version
