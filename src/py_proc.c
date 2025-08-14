@@ -360,6 +360,21 @@ set_version:
 }
 
 // ----------------------------------------------------------------------------
+// Get an interpreter state field from the prefetch buffer or fall back to
+// copying the field from the remote process.
+#define _py_proc__get_interpreter_state_field(self, interp, field, dst)                          \
+    (self->py_v->py_is.o_##field >= self->interpreter_state_com.base_offset                      \
+             && self->py_v->py_is.o_##field                                                      \
+                    < self->interpreter_state_com.base_offset + self->interpreter_state_com.size \
+         ? memcpy(                                                                               \
+               &dst,                                                                             \
+               self->interpreter_state_com.data                                                  \
+                   + (self->py_v->py_is.o_##field - self->interpreter_state_com.base_offset),    \
+               sizeof(dst)                                                                       \
+           ) != &dst                                                                             \
+         : py_proc__copy_field_v(self, is, field, interp, dst))
+
+// ----------------------------------------------------------------------------
 static int
 _py_proc__check_interp_state(py_proc_t* self, void* raddr) {
     if (!isvalid(self)) {
@@ -372,7 +387,7 @@ _py_proc__check_interp_state(py_proc_t* self, void* raddr) {
     V_ALLOCA(thread, tstate);
 
     void* tstate_head_addr;
-    if (fail(py_proc__copy_field_v(self, is, tstate_head, raddr, tstate_head_addr))) {
+    if (fail(_py_proc__get_interpreter_state_field(self, raddr, tstate_head, tstate_head_addr))) {
         log_ie("Cannot get remote interpreter state head");
         FAIL;
     }
@@ -396,7 +411,7 @@ _py_proc__check_interp_state(py_proc_t* self, void* raddr) {
 
     py_thread_t thread;
     raddr_t     thread_raddr = {self->proc_ref};
-    if (fail(py_proc__copy_field_v(self, is, tstate_head, raddr, thread_raddr.addr))) {
+    if (fail(_py_proc__get_interpreter_state_field(self, raddr, tstate_head, thread_raddr.addr))) {
         log_ie("Cannot get remote thread state head");
         FAIL;
     }
@@ -507,6 +522,26 @@ _py_proc__scan_bss(py_proc_t* self) {
 }
 
 // ----------------------------------------------------------------------------
+static inline int
+_py_proc__prefetch_interpreter_state(py_proc_t* self, void* interp) {
+    if (!isvalid(self)) {
+        set_error(EPROC);
+        FAIL;
+    }
+
+    // The interpreter state structure is quite large, so we prefetch the
+    // chunk that we are more likely to need.
+    if (fail(copy_memory(
+            self->proc_ref, interp + self->interpreter_state_com.base_offset, self->interpreter_state_com.size,
+            self->interpreter_state_com.data
+        ))) {
+        FAIL;
+    }
+
+    SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
 static int
 _py_proc__deref_interp_head(py_proc_t* self) {
     if (!isvalid(self) || !(isvalid(self->symbols[DYNSYM_RUNTIME]) || isvalid(self->map.runtime.base))) {
@@ -545,6 +580,12 @@ _py_proc__deref_interp_head(py_proc_t* self) {
         }
 
         interp_head_raddr = V_FIELD(void*, runtime, py_runtime, o_interp_head);
+
+        if (fail(_py_proc__prefetch_interpreter_state(self, interp_head_raddr))) {
+            log_d("Failed to prefetch interpreter state from runtime state @ %p", interp_head_raddr);
+            interp_head_raddr = NULL;
+            continue;
+        }
 
         if (fail(_py_proc__check_interp_state(self, interp_head_raddr))) {
             log_d("Interpreter state check failed while dereferencing runtime state");
@@ -1140,21 +1181,6 @@ _py_proc__resume_threads(py_proc_t* self, raddr_t* tstate_head_raddr) {
 #endif
 
 // ----------------------------------------------------------------------------
-// Get an interpreter state field from the prefetch buffer or fall back to
-// copying the field from the remote process.
-#define _py_proc__get_interpreter_state_field(self, interp, field, dst)                          \
-    (self->py_v->py_is.o_##field >= self->interpreter_state_com.base_offset                      \
-             && self->py_v->py_is.o_##field                                                      \
-                    < self->interpreter_state_com.base_offset + self->interpreter_state_com.size \
-         ? memcpy(                                                                               \
-               &dst,                                                                             \
-               self->interpreter_state_com.data                                                  \
-                   + (self->py_v->py_is.o_##field - self->interpreter_state_com.base_offset),    \
-               sizeof(dst)                                                                       \
-           ) != &dst                                                                             \
-         : py_proc__copy_field_v(self, is, field, interp, dst))
-
-// ----------------------------------------------------------------------------
 static inline int
 _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_delta) {
     ssize_t mem_delta      = 0;
@@ -1280,26 +1306,6 @@ _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_
 
     SUCCESS;
 } /* _py_proc__sample_interpreter */
-
-// ----------------------------------------------------------------------------
-static inline int
-_py_proc__prefetch_interpreter_state(py_proc_t* self, void* interp) {
-    if (!isvalid(self)) {
-        set_error(EPROC);
-        FAIL;
-    }
-
-    // The interpreter state structure is quite large, so we prefetch the
-    // chunk that we are more likely to need.
-    if (fail(copy_memory(
-            self->proc_ref, interp + self->interpreter_state_com.base_offset, self->interpreter_state_com.size,
-            self->interpreter_state_com.data
-        ))) {
-        FAIL;
-    }
-
-    SUCCESS;
-}
 
 // ----------------------------------------------------------------------------
 int
