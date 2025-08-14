@@ -25,6 +25,7 @@
 #include "cache.h"
 #include "py_proc.h"
 #include "py_string.h"
+#include "version.h"
 
 typedef unsigned char* line_table_t;
 
