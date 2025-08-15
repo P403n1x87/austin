@@ -291,7 +291,7 @@ main(int argc, char** argv) {
     if (!pargs.pipe)
         log_header(); // cppcheck-suppress [unknownMacro]
 
-    if (is_tty(pargs.output_file)) {
+    if (!pargs.where && is_tty(pargs.output_file)) {
         printf(
             "\n⚠️  \033[1;33mWARNING\033[0m  Austin is about to generate binary output to terminal.\n\n"
             "Do you want to continue without specifying an output file? [y/N] "
@@ -411,7 +411,8 @@ main(int argc, char** argv) {
         event_handler__emit_metadata("gc", MICROSECONDS_FMT, _gc_time);
     }
 
-    stats_log_metrics();
+    if (!pargs.where)
+        stats_log_metrics();
 
 finally:
     py_thread_free();
