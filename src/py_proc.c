@@ -704,6 +704,10 @@ _py_proc__run(py_proc_t* self) {
 
     if (!init) {
         log_d("Interpreter state search timed out");
+        if (austin_errno == ENOVERSION) {
+            // Nothing more we can do if we don't have a version
+            FAIL;
+        }
 #if defined PL_LINUX
         // This check only applies to Linux, because we don't have permission issues
         // on Windows, and if we got here on MacOS, we are already running with

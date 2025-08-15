@@ -39,7 +39,7 @@ const char* _error_msg_tab[MAXERROR] = {
     "Cannot redirect STDOUT to " NULL_DEVICE,
     "No command nor valid PID",
     "Binary has no symbols",
-    NULL,
+    "Environment variable value error",
 
     // PyCodeObject
     "Failed to retrieve PyCodeObject",
