@@ -76,8 +76,9 @@ const char* MNOCHILDREN = "🚼 It looks like you are trying to profile a proces
                           "you are targeting the right application";
 
 const char* MNOVERSION = "🔢 Cannot determine the version of the Python interpreter. This could be due\n"
-                         "to the binary not being an actual Python binary, like uWSGI. Please report an\n"
-                         "issue at\n" URL(
+                         "to the binary not being an actual Python binary, like uWSGI, or a version that\n"
+                         "this version of Austin does not support. If you are sure that the binary is a\n"
+                         "supported Python binary, please report an issue at\n" URL(
                              "https://github.com/P403n1x87/austin/issues"
                          ) "together with details about the application that you were trying to profile,\n"
                            "like frameworks used, command line etc ...";
