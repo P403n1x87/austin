@@ -100,9 +100,8 @@ The simplest way to turn Austin into a full-fledged profiler is to use together
 with the [VS
 Code](https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode)
 extension or combine it with [FlameGraph] or [Speedscope]. However, Austin's
-simple output format can be piped into any other external or custom tool for
-further processing. Look, for instance, at the following Python TUI
-
+binary output can be piped into any other external or custom tools for further
+processing. Look, for instance, at the following Python TUI
 
 <p align="center">
   <img src="art/austin-tui.png"
@@ -331,6 +330,11 @@ with the [`austin-python`] Python package. If you use Visual Studio Code, you
 can use the [Austin VS Code extension] to visualise the profile data directly
 in the editor.
 
+> [!IMPORTANT]
+> If you are running Austin directly in a terminal, make sure to either redirect
+> the output to a file or give a destination file with the `-o/--output` option
+> to avoid the terminal being flooded with binary data.
+
 
 ## Environment variables
 
@@ -340,22 +344,6 @@ Some behaviour of Austin can be configured via environment variables.
 | ---------------------- | -------------------------------------------------------------------- |
 | `AUSTIN_NO_LOGGING`    | Disables all [log messages](#logging) (since Austin 3.4.0).          |
 | `AUSTIN_PAGE_SIZE_CAP` | Cap the page size used to perform remote reads (since Austin 4.0.0). |
-
-
-## Normal Mode
-
-In normal mode, the `[frame]` part of each emitted sample has the structure
-
-~~~
-[frame] := <module>:<function>:<line number>
-~~~
-
-Each line then ends with a single `[metric]`, i.e. the sampling time measured in
-microseconds.
-
-
-> **NOTE** This was changed in Austin 3. In previous version, the alternative
-> format used to be the default one.
 
 
 ## Column-level Location Information
@@ -371,16 +359,16 @@ interpreter that expose this data.
 ## Memory and Full Metrics
 
 When profiling in memory mode with the `-m` or `--memory` switch, the metric
-value at the end of each line is the memory delta between samples, measured in
-bytes. In full mode (`-f` or `--full` switches), each sample ends with a
-comma-separated list of three values: the time delta, the idle state (1 for
-idle, 0 otherwise) and the RSS memory delta (positive for memory allocations,
-negative for deallocations). This way it is possible to estimate wall-clock
-time, CPU time and memory pressure, all from a single run.
+value associated with each stack is the memory delta between samples, measured
+in bytes. In full mode (`-f` or `--full` switches), each sample will include
+both a time and memory metric, plus the information of whether the stack was on
+CPU. This is useful if you want to collect wall-time/CPU-time and memory
+profiles in a single run.
 
-> **NOTE** The reported memory allocations and deallocations are obtained by
-> computing resident memory deltas between samples. Hence these values give an
-> idea of how much _physical_ memory is being requested/released.
+> [!NOTE]
+> The reported memory allocations and deallocations are obtained by computing
+> resident memory deltas between samples. Hence these values give an idea of how
+> much _physical_ memory is being requested/released.
 
 
 ## Multi-process Applications
@@ -468,10 +456,11 @@ gcc -O3 -Os -Wall -pthread src/*.c -DAUSTINP -lunwind-ptrace -lunwind-generic -l
 then use as per normal. The extra `-k/--kernel` option is available with
 `austinp` which allows sampling kernel call stacks as well.
 
-> **WARNING** Since `austinp` uses `ptrace`, the impact on the tracee is no
-> longer minimal and it becomes higher at smaller sampling intervals. Therefore
-> the use of `austinp` is not recommended in production environments. For this
-> reason, the default sampling interval for `austinp` is 10 milliseconds.
+> [!WARNING]
+> Since `austinp` uses `ptrace`, the impact on the tracee is no longer minimal
+> and it becomes higher at smaller sampling intervals. Therefore the use of
+> `austinp` is not recommended in production environments. For this reason, the
+> default sampling interval for `austinp` is 10 milliseconds.
 
 The `austinp-resolve` tool from the [`austin-python`] Python package can be used
 to resolve the VM addresses to source and line numbers, provided that the
@@ -479,6 +468,7 @@ referenced binaries have DWARF debug symbols. Internally, the tool uses
 `addr2line(1)` to determine the source name and line number given an address,
 when possible.
 
+> [!NOTE]
 > Whilst `austinp` comes with a stripped-down implementation of `addr2line`, it
 > is only used for the "where" option, as resolving symbols at runtime is
 > expensive. This is to minimise the impact of austinp on the tracee, increase
@@ -494,8 +484,9 @@ show both native and Python frames. Highlighting helps tell frames apart. The
        style="box-shadow: #111 0px 0px 16px;" />
 </p>
 
-> **NOTE** If you have installed Austin from the Snap Store, the `austinp`
-> executable will be available as `austin.p` from the command line.
+> [!NOTE]
+> If you have installed Austin from the Snap Store, the `austinp` executable
+> will be available as `austin.p` from the command line.
 
 
 ## Logging
@@ -541,10 +532,10 @@ summarises the compatibility of Austin with CPython versions
 | 2.3-2.7, 3.3-3.11 | 3.5            |
 | 3.8-3.13          | 3.7            |
 
-> **NOTE** Austin *might* work with other versions of Python on all the
-> platforms and architectures above. So it is worth giving it a try even if
-> your system is not listed below. If you are looking for support for Python <
-> 3.8, you can use Austin 3.5.
+> [!NOTE]
+> Austin *might* work with other platforms and architectures not listed above.
+> So it is worth giving it a try even if your system is not listed below. If you
+> are looking for support for Python < 3.8, you can use Austin 3.5.
 
 Because of platform-specific details, Austin usage may vary slightly. Below are
 further compatibility details to be aware of.
@@ -627,33 +618,31 @@ is written in C, implementing the new changes is rather straight-forward.
 
 # Examples
 
-The following flame graph has been obtained with the command
+To profile a Python script, run Austin with the command
 
 ~~~ console
-austin -i 1ms ./test.py | sed '/^#/d' | ./flamegraph.pl --countname=μs > test.svg
+austin -o profile.mojo python myscript.py
 ~~~
 
-where the sample `test.py` script has the execute permission and the following
-content
-
-~~~ python
-#!/usr/bin/env python3
-
-import dis
-
-for i in range(1000):
-    dis.dis(dis.dis)
-~~~
-
-<object data="art/dis_fg.svg" type="image/svg+xml" width="100%" >
-  <img src="art/dis_fg.svg" style="width:100%;"/>
-</object>
-
-To profile Apache2 WSGI application, one can attach Austin to the web server
-with
+To profile a running Python application, attach Austin to it with the
+`-p/--pid` option, e.g.
 
 ~~~ console
-austin -Cp `pgrep apache2 | head -n 1`
+austin -o profile.mojo -p <pid>
+~~~
+where `<pid>` is the process ID of the running Python application you want to
+profile. If you also want to profile the child processes of the target
+application, add the `-C/--children` option to the command line:
+
+~~~ console
+austin -o profile.mojo -Cp <pid>
+~~~
+
+For example, to profile an Apache2 WSGI application, one can attach Austin to
+the web server with
+
+~~~ console
+austin -Cp `pgrep apache2 | head -n 1` > profile.mojo
 ~~~
 
 Any child processes will be automatically detected as they are created and
@@ -697,6 +686,7 @@ with the same command line as Austin. Please note that the `austin` binary
 should be available from within the `PATH` environment variable in order for the
 TUI to work.
 
+> [!IMPORTANT]
 > The TUI is based on `python-curses`. The version included with the standard
 > Windows installations of Python is broken so it won't work out of the box. A
 > solution is to install the wheel of the port to Windows from
