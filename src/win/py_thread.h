@@ -38,23 +38,23 @@ py_thread__is_idle(py_thread_t* self) {
         _pi_buffer_size   = n;
         PVOID _new_buffer = realloc(_pi_buffer, n);
         if (!isvalid(_new_buffer)) {
-            log_d("cannot reallocate process info buffer");
-            return -1;
+            set_error(MALLOC, "Cannot allocate memory for process information buffer");
+            FAIL_BOOL;
         }
         _pi_buffer = _new_buffer;
         return py_thread__is_idle(self);
     }
     if (status != STATUS_SUCCESS) {
-        log_d("[NtQuerySystemInformation] Cannot get the status of running threads: %d.", status);
-        return -1;
+        set_error(OS, "NtQuerySystemInformation failed");
+        FAIL_BOOL;
     }
 
     SYSTEM_PROCESS_INFORMATION* pi = (SYSTEM_PROCESS_INFORMATION*)_pi_buffer;
     while (pi->UniqueProcessId != (HANDLE)self->proc->pid) {
         if (pi->NextEntryOffset == 0) {
             // We didn't find the process, which shouldn't really happen
-            log_d("[NtQuerySystemInformation] Process %ld not found", self->proc->pid);
-            return -1;
+            set_error(OS, "Process not found");
+            FAIL_BOOL;
         }
         pi = (SYSTEM_PROCESS_INFORMATION*)(((BYTE*)pi) + pi->NextEntryOffset);
     }
@@ -68,5 +68,6 @@ py_thread__is_idle(py_thread_t* self) {
         }
     }
 
-    return -1;
+    set_error(OS, "Thread not found");
+    FAIL_BOOL;
 }

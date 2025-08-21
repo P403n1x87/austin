@@ -77,8 +77,10 @@ static ssize_t
 _file_size(char* file) {
     struct stat statbuf;
 
-    if (fail(stat(file, &statbuf)))
-        return -1;
+    if (fail(stat(file, &statbuf))) {
+        set_error(IO, "Cannot stat file");
+        FAIL_INT;
+    }
 
     return statbuf.st_size;
 }
@@ -499,13 +501,13 @@ _py_proc__get_resident_memory(py_proc_t* self) {
     cu_FILE* statm = fopen(self->extra->statm_file, "rb");
     if (statm == NULL) {
         set_error(IO, "Cannot open statm file");
-        return -1; // cppcheck-suppress [resourceLeak]
+        FAIL_INT;
     }
 
     ssize_t size, resident;
     if (fscanf(statm, "%zd %zd", &size, &resident) != 2) {
         set_error(OS, "Failed to parse statm file");
-        return -1; // cppcheck-suppress [resourceLeak]
+        FAIL_INT; // cppcheck-suppress [resourceLeak]
     }
 
     return resident * self->extra->page_size; // cppcheck-suppress [resourceLeak]

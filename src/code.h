@@ -95,7 +95,7 @@ _code_from_code_raddr(py_proc_t* py_proc, void* code_raddr) {
     V_ALLOCA(code, code);
 
     if (fail(copy_py(pref, code_raddr, py_code, code)))
-        RETURN_NULL;
+        FAIL_PTR;
 
     lru_cache_t* cache = py_proc->string_cache;
 
@@ -105,11 +105,11 @@ _code_from_code_raddr(py_proc_t* py_proc, void* code_raddr) {
     if (!isvalid(filename)) {
         char* filename_value = _code__get_filename(&code, pref, py_v);
         if (!isvalid(filename_value)) {
-            RETURN_NULL;
+            FAIL_PTR;
         }
         filename = cached_string_new(string_key, filename_value);
         if (!isvalid(filename)) {
-            RETURN_NULL;
+            FAIL_PTR;
         }
         lru_cache__store(cache, string_key, filename);
 
@@ -122,11 +122,11 @@ _code_from_code_raddr(py_proc_t* py_proc, void* code_raddr) {
     if (!isvalid(scope)) {
         char* scope_value = V_MIN(3, 11) ? _code__get_qualname(&code, pref, py_v) : _code__get_name(&code, pref, py_v);
         if (!isvalid(scope_value)) {
-            RETURN_NULL;
+            FAIL_PTR;
         }
         scope = cached_string_new(string_key, scope_value);
         if (!isvalid(scope)) {
-            RETURN_NULL;
+            FAIL_PTR;
         }
         lru_cache__store(cache, string_key, scope);
 

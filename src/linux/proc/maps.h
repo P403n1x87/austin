@@ -70,7 +70,7 @@ proc_map_new(pid_t pid) {
         default:
             set_error(OS, "Unknown error");
         }
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     while (getline(&line, &len, fp) != -1) {
@@ -97,7 +97,7 @@ proc_map_new(pid_t pid) {
         next = (proc_map_t*)calloc(1, sizeof(proc_map_t));
         if (!isvalid(next)) {
             set_error(MALLOC, "Cannot allocate memory for proc_map_t");
-            RETURN_NULL;
+            FAIL_PTR;
         }
         if (!isvalid(head))
             head = next;
@@ -116,7 +116,7 @@ proc_map_new(pid_t pid) {
 
     if (!isvalid(head)) {
         set_error(OS, "No memory maps found");
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     return head;

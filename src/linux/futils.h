@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 
+#include "../hints.h"
+
 #define BUF_SIZE 1024
 
 typedef uint32_t crc32_t;
@@ -49,7 +51,8 @@ static inline long
 fmtime_ns(FILE* fp) {
     struct stat st;
     if (fstat(fileno(fp), &st) != 0) {
-        return -1;
+        set_error(IO, "Cannot get file status");
+        FAIL_INT;
     }
     return st.st_mtim.tv_nsec;
 }

@@ -50,8 +50,8 @@ static inline cached_string_t*
 cached_string_new(key_dt key, char* value) {
     cached_string_t* cached_string = (cached_string_t*)malloc(sizeof(cached_string_t));
     if (!isvalid(cached_string)) {
-        set_error(MALLOC, "Cannot allocate memory for cached string");
-        return NULL; // GCOV_EXCL_LINE
+        set_error(MALLOC, "Cannot allocate memory for cached string"); // GCOV_EXCL_START
+        FAIL_PTR;                                                      // GCOV_EXCL_STOP
     }
 
     cached_string->key   = key;
@@ -91,13 +91,13 @@ _string_from_raddr(proc_ref_t pref, void* raddr, python_v* py_v) {
     ssize_t         len    = 0;
 
     if (fail(copy_datatype(pref, raddr, unicode)))
-        RETURN_NULL;
+        FAIL_PTR;
 
     PyASCIIObject ascii = unicode.v3._base._base;
 
     if (ascii.state.kind != 1) {
         set_error(PYOBJECT, "Invalid PyASCIIObject kind");
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     // Because changes to PyASCIIObject are rare, we handle the version manually
@@ -110,23 +110,23 @@ _string_from_raddr(proc_ref_t pref, void* raddr, python_v* py_v) {
 
     if (!isvalid(data)) {
         set_error(PYOBJECT, "Invalid PyASCIIObject data pointer");
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     if (len < 0 || len > 4096) {
         set_error(PYOBJECT, "Invalid string length");
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     buffer = (char*)malloc(len + 1);
     if (!isvalid(buffer)) {
         set_error(MALLOC, "Cannot allocate memory for string buffer");
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     if (fail(copy_memory(pref, data, len, buffer))) {
         free(buffer);
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     buffer[len] = '\0'; // Ensure null-termination
@@ -142,22 +142,22 @@ _bytes_from_raddr(proc_ref_t pref, void* raddr, ssize_t* size, python_v* py_v) {
     unsigned char* array = NULL;
 
     if (fail(copy_datatype(pref, raddr, bytes)))
-        RETURN_NULL;
+        FAIL_PTR;
 
     if ((len = bytes.ob_base.ob_size + 1) < 1) { // Include null-terminator
         set_error(PYOBJECT, "PyBytesObject is too short");
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     array = (unsigned char*)malloc((len + 1) * sizeof(unsigned char*));
     if (!isvalid(array)) {
         set_error(MALLOC, "Cannot allocate memory for PyBytesObject buffer");
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     if (fail(copy_memory(pref, raddr + offsetof(PyBytesObject, ob_sval), len, array))) {
         free(array);
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     array[len] = 0;

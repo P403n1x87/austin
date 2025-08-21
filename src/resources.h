@@ -91,14 +91,14 @@ map_new(int fd, size_t size, int flags) {
     void* addr = mmap(0, size, PROT_READ, flags, fd, 0);
     if (addr == MAP_FAILED) {
         set_error(IO, "Cannot map file to memory");
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     map_t* map = malloc(sizeof(map_t));
     if (!isvalid(map)) {
         munmap(addr, size);
         set_error(MALLOC, "Cannot allocate memory for map structure");
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     map->size = size;

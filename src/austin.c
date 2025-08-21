@@ -77,7 +77,7 @@ do_single_process(py_proc_t* py_proc) {
     py_proc__log_version(py_proc, true);
 
     if (pargs.exposure == 0) {
-        while (interrupt_signal == false) {
+        while (interrupt_signal == 0) {
             stopwatch_start();
 
             if (fail(result = py_proc__sample(py_proc))) {
@@ -95,7 +95,7 @@ do_single_process(py_proc_t* py_proc) {
         if (!pargs.where && !pargs.pipe)
             log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
         microseconds_t end_time = gettime() + pargs.exposure * 1000000;
-        while (interrupt_signal == false) {
+        while (interrupt_signal == 0) {
             stopwatch_start();
 
             if (fail(result = py_proc__sample(py_proc))) {

@@ -144,16 +144,16 @@ stack_chunk_new(proc_ref_t pref, void* origin) {
 
     if (!isvalid(origin)) {
         set_error(NULL, "Invalid origin address for stack chunk");
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     if (copy_datatype(pref, origin, original_chunk))
-        RETURN_NULL;
+        FAIL_PTR;
 
     stack_chunk_t* chunk = (stack_chunk_t*)calloc(1, sizeof(stack_chunk_t));
     if (!isvalid(chunk)) {
         set_error(MALLOC, "Cannot allocate memory for stack chunk");
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     chunk->data = (_PyStackChunk*)malloc(original_chunk.size);

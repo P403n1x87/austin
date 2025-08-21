@@ -83,8 +83,8 @@ py_thread__is_idle(py_thread_t* self) {
     struct proc_threadinfo ti;
 
     if (proc_pidinfo(self->proc->pid, PROC_PIDTHREADINFO, self->tid + _silly_offset, &ti, sizeof(ti)) != sizeof(ti)) {
-        log_d("Cannot get thread info for thread %lx", self->tid);
-        return -1;
+        set_error(OS, "Cannot get thread info");
+        FAIL_BOOL;
     }
 
     return ti.pth_run_state != TH_STATE_RUNNING;

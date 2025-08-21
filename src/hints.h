@@ -35,10 +35,22 @@
         austin_errno = AUSTIN_E##x; \
         return 1;                   \
     }
-#define RETURN_NULL     \
+#define FAIL_PTR        \
     {                   \
         log_location(); \
         return NULL;    \
+    }
+
+#define FAIL_INT        \
+    {                   \
+        log_location(); \
+        return -1;      \
+    }
+
+#define FAIL_BOOL       \
+    {                   \
+        log_location(); \
+        return -1;      \
     }
 
 #define success(x) (!(x))

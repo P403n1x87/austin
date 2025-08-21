@@ -54,7 +54,7 @@ frame_new(
     frame_t* frame = (frame_t*)malloc(sizeof(frame_t));
     if (!isvalid(frame)) {
         set_error(MALLOC, "Cannot allocate memory for frame");
-        RETURN_NULL;
+        FAIL_PTR;
     }
 
     frame->key      = key;
@@ -117,7 +117,7 @@ _frame_from_code_raddr(py_proc_t* py_proc, void* code_raddr, int lasti) {
     if (!isvalid(code)) {
         code = _code_from_code_raddr(py_proc, code_raddr);
         if (!isvalid(code))
-            RETURN_NULL;
+            FAIL_PTR;
         lru_cache__store(py_proc->code_cache, (key_dt)code_raddr, code);
     }
 
@@ -132,7 +132,7 @@ _frame_from_code_raddr(py_proc_t* py_proc, void* code_raddr, int lasti) {
     if (V_MIN(3, 11)) {
         if (!isvalid(lnotab) || len == 0) {
             set_error(PYOBJECT, "Invalid code location table");
-            RETURN_NULL;
+            FAIL_PTR;
         }
 
         for (size_t i = 0, bc = 0; i < len; i++) {
@@ -179,7 +179,7 @@ _frame_from_code_raddr(py_proc_t* py_proc, void* code_raddr, int lasti) {
     } else {
         if (!isvalid(lnotab) || len % 2) {
             set_error(PYOBJECT, "Invalid code location table");
-            RETURN_NULL;
+            FAIL_PTR;
         }
 
         if (V_MIN(3, 10)) {

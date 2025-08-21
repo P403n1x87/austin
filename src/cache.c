@@ -270,8 +270,10 @@ hash_table__get(hash_table_t* self, key_dt key) {
 // ----------------------------------------------------------------------------
 bool
 hash_table__is_full(hash_table_t* self) {
-    if (!isvalid(self))
-        return -1;
+    if (!isvalid(self)) {
+        set_error(NULL, "Invalid hash table");
+        FAIL_BOOL;
+    }
 
     return self->size >= self->load_factor;
 }

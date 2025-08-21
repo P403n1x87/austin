@@ -102,19 +102,19 @@ static inline char*
 proc_root(pid_t pid, char* file) {
     if (file[0] != '/') {
         set_error(IO, "File path is not absolute"); // GCOV_EXCL_START
-        RETURN_NULL;                                // GCOV_EXCL_STOP
+        FAIL_PTR;                                   // GCOV_EXCL_STOP
     }
 
     char* proc_root = calloc(1, strlen(file) + 24);
     if (!isvalid(proc_root)) {
         set_error(MALLOC, "Cannot allocate memory for proc root path"); // GCOV_EXCL_START
-        RETURN_NULL;                                                    // GCOV_EXCL_STOP
+        FAIL_PTR;                                                       // GCOV_EXCL_STOP
     }
 
     if (sprintf(proc_root, "/proc/%d/root%s", pid, file) < 0) {
         free(proc_root); // GCOV_EXCL_START
         set_error(MALLOC, "Cannot format proc root path");
-        RETURN_NULL; // GCOV_EXCL_STOP
+        FAIL_PTR; // GCOV_EXCL_STOP
     }
 
     return proc_root;
