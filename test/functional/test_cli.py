@@ -25,11 +25,13 @@ import platform
 import sys
 from pathlib import Path
 from subprocess import run
+from test.error import AustinError
+from test.utils import austin
+from test.utils import no_sudo
+from test.utils import run_python
+from test.utils import target
 
 import pytest
-
-from test.error import AustinError
-from test.utils import austin, no_sudo, run_python, target
 
 
 def test_cli_no_arguments():

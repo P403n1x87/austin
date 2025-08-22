@@ -80,10 +80,8 @@ do_single_process(py_proc_t* py_proc) {
         while (interrupt_signal == 0) {
             stopwatch_start();
 
-            if (fail(result = py_proc__sample(py_proc))) {
-                log_location();
-                break;
-            }
+            if (fail(result = py_proc__sample(py_proc)))
+                FAIL_BREAK;
 
 #ifdef NATIVE
             stopwatch_pause(0);
@@ -98,10 +96,8 @@ do_single_process(py_proc_t* py_proc) {
         while (interrupt_signal == 0) {
             stopwatch_start();
 
-            if (fail(result = py_proc__sample(py_proc))) {
-                log_location();
-                break;
-            }
+            if (fail(result = py_proc__sample(py_proc)))
+                FAIL_BREAK;
 
 #ifdef NATIVE
             stopwatch_pause(0);
@@ -297,14 +293,12 @@ austin() {
     py_proc = py_proc_new(false);
     if (!isvalid(py_proc)) {
         result = 1;
-        log_location();
-        goto release;
+        FAIL_GOTO(release);
     }
 
     if (fail(py_thread_allocate())) {
         result = 1;
-        log_location();
-        goto release;
+        FAIL_GOTO(release);
     }
 
     // Initialise sampling metrics.
@@ -314,14 +308,12 @@ austin() {
         if (fail(py_proc__start(py_proc, *pargs.cmd, (char**)pargs.cmd) && !pargs.children) || py_proc->pid == 0) {
             py_proc__terminate(py_proc);
             result = 1;
-            log_location();
-            goto release;
+            FAIL_GOTO(release);
         }
     } else {
         if (fail(py_proc__attach(py_proc, pargs.attach_pid)) && !pargs.children) {
             result = 1;
-            log_location();
-            goto release;
+            FAIL_GOTO(release);
         }
     }
 

@@ -53,6 +53,17 @@
         return -1;      \
     }
 
+#define FAIL_BREAK      \
+    {                   \
+        log_location(); \
+        break;          \
+    }
+#define FAIL_GOTO(x)    \
+    {                   \
+        log_location(); \
+        goto x;         \
+    }
+
 #define success(x) (!(x))
 #define fail(x)    (x)
 #define sfree(x)           \

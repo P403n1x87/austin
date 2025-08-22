@@ -159,13 +159,11 @@ stack_chunk_new(proc_ref_t pref, void* origin) {
     chunk->data = (_PyStackChunk*)malloc(original_chunk.size);
     if (!isvalid(chunk->data)) {
         set_error(MALLOC, "Cannot allocate memory for stack chunk data");
-        log_location();
-        goto fail;
+        FAIL_GOTO(fail);
     }
 
     if (copy_memory(pref, origin, original_chunk.size, chunk->data)) {
-        log_location();
-        goto fail;
+        FAIL_GOTO(fail);
     }
 
     chunk->origin = origin;
@@ -173,8 +171,7 @@ stack_chunk_new(proc_ref_t pref, void* origin) {
     if (original_chunk.previous != NULL) {
         chunk->previous = stack_chunk_new(pref, original_chunk.previous);
         if (!isvalid(chunk->previous)) {
-            log_location();
-            goto fail;
+            FAIL_GOTO(fail);
         }
     }
 

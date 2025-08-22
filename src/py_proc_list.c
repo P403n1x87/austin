@@ -116,14 +116,12 @@ py_proc_list_new(py_proc_t* parent_py_proc) {
 
     list->py_proc_for_pid = lookup_new(256);
     if (!isvalid(list->py_proc_for_pid)) {
-        log_location();
-        goto error;
+        FAIL_GOTO(error);
     }
 
     list->ppid_for_pid = lookup_new(1024);
     if (!isvalid(list->ppid_for_pid)) {
-        log_location();
-        goto error;
+        FAIL_GOTO(error);
     }
 
     // Add the parent process to the list.
