@@ -406,13 +406,7 @@ main(int argc, char** argv) {
         goto finally;
     }
 
-    event_handler__emit_metadata("duration", MICROSECONDS_FMT, stats_duration());
-    if (pargs.gc) {
-        event_handler__emit_metadata("gc", MICROSECONDS_FMT, _gc_time);
-    }
-
-    if (!pargs.where)
-        stats_log_metrics();
+    stats_log_metrics();
 
 finally:
     py_thread_free();

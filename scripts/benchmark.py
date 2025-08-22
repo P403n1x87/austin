@@ -21,7 +21,7 @@ SCENARIOS = [
         (
             "austin",
             f"Wall time [sampling interval: {i}]",
-            ["-Pi", str(i), sys.executable, target("target34.py")],
+            ["-i", str(i), sys.executable, target("target34.py")],
         )
         for i in (1, 10, 100, 1000)
     ],
@@ -29,7 +29,7 @@ SCENARIOS = [
         (
             "austin",
             f"CPU time [sampling interval: {i}]",
-            ["-Pci", str(i), sys.executable, target("target34.py")],
+            ["-ci", str(i), sys.executable, target("target34.py")],
         )
         for i in (1, 10, 100, 1000)
     ],
@@ -37,7 +37,7 @@ SCENARIOS = [
         (
             "austin",
             f"RSA keygen [sampling interval: {i}]",
-            ["-Pci", str(i), sys.executable, "-m", "test.bm.rsa_key_generator"],
+            ["-ci", str(i), sys.executable, "-m", "test.bm.rsa_key_generator"],
         )
         for i in (1, 10, 100, 1000)
     ],
@@ -45,7 +45,7 @@ SCENARIOS = [
         (
             "austin",
             f"Full metrics [sampling interval: {i}]",
-            ["-Pfi", str(i), sys.executable, target("target34.py")],
+            ["-fi", str(i), sys.executable, target("target34.py")],
         )
         for i in (1, 10, 100, 1000)
     ],
@@ -53,7 +53,7 @@ SCENARIOS = [
         (
             "austin",
             f"Multiprocess wall time [sampling interval: {i}]",
-            ["-CPfi", str(i), sys.executable, target("target_mp.py"), "16"],
+            ["-Cfi", str(i), sys.executable, target("target_mp.py"), "16"],
         )
         for i in (1, 10, 100, 1000)
     ],
