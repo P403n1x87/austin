@@ -971,6 +971,11 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
     self->timestamp = gettime();
 #endif
 
+    if (self->pid == 0) {
+        set_error(OS, "Failed to start process");
+        FAIL;
+    }
+
     log_d("Python process started successfully");
 
     SUCCESS;

@@ -305,7 +305,7 @@ austin() {
     stats_reset();
 
     if (pargs.attach_pid == 0) {
-        if (fail(py_proc__start(py_proc, *pargs.cmd, (char**)pargs.cmd) && !pargs.children) || py_proc->pid == 0) {
+        if (fail(py_proc__start(py_proc, *pargs.cmd, (char**)pargs.cmd)) && !pargs.children) {
             py_proc__terminate(py_proc);
             result = 1;
             FAIL_GOTO(release);
