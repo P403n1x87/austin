@@ -49,19 +49,19 @@ py_thread__is_idle(py_thread_t* self) {
 
     cu_fd fd = open(file_name, O_RDONLY);
     if (fd == -1) {
-        log_d("Cannot open %s", file_name);
-        return -1;
+        set_error(IO, "Cannot open thread stat file");
+        FAIL_BOOL;
     }
 
     if (read(fd, buffer, 2047) == 0) {
-        log_d("Cannot read %s", file_name);
-        return -1;
+        set_error(IO, "Cannot read thread stat file");
+        FAIL_BOOL;
     }
 
     char* p = strchr(buffer, ')');
     if (!isvalid(p)) {
-        log_d("Invalid format for procfs file %s", file_name);
-        return -1;
+        set_error(OS, "Invalid thread stat file");
+        FAIL_BOOL;
     }
 
     p += 2;

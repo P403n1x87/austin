@@ -143,30 +143,27 @@ stack_chunk_new(proc_ref_t pref, void* origin) {
     _PyStackChunk original_chunk = {0};
 
     if (!isvalid(origin)) {
-        // Not a valid datastack chunk.
-        return NULL;
+        set_error(NULL, "Invalid origin address for stack chunk");
+        FAIL_PTR;
     }
 
-    if (copy_datatype(pref, origin, original_chunk)) {
-        log_e("Failed to copy _PyStackChunk from %p", origin);
-        return NULL;
-    }
+    if (copy_datatype(pref, origin, original_chunk))
+        FAIL_PTR;
 
     stack_chunk_t* chunk = (stack_chunk_t*)calloc(1, sizeof(stack_chunk_t));
     if (!isvalid(chunk)) {
-        log_e("Cannot allocate memory for stack chunk");
-        return NULL;
+        set_error(MALLOC, "Cannot allocate memory for stack chunk");
+        FAIL_PTR;
     }
 
     chunk->data = (_PyStackChunk*)malloc(original_chunk.size);
     if (!isvalid(chunk->data)) {
-        log_e("Cannot allocate memory for stack chunk data");
-        goto fail;
+        set_error(MALLOC, "Cannot allocate memory for stack chunk data");
+        FAIL_GOTO(fail);
     }
 
     if (copy_memory(pref, origin, original_chunk.size, chunk->data)) {
-        log_e("Failed to copy full stack chunk data");
-        goto fail;
+        FAIL_GOTO(fail);
     }
 
     chunk->origin = origin;
@@ -174,8 +171,7 @@ stack_chunk_new(proc_ref_t pref, void* origin) {
     if (original_chunk.previous != NULL) {
         chunk->previous = stack_chunk_new(pref, original_chunk.previous);
         if (!isvalid(chunk->previous)) {
-            log_e("Failed to copy previous stack chunk");
-            goto fail;
+            FAIL_GOTO(fail);
         }
     }
 
@@ -197,7 +193,7 @@ stack_chunk__destroy(stack_chunk_t* chunk) {
     sfree(chunk->data);
     stack_chunk__destroy(chunk->previous);
 
-    sfree(chunk);
+    free(chunk);
 }
 
 // ----------------------------------------------------------------------------

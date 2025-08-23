@@ -121,14 +121,19 @@ _get_version_from_executable(char* binary, int* major, int* minor, int* patch) {
 #endif
 
     fp = _popen(cmd, "r");
-    if (!isvalid(fp))
+    if (!isvalid(fp)) {
+        set_error(OS, "Cannot open pipe");
         FAIL;
+    }
+
+    log_d("Getting Python version from executable %s", binary);
 
     while (fgets(version, sizeof(version) - 1, fp) != NULL) {
         if (sscanf(version, "Python %d.%d.%d", major, minor, patch) == 3)
             SUCCESS;
     }
 
+    set_error(BINARY, "Cannot determine Python version from executable");
     FAIL;
 } /* _get_version_from_executable */
 
@@ -188,14 +193,12 @@ _find_version_in_binary(char* path, int* version) {
 
     cu_fd fd = open(path, O_RDONLY);
     if (fd == -1) {
-        log_e("Cannot open binary file %s", path);
-        set_error(EPROC);
+        set_error(IO, "Cannot open binary file");
         FAIL;
     }
 
     if (fstat(fd, &s) == -1) {
-        log_ie("Cannot determine size of binary file");
-        set_error(EPROC);
+        set_error(IO, "Cannot determine size of binary file");
         FAIL;
     }
 
@@ -203,8 +206,7 @@ _find_version_in_binary(char* path, int* version) {
 
     cu_map_t* binary_map = map_new(fd, binary_size, MAP_PRIVATE);
     if (!isvalid(binary_map)) {
-        log_ie("Cannot map binary file to memory");
-        set_error(EPROC);
+        set_error(IO, "Cannot map binary file to memory");
         FAIL;
     }
 
@@ -228,7 +230,7 @@ _find_version_in_binary(char* path, int* version) {
         SUCCESS;
     }
 
-    set_error(EPROC);
+    set_error(VERSION, "Cannot find Python version from binary");
     FAIL;
 } /* _find_version_in_binary */
 #endif
@@ -236,7 +238,7 @@ _find_version_in_binary(char* path, int* version) {
 static int
 _py_proc__infer_python_version(py_proc_t* self) {
     if (!isvalid(self)) {
-        set_error(EPROC);
+        set_error(NULL, "Invalid process structure");
         FAIL;
     }
 
@@ -260,8 +262,6 @@ _py_proc__infer_python_version(py_proc_t* self) {
 
             self->py_v = get_version_descriptor(major, minor, patch);
             if (!isvalid(self->py_v)) {
-                log_e("Unsupported Python version %d.%d.%d", major, minor, patch);
-                set_error(ENOVERSION);
                 FAIL;
             }
 
@@ -277,7 +277,6 @@ _py_proc__infer_python_version(py_proc_t* self) {
         unsigned long py_version = 0;
 
         if (fail(py_proc__memcpy(self, self->symbols[DYNSYM_HEX_VERSION], sizeof(py_version), &py_version))) {
-            log_e("Failed to dereference remote Py_Version symbol");
             FAIL;
         }
 
@@ -289,8 +288,6 @@ _py_proc__infer_python_version(py_proc_t* self) {
 
         self->py_v = get_version_descriptor(major, minor, patch);
         if (!isvalid(self->py_v)) {
-            log_e("Unsupported Python version %d.%d.%d", major, minor, patch);
-            set_error(ENOVERSION);
             FAIL;
         }
 
@@ -327,8 +324,6 @@ _py_proc__infer_python_version(py_proc_t* self) {
             log_d("Python version (from binary content): %d.%d.%d", major, minor, patch);
             self->py_v = get_version_descriptor(MAJOR(version), MINOR(version), PATCH(version));
             if (!isvalid(self->py_v)) {
-                log_e("Unsupported Python version %d.%d.%d", major, minor, patch);
-                set_error(ENOVERSION);
                 FAIL;
             }
 
@@ -337,7 +332,7 @@ _py_proc__infer_python_version(py_proc_t* self) {
     }
 #endif
 
-    set_error(ENOVERSION);
+    set_error(VERSION, "Cannot infer Python version");
     FAIL;
 
 from_exe:
@@ -351,8 +346,6 @@ from_filename:
 set_version:
     self->py_v = get_version_descriptor(major, minor, patch);
     if (!isvalid(self->py_v)) {
-        log_e("Unsupported Python version %d.%d.%d", major, minor, patch);
-        set_error(ENOVERSION);
         FAIL;
     }
 
@@ -378,7 +371,7 @@ set_version:
 static int
 _py_proc__check_interp_state(py_proc_t* self, void* raddr) {
     if (!isvalid(self)) {
-        set_error(EPROC);
+        set_error(NULL, "Invalid process structure");
         FAIL;
     }
 
@@ -387,21 +380,16 @@ _py_proc__check_interp_state(py_proc_t* self, void* raddr) {
     V_ALLOCA(thread, tstate);
 
     void* tstate_head_addr;
-    if (fail(_py_proc__get_interpreter_state_field(self, raddr, tstate_head, tstate_head_addr))) {
-        log_ie("Cannot get remote interpreter state head");
+    if (fail(_py_proc__get_interpreter_state_field(self, raddr, tstate_head, tstate_head_addr)))
         FAIL;
-    }
 
-    if (fail(py_proc__copy_v(self, thread, tstate_head_addr, &tstate))) {
-        log_e("Cannot copy PyThreadState head at %p from PyInterpreterState instance", tstate_head_addr);
+    if (fail(py_proc__copy_v(self, thread, tstate_head_addr, &tstate)))
         FAIL;
-    }
 
     log_t("PyThreadState head loaded @ %p", V_FIELD(void*, is, py_is, o_tstate_head));
 
     if (V_FIELD(void*, tstate, py_thread, o_interp) != raddr) {
-        log_d("PyThreadState head does not point to interpreter state");
-        set_error(EPROC);
+        set_error(PYOBJECT, "PyThreadState head does not point to interpreter state");
         FAIL;
     }
 
@@ -411,15 +399,11 @@ _py_proc__check_interp_state(py_proc_t* self, void* raddr) {
 
     py_thread_t thread;
     raddr_t     thread_raddr = {self->proc_ref};
-    if (fail(_py_proc__get_interpreter_state_field(self, raddr, tstate_head, thread_raddr.addr))) {
-        log_ie("Cannot get remote thread state head");
+    if (fail(_py_proc__get_interpreter_state_field(self, raddr, tstate_head, thread_raddr.addr)))
         FAIL;
-    }
 
-    if (fail(py_thread__fill_from_raddr(&thread, &thread_raddr, self))) {
-        log_d("Failed to fill thread structure");
+    if (fail(py_thread__fill_from_raddr(&thread, &thread_raddr, self)))
         FAIL;
-    }
 
     log_d("Stack trace constructed from possible interpreter state");
 
@@ -443,7 +427,7 @@ _py_proc__check_interp_state(py_proc_t* self, void* raddr) {
     while (isvalid(thread.raddr.addr)) {
         if (success(_infer_tid_field_offset(&thread)))
             SUCCESS;
-        if (is_fatal(austin_errno))
+        if (!error_is(OS))
             FAIL;
 
         if (fail(py_thread__next(&thread))) {
@@ -473,15 +457,19 @@ _py_proc__scan_bss(py_proc_t* self) {
     // than pointers to it. This make the search a little slower, since we now
     // have to check every value in the range. However, the step size we chose
     // seems to get us close enough in a few attempts.
-    if (!isvalid(self) || !isvalid(self->map.bss.base)) {
-        set_error(EPROC);
+    if (!isvalid(self)) {
+        set_error(NULL, "Invalid process structure");
+        FAIL;
+    }
+
+    if (!isvalid(self->map.bss.base)) {
+        set_error(BINARY, "Invalid BSS section");
         FAIL;
     }
 
     cu_void* bss = malloc(self->map.bss.size);
     if (!isvalid(bss)) {
-        log_e("Cannot allocate memory for BSS scan (pid: %d)", self->pid);
-        set_error(EPROC);
+        set_error(MALLOC, "Cannot allocate memory for BSS scan");
         FAIL;
     }
 
@@ -490,7 +478,6 @@ _py_proc__scan_bss(py_proc_t* self) {
     for (int shift = 0; shift < 1; shift++) {
         void* base = self->map.bss.base - (shift * step);
         if (fail(py_proc__memcpy(self, base, self->map.bss.size, bss))) {
-            log_ie("Failed to copy BSS section");
             FAIL;
         }
 
@@ -509,7 +496,7 @@ _py_proc__scan_bss(py_proc_t* self) {
             }
 
             // If we don't have symbols we tolerate memory copy errors.
-            if (austin_errno == EPROCNPID || (self->sym_loaded && austin_errno == EMEMCOPY))
+            if (error_is(OS) || (self->sym_loaded && error_is(MEMCOPY)))
                 FAIL;
         }
 #if defined PL_WIN
@@ -517,7 +504,7 @@ _py_proc__scan_bss(py_proc_t* self) {
 #endif
     }
 
-    set_error(EPROC);
+    set_error(OS, "Uninitialized data section scan failed");
     FAIL;
 }
 
@@ -525,8 +512,8 @@ _py_proc__scan_bss(py_proc_t* self) {
 static inline int
 _py_proc__prefetch_interpreter_state(py_proc_t* self, void* interp) {
     if (!isvalid(self)) {
-        set_error(EPROC);
-        FAIL;
+        set_error(NULL, "Invalid process structure"); // GCOV_EXCL_START
+        FAIL;                                         // GCOV_EXCL_END
     }
 
     // The interpreter state structure is quite large, so we prefetch the
@@ -544,8 +531,13 @@ _py_proc__prefetch_interpreter_state(py_proc_t* self, void* interp) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__deref_interp_head(py_proc_t* self) {
-    if (!isvalid(self) || !(isvalid(self->symbols[DYNSYM_RUNTIME]) || isvalid(self->map.runtime.base))) {
-        set_error(EPROC);
+    if (!isvalid(self)) {
+        set_error(NULL, "Invalid process structure");
+        FAIL;
+    }
+
+    if (!(isvalid(self->symbols[DYNSYM_RUNTIME]) || isvalid(self->map.runtime.base))) {
+        set_error(OS, "Invalid runtime section");
         FAIL;
     }
 
@@ -624,7 +616,7 @@ _py_proc__get_current_thread_state_raddr(py_proc_t* self) {
 static int
 _py_proc__find_interpreter_state(py_proc_t* self) {
     if (!isvalid(self)) {
-        set_error(EPROC);
+        set_error(NULL, "Invalid process structure");
         FAIL;
     }
 
@@ -675,14 +667,12 @@ _py_proc__run(py_proc_t* self) {
 
     TIMER_START(pargs.timeout)
     if (try_once && ++attempts > 1) {
-        log_d("Cannot attach to process %d with a single attempt.", self->pid);
-        set_error(EPROC);
+        set_error(OS, "Cannot one-shot attach");
         FAIL;
     }
 
     if (!py_proc__is_running(self)) {
-        log_e("Process %d is not running.", self->pid);
-        set_error(EPROCNPID);
+        set_error(OS, "Process is not running");
         FAIL;
     }
 
@@ -704,7 +694,7 @@ _py_proc__run(py_proc_t* self) {
 
     if (!init) {
         log_d("Interpreter state search timed out");
-        if (austin_errno == ENOVERSION) {
+        if (error_is(VERSION)) {
             // Nothing more we can do if we don't have a version
             FAIL;
         }
@@ -712,15 +702,13 @@ _py_proc__run(py_proc_t* self) {
         // This check only applies to Linux, because we don't have permission issues
         // on Windows, and if we got here on MacOS, we are already running with
         // sudo, so this is likely not a Python we can profile.
-        if (austin_errno == EPROCPERM)
+        if (error_is(PERM))
             // We are likely going to fail a BSS scan so we fail
             FAIL;
 #endif
 
         // Scan the BSS section as a last resort
         if (fail(_py_proc__scan_bss(self))) {
-            log_d("BSS scan failed");
-            set_error(EPROC);
             FAIL;
         }
 
@@ -836,7 +824,7 @@ py_proc__attach(py_proc_t* self, pid_t pid) {
 #if defined PL_WIN /* WIN */
     self->proc_ref = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, pid);
     if (self->proc_ref == INVALID_HANDLE_VALUE) {
-        set_error(EPROCATTACH);
+        set_error(OS, "Failed to open attach process");
         FAIL;
     }
 #endif /* ANY */
@@ -848,11 +836,6 @@ py_proc__attach(py_proc_t* self, pid_t pid) {
 #endif
 
     if (fail(_py_proc__run(self))) {
-        if (austin_errno == EPROCNPID) {
-            set_error(EPROCATTACH);
-        } else {
-            log_ie("Cannot attach to running process.");
-        }
         FAIL;
     }
 
@@ -904,8 +887,8 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
         DWORD dwThreadId;
         self->extra->h_reader_thread = CreateThread(NULL, 0, reader_thread, hChildStdOutRd, 0, &dwThreadId);
         if (self->extra->h_reader_thread == NULL) {
-            log_e("Failed to start STDOUT reader thread.");
-            set_error(ENULLDEV);
+            set_error(OS, "Failed to create stdout reader thread");
+            FAIL;
         }
     }
 
@@ -917,8 +900,7 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
 
     char* cmd_line = malloc(sizeof(char) * cmd_line_size);
     if (!isvalid(cmd_line)) {
-        log_e("Cannot allocate memory for command line");
-        set_error(ENOMEM);
+        set_error(MALLOC, "Cannot allocate memory for command line");
         FAIL;
     }
     strcpy(cmd_line, exec);
@@ -944,8 +926,7 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
     sfree(cmd_line);
 
     if (!process_created) {
-        log_e("CreateProcess produced error code %d", GetLastError());
-        set_error(EPROCFORK);
+        set_error(OS, "Failed to create process");
         FAIL;
     }
     self->proc_ref = piProcInfo.hProcess;
@@ -962,7 +943,7 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
         if (pargs.output_file == stdout) {
             log_d("Redirecting child's STDOUT to " NULL_DEVICE);
             if (freopen(NULL_DEVICE, "w", stdout) == NULL)
-                log_e(error_get_msg(ENULLDEV));
+                set_error(IO, "Cannot redirect child's STDOUT to " NULL_DEVICE);
         }
 
         execvpe(exec, argv, environ);
@@ -983,14 +964,17 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
     log_d("New process created with PID %d", self->pid);
 
     if (fail(_py_proc__run(self))) {
-        if (austin_errno == EPROCNPID)
-            set_error(EPROCFORK);
         FAIL;
     }
 
 #ifdef NATIVE
     self->timestamp = gettime();
 #endif
+
+    if (self->pid == 0) {
+        set_error(OS, "Failed to start process");
+        FAIL;
+    }
 
     log_d("Python process started successfully");
 
@@ -1029,8 +1013,8 @@ py_proc__wait(py_proc_t* self) {
 
 static inline int
 _py_proc__find_current_thread_offset(py_proc_t* self, void* thread_raddr) {
-    if (self->symbols[DYNSYM_RUNTIME] == NULL) {
-        set_error(EPROC);
+    if (!isvalid(self->symbols[DYNSYM_RUNTIME])) {
+        set_error(OS, "Invalid runtime symbol");
         FAIL;
     }
 
@@ -1056,7 +1040,7 @@ _py_proc__find_current_thread_offset(py_proc_t* self, void* thread_raddr) {
         }
     }
 
-    set_error(EPROC);
+    set_error(OS, "Cannot find current thread offset");
     FAIL;
 }
 
@@ -1127,11 +1111,8 @@ _py_proc__interrupt_threads(py_proc_t* self, raddr_t* tstate_head_raddr) {
         if (fail(py_thread__set_idle(&py_thread)))
             FAIL;
 
-        if (fail(wait_ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0))) {
-            log_e("ptrace: failed to interrupt thread %d", py_thread.tid);
-            set_error(EPROC);
+        if (fail(wait_ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0)))
             FAIL;
-        }
 
         if (fail(py_thread__set_interrupted(&py_thread, true))) {
             if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
@@ -1143,10 +1124,8 @@ _py_proc__interrupt_threads(py_proc_t* self, raddr_t* tstate_head_raddr) {
         log_t("ptrace: thread %d interrupted", py_thread.tid);
     } while (success(py_thread__next(&py_thread)));
 
-    if (austin_errno != ETHREADNONEXT) {
-        log_ie("Failed to iterate over threads while interrupting threads");
+    if (!error_is(ITEREND))
         FAIL;
-    }
 
     SUCCESS;
 }
@@ -1162,23 +1141,18 @@ _py_proc__resume_threads(py_proc_t* self, raddr_t* tstate_head_raddr) {
 
     do {
         if (py_thread__is_interrupted(&py_thread)) {
-            if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
-                log_d("ptrace: failed to resume thread %d (errno: %d)", py_thread.tid, errno);
-                set_error(EPROC);
+            if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0)))
                 FAIL;
-            }
+
             log_t("ptrace: thread %d resumed", py_thread.tid);
             if (fail(py_thread__set_interrupted(&py_thread, false))) {
-                log_ie("Failed to mark thread as interrupted");
                 FAIL;
             }
         }
     } while (success(py_thread__next(&py_thread)));
 
-    if (austin_errno != ETHREADNONEXT) {
-        log_ie("Failed to iterate over threads while resuming threads");
+    if (!error_is(ITEREND))
         FAIL;
-    }
 
     SUCCESS;
 }
@@ -1193,21 +1167,18 @@ _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_
     V_DESC(self->py_v);
 
     void* tstate_head = NULL;
-    if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, tstate_head))) {
-        log_ie("Failed to get pointer to thread state head while sampling");
+    if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, tstate_head)))
+        FAIL;
+
+    if (!isvalid(tstate_head)) {
+        set_error(PYOBJECT, "Invalid thread state head address");
         FAIL;
     }
-
-    if (!isvalid(tstate_head))
-        // Maybe the interpreter state is in an invalid state. We'll try again
-        // unless there is a fatal error.
-        SUCCESS;
 
     raddr_t     raddr = {.pref = self->proc_ref, .addr = tstate_head};
     py_thread_t py_thread;
 
     if (fail(py_thread__fill_from_raddr(&py_thread, &raddr, self))) {
-        log_ie("Failed to fill thread from raddr while sampling");
         if (is_fatal(austin_errno)) {
             FAIL;
         }
@@ -1218,31 +1189,26 @@ _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_
         // Use the current thread to determine which thread is manipulating memory
         if (V_MIN(3, 12)) {
             void* gil_state_raddr = NULL;
-            if (fail(_py_proc__get_interpreter_state_field(self, interp, gil_state, gil_state_raddr))) {
-                log_ie("Failed to get pointer to gil_state");
+            if (fail(_py_proc__get_interpreter_state_field(self, interp, gil_state, gil_state_raddr)))
                 FAIL;
-            }
+
             if (!isvalid(gil_state_raddr))
                 SUCCESS;
+
             gil_state_t gil_state = {0};
-            if (fail(copy_datatype(self->proc_ref, gil_state_raddr, gil_state))) {
-                log_ie("Failed to copy GIL state");
+            if (fail(copy_datatype(self->proc_ref, gil_state_raddr, gil_state)))
                 FAIL;
-            }
+
             current_thread = (void*)gil_state.last_holder._value;
         } else
             current_thread = _py_proc__get_current_thread_state_raddr(self);
     }
 
     int64_t interp_id = 0;
-    if (fail(_py_proc__get_interpreter_state_field(self, interp, id, interp_id))) {
-        log_ie("Failed to get interpreter ID");
+    if (fail(_py_proc__get_interpreter_state_field(self, interp, id, interp_id)))
         FAIL;
-    }
-    do {
-        if (py_thread.invalid)
-            continue;
 
+    do {
         if (pargs.memory) {
             mem_delta = 0;
             if (V_MAX(3, 11) && self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void*)-1) {
@@ -1303,8 +1269,7 @@ _py_proc__sample_interpreter(py_proc_t* self, void* interp, microseconds_t time_
         event_handler__emit_stack_end();
     } while (success(py_thread__next(&py_thread)));
 
-    if (austin_errno != ETHREADNONEXT) {
-        log_ie("Failed to iterate over threads while sampling");
+    if (!error_is(ITEREND)) {
         FAIL;
     }
 
@@ -1324,10 +1289,8 @@ py_proc__sample(py_proc_t* self) {
             FAIL;
 
         void* tstate_head = NULL;
-        if (fail(_py_proc__get_interpreter_state_field(self, current_interp, tstate_head, tstate_head))) {
-            log_ie("Failed to get pointer to thread state head");
+        if (fail(_py_proc__get_interpreter_state_field(self, current_interp, tstate_head, tstate_head)))
             FAIL;
-        }
 
         if (!isvalid(tstate_head))
             // Maybe the interpreter state is in an invalid state. We'll try again
@@ -1336,28 +1299,23 @@ py_proc__sample(py_proc_t* self) {
 
 #ifdef NATIVE
         raddr_t raddr = {.pref = self->proc_ref, .addr = tstate_head};
-        if (fail(_py_proc__interrupt_threads(self, &raddr))) {
-            log_ie("Failed to interrupt threads");
+        if (fail(_py_proc__interrupt_threads(self, &raddr)))
             FAIL;
-        }
+
         time_delta = gettime() - self->timestamp;
 #endif
         int result = _py_proc__sample_interpreter(self, current_interp, time_delta);
 
 #ifdef NATIVE
-        if (fail(_py_proc__resume_threads(self, &raddr))) {
-            log_ie("Failed to resume threads");
+        if (fail(_py_proc__resume_threads(self, &raddr)))
             FAIL;
-        }
 #endif
 
         if (fail(result))
             continue;
 
-        if (fail(_py_proc__get_interpreter_state_field(self, current_interp, next, current_interp))) {
-            log_ie("Failed to get next interpreter state");
+        if (fail(_py_proc__get_interpreter_state_field(self, current_interp, next, current_interp)))
             FAIL;
-        }
     } while (isvalid(current_interp));
 
 #ifdef NATIVE

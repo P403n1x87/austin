@@ -51,14 +51,13 @@
 
 // ---- PRIVATE ---------------------------------------------------------------
 
-unsigned long _sample_cnt;
-
 microseconds_t _min_sampling_time;
 microseconds_t _max_sampling_time;
 microseconds_t _avg_sampling_time;
 
 microseconds_t _start_time;
 
+ustat_t _sample_cnt;
 ustat_t _error_cnt;
 ustat_t _long_cnt;
 
@@ -70,7 +69,7 @@ static clock_serv_t cclock;
 // On Windows we have to use the QueryPerformance APIs in order to get the
 // right time resolution. We use this variable to cache the inverse frequency
 // (counts per second), that is the period of each count, in units of μs.
-static ctime_t _period;
+static long long _period;
 #endif
 
 // ---- PUBLIC ----------------------------------------------------------------

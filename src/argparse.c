@@ -52,7 +52,7 @@ parsed_args_t pargs = {
     /* t_sampling_interval */ DEFAULT_SAMPLING_INTERVAL,
     /* timeout             */ DEFAULT_INIT_TIMEOUT_MS * 1000,
     /* attach_pid          */ 0,
-    /* cmd_index           */ 0,
+    /* cmd                 */ NULL,
     /* where               */ 0,
     /* cpu                 */ 0,
     /* full                */ 0,
@@ -264,8 +264,8 @@ parse_opt(int key, char* arg, struct argp_state* state) {
     // that they can be passed to the command to execute
     if ((state->next == 0 && state->argv[1][0] != '-')
         || (state->next > 0 && state->next < state->argc && state->argv[state->next][0] != '-')) {
-        pargs.cmd_index = state->next == 0 ? 1 : state->next;
-        state->next     = state->argc;
+        pargs.cmd   = &state->argv[state->next == 0 ? 1 : state->next];
+        state->next = state->argc;
     }
 
     long l_pid;
@@ -336,7 +336,7 @@ parse_opt(int key, char* arg, struct argp_state* state) {
 
     case ARGP_KEY_ARG:
     case ARGP_KEY_END:
-        if (pargs.attach_pid != 0 && pargs.cmd_index != 0)
+        if (pargs.attach_pid != 0 && isvalid(pargs.cmd))
             argp_error(state, "the -p option is incompatible with the command argument");
         break;
 
@@ -359,11 +359,11 @@ parse_opt(int key, char* arg, struct argp_state* state) {
 // argument.
 //
 // Return 0 to continue parsing the arguments, or otherwise to stop.
-typedef int (*arg_callback)(const int opt, const char* arg, const int index);
+typedef int (*arg_callback)(const int opt, const char* arg, const int index, char** argv);
 
 // ----------------------------------------------------------------------------
 static arg_option*
-_find_long_opt(arg_option* opts, char* opt_name) {
+_find_long_opt(arg_option* opts, const char* opt_name) {
     arg_option* retval = NULL;
 
     register int i = 0;
@@ -411,11 +411,11 @@ _handle_opt(arg_option* opt, arg_callback cb, int argi, int argc, char** argv) {
             if (equal == NULL && (argi >= argc - 1 || argv[argi + 1][0] == '-'))
                 return ARG_MISSING_OPT_ARG;
 
-            opt_arg = equal ? equal + 1 : argv[argi + 1];
+            opt_arg = equal ? equal + 1 : ((char*)argv[argi + 1]);
         } else if (equal != NULL)
             return ARG_UNEXPECTED_OPT_ARG;
 
-        return cb(opt->opt, opt_arg, argi);
+        return cb(opt->opt, opt_arg, argi, argv);
     }
 
     return ARG_UNRECOGNISED_LONG_OPT;
@@ -437,10 +437,10 @@ _handle_long_opt(arg_option* opts, arg_callback cb, int* argi, int argc, char** 
 // ----------------------------------------------------------------------------
 static int
 _handle_opts(arg_option* opts, arg_callback cb, int* argi, int argc, char** argv) {
-    char*       opt_str  = &argv[*argi][1];
+    const char* opt_str  = &argv[*argi][1];
     int         n_opts   = strlen(opt_str);
     arg_option* curr_opt = NULL;
-    char*       equal    = strchr(argv[*argi], '=');
+    const char* equal    = strchr(argv[*argi], '=');
 
     for (register int i = 0; i < n_opts; i++) {
         if (opt_str[i] == '=')
@@ -550,7 +550,7 @@ arg_parse(arg_option* opts, arg_callback cb, int argc, char** argv) {
             }
         } else {
             // Argument
-            cb_res = cb(ARG_ARGUMENT, argv[a], a);
+            cb_res = cb(ARG_ARGUMENT, argv[a], a, argv);
             a++;
         }
 
@@ -568,7 +568,7 @@ arg_parse(arg_option* opts, arg_callback cb, int argc, char** argv) {
 
 // ----------------------------------------------------------------------------
 static int
-cb(const int opt, const char* arg, const int index) {
+cb(const int opt, const char* arg, const int index, char** argv) {
     switch (opt) {
     case 'i':
         if (fail(parse_interval((char*)arg, (long*)&(pargs.t_sampling_interval)))
@@ -645,7 +645,7 @@ cb(const int opt, const char* arg, const int index) {
         exit(0);
 
     case ARG_ARGUMENT:
-        pargs.cmd_index = index;
+        pargs.cmd = &argv[index];
         return ARG_STOP_PARSING;
 
     default:
@@ -658,27 +658,10 @@ cb(const int opt, const char* arg, const int index) {
 
 #endif
 
-static inline void
-validate() {
-    if (isvalid(pargs.output_filename)) {
-        pargs.output_file = fopen(pargs.output_filename, "wb");
-        if (pargs.output_file == NULL) {
-            puts("Unable to create the given output file");
-            exit(-1);
-        }
-    }
-#ifdef PL_WIN
-    else {
-        // Set binary mode to prevent CR/LF conversion
-        setmode(fileno(pargs.output_file), O_BINARY);
-    }
-#endif
-}
-
 // ---- PUBLIC ----------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-void
+int
 parse_args(int argc, char** argv) {
     pargs.output_file = stdout;
 
@@ -690,5 +673,24 @@ parse_args(int argc, char** argv) {
     arg_parse(options, cb, argc, argv);
 #endif
 
-    validate();
+    if ((!isvalid(pargs.cmd) || !isvalid(*pargs.cmd)) && pargs.attach_pid == 0) {
+        set_error(CMDLINE, "No command nor process ID provided");
+        FAIL;
+    }
+
+    if (isvalid(pargs.output_filename)) {
+        pargs.output_file = fopen(pargs.output_filename, "wb");
+        if (pargs.output_file == NULL) {
+            set_error(IO, "Cannot open output file");
+            FAIL;
+        }
+    }
+#ifdef PL_WIN
+    else {
+        // Set binary mode to prevent CR/LF conversion
+        setmode(fileno(pargs.output_file), O_BINARY);
+    }
+#endif
+
+    SUCCESS;
 }

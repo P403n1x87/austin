@@ -59,18 +59,18 @@ proc_map_new(pid_t pid) {
     proc_map_t* next           = NULL;
 
     cu_FILE* fp = _procfs(pid, "maps");
-    if (fp == NULL) {
+    if (!isvalid(fp)) {
         switch (errno) {
         case EACCES: // Needs elevated privileges
-            set_error(EPROCPERM);
+            set_error(PERM, "Cannot read from procfs");
             break;
         case ENOENT: // Invalid pid
-            set_error(EPROCNPID);
+            set_error(OS, "No such process");
             break;
         default:
-            set_error(EPROCVM);
+            set_error(OS, "Unknown error");
         }
-        return NULL;
+        FAIL_PTR;
     }
 
     while (getline(&line, &len, fp) != -1) {
@@ -96,9 +96,8 @@ proc_map_new(pid_t pid) {
 
         next = (proc_map_t*)calloc(1, sizeof(proc_map_t));
         if (!isvalid(next)) {
-            log_ie("Cannot allocate memory for proc_map_t");
-            set_error(EPROC);
-            break;
+            set_error(MALLOC, "Cannot allocate memory for proc_map_t");
+            FAIL_PTR;
         }
         if (!isvalid(head))
             head = next;
@@ -115,20 +114,28 @@ proc_map_new(pid_t pid) {
         curr->pathname  = has_pathname ? strdup(pathname) : NULL;
     }
 
+    if (!isvalid(head)) {
+        set_error(OS, "No memory maps found");
+        FAIL_PTR;
+    }
+
     return head;
 }
 
 // ----------------------------------------------------------------------------
 static inline proc_map_t*
 proc_map__first(proc_map_t* self, char* pathname) {
-    if (!isvalid(self) || !isvalid(pathname))
+    if (!isvalid(self) || !isvalid(pathname)) {
+        set_error(NULL, "Invalid arguments to proc_map__first");
         return NULL;
+    }
 
     PROC_MAP_ITER(self, map) {
         if (isvalid(map->pathname) && strcmp(map->pathname, pathname) == 0)
             return map;
     }
 
+    set_error(OS, "No matching memory map found");
     return NULL;
 }
 

@@ -26,6 +26,7 @@
 #include <stdlib.h>
 
 #include "cache.h"
+#include "error.h"
 #include "frame.h"
 #include "hints.h"
 #include "platform.h"
@@ -41,8 +42,10 @@ stack_allocate(size_t size) {
         SUCCESS; // GCOV_EXCL_LINE
 
     _stack = (stack_dt*)calloc(1, sizeof(stack_dt));
-    if (!isvalid(_stack))
+    if (!isvalid(_stack)) {
+        set_error(MALLOC, "Cannot allocate buffer for frame stack");
         FAIL; // GCOV_EXCL_LINE
+    }
 
     _stack->size    = size;
     _stack->base    = (frame_t**)calloc(size, sizeof(frame_t*));

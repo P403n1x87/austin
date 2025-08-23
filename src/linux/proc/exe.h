@@ -40,7 +40,7 @@ proc_exe_readlink(pid_t pid, char* dest, ssize_t size) {
     sprintf(file_name, "/proc/%d/exe", pid);
 
     if (readlink(file_name, dest, size) == -1) {
-        log_e("Cannot readlink %s", file_name);
+        set_error(IO, "Cannot read symbolic link for executable");
         FAIL; // cppcheck-suppress [resourceLeak]
     }
 

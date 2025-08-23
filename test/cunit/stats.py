@@ -1,13 +1,15 @@
 import sys
 from pathlib import Path
+from test.cunit import SRC
+from test.cunit import CModule
 
-from test.cunit import SRC, CModule
 
 CFLAGS = ["-g", "-fprofile-arcs", "-ftest-coverage", "-fPIC"]
 
 EXTRA_SOURCES = [
     SRC / "argparse.c",
     SRC / "env.c",
+    SRC / "error.c",
     SRC / "events.c",
     SRC / "logging.c",
     SRC / "stack.c",

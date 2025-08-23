@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include "cache.h"
+#include "error.h"
 #include "hints.h"
 #include "logging.h"
 #include "mem.h"
@@ -49,7 +50,8 @@ static inline cached_string_t*
 cached_string_new(key_dt key, char* value) {
     cached_string_t* cached_string = (cached_string_t*)malloc(sizeof(cached_string_t));
     if (!isvalid(cached_string)) {
-        return NULL; // GCOV_EXCL_LINE
+        set_error(MALLOC, "Cannot allocate memory for cached string"); // GCOV_EXCL_START
+        FAIL_PTR;                                                      // GCOV_EXCL_STOP
     }
 
     cached_string->key   = key;
@@ -88,16 +90,14 @@ _string_from_raddr(proc_ref_t pref, void* raddr, python_v* py_v) {
     char*           buffer = NULL;
     ssize_t         len    = 0;
 
-    if (fail(copy_datatype(pref, raddr, unicode))) {
-        log_ie("Cannot read remote PyUnicodeObject3");
-        goto failed;
-    }
+    if (fail(copy_datatype(pref, raddr, unicode)))
+        FAIL_PTR;
 
     PyASCIIObject ascii = unicode.v3._base._base;
 
     if (ascii.state.kind != 1) {
-        set_error(ECODEFMT);
-        goto failed;
+        set_error(PYOBJECT, "Invalid PyASCIIObject kind");
+        FAIL_PTR;
     }
 
     // Because changes to PyASCIIObject are rare, we handle the version manually
@@ -108,24 +108,30 @@ _string_from_raddr(proc_ref_t pref, void* raddr, python_v* py_v) {
     len                = ascii.state.compact ? ascii.length
                                              : (V_MIN(3, 12) ? unicode.v3_12._base.utf8_length : unicode.v3._base.utf8_length);
 
+    if (!isvalid(data)) {
+        set_error(PYOBJECT, "Invalid PyASCIIObject data pointer");
+        FAIL_PTR;
+    }
+
     if (len < 0 || len > 4096) {
-        log_e("Invalid string length");
-        goto failed;
+        set_error(PYOBJECT, "Invalid string length");
+        FAIL_PTR;
     }
 
     buffer = (char*)malloc(len + 1);
-
-    if (!isvalid(data) || fail(copy_memory(pref, data, len, buffer))) {
-        log_ie("Cannot read remote value of PyUnicodeObject3");
-        goto failed;
+    if (!isvalid(buffer)) {
+        set_error(MALLOC, "Cannot allocate memory for string buffer");
+        FAIL_PTR;
     }
-    buffer[len] = 0;
+
+    if (fail(copy_memory(pref, data, len, buffer))) {
+        free(buffer);
+        FAIL_PTR;
+    }
+
+    buffer[len] = '\0'; // Ensure null-termination
 
     return buffer;
-
-failed:
-    sfree(buffer);
-    return NULL;
 }
 
 // ----------------------------------------------------------------------------
@@ -135,31 +141,29 @@ _bytes_from_raddr(proc_ref_t pref, void* raddr, ssize_t* size, python_v* py_v) {
     ssize_t        len   = 0;
     unsigned char* array = NULL;
 
-    if (fail(copy_datatype(pref, raddr, bytes))) {
-        log_ie("Cannot read remote PyBytesObject");
-        goto error;
-    }
+    if (fail(copy_datatype(pref, raddr, bytes)))
+        FAIL_PTR;
 
     if ((len = bytes.ob_base.ob_size + 1) < 1) { // Include null-terminator
-        set_error(ECODEBYTES);
-        log_e("PyBytesObject is too short");
-        goto error;
+        set_error(PYOBJECT, "PyBytesObject is too short");
+        FAIL_PTR;
     }
 
     array = (unsigned char*)malloc((len + 1) * sizeof(unsigned char*));
+    if (!isvalid(array)) {
+        set_error(MALLOC, "Cannot allocate memory for PyBytesObject buffer");
+        FAIL_PTR;
+    }
+
     if (fail(copy_memory(pref, raddr + offsetof(PyBytesObject, ob_sval), len, array))) {
-        log_ie("Cannot read remote value of PyBytesObject");
-        goto error;
+        free(array);
+        FAIL_PTR;
     }
 
     array[len] = 0;
     *size      = len - 1;
 
     return array;
-
-error:
-    sfree(array);
-    return NULL;
 }
 
 #define py_string_key(code, field) ((key_dt) * ((void**)((void*)&code + py_v->py_code.field)))

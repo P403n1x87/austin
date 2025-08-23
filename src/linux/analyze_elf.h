@@ -65,8 +65,7 @@ _py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_
     }
 
     if (symbols < DYNSYM_MANDATORY) {
-        log_e("ELF binary has not all the mandatory Python symbols");
-        set_error(ESYM);
+        set_error(BINARY, "Not all required symbols found");
         FAIL;
     }
 

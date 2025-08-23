@@ -115,12 +115,13 @@ py_proc_list_new(py_proc_t* parent_py_proc) {
     log_t("Maximum number of PIDs: %d", list->pids);
 
     list->py_proc_for_pid = lookup_new(256);
-    if (!isvalid(list->py_proc_for_pid))
-        goto error;
+    if (!isvalid(list->py_proc_for_pid)) {
+        FAIL_GOTO(error);
+    }
 
     list->ppid_for_pid = lookup_new(1024);
     if (!isvalid(list->ppid_for_pid)) {
-        goto error;
+        FAIL_GOTO(error);
     }
 
     // Add the parent process to the list.

@@ -24,6 +24,7 @@
 
 #include <stdio.h>
 
+#include "error.h"
 #include "hints.h"
 #include "platform.h"
 
@@ -88,13 +89,16 @@ typedef struct {
 static inline map_t*
 map_new(int fd, size_t size, int flags) {
     void* addr = mmap(0, size, PROT_READ, flags, fd, 0);
-    if (addr == MAP_FAILED)
-        return NULL;
+    if (addr == MAP_FAILED) {
+        set_error(IO, "Cannot map file to memory");
+        FAIL_PTR;
+    }
 
     map_t* map = malloc(sizeof(map_t));
     if (!isvalid(map)) {
         munmap(addr, size);
-        return NULL;
+        set_error(MALLOC, "Cannot allocate memory for map structure");
+        FAIL_PTR;
     }
 
     map->size = size;

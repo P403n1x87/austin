@@ -27,21 +27,7 @@
 
 #include "logging.h"
 
-#define AUSTIN_EOK       0
-#define AUSTIN_EOS       1
-#define AUSTIN_EPERM     2
-#define AUSTIN_EMEMCOPY  3
-#define AUSTIN_EMALLOC   4
-#define AUSTIN_EIO       5
-#define AUSTIN_ECMDLINE  6
-#define AUSTIN_EENV      7
-#define AUSTIN_EVALUE    8
-#define AUSTIN_ENULL     9
-#define AUSTIN_EVERSION  10
-#define AUSTIN_EBINARY   11
-#define AUSTIN_EPYOBJECT 12
-#define AUSTIN_EVM       13
-#define AUSTIN_EITEREND  14
+[[error_alias_decls]]
 
 // ----------------------------------------------------------------------------
 typedef int error_t;
