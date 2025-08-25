@@ -136,7 +136,7 @@ _code_remote(py_proc_t* py_proc, raddr_t code_raddr) {
     ssize_t      len    = 0;
     line_table_t lnotab = _code__get_lnotab(&code, pref, &len, py_v);
     if (!isvalid(lnotab) || len <= 0) {
-        return NULL;
+        FAIL_PTR;
     }
 
     return code_new(
