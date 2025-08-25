@@ -193,7 +193,7 @@ _py_thread__push_remote_iframe(py_thread_t* self, raddr_t* prev) {
     if (fail(copy_py(self->proc->ref, *prev, py_iframe, iframe)))
         FAIL;
 
-    return _py_thread__push_local_iframe(self, (PyInterpreterFrame*)&iframe, prev);
+    return _py_thread__push_local_iframe(self, &iframe, prev);
 }
 
 // ----------------------------------------------------------------------------
