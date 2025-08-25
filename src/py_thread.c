@@ -224,8 +224,6 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
     stack_reset();
 
     raddr_t prev = self->top_frame;
-    if (fail(_py_thread__push_remote_frame(self, &prev)))
-        FAIL;
 
     while (isvalid(prev)) {
         if (fail(_py_thread__push_remote_frame(self, &prev))) {
