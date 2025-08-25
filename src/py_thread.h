@@ -36,21 +36,22 @@
 #define MAX_STACK_SIZE 2048
 
 typedef struct thread {
-    raddr_t raddr;
-    raddr_t next_raddr;
-
     py_proc_t* proc;
 
-    uintptr_t      tid;
-    struct thread* next;
+    raddr_t addr;
+    raddr_t next;
 
-    void* top_frame;
+    uintptr_t tid;
+
+    raddr_t top_frame;
 
     /* The per-thread datastack was introduced in Python 3.11 */
     stack_chunk_t* stack;
 
     tstate_status_t status;
 } py_thread_t;
+
+#define py_thread__init(_proc) {.proc = _proc}
 
 /**
  * Fill the thread structure from the given remote address.
@@ -60,7 +61,7 @@ typedef struct thread {
  * @param py_proc_t    the Python process the thread belongs to.
  */
 int
-py_thread__fill_from_raddr(py_thread_t*, raddr_t*, py_proc_t*);
+py_thread__read_remote(py_thread_t*, raddr_t);
 
 /**
  * Get the next thread, if any.

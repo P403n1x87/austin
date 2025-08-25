@@ -55,11 +55,12 @@ __declspec(dllimport) extern BOOL GetPhysicallyInstalledSystemMemory(PULONGLONG)
 
 /**
  * Copy a data structure from the given remote address structure.
- * @param  raddr the remote address
- * @param  dt    the data structure as a local variable
- * @return       zero on success, otherwise non-zero.
+ * @param  pref the process reference
+ * @param  addr the remote address
+ * @param  dt   the data structure as a local variable
+ * @return      zero on success, otherwise non-zero.
  */
-#define copy_from_raddr(raddr, dt) copy_memory((raddr)->pref, (raddr)->addr, sizeof(dt), &dt)
+#define copy_remote(pref, addr, dt) copy_memory(pref, addr, sizeof(dt), &dt)
 
 /**
  * Copy a data structure from the given remote address structure.
@@ -67,10 +68,10 @@ __declspec(dllimport) extern BOOL GetPhysicallyInstalledSystemMemory(PULONGLONG)
  * @param  dt    the data structure as a local variable
  * @return       zero on success, otherwise non-zero.
  */
-#define copy_from_raddr_v(raddr, dt, n) copy_memory(raddr->pref, raddr->addr, n, &dt)
+#define copy_remote_v(pref, addr, dt, n) copy_memory(pref, addr, n, &dt)
 
 /**
- * Same as copy_from_raddr, but with explicit arguments instead of a pointer to
+ * Same as copy_remote, but with explicit arguments instead of a pointer to
  * a remote address structure
  * @param  pref the process reference
  * @param  addr the remote address
@@ -80,7 +81,7 @@ __declspec(dllimport) extern BOOL GetPhysicallyInstalledSystemMemory(PULONGLONG)
 #define copy_datatype(pref, addr, dt) copy_memory(pref, addr, sizeof(dt), &dt)
 
 /**
- * Same as copy_from_raddr, but for versioned Python data structures.
+ * Same as copy_remote, but for versioned Python data structures.
  * @param  pref     the process reference
  * @param  addr     the remote address
  * @param  py_type  the versioned Python type (e.g. py_runtime).
@@ -101,15 +102,7 @@ __declspec(dllimport) extern BOOL GetPhysicallyInstalledSystemMemory(PULONGLONG)
 #define copy_field_v(pref, type, field, raddr, dst)                         \
     copy_memory(pref, raddr + py_v->py_##type.o_##field, sizeof(dst), &dst)
 
-// Whilst the PID is generally used to identify processes across platforms,
-// operations can only be performed on other process references, like a Win32
-// HANDLE or a OSX mach_port_t. We use this structure to abstract the process
-// reference to identify a remote address location in a platoform-independent
-// way.
-typedef struct {
-    proc_ref_t pref; // Process reference
-    void*      addr; // Virtual memory address within the process
-} raddr_t;
+typedef void* raddr_t;
 
 /**
  * Copy a chunk of memory from a portion of the virtual memory of another
@@ -123,7 +116,7 @@ typedef struct {
  * @return  zero on success, otherwise non-zero.
  */
 static inline int
-copy_memory(proc_ref_t proc_ref, void* restrict addr, ssize_t len, void* restrict buf) {
+copy_memory(proc_ref_t proc_ref, raddr_t restrict addr, ssize_t len, void* restrict buf) {
     ssize_t result = -1;
 
 #if defined(PL_LINUX) /* LINUX */
@@ -222,9 +215,9 @@ get_total_memory(void) {
 struct vm_map {
     char*   path;
     ssize_t file_size;
-    void*   base;
+    raddr_t base;
     size_t  size;
-    void*   bss_base;
+    raddr_t bss_base;
     size_t  bss_size;
     bool    has_symbols;
 };

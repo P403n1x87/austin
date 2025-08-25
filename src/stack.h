@@ -82,7 +82,7 @@ stack_has_cycle(void) {
 }
 
 static inline void
-stack_py_push(void* origin, void* code, int lasti) {
+stack_py_push(raddr_t origin, raddr_t code, int lasti) {
     _stack->py_base[_stack->pointer++] = (py_frame_t){.origin = origin, .code = code, .lasti = lasti};
 }
 
@@ -132,14 +132,14 @@ stack_py_push(void* origin, void* code, int lasti) {
 
 // This is our representation of the linked list of stack chunks
 typedef struct stack_chunk {
-    void*               origin;
+    raddr_t             origin;
     _PyStackChunk*      data;
     struct stack_chunk* previous;
 } stack_chunk_t;
 
 // ----------------------------------------------------------------------------
 static inline stack_chunk_t*
-stack_chunk_new(proc_ref_t pref, void* origin) {
+stack_chunk_new(proc_ref_t pref, raddr_t origin) {
     _PyStackChunk original_chunk = {0};
 
     if (!isvalid(origin)) {
@@ -198,7 +198,7 @@ stack_chunk__destroy(stack_chunk_t* chunk) {
 
 // ----------------------------------------------------------------------------
 static inline void*
-stack_chunk__resolve(stack_chunk_t* self, void* address) {
+stack_chunk__resolve(stack_chunk_t* self, raddr_t address) {
     if (address >= self->origin && (char*)address < (char*)self->origin + self->data->size)
         return (char*)self->data + ((char*)address - (char*)self->origin);
 

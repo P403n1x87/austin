@@ -430,15 +430,15 @@ _py_proc__get_maps(py_proc_t* self) {
     }
     log_d("Executable path: '%s'", pd->exe_path);
 
-    self->proc_ref = pid_to_task(self->pid);
-    if (self->proc_ref == 0) {
+    self->ref = pid_to_task(self->pid);
+    if (self->ref == 0) {
         FAIL; // cppcheck-suppress [memleak]
     }
 
     struct vm_map* map = NULL;
 
     while (mach_vm_region(
-               self->proc_ref, &address, &size, VM_REGION_BASIC_INFO_64,
+               self->ref, &address, &size, VM_REGION_BASIC_INFO_64,
                (vm_region_info_t)&region_info, // cppcheck-suppress [uninitvar]
                &count, &object_name
            )
@@ -579,7 +579,7 @@ _py_proc__get_resident_memory(py_proc_t* self) {
     mach_msg_type_number_t      count = MACH_TASK_BASIC_INFO_COUNT;
 
     return task_info(
-               self->proc_ref, MACH_TASK_BASIC_INFO, (task_info_t)&info, &count // cppcheck-suppress [uninitvar]
+               self->ref, MACH_TASK_BASIC_INFO, (task_info_t)&info, &count // cppcheck-suppress [uninitvar]
            ) == KERN_SUCCESS
              ? info.resident_size
              : -1;

@@ -73,24 +73,23 @@ code__destroy(code_t* self) {
 
 // ----------------------------------------------------------------------------
 
-#define _code__get_filename(self, pref, py_v)                                           \
-    _string_from_raddr(pref, *((void**)((void*)self + py_v->py_code.o_filename)), py_v)
+#define _code__get_filename(self, pref, py_v)                                         \
+    _string_remote(pref, *((raddr_t*)((void*)self + py_v->py_code.o_filename)), py_v)
 
-#define _code__get_name(self, pref, py_v)                                           \
-    _string_from_raddr(pref, *((void**)((void*)self + py_v->py_code.o_name)), py_v)
+#define _code__get_name(self, pref, py_v) _string_remote(pref, *((raddr_t*)((void*)self + py_v->py_code.o_name)), py_v)
 
-#define _code__get_qualname(self, pref, py_v)                                           \
-    _string_from_raddr(pref, *((void**)((void*)self + py_v->py_code.o_qualname)), py_v)
+#define _code__get_qualname(self, pref, py_v)                                         \
+    _string_remote(pref, *((raddr_t*)((void*)self + py_v->py_code.o_qualname)), py_v)
 
-#define _code__get_lnotab(self, pref, len, py_v)                                          \
-    _bytes_from_raddr(pref, *((void**)((void*)self + py_v->py_code.o_lnotab)), len, py_v)
+#define _code__get_lnotab(self, pref, len, py_v)                                        \
+    _bytes_remote(pref, *((raddr_t*)((void*)self + py_v->py_code.o_lnotab)), len, py_v)
 
 // ----------------------------------------------------------------------------
 static inline code_t*
-_code_from_code_raddr(py_proc_t* py_proc, void* code_raddr) {
+_code_remote(py_proc_t* py_proc, raddr_t code_raddr) {
     V_DESC(py_proc->py_v);
 
-    proc_ref_t pref = py_proc->proc_ref;
+    proc_ref_t pref = py_proc->ref;
 
     V_ALLOCA(code, code);
 

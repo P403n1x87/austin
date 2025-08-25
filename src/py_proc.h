@@ -38,7 +38,7 @@
 #include "version.h"
 
 typedef struct {
-    void*   base;
+    raddr_t base;
     ssize_t size;
 } proc_vm_map_block_t;
 
@@ -60,7 +60,7 @@ typedef struct _proc_extra_info proc_extra_info; // Forward declaration.
 
 typedef struct {
     pid_t      pid;
-    proc_ref_t proc_ref;
+    proc_ref_t ref;
     bool       child;
 
     char* bin_path;
@@ -71,11 +71,11 @@ typedef struct {
     int       sym_loaded;
     python_v* py_v;
 
-    void* symbols[DYNSYM_COUNT]; // Binary symbols
+    raddr_t symbols[DYNSYM_COUNT]; // Binary symbols
 
-    void* gc_state_raddr;
+    raddr_t gc_state_raddr;
 
-    void* is_raddr;
+    raddr_t istate_raddr;
 
     lru_cache_t* frame_cache;
     lru_cache_t* string_cache;
@@ -222,7 +222,7 @@ py_proc__sample(py_proc_t*);
 
  * @return        zero on success, otherwise non-zero.
  */
-#define py_proc__copy_field_v(self, type, field, raddr, dst) copy_field_v(self->proc_ref, type, field, raddr, dst)
+#define py_proc__copy_field_v(self, type, field, raddr, dst) copy_field_v(self->ref, type, field, raddr, dst)
 
 /**
  * Log the Python interpreter version
