@@ -740,9 +740,13 @@ _py_proc__run(py_proc_t* self) {
         page_size = env.page_size_cap;
     }
 
-    size_t com = (py_v->py_is.o_gc + py_v->py_is.o_gil_state + py_v->py_is.o_id + py_v->py_is.o_next
-                  + py_v->py_is.o_tstate_head)
-               / 5;
+    // Because the structure fields are all of type long, we should not have
+    // alignment issues in this computation.
+    size_t    com = 0;
+    int       n   = (sizeof(py_is_v) - sizeof(ssize_t)) / sizeof(offset_t);
+    offset_t* o   = (offset_t*)(((ssize_t*)&py_v->py_is.size) + 1);
+    for (register int i = 0; i < n; i++, com += *(o++)) {}
+    com /= n;
 
     self->interpreter_state_com.base_offset = com & ~(page_size - 1);
     self->interpreter_state_com.size        = page_size;
@@ -752,8 +756,8 @@ _py_proc__run(py_proc_t* self) {
     self->interpreter_state_com.data = malloc(self->interpreter_state_com.size);
 
     log_d(
-        "Interpreter state CoM(base=%zu, size=%zu)", self->interpreter_state_com.base_offset,
-        self->interpreter_state_com.size
+        "Interpreter state CoM(base=%zu, size=%zu, fields=%d)", self->interpreter_state_com.base_offset,
+        self->interpreter_state_com.size, n
     );
 
     log_d("Python process initialization successful");
