@@ -42,8 +42,8 @@ struct _proc_extra_info {
     uintptr_t    _pthread_buffer[PTHREAD_BUFFER_ITEMS];
 };
 
-#define read_pthread_t(py_proc, addr)                                                                                \
-    (copy_memory(py_proc->proc_ref, addr, sizeof(py_proc->extra->_pthread_buffer), py_proc->extra->_pthread_buffer))
+#define read_pthread_t(py_proc, addr)                                                                           \
+    (copy_memory(py_proc->ref, addr, sizeof(py_proc->extra->_pthread_buffer), py_proc->extra->_pthread_buffer))
 
 #ifdef NATIVE
 #include <sched.h>

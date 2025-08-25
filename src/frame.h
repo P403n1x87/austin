@@ -40,9 +40,9 @@ typedef struct {
 } frame_t;
 
 typedef struct {
-    void* origin;
-    void* code;
-    int   lasti;
+    raddr_t origin;
+    raddr_t code;
+    int     lasti;
 } py_frame_t;
 
 // ----------------------------------------------------------------------------
@@ -110,12 +110,12 @@ _read_signed_varint(unsigned char* lnotab, size_t* i) {
 
 // ----------------------------------------------------------------------------
 static inline frame_t*
-_frame_from_code_raddr(py_proc_t* py_proc, void* code_raddr, int lasti) {
+_frame_remote(py_proc_t* py_proc, raddr_t code_raddr, int lasti) {
     V_DESC(py_proc->py_v);
 
     code_t* code = lru_cache__maybe_hit(py_proc->code_cache, (key_dt)code_raddr);
     if (!isvalid(code)) {
-        code = _code_from_code_raddr(py_proc, code_raddr);
+        code = _code_remote(py_proc, code_raddr);
         if (!isvalid(code))
             FAIL_PTR;
         lru_cache__store(py_proc->code_cache, (key_dt)code_raddr, code);

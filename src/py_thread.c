@@ -95,7 +95,7 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
         frame_t* frame     = lru_cache__maybe_hit(cache, frame_key);
 
         if (!isvalid(frame)) {
-            frame = _frame_from_code_raddr(self->proc, py_frame.code, lasti);
+            frame = _frame_remote(self->proc, py_frame.code, lasti);
             if (!isvalid(frame)) {
                 // Truncate the stack to the point where we have successfully resolved.
                 _stack->pointer = i;
@@ -114,24 +114,23 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_thread__push_frame_from_raddr(py_thread_t* self, void** prev) {
+_py_thread__push_remote_frame(py_thread_t* self, raddr_t* prev) {
     PyFrameObject frame;
 
-    raddr_t raddr = {self->raddr.pref, *prev};
-    if (fail(copy_from_raddr_v((&raddr), frame, self->proc->py_v->py_frame.size)))
+    if (fail(copy_remote_v(self->proc->ref, *prev, frame, self->proc->py_v->py_frame.size)))
         FAIL;
 
     V_DESC(self->proc->py_v);
 
-    void* origin = *prev;
+    raddr_t origin = *prev;
 
-    *prev = V_FIELD(void*, frame, py_frame, o_back);
+    *prev = V_FIELD(raddr_t, frame, py_frame, o_back);
     if (unlikely(origin == *prev)) {
         set_error(PYOBJECT, "Frame points to itself");
         FAIL;
     }
 
-    stack_py_push(origin, V_FIELD(void*, frame, py_frame, o_code), V_FIELD(int, frame, py_frame, o_lasti));
+    stack_py_push(origin, V_FIELD(raddr_t, frame, py_frame, o_code), V_FIELD(int, frame, py_frame, o_lasti));
 
     SUCCESS;
 }
@@ -146,13 +145,13 @@ static unsigned int _stack_chunk_misses = 0;
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_thread__push_iframe_from_addr(py_thread_t* self, void* iframe, void** prev) {
+_py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
     V_DESC(self->proc->py_v);
 
-    void* origin     = *prev;
-    void* code_raddr = V_FIELD_PTR(void*, iframe, py_iframe, o_code);
+    raddr_t origin     = *prev;
+    raddr_t code_raddr = V_FIELD_PTR(raddr_t, iframe, py_iframe, o_code);
 
-    *prev = V_FIELD_PTR(void*, iframe, py_iframe, o_previous);
+    *prev = V_FIELD_PTR(raddr_t, iframe, py_iframe, o_previous);
     if (unlikely(origin == *prev)) {
         set_error(PYOBJECT, "Interpreter frame points to itself");
         FAIL;
@@ -170,7 +169,7 @@ _py_thread__push_iframe_from_addr(py_thread_t* self, void* iframe, void** prev) 
 
     stack_py_push(
         origin, code_raddr,
-        (((int)(V_FIELD_PTR(void*, iframe, py_iframe, o_prev_instr) - code_raddr)) - py_v->py_code.o_code)
+        (((int)(V_FIELD_PTR(raddr_t, iframe, py_iframe, o_prev_instr) - code_raddr)) - py_v->py_code.o_code)
             / sizeof(_Py_CODEUNIT)
     );
 
@@ -186,29 +185,29 @@ _py_thread__push_iframe_from_addr(py_thread_t* self, void* iframe, void** prev) 
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_thread__push_iframe_from_raddr(py_thread_t* self, void** prev) {
+_py_thread__push_remote_iframe(py_thread_t* self, raddr_t* prev) {
     V_DESC(self->proc->py_v);
 
     V_ALLOCA(iframe, iframe);
 
-    if (fail(copy_py(self->raddr.pref, *prev, py_iframe, iframe)))
+    if (fail(copy_py(self->proc->ref, *prev, py_iframe, iframe)))
         FAIL;
 
-    return _py_thread__push_iframe_from_addr(self, &iframe, prev);
+    return _py_thread__push_local_iframe(self, &iframe, prev);
 }
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_thread__push_iframe(py_thread_t* self, void** prev) {
-    void* raddr = *prev;
+_py_thread__push_iframe(py_thread_t* self, raddr_t* prev) {
+    raddr_t raddr = *prev;
     if (isvalid(self->stack)) {
 #ifdef DEBUG
         _stack_chunk_count++;
 #endif
 
         void* resolved_addr = isvalid(self->stack) ? stack_chunk__resolve(self->stack, raddr) : NULL;
-        if (resolved_addr != NULL) {
-            return _py_thread__push_iframe_from_addr(self, resolved_addr, prev);
+        if (isvalid(resolved_addr)) {
+            return _py_thread__push_local_iframe(self, resolved_addr, prev);
         }
 
 #ifdef DEBUG
@@ -216,7 +215,7 @@ _py_thread__push_iframe(py_thread_t* self, void** prev) {
 #endif
     }
 
-    return _py_thread__push_iframe_from_raddr(self, prev);
+    return _py_thread__push_remote_iframe(self, prev);
 } /* _py_thread__push_iframe */
 
 // ----------------------------------------------------------------------------
@@ -224,12 +223,12 @@ static inline int
 _py_thread__unwind_frame_stack(py_thread_t* self) {
     stack_reset();
 
-    void* prev = self->top_frame;
-    if (fail(_py_thread__push_frame_from_raddr(self, &prev)))
+    raddr_t prev = self->top_frame;
+    if (fail(_py_thread__push_remote_frame(self, &prev)))
         FAIL;
 
     while (isvalid(prev)) {
-        if (fail(_py_thread__push_frame_from_raddr(self, &prev))) {
+        if (fail(_py_thread__push_remote_frame(self, &prev))) {
             log_d("Failed to retrieve frame #%d (from top).", stack_pointer());
             FAIL;
         }
@@ -248,8 +247,8 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_thread__unwind_iframe_stack(py_thread_t* self, void* iframe_raddr) {
-    void* curr = iframe_raddr;
+_py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
+    raddr_t curr = iframe_raddr;
 
     while (isvalid(curr)) {
         if (fail(_py_thread__push_iframe(self, &curr))) {
@@ -280,10 +279,10 @@ _py_thread__unwind_cframe_stack(py_thread_t* self) {
 
     V_DESC(self->proc->py_v);
 
-    if (fail(copy_py(self->raddr.pref, self->top_frame, py_cframe, cframe)))
+    if (fail(copy_py(self->proc->ref, self->top_frame, py_cframe, cframe)))
         FAIL;
 
-    return fail(_py_thread__unwind_iframe_stack(self, V_FIELD(void*, cframe, py_cframe, o_current_frame)));
+    return fail(_py_thread__unwind_iframe_stack(self, V_FIELD(raddr_t, cframe, py_cframe, o_current_frame)));
 }
 
 #ifdef NATIVE
@@ -553,17 +552,19 @@ _py_thread__seize(py_thread_t* self) {
 
 // ----------------------------------------------------------------------------
 int
-py_thread__fill_from_raddr(py_thread_t* self, raddr_t* raddr, py_proc_t* proc) {
+py_thread__read_remote(py_thread_t* self, raddr_t addr) {
     if (!isvalid(self)) {
         set_error(NULL, "Invalid thread pointer");
         FAIL;
     }
 
+    py_proc_t* proc = self->proc;
+
     V_DESC(proc->py_v);
 
     V_ALLOCA(thread, ts);
 
-    if (fail(copy_from_raddr(raddr, ts))) {
+    if (fail(copy_remote(proc->ref, addr, ts))) {
         FAIL;
     }
 
@@ -571,20 +572,13 @@ py_thread__fill_from_raddr(py_thread_t* self, raddr_t* raddr, py_proc_t* proc) {
     if (V_MIN(3, 11)) {
         // This is destroyed in py_thread__next, so it is important that all threads
         // are traversed to avoid a memory leak!
-        self->stack = stack_chunk_new(proc->proc_ref, V_FIELD(void*, ts, py_thread, o_stack));
+        self->stack = stack_chunk_new(proc->ref, V_FIELD(raddr_t, ts, py_thread, o_stack));
     }
 
-    self->proc = proc;
-
-    self->raddr = *raddr;
-
-    self->top_frame = V_FIELD(void*, ts, py_thread, o_frame);
-
-    self->status = V_FIELD(tstate_status_t, ts, py_thread, o_status);
-
-    self->next_raddr = (raddr_t){raddr->pref, V_FIELD(void*, ts, py_thread, o_next) == raddr->addr
-                                                  ? NULL
-                                                  : V_FIELD(void*, ts, py_thread, o_next)};
+    self->addr      = addr;
+    self->top_frame = V_FIELD(raddr_t, ts, py_thread, o_frame);
+    self->status    = V_FIELD(tstate_status_t, ts, py_thread, o_status);
+    self->next      = V_FIELD(raddr_t, ts, py_thread, o_next) == addr ? NULL : V_FIELD(raddr_t, ts, py_thread, o_next);
 
 #if defined PL_MACOS
     self->tid = V_FIELD(long, ts, py_thread, o_thread_id);
@@ -626,7 +620,7 @@ py_thread__fill_from_raddr(py_thread_t* self, raddr_t* raddr, py_proc_t* proc) {
 #endif
 
     SUCCESS;
-} /* py_thread__fill_from_raddr */
+} /* py_thread__read_remote */
 
 // ----------------------------------------------------------------------------
 int
@@ -638,12 +632,12 @@ py_thread__next(py_thread_t* self) {
         self->stack = NULL;
     }
 
-    if (!isvalid(self->next_raddr.addr))
+    if (!isvalid(self->next))
         STOP(ITEREND);
 
     log_t("Found next thread");
 
-    return py_thread__fill_from_raddr(self, &(self->next_raddr), self->proc);
+    return py_thread__read_remote(self, self->next);
 }
 
 // ----------------------------------------------------------------------------
@@ -666,7 +660,7 @@ py_thread__unwind(py_thread_t* self) {
 
     // Update the thread state to improve guarantees that it will be in sync with
     // the native stack just collected
-    py_thread__fill_from_raddr(self, &self->raddr, self->proc);
+    py_thread__read_remote(self, self->addr);
 #endif
     V_DESC(self->proc->py_v);
 

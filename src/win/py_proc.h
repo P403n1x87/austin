@@ -137,7 +137,7 @@ _py_proc__try_child_proc(py_proc_t* self) {
         FAIL;
     }
 
-    HANDLE orig_hproc = self->proc_ref;
+    HANDLE orig_hproc = self->ref;
     pid_t  orig_pid   = self->pid;
 
     for (;;) {
@@ -163,9 +163,9 @@ _py_proc__try_child_proc(py_proc_t* self) {
                 goto rollback;
             }
 
-            self->pid      = child_pid;
-            self->proc_ref = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, child_pid);
-            if (self->proc_ref == INVALID_HANDLE_VALUE) {
+            self->pid = child_pid;
+            self->ref = OpenProcess(PROCESS_VM_READ | PROCESS_QUERY_INFORMATION, FALSE, child_pid);
+            if (self->ref == INVALID_HANDLE_VALUE) {
                 log_e("Cannot open child process handle");
                 goto rollback;
             }
@@ -174,14 +174,14 @@ _py_proc__try_child_proc(py_proc_t* self) {
                 SUCCESS;
             } else {
                 log_d("Process has a single non-Python child with PID %d. Taking it as new parent", child_pid);
-                CloseHandle(self->proc_ref);
+                CloseHandle(self->ref);
             }
         }
     }
 
 rollback:
-    self->pid      = orig_pid;
-    self->proc_ref = orig_hproc;
+    self->pid = orig_pid;
+    self->ref = orig_hproc;
 
     set_error(OS, "Failed to find a single Python child process");
     FAIL;
@@ -213,7 +213,7 @@ _py_proc__get_modules(py_proc_t* self) {
     cu_char*          needle_path = NULL;
     struct vm_map*    map         = NULL;
 
-    if (GetModuleFileNameEx(self->proc_ref, NULL, pd->exe_path, sizeof(pd->exe_path)) == 0) {
+    if (GetModuleFileNameEx(self->ref, NULL, pd->exe_path, sizeof(pd->exe_path)) == 0) {
         set_error(OS, "Failed to get executable path from module");
         FAIL;
     }
@@ -344,7 +344,7 @@ static ssize_t
 _py_proc__get_resident_memory(py_proc_t* self) {
     PROCESS_MEMORY_COUNTERS mem_info;
 
-    return GetProcessMemoryInfo(self->proc_ref, &mem_info, sizeof(mem_info)) ? mem_info.WorkingSetSize : -1;
+    return GetProcessMemoryInfo(self->ref, &mem_info, sizeof(mem_info)) ? mem_info.WorkingSetSize : -1;
 }
 
 // ----------------------------------------------------------------------------

@@ -647,23 +647,25 @@ _infer_tid_field_offset(py_thread_t* py_thread) {
 
     // If the target process is in a different PID namespace, we need to get its
     // other PID to be able to determine the offset of the TID field.
-    pid_t nspid = _get_nspid(py_thread->raddr.pref);
+    py_proc_t*       proc  = py_thread->proc;
+    proc_ref_t       pref  = proc->ref;
+    proc_extra_info* extra = proc->extra;
+    pid_t            nspid = _get_nspid(pref);
 
     for (register int i = 0; i < PTHREAD_BUFFER_ITEMS; i++) {
-        if (py_thread->raddr.pref == py_thread->proc->extra->_pthread_buffer[i]
-            || (nspid && nspid == py_thread->proc->extra->_pthread_buffer[i])) {
+        if (pref == extra->_pthread_buffer[i] || (nspid && nspid == extra->_pthread_buffer[i])) {
             log_d("TID field offset: %d", i);
-            py_thread->proc->extra->pthread_tid_offset = i;
+            extra->pthread_tid_offset = i;
             SUCCESS;
         }
     }
 
     // Fall-back to smaller steps if we failed
     for (register int i = 0; i < PTHREAD_BUFFER_ITEMS * (sizeof(uintptr_t) / sizeof(pid_t)); i++) {
-        if (py_thread->raddr.pref == (pid_t)((pid_t*)py_thread->proc->extra->_pthread_buffer)[i]
-            || (nspid && nspid == (pid_t)((pid_t*)py_thread->proc->extra->_pthread_buffer)[i])) {
+        if (pref == (pid_t)((pid_t*)extra->_pthread_buffer)[i]
+            || (nspid && nspid == (pid_t)((pid_t*)extra->_pthread_buffer)[i])) {
             log_d("TID field offset (from fall-back): %d", i);
-            py_thread->proc->extra->pthread_tid_offset = -i;
+            extra->pthread_tid_offset = -i;
             SUCCESS;
         }
     }
