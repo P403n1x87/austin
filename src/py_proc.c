@@ -596,7 +596,7 @@ _py_proc__deref_interp_head(py_proc_t* self) {
 
 // ----------------------------------------------------------------------------
 static inline raddr_t
-_py_proc__get_current_thread_state_raddr(py_proc_t* self) {
+_py_proc__current_thread_state(py_proc_t* self) {
     raddr_t p_tstate_current = NULL;
 
     if (self->symbols[DYNSYM_RUNTIME] != NULL) {
@@ -1198,7 +1198,7 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
 
             current_thread = (raddr_t)gil_state.last_holder._value;
         } else
-            current_thread = _py_proc__get_current_thread_state_raddr(self);
+            current_thread = _py_proc__current_thread_state(self);
     }
 
     int64_t interp_id = 0;
@@ -1212,7 +1212,7 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
                 if (_py_proc__find_current_thread_offset(self, py_thread.addr))
                     continue;
                 else
-                    current_thread = _py_proc__get_current_thread_state_raddr(self);
+                    current_thread = _py_proc__current_thread_state(self);
             }
             if (py_thread.addr == current_thread) {
                 mem_delta = _py_proc__get_memory_delta(self);
