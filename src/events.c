@@ -43,13 +43,16 @@ base_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sam
 
 static inline void
 mojo_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sample) {
+    char thread_name[64];
+
     base_event_handler__handle_stack_begin(self, sample);
+
+    sprintf(thread_name, FORMAT_TID, sample->tid);
 
     mojo_event(MOJO_STACK);
     mojo_integer(sample->pid, 0);
     mojo_integer(sample->iid, 0);
-    fprintf(pargs.output_file, FORMAT_TID, sample->tid);
-    fputc('\0', pargs.output_file);
+    mojo_string(thread_name);
 }
 
 static inline void
