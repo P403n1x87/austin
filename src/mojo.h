@@ -67,9 +67,7 @@ typedef unsigned long long mojo_int_t;
 #define mojo_event(event)                \
     { fputc(event, pargs.output_file); }
 
-#define mojo_string(string)           \
-    fputs(string, pargs.output_file); \
-    fputc('\0', pargs.output_file);
+#define mojo_string(string) fwrite(string, strlen(string) + 1, 1, pargs.output_file);
 
 static inline void
 mojo_integer(mojo_int_t integer, int sign) {
