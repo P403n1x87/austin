@@ -89,7 +89,9 @@ def test_uwsgi(py):
         with uwsgi(env=env) as uw:
             request_thread.start()
 
-            result = austin("-x", "2", "-Cp", str(uw.pid))
+            result = austin(
+                "-x", "2", "-i", "100ms", "-Cp", str(uw.pid), expect_fail=True
+            )
             assert has_pattern(result.stdout, "app.py:application:5"), compress(
                 result.stdout
             )
@@ -108,7 +110,9 @@ def test_uwsgi_multiprocess(py):
         ) as uw:
             request_thread.start()
 
-            result = austin("-x", "2", "-Cp", str(uw.pid))
+            result = austin(
+                "-x", "2", "-i", "100ms", "-Cp", str(uw.pid), expect_fail=True
+            )
             assert has_pattern(result.stdout, "app.py:application:5"), compress(
                 result.stdout
             )

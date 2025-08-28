@@ -34,6 +34,7 @@
 
 struct _proc_extra_info {
     HANDLE h_reader_thread;
+    HANDLE h_job;
 };
 
 // ----------------------------------------------------------------------------

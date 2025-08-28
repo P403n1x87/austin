@@ -57,12 +57,33 @@ static int interrupt_signal = 0;
 
 static void
 signal_callback_handler(int signum) {
+    log_d("Caught signal %d", signum);
     switch (signum) {
     case SIGINT:
     case SIGTERM:
-        interrupt_signal = -signum;
+        interrupt_signal = signum;
     }
 } /* signal_callback_handler */
+
+#if defined PL_WIN
+BOOL WINAPI
+ConsoleHandler(DWORD signal) {
+    switch (signal) {
+    case CTRL_C_EVENT:
+        log_d("Caught Ctrl-C event");
+        interrupt_signal = SIGINT;
+        break;
+    case CTRL_CLOSE_EVENT:
+        log_d("Caught Ctrl-Close event");
+        interrupt_signal = SIGTERM;
+        break;
+    default:
+        log_d("Caught unknown console event %d", signal);
+        return FALSE;
+    }
+    return TRUE;
+}
+#endif // PL_WIN
 
 // ----------------------------------------------------------------------------
 
@@ -104,21 +125,22 @@ do_single_process(py_proc_t* py_proc) {
 #else
             stopwatch_pause(stopwatch_duration());
 #endif
+            if (pargs.where)
+                break;
 
-            if (end_time < gettime() || pargs.where)
-                interrupt_signal++;
+            if (end_time < gettime())
+                interrupt_signal = SIGINT; // Emulate Ctrl-C
         }
     }
 
     if (pargs.attach_pid == 0) {
-        if (interrupt_signal)
+        if (interrupt_signal) {
             // Propagate the signal to the parent if we spawned it.
-            py_proc__signal(py_proc, interrupt_signal < 0 ? -interrupt_signal : SIGTERM);
+            py_proc__signal(py_proc, interrupt_signal);
+        }
 
-#if defined PL_UNIX
         // If we spawned the process, we need to wait for it to terminate.
         py_proc__wait(py_proc);
-#endif
     }
 
     py_proc__destroy(py_proc);
@@ -173,7 +195,7 @@ do_child_processes(py_proc_t* py_proc) {
         py_proc__log_version(py_proc, true);
     }
 
-    if (!py_proc_list__is_empty(list) && interrupt_signal == false) {
+    if (!py_proc_list__is_empty(list) && interrupt_signal == 0) {
         if (!pargs.pipe) {
             log_m("");
             log_m("\033[1mChild processes\033[0m");
@@ -185,7 +207,7 @@ do_child_processes(py_proc_t* py_proc) {
     }
 
     if (pargs.exposure == 0) {
-        while (!py_proc_list__is_empty(list) && interrupt_signal == false) {
+        while (!py_proc_list__is_empty(list) && interrupt_signal == 0) {
 #ifndef NATIVE
             microseconds_t start_time = gettime();
 #endif
@@ -201,7 +223,7 @@ do_child_processes(py_proc_t* py_proc) {
         if (!pargs.pipe && !pargs.where)
             log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
         microseconds_t end_time = gettime() + pargs.exposure * 1000000;
-        while (!py_proc_list__is_empty(list) && interrupt_signal == false) {
+        while (!py_proc_list__is_empty(list) && interrupt_signal == 0) {
 #ifndef NATIVE
             microseconds_t start_time = gettime();
 #endif
@@ -213,22 +235,25 @@ do_child_processes(py_proc_t* py_proc) {
             stopwatch_pause(gettime() - start_time);
 #endif
 
-            if (end_time < gettime() || pargs.where)
-                interrupt_signal++;
+            if (pargs.where)
+                break;
+
+            if (end_time < gettime())
+                interrupt_signal = SIGINT; // Emulate Ctrl-C
         }
     }
 
     if (pargs.attach_pid == 0) {
-        if (interrupt_signal)
-            // Propagate the signal to the child processes (via the parent) if we
-            // spawned them.
-            py_proc__signal(py_proc, interrupt_signal < 0 ? -interrupt_signal : SIGTERM);
+        if (interrupt_signal) {
+            // Propagate the signal to the child processes (via the parent) if
+            // we spawned them.
+            py_proc__signal(py_proc, interrupt_signal);
+        }
 
-        // If we spawned the child processes, we need to wait for them to terminate.
+        // If we spawned the child processes, we need to wait for them to
+        // terminate.
         py_proc_list__update(list);
-#if defined PL_UNIX
         py_proc_list__wait(list);
-#endif
     }
 
     SUCCESS; // TODO: Fix!
@@ -387,6 +412,9 @@ main(int argc, char** argv) {
     // Register signal handler for Ctrl+C and terminate signals.
     signal(SIGINT, signal_callback_handler);
     signal(SIGTERM, signal_callback_handler);
+#if defined PL_WIN
+    SetConsoleCtrlHandler(ConsoleHandler, TRUE);
+#endif
 
     if (fail(austin())) {
         retval = 1;
@@ -402,12 +430,14 @@ main(int argc, char** argv) {
 
     logger_close();
 
-    if (interrupt_signal < 0)
-        retval = interrupt_signal;
+    if (interrupt_signal)
+        retval = -interrupt_signal;
+    else if (fail(retval))
+        retval = austin_errno;
 
-    log_d("Exiting with code %d", fail(retval) ? austin_errno : retval);
+    log_d("Exiting with code %d", retval);
 
-    return fail(retval) ? austin_errno : retval;
+    return retval;
 } /* main */
 
 #endif
