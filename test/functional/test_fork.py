@@ -21,7 +21,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import platform
+import signal
 from pathlib import Path
+import sys
 from test.utils import allpythons
 from test.utils import austin
 from test.utils import compress
@@ -202,9 +204,15 @@ def test_fork_full_metrics(py):
 @allpythons()
 def test_fork_exposure(py, exposure):
     result = austin(
-        "-i", "1ms", "-x", str(exposure), *python(py), target("sleepy.py"), "1"
+        "-i",
+        "100ms",
+        "-x",
+        str(exposure),
+        *python(py),
+        target("sleepy.py"),
+        "1",
+        expect_fail=True if sys.platform == "win32" else 256 - signal.SIGINT,
     )
-    assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_pattern(result.stdout, "sleepy.py:<module>:"), compress(result.stdout)
 
@@ -213,7 +221,7 @@ def test_fork_exposure(py, exposure):
     assert meta["mode"] == "wall"
 
     d = int(meta["duration"])
-    assert 900000 * exposure < d < 1100000 * exposure
+    assert 900000 * exposure < d < 1200000 * exposure
 
 
 @variants

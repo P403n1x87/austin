@@ -63,6 +63,11 @@
         log_location(); \
         goto x;         \
     }
+#define FAIL_VOID       \
+    {                   \
+        log_location(); \
+        return;         \
+    }
 
 #define success(x) (!(x))
 #define fail(x)    (x)

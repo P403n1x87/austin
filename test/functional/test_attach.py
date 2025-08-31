@@ -22,9 +22,11 @@
 
 import os
 import platform
+import signal
+import sys
+import time
 from collections import Counter
 from shutil import rmtree
-import time
 from test.utils import allpythons
 from test.utils import austin
 from test.utils import austinp
@@ -39,8 +41,8 @@ from test.utils import threads
 from test.utils import variants
 from time import sleep
 
-from flaky import flaky
 import pytest
+from flaky import flaky
 
 
 @requires_sudo
@@ -78,8 +80,15 @@ def test_attach_wall_time(austin, py, mode, mode_meta):
 @allpythons()
 def test_attach_exposure(py, exposure):
     with run_python(py, target("sleepy.py"), "3") as p:
-        result = austin("-i", "1ms", "-x", str(exposure), "-p", str(p.pid))
-        assert result.returncode == 0
+        result = austin(
+            "-i",
+            "100ms",
+            "-x",
+            str(exposure),
+            "-p",
+            str(p.pid),
+            expect_fail=True if sys.platform == "win32" else 256 - signal.SIGINT,
+        )
 
         assert has_pattern(result.stdout, "sleepy.py:<module>:"), compress(
             result.stdout

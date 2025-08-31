@@ -168,16 +168,23 @@ void
 py_proc_list__sample(py_proc_list_t* self) {
     log_t("Sampling from process list");
 
-    for (py_proc_item_t* item = self->first; item != NULL; /* item = item->next */) {
+    if (!isvalid(self->first))
+        return;
+
+    py_proc_item_t* item = self->first;
+    py_proc_item_t* next = item->next;
+    for (; isvalid(item); item = next, next = isvalid(item) ? item->next : NULL) {
         log_t("Sampling process with PID %d", item->py_proc->pid);
         stopwatch_start();
-        if (!isvalid(item->py_proc->py_v) || fail(py_proc__sample(item->py_proc))) {
-            py_proc__wait(item->py_proc);
-            py_proc_item_t* next = item->next;
+        if (!py_proc__is_python(item->py_proc))
+            // Not a Python process that we can sample, but we need to keep it
+            // to continue traversing the process tree.
+            continue;
+        if (fail(py_proc__sample(item->py_proc))) {
+            if (!error_is(PYOBJECT))
+                py_proc__wait(item->py_proc);
             _py_proc_list__remove(self, item);
-            item = next;
-        } else
-            item = item->next;
+        }
         stopwatch_duration();
     }
 } /* py_proc_list__sample */
