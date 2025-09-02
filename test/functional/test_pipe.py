@@ -89,14 +89,12 @@ def test_pipe_wall_time_multiprocess(py):
 
 @allpythons()
 def test_pipe_wall_time_multiprocess_output(py, tmp_path):
-    datafile = tmp_path / "test_pipe.austin"
-
-    result = austin("-CPi", "1ms", "-o", str(datafile), *python(py), target())
+    result = austin("-CPi", "1ms", *python(py), target(), convert=True)
     assert result.returncode == 0
 
-    meta = metadata(result.stderr)
+    meta = metadata(result.stdout)
 
-    assert meta, meta
+    assert meta, result.stdout
     assert meta["mode"] == "wall", meta
     assert int(meta["duration"]) > 100000, meta
     assert meta["interval"] == "1000", meta

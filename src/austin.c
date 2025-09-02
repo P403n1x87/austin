@@ -92,10 +92,9 @@ int
 do_single_process(py_proc_t* py_proc) {
     int result = 0;
 
-    if (!pargs.where)
-        log_meta_header();
+    log_meta_header();
 
-    py_proc__log_version(py_proc, true);
+    py_proc__log_version(py_proc, /*is_parent*/ true);
 
     if (pargs.exposure == 0) {
         while (interrupt_signal == 0) {
@@ -111,8 +110,10 @@ do_single_process(py_proc_t* py_proc) {
 #endif
         }
     } else {
-        if (!pargs.where && !pargs.pipe)
-            log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
+        if (!pargs.where && !pargs.pipe) {
+            log_m("");
+            log_m("🕑 Sampling for %d second%s ...", pargs.exposure, pargs.exposure != 1 ? "s" : "");
+        }
         microseconds_t end_time = gettime() + pargs.exposure * 1000000;
         while (interrupt_signal == 0) {
             stopwatch_start();
@@ -163,13 +164,8 @@ do_child_processes(py_proc_t* py_proc) {
         FAIL;
     }
 
-    // If the parent process is not a Python process, its children might be, so we
-    // attempt to attach Austin to them.
-
-    if (!pargs.pipe) {
-        log_m("");
-        log_m("\033[1mParent process\033[0m");
-    }
+    // If the parent process is not a Python process, its children might be, so
+    // we attempt to attach Austin to them.
     if (!py_proc__is_python(py_proc)) {
         log_m("👽 Parent is not a Python process.");
 
@@ -192,19 +188,10 @@ do_child_processes(py_proc_t* py_proc) {
             FAIL;
         }
     } else {
-        py_proc__log_version(py_proc, true);
+        py_proc__log_version(py_proc, /*is_parent*/ true);
     }
 
-    if (!py_proc_list__is_empty(list) && interrupt_signal == 0) {
-        if (!pargs.pipe) {
-            log_m("");
-            log_m("\033[1mChild processes\033[0m");
-        }
-    }
-
-    if (!pargs.where) {
-        log_meta_header();
-    }
+    log_meta_header();
 
     if (pargs.exposure == 0) {
         while (!py_proc_list__is_empty(list) && interrupt_signal == 0) {
@@ -220,8 +207,10 @@ do_child_processes(py_proc_t* py_proc) {
 #endif
         }
     } else {
-        if (!pargs.pipe && !pargs.where)
-            log_m("🕑 Sampling for %d second%s", pargs.exposure, pargs.exposure != 1 ? "s" : "");
+        if (!pargs.pipe && !pargs.where) {
+            log_m("");
+            log_m("🕑 Sampling for %d second%s ...", pargs.exposure, pargs.exposure != 1 ? "s" : "");
+        }
         microseconds_t end_time = gettime() + pargs.exposure * 1000000;
         while (!py_proc_list__is_empty(list) && interrupt_signal == 0) {
 #ifndef NATIVE
@@ -300,7 +289,7 @@ austin() {
 
     if (!pargs.where && is_tty(pargs.output_file)) {
         printf(
-            "\n⚠️  \033[1;33mWARNING\033[0m  Austin is about to generate binary output to terminal.\n\n"
+            "\n⚠️  " BYEL "WARNING" CRESET "  Austin is about to generate binary output to terminal.\n\n"
             "Do you want to continue without specifying an output file? [y/N] "
         );
         char answer[2];

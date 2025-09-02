@@ -23,6 +23,7 @@
 #define EVENTS_C
 
 #include "events.h"
+#include "ansi.h"
 #include "argparse.h"
 #include "frame.h"
 #include "platform.h"
@@ -188,17 +189,17 @@ mojo_event_handler_new(void) {
 // ----------------------------------------------------------------------------
 // Where event handler
 
-const char* WHERE_SAMPLE_FORMAT = "    \033[33;1m%2$s\033[0m (\033[36;1m%1$s\033[0m:\033[32;1m%3$d\033[0m)\n";
+const char* WHERE_SAMPLE_FORMAT = "    " BYEL "%2$s" CRESET " (" BCYN "%1$s" CRESET ":" BGRN "%3$d" CRESET ")\n";
 #ifdef NATIVE
 const char* WHERE_SAMPLE_FORMAT_NATIVE
-    = "    \033[38;5;246m%2$s\033[0m (\033[38;5;248;1m%1$s\033[0m:\033[38;5;246m%3$d\033[0m)\n";
-const char* WHERE_SAMPLE_FORMAT_KERNEL = "    \033[38;5;159m%s\033[0m 🐧\n";
+    = "    " HBLK256 "%2$s" CRESET " (" BBLK256 "%1$s" CRESET ":" HBLK256 "%3$d" CRESET ")\n";
+const char* WHERE_SAMPLE_FORMAT_KERNEL = "    " BHBLU256 "%s" CRESET " 🐧\n";
 #endif
 #if defined PL_WIN
 const char* WHERE_HEAD_FORMAT
-    = "\n\n%4$s Process \033[35;1m%1$I64d\033[0m 🧵 Thread \033[34;1m%2$I64d:%3$I64d\033[0m\n\n";
+    = "\n\n%4$s Process " BMAG "%1$I64d" CRESET " 🧵 Thread " BBLU "%2$I64d:%3$I64d" CRESET "\n\n";
 #else
-const char* WHERE_HEAD_FORMAT = "\n\n%4$s Process \033[35;1m%1$d\033[0m 🧵 Thread \033[34;1m%2$ld:%3$ld\033[0m\n\n";
+const char* WHERE_HEAD_FORMAT = "\n\n%4$s Process " BMAG "%1$d" CRESET " 🧵 Thread " BBLU "%2$ld:%3$ld" CRESET "\n\n";
 #endif
 
 // ----------------------------------------------------------------------------

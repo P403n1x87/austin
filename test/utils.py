@@ -270,7 +270,8 @@ class Variant:
         self.name = name
         self.path = path
 
-        self.ALL.append(self)
+        if self.path.is_file():
+            self.ALL.append(self)
 
     @cached_property
     def help(self) -> str:

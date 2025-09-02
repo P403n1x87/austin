@@ -136,10 +136,13 @@ stats_duration() {
     return gettime() - _start_time;
 }
 
+#define STAT_INDENT "      "
+
 void
 stats_log_metrics() {
     microseconds_t duration = stats_duration();
 
+    event_handler__emit_metadata("count", "%ld", _sample_cnt);
     if (_sample_cnt) {
         event_handler__emit_metadata(
             "sampling", MICROSECONDS_FMT "," MICROSECONDS_FMT "," MICROSECONDS_FMT, stats_get_min_sampling_time(),
@@ -148,57 +151,46 @@ stats_log_metrics() {
         event_handler__emit_metadata("saturation", "%ld/%ld", _long_cnt, _sample_cnt);
         event_handler__emit_metadata("errors", "%ld/%ld", _error_cnt, _sample_cnt);
         event_handler__emit_metadata("duration", MICROSECONDS_FMT, duration);
-        if (pargs.gc) {
+        if (pargs.gc)
             event_handler__emit_metadata("gc", MICROSECONDS_FMT, _gc_time);
-        }
-    }
 
-    if (pargs.pipe && _sample_cnt) {
-        log_m(
-            "# sampling: " MICROSECONDS_FMT "," MICROSECONDS_FMT "," MICROSECONDS_FMT, stats_get_min_sampling_time(),
-            stats_get_avg_sampling_time(), stats_get_max_sampling_time()
-        );
-        log_m("# saturation: %ld/%ld", _long_cnt, _sample_cnt);
-        log_m("# errors: %ld/%ld", _error_cnt, _sample_cnt);
-        log_m("# duration: " MICROSECONDS_FMT, duration);
-        if (pargs.gc) {
-            log_m("# gc: " MICROSECONDS_FMT, _gc_time);
-        }
-    } else {
+        if (pargs.pipe)
+            goto release; // Saves a few computations
+
         log_m("");
-        if (!_sample_cnt) {
-            log_m("😣 No samples collected.");
-            goto release;
+        log_m("📈 " BOLD "Sampling Statistics" CRESET);
+        log_m("");
+
+        log_m(STAT_INDENT "Total duration" BLK " . . . . . . " CRESET BOLD "%.2fs" CRESET, duration / 1000000.);
+
+        double      avg_rate   = (double)_sample_cnt / (duration / 1000000.);
+        const char* rate_unit  = "Hz";
+        double      rate_value = avg_rate;
+        if (avg_rate >= 1e6) {
+            rate_unit  = "MHz";
+            rate_value = avg_rate / 1e6;
+        } else if (avg_rate >= 1e3) {
+            rate_unit  = "kHz";
+            rate_value = avg_rate / 1e3;
         }
-
-        log_m("\033[1mStatistics\033[0m");
-
-        log_m("⌛ Sampling duration : \033[1m%.2f s\033[0m", duration / 1000000.);
+        log_m(STAT_INDENT "Average sampling rate" BLK "  . . " CRESET BOLD "%.2f %s" CRESET, rate_value, rate_unit);
 
         if (pargs.gc) {
             log_m(
-                "🗑️  Garbage collector : \033[1m%.2f s\033[0m (\033[1m%.2f %%\033[0m)", _gc_time / 1000000.,
-                (float)_gc_time / duration * 100
+                STAT_INDENT "Garbage collector" BLK "  . . . . " CRESET BOLD "%.2fs" CRESET " (" BOLD "%.2f%%" CRESET
+                            ")",
+                _gc_time / 1000000., (float)_gc_time / duration * 100
             );
         }
 
         log_m(
-            "⏱️  Frame sampling (min/avg/max) : \033[1m" MICROSECONDS_FMT "/" MICROSECONDS_FMT "/" MICROSECONDS_FMT " "
-            "μs\033[0m",
-            stats_get_min_sampling_time(), stats_get_avg_sampling_time(), stats_get_max_sampling_time()
+            STAT_INDENT "Error rate" BLK " . . . . . . . . " CRESET BOLD "%d/%d" CRESET " (" BOLD "%.2f%%" CRESET ")",
+            _error_cnt, _sample_cnt, (float)_error_cnt / _sample_cnt * 100
         );
-
-        log_m(
-            "🐢 Long sampling rate : \033[1m%d/%d\033[0m (\033[1m%.2f %%\033[0m) samples took longer than the sampling "
-            "interval to collect",
-            _long_cnt, _sample_cnt, (float)_long_cnt / _sample_cnt * 100
-        );
-
-        log_m(
-            "💀 Error rate : \033[1m%d/%d\033[0m (\033[1m%.2f %%\033[0m) invalid samples", _error_cnt, _sample_cnt,
-            (float)_error_cnt / _sample_cnt * 100
-        );
-    };
+    } else {
+        log_m("");
+        log_m("😣 No samples collected.");
+    }
 
 release:
 #if defined PL_MACOS
