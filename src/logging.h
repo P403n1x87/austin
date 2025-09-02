@@ -28,6 +28,7 @@
 
 #include <inttypes.h>
 
+#include "ansi.h"
 #include "argparse.h"
 #include "austin.h"
 
@@ -56,29 +57,29 @@
 #define MICROSECONDS_FMT "%" PRIu64
 
 #ifdef NATIVE
-#define log_header()                                                                                               \
-    {                                                                                                              \
-        log_m("\033[1m              _   _      \033[0m");                                                          \
-        log_m("\033[1m __ _ _  _ __| |_(_)_ _  \033[0m");                                                          \
-        log_m("\033[1m/ _` | || (_-<  _| | ' \\ \033[0m");                                                         \
-        log_m(                                                                                                     \
-            "\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m\033[31;1mp\033[0m \033[36;1m" VERSION "\033[0m [" COMPILER \
-            " %d.%d.%d]",                                                                                          \
-            COMPILER_MAJOR, COMPILER_MINOR, COMPILER_PATCH                                                         \
-        );                                                                                                         \
-        log_i("====[ AUSTINP ]====");                                                                              \
+#define log_header()                                                                                         \
+    {                                                                                                        \
+        log_m(BOLD "              _   _      " CRESET);                                                      \
+        log_m(BOLD " __ _ _  _ __| |_(_)_ _  " CRESET);                                                      \
+        log_m(BOLD "/ _` | || (_-<  _| | ' \\ " CRESET);                                                     \
+        log_m(                                                                                               \
+            BOLD "\\__,_|\\_,_/__/\\__|_|_||_|" CRESET BRED "p" CRESET " " BCYN VERSION CRESET " [" COMPILER \
+                 " %d.%d.%d]",                                                                               \
+            COMPILER_MAJOR, COMPILER_MINOR, COMPILER_PATCH                                                   \
+        );                                                                                                   \
+        log_i("====[ AUSTINP ]====");                                                                        \
     }
 #else
-#define log_header()                                                                                           \
-    {                                                                                                          \
-        log_m("\033[1m              _   _      \033[0m ");                                                     \
-        log_m("\033[1m __ _ _  _ __| |_(_)_ _  \033[0m");                                                      \
-        log_m("\033[1m/ _` | || (_-<  _| | ' \\ \033[0m");                                                     \
-        log_m(                                                                                                 \
-            "\033[1m\\__,_|\\_,_/__/\\__|_|_||_|\033[0m \033[36;1m" VERSION "\033[0m [" COMPILER " %d.%d.%d]", \
-            COMPILER_MAJOR, COMPILER_MINOR, COMPILER_PATCH                                                     \
-        );                                                                                                     \
-        log_i("====[ AUSTIN ]====");                                                                           \
+#define log_header()                                                                                       \
+    {                                                                                                      \
+        log_m(BOLD "              _   _      " CRESET);                                                    \
+        log_m(BOLD " __ _ _  _ __| |_(_)_ _  " CRESET);                                                    \
+        log_m(BOLD "/ _` | || (_-<  _| | ' \\ " CRESET);                                                   \
+        log_m(                                                                                             \
+            BOLD "\\__,_|\\_,_/__/\\__|_|_||_|" CRESET " " BCYN VERSION CRESET " [" COMPILER " %d.%d.%d]", \
+            COMPILER_MAJOR, COMPILER_MINOR, COMPILER_PATCH                                                 \
+        );                                                                                                 \
+        log_i("====[ AUSTIN ]====");                                                                       \
     }
 #endif
 #define log_footer() \

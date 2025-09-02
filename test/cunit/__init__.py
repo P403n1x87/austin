@@ -32,6 +32,12 @@ ROOT = TEST.parent
 SRC = ROOT / "src"
 
 
+# ANSI color codes for print
+RESET = "\033[0m"
+BOLD_YELLOW = "\033[1;33m"
+BOLD_RED = "\033[1;31m"
+
+
 restrict_re = re.compile(r"__restrict \w+")
 
 _header_head = r"""
@@ -355,8 +361,8 @@ class DeclCollector(c_ast.NodeVisitor):
                 if i != line:
                     print(f"{i + 1:5d}  {lines[i]}")
                 else:
-                    print(f"{i + 1:5d}  \033[33;1m{lines[line]}\033[0m")
-                    print(" " * (col + 5) + "\033[31;1m<<^\033[0m")
+                    print(f"{i + 1:5d}  {BOLD_YELLOW}{lines[line]}{RESET}")
+                    print(" " * (col + 5) + f"{BOLD_RED}<<^{RESET}")
             raise
 
         self.visit(ast)

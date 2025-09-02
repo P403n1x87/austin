@@ -1354,30 +1354,39 @@ py_proc__sample(py_proc_t* self) {
 
 // ----------------------------------------------------------------------------
 void
-py_proc__log_version(py_proc_t* self, int parent) {
+py_proc__log_version(py_proc_t* self, bool is_parent) {
     int major = self->py_v->major;
     int minor = self->py_v->minor;
     int patch = self->py_v->patch;
 
-    if (parent) {
+    if (is_parent) {
         if (patch == 0xFF) {
             event_handler__emit_metadata("python", "%d.%d.?", major, minor);
         } else
             event_handler__emit_metadata("python", "%d.%d.%d", major, minor, patch);
     }
 
-    if (pargs.pipe) {
+    if (pargs.pipe)
+        return;
+
+    log_m("");
+
+    if (pargs.children) {
         if (patch == 0xFF)
-            log_m("# python: %d.%d.?", major, minor);
+            log_m(
+                "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d" CRESET,
+                is_parent ? "Parent" : "Child", self->pid, major, minor
+            );
         else
-            log_m("# python: %d.%d.%d", major, minor, patch);
+            log_m(
+                "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d" CRESET,
+                is_parent ? "Parent" : "Child", self->pid, major, minor, patch
+            );
     } else {
-        log_m("");
         if (patch == 0xFF)
-            log_m("🐍 \033[1mPython\033[0m version: \033[33;1m%d.%d.?\033[0m (from shared library)", major, minor);
+            log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d" CRESET, major, minor);
         else
-            log_m("🐍 \033[1mPython\033[0m version: \033[33;1m%d.%d.%d\033[0m", major, minor, patch);
-        log_m("");
+            log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d" CRESET, major, minor, patch);
     }
 }
 
