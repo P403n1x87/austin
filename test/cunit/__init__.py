@@ -54,7 +54,7 @@ _header_head = r"""
 #define __GNUC_VA_LIST
 #define __gnuc_va_list char
 #define __thread
-#define __typeof__(nullptr) void*
+#define __typeof__(x) void*
 typedef struct __builtin_va_list { } __builtin_va_list;
 #define _Nullable
 #define __uint128_t unsigned long long
