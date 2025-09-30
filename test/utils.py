@@ -51,6 +51,10 @@ from typing import TypeVar
 from typing import Union
 
 
+if sys.platform == "win32":
+    from subprocess import CREATE_NEW_PROCESS_GROUP
+
+
 try:
     import pytest
 except ImportError:
@@ -266,7 +270,8 @@ class Variant:
         self.name = name
         self.path = path
 
-        self.ALL.append(self)
+        if self.path.is_file():
+            self.ALL.append(self)
 
     @cached_property
     def help(self) -> str:
@@ -294,10 +299,15 @@ class Variant:
         extra_args = ["-b"] if "-b, --binary" in self.help else []
 
         try:
+            flags = 0
+            if sys.platform == "win32":
+                flags = CREATE_NEW_PROCESS_GROUP
+
             result = run(
                 [str(self.path)] + extra_args + list(args),
                 capture_output=True,
                 timeout=timeout,
+                creationflags=flags,
             )
         except Exception as exc:
             if (pid := getattr(exc, "pid", None)) is not None:
@@ -322,15 +332,18 @@ class Variant:
         logs = collect_logs(self.name, result.pid)
         result.logs = logs
 
-        if result.returncode != int(expect_fail):
-            print_logs(logs)
-            raise RuntimeError(
-                f"Command {self.name} returned {result.returncode} "
-                f"while expecting {expect_fail}. Output:\n{result.stdout}\n"
-                f"Error:\n{result.stderr}"
-            )
+        if isinstance(expect_fail, bool) and expect_fail is bool(result.returncode):
+            return result
 
-        return result
+        if isinstance(expect_fail, int) and result.returncode == expect_fail:
+            return result
+
+        print_logs(logs)
+        raise RuntimeError(
+            f"Command {self.name} returned {result.returncode} "
+            f"while expecting {expect_fail}. Output:\n{result.stdout}\n"
+            f"Error:\n{result.stderr}"
+        )
 
     def __repr__(self) -> str:
         return f"Variant({self.name!r})"

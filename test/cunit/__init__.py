@@ -32,6 +32,12 @@ ROOT = TEST.parent
 SRC = ROOT / "src"
 
 
+# ANSI color codes for print
+RESET = "\033[0m"
+BOLD_YELLOW = "\033[1;33m"
+BOLD_RED = "\033[1;31m"
+
+
 restrict_re = re.compile(r"__restrict \w+")
 
 _header_head = r"""
@@ -48,11 +54,17 @@ _header_head = r"""
 #define __GNUC_VA_LIST
 #define __gnuc_va_list char
 #define __thread
+#define __typeof__(nullptr) void*
 typedef struct __builtin_va_list { } __builtin_va_list;
 #define _Nullable
 #define __uint128_t unsigned long long
 #define _Nonnull
 #define __float128 long double
+// Avoid redirection to float128 ABI on ppc64el.
+#if __LDBL_MANT_DIG__ == 113
+#  undef __LDBL_MANT_DIG__
+#  define __LDBL_MANT_DIG__ __DBL_MANT_DIG__
+#endif
 """
 
 
@@ -355,8 +367,8 @@ class DeclCollector(c_ast.NodeVisitor):
                 if i != line:
                     print(f"{i + 1:5d}  {lines[i]}")
                 else:
-                    print(f"{i + 1:5d}  \033[33;1m{lines[line]}\033[0m")
-                    print(" " * (col + 5) + "\033[31;1m<<^\033[0m")
+                    print(f"{i + 1:5d}  {BOLD_YELLOW}{lines[line]}{RESET}")
+                    print(" " * (col + 5) + f"{BOLD_RED}<<^{RESET}")
             raise
 
         self.visit(ast)

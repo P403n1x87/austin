@@ -933,7 +933,9 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
 
     log_t("Computed command line: %s", cmd_line);
 
-    BOOL process_created = CreateProcess(NULL, cmd_line, NULL, NULL, TRUE, 0, NULL, NULL, &siStartInfo, &piProcInfo);
+    BOOL process_created = CreateProcess(
+        NULL, cmd_line, NULL, NULL, TRUE, CREATE_NEW_PROCESS_GROUP, NULL, NULL, &siStartInfo, &piProcInfo
+    );
 
     sfree(cmd_line);
 
@@ -947,6 +949,25 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
     CloseHandle(hChildStdInRd);
     CloseHandle(hChildStdOutWr);
 
+    // Create a job for Austin
+    HANDLE hJob = self->extra->h_job = CreateJobObject(NULL, NULL);
+    if (!isvalid(hJob)) {
+        set_error(OS, "Failed to create job object");
+        FAIL;
+    }
+    // Set job limits to close all processes when Austin terminates
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli = {0};
+    jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
+    if (!SetInformationJobObject(hJob, JobObjectExtendedLimitInformation, &jeli, sizeof(jeli))) {
+        set_error(OS, "Failed to set job information");
+        FAIL;
+    }
+    // Assign the child process to the job
+    if (!AssignProcessToJobObject(hJob, self->ref)) {
+        set_error(OS, "Failed to assign process to job");
+        FAIL;
+    }
+
 #else  /* UNIX */
     self->pid = fork();
     if (self->pid == 0) {
@@ -957,6 +978,10 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
             if (freopen(NULL_DEVICE, "w", stdout) == NULL)
                 set_error(IO, "Cannot redirect child's STDOUT to " NULL_DEVICE);
         }
+
+        // Create a new process group so that we can send signals to the parent
+        // process we spawned without affecting any of our parents.
+        setpgid(0, 0);
 
         execvpe(exec, argv, environ);
 
@@ -1378,30 +1403,39 @@ py_proc__sample(py_proc_t* self) {
 
 // ----------------------------------------------------------------------------
 void
-py_proc__log_version(py_proc_t* self, int parent) {
+py_proc__log_version(py_proc_t* self, bool is_parent) {
     int major = self->py_v->major;
     int minor = self->py_v->minor;
     int patch = self->py_v->patch;
 
-    if (parent) {
+    if (is_parent) {
         if (patch == 0xFF) {
             event_handler__emit_metadata("python", "%d.%d.?", major, minor);
         } else
             event_handler__emit_metadata("python", "%d.%d.%d", major, minor, patch);
     }
 
-    if (pargs.pipe) {
+    if (pargs.pipe)
+        return;
+
+    log_m("");
+
+    if (pargs.children) {
         if (patch == 0xFF)
-            log_m("# python: %d.%d.?", major, minor);
+            log_m(
+                "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d" CRESET,
+                is_parent ? "Parent" : "Child", self->pid, major, minor
+            );
         else
-            log_m("# python: %d.%d.%d", major, minor, patch);
+            log_m(
+                "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d" CRESET,
+                is_parent ? "Parent" : "Child", self->pid, major, minor, patch
+            );
     } else {
-        log_m("");
         if (patch == 0xFF)
-            log_m("🐍 \033[1mPython\033[0m version: \033[33;1m%d.%d.?\033[0m (from shared library)", major, minor);
+            log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d" CRESET, major, minor);
         else
-            log_m("🐍 \033[1mPython\033[0m version: \033[33;1m%d.%d.%d\033[0m", major, minor, patch);
-        log_m("");
+            log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d" CRESET, major, minor, patch);
     }
 }
 
@@ -1414,10 +1448,18 @@ py_proc__log_version(py_proc_t* self, int parent) {
 void
 py_proc__signal(py_proc_t* self, int signal) {
 #if defined PL_WIN /* WIN */
+    log_d("Sending signal %d to process %d", signal, self->pid);
     switch (signal) {
     case SIGINT:
-        GenerateConsoleCtrlEvent(CTRL_C_EVENT, self->pid);
-        break;
+        // The child process will be closed when the parent terminates via
+        // the job object.
+        if (isvalid(self->extra->h_job)) {
+            if (!CloseHandle(self->extra->h_job)) {
+                set_error(OS, "Failed to close job handle");
+                FAIL_VOID;
+            }
+            self->extra->h_job = NULL;
+        }
     case SIGTERM:
         TerminateProcess(self->ref, signal);
         break;
@@ -1426,7 +1468,11 @@ py_proc__signal(py_proc_t* self, int signal) {
         break;
     }
 #else /* UNIX */
-    kill(self->pid, signal);
+    // We send the SIGINT signal to the process group, so that we also
+    // interrupt child processes, as if we were sending from a terminal with
+    // Ctrl-C.
+    log_d("Sending signal %d to process %d", signal, signal == SIGINT ? -getpgid(self->pid) : self->pid);
+    kill(signal == SIGINT ? -getpgid(self->pid) : self->pid, signal);
 #endif
 }
 

@@ -231,7 +231,7 @@ py_proc__sample(py_proc_t*);
  * @param bool  whether the process is the parent process.
  */
 void
-py_proc__log_version(py_proc_t*, int);
+py_proc__log_version(py_proc_t*, bool);
 
 /**
  * Send a signal to the process.
