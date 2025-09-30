@@ -8,11 +8,22 @@ apt-get update
 apt-get -y install \
     autoconf \
     build-essential \
-    libunwind-dev \
+    libtool \
     binutils-dev \
     libiberty-dev \
+    liblzma-dev \
     musl-tools \
-    zlib1g-dev
+    zlib1g-dev \
+    git
+
+# Compile and install libunwind from sources
+git clone https://github.com/libunwind/libunwind.git
+cd libunwind
+autoreconf -i
+./configure CFLAGS="-fPIC"
+make
+make install
+cd -
 
 # Build Austin
 autoreconf --install
