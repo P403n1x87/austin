@@ -60,6 +60,11 @@ typedef struct __builtin_va_list { } __builtin_va_list;
 #define __uint128_t unsigned long long
 #define _Nonnull
 #define __float128 long double
+// Avoid redirection to float128 ABI on ppc64el.
+#if __LDBL_MANT_DIG__ == 113
+#  undef __LDBL_MANT_DIG__
+#  define __LDBL_MANT_DIG__ __DBL_MANT_DIG__
+#endif
 """
 
 
