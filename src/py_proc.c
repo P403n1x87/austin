@@ -46,6 +46,7 @@
 #include "hints.h"
 #include "logging.h"
 #include "mem.h"
+#include "py_interp.h"
 #include "py_string.h"
 #include "stack.h"
 #include "stats.h"
@@ -807,6 +808,15 @@ py_proc_new(bool child) {
     py_proc->code_cache->name = "code cache";
 #endif
 
+    py_proc->interpreter_state_cache
+        = lru_cache_new(MAX_INTERPRETER_STATE_CACHE_SIZE, (void (*)(value_t))interpreter_state__destroy);
+    if (!isvalid(py_proc->interpreter_state_cache)) {
+        FAIL_GOTO(error);
+    }
+#ifdef DEBUG
+    py_proc->interpreter_state_cache->name = "interpreter state cache";
+#endif
+
     py_proc->extra = (proc_extra_info*)calloc(1, sizeof(proc_extra_info));
     if (!isvalid(py_proc->extra))
         goto error;
@@ -1234,6 +1244,45 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
     if (fail(_py_proc__get_interpreter_state_field(self, interp, id, interp_id)))
         FAIL;
 
+    // In Python 3.14 we can use the code object generation to determine if we
+    // need to invalidate the frame cache.
+    if (V_MIN(3, 14)) {
+        uint64_t code_object_gen = 0;
+        if (fail(_py_proc__get_interpreter_state_field(self, interp, code_object_gen, code_object_gen)))
+            FAIL;
+
+        key_dt               key                    = interpreter_state_key(interp_id);
+        interpreter_state_t* interpreter_state_info = lru_cache__maybe_hit(self->interpreter_state_cache, key);
+        if (!isvalid(interpreter_state_info)) {
+            interpreter_state_info = interpreter_state_new(interp_id, code_object_gen);
+            if (!isvalid(interpreter_state_info))
+                FAIL;
+
+            log_d(
+                "Creating new interpreter state info record for interpreter %lx with code object generation %lu",
+                interp_id, code_object_gen
+            );
+
+            lru_cache__store(self->interpreter_state_cache, key, interpreter_state_info);
+        }
+
+        if (code_object_gen != interpreter_state_info->code_object_gen) {
+            log_d(
+                "Code object generation changed from %lu to %lu, invalidating frame cache",
+                interpreter_state_info->code_object_gen, code_object_gen
+            );
+
+            // This is the only safe place where we can invalidate the frame
+            // cache. Doing it while in the middle of unwinding is dangerous
+            // because the frames that are put in the stack are owned by the
+            // cache and we might end up with dangling pointers.
+            lru_cache__invalidate(self->frame_cache);
+            lru_cache__invalidate(self->code_cache);
+
+            interpreter_state_info->code_object_gen = code_object_gen;
+        }
+    }
+
     do {
         if (pargs.memory) {
             mem_delta = 0;
@@ -1457,6 +1506,7 @@ py_proc__destroy(py_proc_t* self) {
     lru_cache__destroy(self->string_cache);
     lru_cache__destroy(self->frame_cache);
     lru_cache__destroy(self->code_cache);
+    lru_cache__destroy(self->interpreter_state_cache);
 
     free(self);
 }

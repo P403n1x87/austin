@@ -153,6 +153,7 @@ typedef struct {
     offset_t o_id;
     offset_t o_gc;
     offset_t o_gil_state;
+    offset_t o_code_object_gen;
 } py_is_v;
 
 typedef struct {
@@ -346,8 +347,9 @@ get_version_descriptor(int major, int minor, int patch) {
             py_v = &python_v3_12;
             break;
 
-        // 3.13+
+        // 3.13+ (filled in at runtime)
         case 13:
+        case 14:
             py_v = &python_v3_13;
             break;
 
@@ -426,6 +428,12 @@ get_version_descriptor(int major, int minor, int patch) {
         V_ASSIGN(v, is.o_gil_state, interpreter_state.ceval_gil);      \
     }
 
+#define PY_IS_314(v)                                                                 \
+    {                                                                                \
+        PY_IS_313(v);                                                                \
+        V_ASSIGN(v, is.o_code_object_gen, interpreter_state.code_object_generation); \
+    }
+
 #define PY_GC_313(v)                                 \
     {                                                \
         V_ASSIGN(v, gc.size, gc.size);               \
@@ -443,6 +451,19 @@ init_version_descriptor(python_v* py_v, _Py_DebugOffsets* py_d) {
         PY_RUNTIME_313(3_13);
         PY_IS_313(3_13);
         PY_GC_313(3_13);
+        break;
+
+    case 14:
+        PY_CODE_313(3_14);
+        PY_IFRAME_313(3_14);
+        PY_THREAD_313(3_14);
+        PY_RUNTIME_313(3_14);
+        PY_IS_314(3_14);
+        PY_GC_313(3_14);
+        break;
+
+    default:
+        log_e("Unsupported Python version %d.%d detected.", py_v->major, py_v->minor);
     }
 }
 

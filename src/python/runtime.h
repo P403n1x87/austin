@@ -157,19 +157,21 @@ typedef union {
 
 #define _Py_Debug_Cookie "xdebugpy"
 
+// ----------------------------------------------------------------------------
+
 typedef struct _Py_DebugOffsets3_13 {
     char     cookie[8]; // _Py_Debug_Cookie
     uint64_t version;
     uint64_t free_threaded;
     // Runtime state offset;
-    struct _runtime_state {
+    struct {
         uint64_t size;
         uint64_t finalizing;
         uint64_t interpreters_head;
     } runtime_state;
 
     // Interpreter state offset;
-    struct _interpreter_state {
+    struct {
         uint64_t size;
         uint64_t id;
         uint64_t next;
@@ -186,7 +188,7 @@ typedef struct _Py_DebugOffsets3_13 {
     } interpreter_state;
 
     // Thread state offset;
-    struct _thread_state {
+    struct {
         uint64_t size;
         uint64_t prev;
         uint64_t next;
@@ -199,7 +201,7 @@ typedef struct _Py_DebugOffsets3_13 {
     } thread_state;
 
     // InterpreterFrame offset;
-    struct _interpreter_frame {
+    struct {
         uint64_t size;
         uint64_t previous;
         uint64_t executable;
@@ -209,7 +211,7 @@ typedef struct _Py_DebugOffsets3_13 {
     } interpreter_frame;
 
     // Code object offset;
-    struct _code_object {
+    struct {
         uint64_t size;
         uint64_t filename;
         uint64_t name;
@@ -223,13 +225,13 @@ typedef struct _Py_DebugOffsets3_13 {
     } code_object;
 
     // PyObject offset;
-    struct _pyobject {
+    struct {
         uint64_t size;
         uint64_t ob_type;
     } pyobject;
 
     // PyTypeObject object offset;
-    struct _type_object {
+    struct {
         uint64_t size;
         uint64_t tp_name;
         uint64_t tp_repr;
@@ -237,48 +239,48 @@ typedef struct _Py_DebugOffsets3_13 {
     } type_object;
 
     // PyTuple object offset;
-    struct _tuple_object {
+    struct {
         uint64_t size;
         uint64_t ob_item;
         uint64_t ob_size;
     } tuple_object;
 
     // PyList object offset;
-    struct _list_object {
+    struct {
         uint64_t size;
         uint64_t ob_item;
         uint64_t ob_size;
     } list_object;
 
     // PyDict object offset;
-    struct _dict_object {
+    struct {
         uint64_t size;
         uint64_t ma_keys;
         uint64_t ma_values;
     } dict_object;
 
     // PyFloat object offset;
-    struct _float_object {
+    struct {
         uint64_t size;
         uint64_t ob_fval;
     } float_object;
 
     // PyLong object offset;
-    struct _long_object {
+    struct {
         uint64_t size;
         uint64_t lv_tag;
         uint64_t ob_digit;
     } long_object;
 
     // PyBytes object offset;
-    struct _bytes_object {
+    struct {
         uint64_t size;
         uint64_t ob_size;
         uint64_t ob_sval;
     } bytes_object;
 
     // Unicode object offset;
-    struct _unicode_object {
+    struct {
         uint64_t size;
         uint64_t state;
         uint64_t length;
@@ -286,12 +288,188 @@ typedef struct _Py_DebugOffsets3_13 {
     } unicode_object;
 
     // GC runtime state offset;
-    struct _gc {
+    struct {
         uint64_t size;
         uint64_t collecting;
     } gc;
 } _Py_DebugOffsets3_13;
 
+// ----------------------------------------------------------------------------
+
+typedef struct _Py_DebugOffsets3_14 {
+    char     cookie[8];
+    uint64_t version;
+    uint64_t free_threaded;
+    // Runtime state offset;
+    struct {
+        uint64_t size;
+        uint64_t finalizing;
+        uint64_t interpreters_head;
+    } runtime_state;
+
+    // Interpreter state offset;
+    struct {
+        uint64_t size;
+        uint64_t id;
+        uint64_t next;
+        uint64_t threads_head;
+        uint64_t threads_main;
+        uint64_t gc;
+        uint64_t imports_modules;
+        uint64_t sysdict;
+        uint64_t builtins;
+        uint64_t ceval_gil;
+        uint64_t gil_runtime_state;
+        uint64_t gil_runtime_state_enabled;
+        uint64_t gil_runtime_state_locked;
+        uint64_t gil_runtime_state_holder;
+        uint64_t code_object_generation;
+        uint64_t tlbc_generation;
+    } interpreter_state;
+
+    // Thread state offset;
+    struct {
+        uint64_t size;
+        uint64_t prev;
+        uint64_t next;
+        uint64_t interp;
+        uint64_t current_frame;
+        uint64_t thread_id;
+        uint64_t native_thread_id;
+        uint64_t datastack_chunk;
+        uint64_t status;
+    } thread_state;
+
+    // InterpreterFrame offset;
+    struct {
+        uint64_t size;
+        uint64_t previous;
+        uint64_t executable;
+        uint64_t instr_ptr;
+        uint64_t localsplus;
+        uint64_t owner;
+        uint64_t stackpointer;
+        uint64_t tlbc_index;
+    } interpreter_frame;
+
+    // Code object offset;
+    struct {
+        uint64_t size;
+        uint64_t filename;
+        uint64_t name;
+        uint64_t qualname;
+        uint64_t linetable;
+        uint64_t firstlineno;
+        uint64_t argcount;
+        uint64_t localsplusnames;
+        uint64_t localspluskinds;
+        uint64_t co_code_adaptive;
+        uint64_t co_tlbc;
+    } code_object;
+
+    // PyObject offset;
+    struct {
+        uint64_t size;
+        uint64_t ob_type;
+    } pyobject;
+
+    // PyTypeObject object offset;
+    struct {
+        uint64_t size;
+        uint64_t tp_name;
+        uint64_t tp_repr;
+        uint64_t tp_flags;
+    } type_object;
+
+    // PyTuple object offset;
+    struct {
+        uint64_t size;
+        uint64_t ob_item;
+        uint64_t ob_size;
+    } tuple_object;
+
+    // PyList object offset;
+    struct {
+        uint64_t size;
+        uint64_t ob_item;
+        uint64_t ob_size;
+    } list_object;
+
+    // PySet object offset;
+    struct {
+        uint64_t size;
+        uint64_t used;
+        uint64_t table;
+        uint64_t mask;
+    } set_object;
+
+    // PyDict object offset;
+    struct {
+        uint64_t size;
+        uint64_t ma_keys;
+        uint64_t ma_values;
+    } dict_object;
+
+    // PyFloat object offset;
+    struct {
+        uint64_t size;
+        uint64_t ob_fval;
+    } float_object;
+
+    // PyLong object offset;
+    struct {
+        uint64_t size;
+        uint64_t lv_tag;
+        uint64_t ob_digit;
+    } long_object;
+
+    // PyBytes object offset;
+    struct {
+        uint64_t size;
+        uint64_t ob_size;
+        uint64_t ob_sval;
+    } bytes_object;
+
+    // Unicode object offset;
+    struct {
+        uint64_t size;
+        uint64_t state;
+        uint64_t length;
+        uint64_t asciiobject_size;
+    } unicode_object;
+
+    // GC runtime state offset;
+    struct {
+        uint64_t size;
+        uint64_t collecting;
+    } gc;
+
+    // Generator object offset;
+    struct {
+        uint64_t size;
+        uint64_t gi_name;
+        uint64_t gi_iframe;
+        uint64_t gi_frame_state;
+    } gen_object;
+
+    struct {
+        uint64_t next;
+        uint64_t prev;
+    } llist_node;
+
+    struct {
+        uint64_t eval_breaker;
+        uint64_t remote_debugger_support;
+        uint64_t remote_debugging_enabled;
+        uint64_t debugger_pending_call;
+        uint64_t debugger_script_path;
+        uint64_t debugger_script_path_size;
+    } debugger_support;
+} _Py_DebugOffsets3_14;
+
+// ----------------------------------------------------------------------------
+
 typedef union {
     _Py_DebugOffsets3_13 v3_13;
+    _Py_DebugOffsets3_14 v3_14;
 } _Py_DebugOffsets;

@@ -411,6 +411,14 @@ void
 lru_cache__store(lru_cache_t*, key_dt, value_t);
 
 /**
+ * Invalidate the cache.
+ *
+ * @param self  the cache to invalidate
+ */
+void
+lru_cache__invalidate(lru_cache_t*);
+
+/**
  * Deallocate a cache.
  *
  * @param self  the cache to deallocate

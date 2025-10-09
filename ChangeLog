@@ -9,6 +9,8 @@
 
   Dropped support for CPython 3.8.
 
+  Added support for CPython 3.14.
+
   Bugfix: fixed a bug that caused Austin to fail to attach to a MacOS process
   for a second time with CPython 3.13.
 
