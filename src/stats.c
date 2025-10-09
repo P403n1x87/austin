@@ -143,6 +143,8 @@ stats_log_metrics() {
     microseconds_t duration = stats_duration();
 
     event_handler__emit_metadata("count", "%ld", _sample_cnt);
+    event_handler__emit_metadata("duration", MICROSECONDS_FMT, duration);
+
     if (_sample_cnt) {
         event_handler__emit_metadata(
             "sampling", MICROSECONDS_FMT "," MICROSECONDS_FMT "," MICROSECONDS_FMT, stats_get_min_sampling_time(),
@@ -150,7 +152,6 @@ stats_log_metrics() {
         );
         event_handler__emit_metadata("saturation", "%ld/%ld", _long_cnt, _sample_cnt);
         event_handler__emit_metadata("errors", "%ld/%ld", _error_cnt, _sample_cnt);
-        event_handler__emit_metadata("duration", MICROSECONDS_FMT, duration);
         if (pargs.gc)
             event_handler__emit_metadata("gc", MICROSECONDS_FMT, _gc_time);
 

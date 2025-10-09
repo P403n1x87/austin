@@ -339,7 +339,6 @@ austin() {
     // destroying it. Hence once they return we need to invalidate it.
     py_proc = NULL;
 
-    event_handler__emit_metadata("duration", MICROSECONDS_FMT, stats_duration());
     if (pargs.gc) {
         event_handler__emit_metadata("gc", MICROSECONDS_FMT, _gc_time);
     }
