@@ -1,4 +1,8 @@
-2025-10-xx v4.0.0
+2025-10-14 v4.0.0
+
+  Added support for CPython 3.14.
+  
+  Dropped support for CPython 3.8.
 
   The MOJO binary output format is now the default. The augmented collapsed
   stack format is no longer supported.
@@ -7,15 +11,15 @@
 
   Removed the heap option.
 
-  Dropped support for CPython 3.8.
-
-  Added support for CPython 3.14.
+  Improved accuracy and performance by more than doubling the maximum attainable
+  sampling rate.
 
   Bugfix: fixed a bug that caused Austin to fail to attach to a MacOS process
   for a second time with CPython 3.13.
 
   Bugfix: fixed a bug that caused the sampling to halt if Austin failed to
   retrieve valid thread information.
+
 
 2024-10-14 v3.7.0
 
