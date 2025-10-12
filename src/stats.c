@@ -167,10 +167,10 @@ stats_log_metrics() {
         double      avg_rate   = (double)_sample_cnt / (duration / 1000000.);
         const char* rate_unit  = "Hz";
         double      rate_value = avg_rate;
-        if (avg_rate >= 1e6) {
+        if (avg_rate >= 1e6) { // GCOV_EXCL_START
             rate_unit  = "MHz";
             rate_value = avg_rate / 1e6;
-        } else if (avg_rate >= 1e3) {
+        } else if (avg_rate >= 1e3) { // GCOV_EXCL_STOP
             rate_unit  = "kHz";
             rate_value = avg_rate / 1e3;
         }

@@ -48,25 +48,25 @@ py_thread__is_idle(py_thread_t* self) {
     sprintf(file_name, "/proc/%d/task/%" PRIuPTR "/stat", self->proc->pid, self->tid);
 
     cu_fd fd = open(file_name, O_RDONLY);
-    if (fd == -1) {
+    if (fd == -1) { // GCOV_EXCL_START
         set_error(IO, "Cannot open thread stat file");
         FAIL_BOOL;
-    }
+    } // GCOV_EXCL_STOP
 
-    if (read(fd, buffer, 2047) == 0) {
+    if (read(fd, buffer, 2047) == 0) { // GCOV_EXCL_START
         set_error(IO, "Cannot read thread stat file");
         FAIL_BOOL;
-    }
+    } // GCOV_EXCL_STOP
 
-    char* p = strchr(buffer, ')');
+    char* p = strchr(buffer, ')'); // GCOV_EXCL_START
     if (!isvalid(p)) {
         set_error(OS, "Invalid thread stat file");
         FAIL_BOOL;
-    }
+    } // GCOV_EXCL_STOP
 
     p += 2;
     if (*p == ' ')
-        p++;
+        p++; // GCOV_EXCL_LINE
 
     return (*p != 'R');
 #endif

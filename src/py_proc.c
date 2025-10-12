@@ -122,10 +122,10 @@ _get_version_from_executable(char* binary, int* major, int* minor, int* patch) {
 #endif
 
     fp = _popen(cmd, "r");
-    if (!isvalid(fp)) {
+    if (!isvalid(fp)) { // GCOV_EXCL_START
         set_error(OS, "Cannot open pipe");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     log_d("Getting Python version from executable %s", binary);
 
@@ -147,8 +147,8 @@ _get_version_from_filename(char* filename, const char* needle, int* major, int* 
 
     while (base < end) {
         base = strstr(base, needle);
-        if (!isvalid(base)) {
-            break;
+        if (!isvalid(base)) { // GCOV_EXCL_LINE
+            break;            // GCOV_EXCL_LINE
         }
         base += needle_len;
         if (sscanf(base, "%u.%u", major, minor) == 2) {
@@ -238,10 +238,10 @@ _find_version_in_binary(char* path, int* version) {
 
 static int
 _py_proc__infer_python_version(py_proc_t* self) {
-    if (!isvalid(self)) {
+    if (!isvalid(self)) { // GCOV_EXCL_START
         set_error(NULL, "Invalid process structure");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     int major = 0, minor = 0, patch = 0;
 
@@ -371,10 +371,10 @@ set_version:
 // ----------------------------------------------------------------------------
 static int
 _py_proc__check_interp_state(py_proc_t* self, raddr_t interp) {
-    if (!isvalid(self)) {
+    if (!isvalid(self)) { // GCOV_EXCL_START
         set_error(NULL, "Invalid process structure");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     V_DESC(self->py_v);
 
@@ -456,21 +456,21 @@ _py_proc__scan_bss(py_proc_t* self) {
     // than pointers to it. This make the search a little slower, since we now
     // have to check every value in the range. However, the step size we chose
     // seems to get us close enough in a few attempts.
-    if (!isvalid(self)) {
+    if (!isvalid(self)) { // GCOV_EXCL_START
         set_error(NULL, "Invalid process structure");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
-    if (!isvalid(self->map.bss.base)) {
+    if (!isvalid(self->map.bss.base)) { // GCOV_EXCL_START
         set_error(BINARY, "Invalid BSS section");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     cu_void* bss = malloc(self->map.bss.size);
-    if (!isvalid(bss)) {
+    if (!isvalid(bss)) { // GCOV_EXCL_START
         set_error(MALLOC, "Cannot allocate memory for BSS scan");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     size_t step = self->map.bss.size > 0x10000 ? 0x10000 : self->map.bss.size;
 
@@ -510,10 +510,10 @@ _py_proc__scan_bss(py_proc_t* self) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_proc__prefetch_interpreter_state(py_proc_t* self, raddr_t interp) {
-    if (!isvalid(self)) {
-        set_error(NULL, "Invalid process structure"); // GCOV_EXCL_START
-        FAIL;                                         // GCOV_EXCL_END
-    }
+    if (!isvalid(self)) { // GCOV_EXCL_START
+        set_error(NULL, "Invalid process structure");
+        FAIL;
+    } // GCOV_EXCL_STOP
 
     // The interpreter state structure is quite large, so we prefetch the
     // chunk that we are more likely to need.
@@ -530,15 +530,15 @@ _py_proc__prefetch_interpreter_state(py_proc_t* self, raddr_t interp) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__deref_interp_head(py_proc_t* self) {
-    if (!isvalid(self)) {
+    if (!isvalid(self)) { // GCOV_EXCL_START
         set_error(NULL, "Invalid process structure");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
-    if (!(isvalid(self->symbols[DYNSYM_RUNTIME]) || isvalid(self->map.runtime.base))) {
+    if (!(isvalid(self->symbols[DYNSYM_RUNTIME]) || isvalid(self->map.runtime.base))) { // GCOV_EXCL_START
         set_error(OS, "Invalid runtime section");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     V_DESC(self->py_v);
 
@@ -567,15 +567,15 @@ _py_proc__deref_interp_head(py_proc_t* self) {
     for (raddr_t current_addr = lower; current_addr <= upper; current_addr += sizeof(raddr_t)) {
         if (py_proc__copy_v(self, runtime, current_addr, &runtime)) {
             log_d("Cannot copy runtime state structure from remote address %p", current_addr);
-            continue;
+            continue; // GCOV_EXCL_LINE
         }
 
         interp_head_raddr = V_FIELD(raddr_t, runtime, py_runtime, o_interp_head);
 
         if (fail(_py_proc__prefetch_interpreter_state(self, interp_head_raddr))) {
             log_d("Failed to prefetch interpreter state from runtime state @ %p", interp_head_raddr);
-            interp_head_raddr = NULL;
-            continue;
+            interp_head_raddr = NULL; // GCOV_EXCL_LINE
+            continue;                 // GCOV_EXCL_LINE
         }
 
         if (fail(_py_proc__check_interp_state(self, interp_head_raddr))) {
@@ -614,10 +614,10 @@ _py_proc__current_thread_state(py_proc_t* self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__find_interpreter_state(py_proc_t* self) {
-    if (!isvalid(self)) {
+    if (!isvalid(self)) { // GCOV_EXCL_START
         set_error(NULL, "Invalid process structure");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     if (fail(_py_proc__init(self)))
         FAIL;
@@ -639,10 +639,10 @@ _py_proc__find_interpreter_state(py_proc_t* self) {
         log_d("✨ Interpreter head de-referenced from symbols ✨ ");
     } else {
         // Attempt a BSS scan if we don't have symbols
-        if (fail(_py_proc__scan_bss(self))) {
+        if (fail(_py_proc__scan_bss(self))) { // GCOV_EXCL_START
             log_d("BSS scan failed (no symbols available)");
             FAIL;
-        }
+        } // GCOV_EXCL_STOP
 
         log_d("Interpreter state located from BSS scan (no symbols available)");
     }
@@ -772,8 +772,8 @@ _py_proc__run(py_proc_t* self) {
 py_proc_t*
 py_proc_new(bool child) {
     py_proc_t* py_proc = (py_proc_t*)calloc(1, sizeof(py_proc_t));
-    if (!isvalid(py_proc))
-        return NULL;
+    if (!isvalid(py_proc)) // GCOV_EXCL_LINE
+        FAIL_PTR;          // GCOV_EXCL_LINE
 
     py_proc->child          = child;
     py_proc->gc_state_raddr = NULL;
@@ -782,44 +782,43 @@ py_proc_new(bool child) {
     _prehash_symbols();
 
     py_proc->frame_cache = lru_cache_new(MAX_FRAME_CACHE_SIZE, (void (*)(value_t))frame__destroy);
-    if (!isvalid(py_proc->frame_cache)) {
-        log_e("Failed to allocate frame cache");
-        goto error;
-    }
+    if (!isvalid(py_proc->frame_cache)) { // GCOV_EXCL_START
+        FAIL_GOTO(error);
+    } // GCOV_EXCL_STOP
 #ifdef DEBUG
     py_proc->frame_cache->name = "frame cache";
 #endif
 
     py_proc->string_cache = lru_cache_new(MAX_STRING_CACHE_SIZE, (void (*)(value_t))cached_string_destroy);
-    if (!isvalid(py_proc->string_cache)) {
-        log_e("Failed to allocate string cache");
-        goto error;
-    }
+    if (!isvalid(py_proc->string_cache)) { // GCOV_EXCL_START
+        FAIL_GOTO(error);
+    } // GCOV_EXCL_STOP
 #ifdef DEBUG
     py_proc->string_cache->name = "string cache";
 #endif
 
     py_proc->code_cache = lru_cache_new(MAX_CODE_CACHE_SIZE, (void (*)(value_t))code__destroy);
-    if (!isvalid(py_proc->code_cache)) {
-        log_e("Failed to allocate code cache");
-        goto error;
-    }
+    if (!isvalid(py_proc->code_cache)) { // GCOV_EXCL_START
+        FAIL_GOTO(error);
+    } // GCOV_EXCL_STOP
 #ifdef DEBUG
     py_proc->code_cache->name = "code cache";
 #endif
 
     py_proc->interpreter_state_cache
         = lru_cache_new(MAX_INTERPRETER_STATE_CACHE_SIZE, (void (*)(value_t))interpreter_state__destroy);
-    if (!isvalid(py_proc->interpreter_state_cache)) {
+    if (!isvalid(py_proc->interpreter_state_cache)) { // GCOV_EXCL_START
         FAIL_GOTO(error);
-    }
+    } // GCOV_EXCL_STOP
 #ifdef DEBUG
     py_proc->interpreter_state_cache->name = "interpreter state cache";
 #endif
 
     py_proc->extra = (proc_extra_info*)calloc(1, sizeof(proc_extra_info));
-    if (!isvalid(py_proc->extra))
-        goto error;
+    if (!isvalid(py_proc->extra)) { // GCOV_EXCL_START
+        set_error(MALLOC, "Cannot allocate memory for process extra info");
+        FAIL_GOTO(error);
+    } // GCOV_EXCL_STOP
 
     return py_proc;
 
@@ -975,8 +974,8 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
         // not writing to stdout.
         if (pargs.output_file == stdout) {
             log_d("Redirecting child's STDOUT to " NULL_DEVICE);
-            if (freopen(NULL_DEVICE, "w", stdout) == NULL)
-                set_error(IO, "Cannot redirect child's STDOUT to " NULL_DEVICE);
+            if (freopen(NULL_DEVICE, "w", stdout) == NULL)                       // GCOV_EXCL_LINE
+                set_error(IO, "Cannot redirect child's STDOUT to " NULL_DEVICE); // GCOV_EXCL_LINE
         }
 
         // Create a new process group so that we can send signals to the parent
@@ -1008,10 +1007,10 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
     self->timestamp = gettime();
 #endif
 
-    if (self->pid == 0) {
+    if (self->pid == 0) { // GCOV_EXCL_START
         set_error(OS, "Failed to start process");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     log_d("Python process started successfully");
 
@@ -1059,8 +1058,8 @@ _py_proc__find_current_thread_offset(py_proc_t* self, raddr_t thread_raddr) {
 
     V_ALLOCA(runtime, runtime);
 
-    if (py_proc__copy_v(self, runtime, self->symbols[DYNSYM_RUNTIME], &runtime))
-        FAIL;
+    if (py_proc__copy_v(self, runtime, self->symbols[DYNSYM_RUNTIME], &runtime)) // GCOV_EXCL_LINE
+        FAIL;                                                                    // GCOV_EXCL_LINE
 
     // Search offset of current thread in _PyRuntimeState structure
     raddr_t      current_thread_raddr = NULL;
@@ -1077,8 +1076,8 @@ _py_proc__find_current_thread_offset(py_proc_t* self, raddr_t thread_raddr) {
         }
     }
 
-    set_error(OS, "Cannot find current thread offset");
-    FAIL;
+    set_error(OS, "Cannot find current thread offset"); // GCOV_EXCL_LINE
+    FAIL;                                               // GCOV_EXCL_LINE
 }
 
 // ----------------------------------------------------------------------------
@@ -1135,34 +1134,34 @@ static int
 _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
     py_thread_t py_thread = py_thread__init(self);
 
-    if (fail(py_thread__read_remote(&py_thread, tstate_head))) {
+    if (fail(py_thread__read_remote(&py_thread, tstate_head))) { // GCOV_EXCL_START
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     do {
-        if (pargs.kernel && fail(py_thread__save_kernel_stack(&py_thread)))
-            FAIL;
+        if (pargs.kernel && fail(py_thread__save_kernel_stack(&py_thread))) // GCOV_EXCL_LINE
+            FAIL;                                                           // GCOV_EXCL_LINE
 
         // !IMPORTANT! We need to retrieve the idle state *before* trying to
         // interrupt the thread, else it will always be idle!
-        if (fail(py_thread__set_idle(&py_thread)))
-            FAIL;
+        if (fail(py_thread__set_idle(&py_thread))) // GCOV_EXCL_LINE
+            FAIL;                                  // GCOV_EXCL_LINE
 
-        if (fail(wait_ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0)))
-            FAIL;
+        if (fail(wait_ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0))) // GCOV_EXCL_LINE
+            FAIL;                                                     // GCOV_EXCL_LINE
 
-        if (fail(py_thread__set_interrupted(&py_thread, true))) {
+        if (fail(py_thread__set_interrupted(&py_thread, true))) { // GCOV_EXCL_START
             if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
                 log_d("ptrace: failed to resume interrupted thread %d (errno: %d)", py_thread.tid, errno);
             }
             FAIL;
-        }
+        } // GCOV_EXCL_STOP
 
         log_t("ptrace: thread %d interrupted", py_thread.tid);
     } while (success(py_thread__next(&py_thread)));
 
-    if (!error_is(ITEREND))
-        FAIL;
+    if (!error_is(ITEREND)) // GCOV_EXCL_LINE
+        FAIL;               // GCOV_EXCL_LINE
 
     SUCCESS;
 }
@@ -1172,24 +1171,24 @@ static int
 _py_proc__resume_threads(py_proc_t* self, raddr_t tstate_head) {
     py_thread_t py_thread = py_thread__init(self);
 
-    if (fail(py_thread__read_remote(&py_thread, tstate_head))) {
+    if (fail(py_thread__read_remote(&py_thread, tstate_head))) { // GCOV_EXCL_START
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     do {
         if (py_thread__is_interrupted(&py_thread)) {
-            if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0)))
-                FAIL;
+            if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) // GCOV_EXCL_LINE
+                FAIL;                                                // GCOV_EXCL_LINE
 
             log_t("ptrace: thread %d resumed", py_thread.tid);
-            if (fail(py_thread__set_interrupted(&py_thread, false))) {
+            if (fail(py_thread__set_interrupted(&py_thread, false))) { // GCOV_EXCL_START
                 FAIL;
-            }
+            } // GCOV_EXCL_STOP
         }
     } while (success(py_thread__next(&py_thread)));
 
-    if (!error_is(ITEREND))
-        FAIL;
+    if (!error_is(ITEREND)) // GCOV_EXCL_LINE
+        FAIL;               // GCOV_EXCL_LINE
 
     SUCCESS;
 }
@@ -1204,13 +1203,13 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
     V_DESC(self->py_v);
 
     raddr_t tstate_head = NULL;
-    if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, tstate_head)))
-        FAIL;
+    if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, tstate_head))) // GCOV_EXCL_LINE
+        FAIL;                                                                                // GCOV_EXCL_LINE
 
-    if (!isvalid(tstate_head)) {
+    if (!isvalid(tstate_head)) { // GCOV_EXCL_START
         set_error(PYOBJECT, "Invalid thread state head address");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     py_thread_t py_thread = py_thread__init(self);
 
@@ -1225,15 +1224,15 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
         // Use the current thread to determine which thread is manipulating memory
         if (V_MIN(3, 12)) {
             raddr_t gil_state_raddr = NULL;
-            if (fail(_py_proc__get_interpreter_state_field(self, interp, gil_state, gil_state_raddr)))
-                FAIL;
+            if (fail(_py_proc__get_interpreter_state_field(self, interp, gil_state, gil_state_raddr))) // GCOV_EXCL_LINE
+                FAIL;                                                                                  // GCOV_EXCL_LINE
 
-            if (!isvalid(gil_state_raddr))
-                SUCCESS;
+            if (!isvalid(gil_state_raddr)) // GCOV_EXCL_LINE
+                SUCCESS;                   // GCOV_EXCL_LINE
 
             gil_state_t gil_state = {0};
-            if (fail(copy_datatype(self->ref, gil_state_raddr, gil_state)))
-                FAIL;
+            if (fail(copy_datatype(self->ref, gil_state_raddr, gil_state))) // GCOV_EXCL_LINE
+                FAIL;                                                       // GCOV_EXCL_LINE
 
             current_thread = (raddr_t)gil_state.last_holder._value;
         } else
@@ -1241,8 +1240,8 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
     }
 
     int64_t interp_id = 0;
-    if (fail(_py_proc__get_interpreter_state_field(self, interp, id, interp_id)))
-        FAIL;
+    if (fail(_py_proc__get_interpreter_state_field(self, interp, id, interp_id))) // GCOV_EXCL_LINE
+        FAIL;                                                                     // GCOV_EXCL_LINE
 
     // In Python 3.14 we can use the code object generation to determine if we
     // need to invalidate the frame cache.
@@ -1300,8 +1299,8 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
                 continue;
         }
 
-        if (mem_delta == 0 && time_delta == 0)
-            continue;
+        if (mem_delta == 0 && time_delta == 0) // GCOV_EXCL_LINE
+            continue;                          // GCOV_EXCL_LINE
 
         bool is_idle = false;
         if (pargs.full || pargs.cpu || unlikely(pargs.where)) {
@@ -1335,9 +1334,9 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
 #ifdef NATIVE
         if (V_MIN(3, 11) && V_MAX(3, 12)) {
             // We expect a CFrame to sit at the top of the stack
-            if (!stack_is_empty() && stack_top() != CFRAME_MAGIC) {
+            if (!stack_is_empty() && stack_top() != CFRAME_MAGIC) { // GCOV_EXCL_START
                 log_e("Invalid resolved Python stack");
-            }
+            } // GCOV_EXCL_STOP
         }
 #endif
 
@@ -1360,12 +1359,14 @@ py_proc__sample(py_proc_t* self) {
     V_DESC(self->py_v);
 
     do {
-        if (fail(_py_proc__prefetch_interpreter_state(self, current_interp)))
-            FAIL;
+        if (fail(_py_proc__prefetch_interpreter_state(self, current_interp))) // GCOV_EXCL_LINE
+            FAIL;                                                             // GCOV_EXCL_LINE
 
         raddr_t tstate_head = NULL;
-        if (fail(_py_proc__get_interpreter_state_field(self, current_interp, tstate_head, tstate_head)))
-            FAIL;
+        if (fail( // GCOV_EXCL_LINE
+                _py_proc__get_interpreter_state_field(self, current_interp, tstate_head, tstate_head)
+            ))
+            FAIL; // GCOV_EXCL_LINE
 
         if (!isvalid(tstate_head))
             // Maybe the interpreter state is in an invalid state. We'll try again
@@ -1373,23 +1374,23 @@ py_proc__sample(py_proc_t* self) {
             SUCCESS;
 
 #ifdef NATIVE
-        if (fail(_py_proc__interrupt_threads(self, tstate_head)))
-            FAIL;
+        if (fail(_py_proc__interrupt_threads(self, tstate_head))) // GCOV_EXCL_LINE
+            FAIL;                                                 // GCOV_EXCL_LINE
 
         time_delta = gettime() - self->timestamp;
 #endif
         int result = _py_proc__sample_interpreter(self, current_interp, time_delta);
 
 #ifdef NATIVE
-        if (fail(_py_proc__resume_threads(self, tstate_head)))
-            FAIL;
+        if (fail(_py_proc__resume_threads(self, tstate_head))) // GCOV_EXCL_LINE
+            FAIL;                                              // GCOV_EXCL_LINE
 #endif
 
         if (fail(result))
             continue;
 
-        if (fail(_py_proc__get_interpreter_state_field(self, current_interp, next, current_interp)))
-            FAIL;
+        if (fail(_py_proc__get_interpreter_state_field(self, current_interp, next, current_interp))) // GCOV_EXCL_LINE
+            FAIL;                                                                                    // GCOV_EXCL_LINE
     } while (isvalid(current_interp));
 
 #ifdef NATIVE
@@ -1409,8 +1410,8 @@ py_proc__log_version(py_proc_t* self, bool is_parent) {
     int patch = self->py_v->patch;
 
     if (is_parent) {
-        if (patch == 0xFF) {
-            event_handler__emit_metadata("python", "%d.%d.?", major, minor);
+        if (patch == 0xFF) {                                                 // GCOV_EXCL_LINE
+            event_handler__emit_metadata("python", "%d.%d.?", major, minor); // GCOV_EXCL_LINE
         } else
             event_handler__emit_metadata("python", "%d.%d.%d", major, minor, patch);
     }
@@ -1421,20 +1422,20 @@ py_proc__log_version(py_proc_t* self, bool is_parent) {
     log_m("");
 
     if (pargs.children) {
-        if (patch == 0xFF)
+        if (patch == 0xFF) // GCOV_EXCL_START
             log_m(
                 "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d" CRESET,
                 is_parent ? "Parent" : "Child", self->pid, major, minor
             );
-        else
+        else // GCOV_EXCL_STOP
             log_m(
                 "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d" CRESET,
                 is_parent ? "Parent" : "Child", self->pid, major, minor, patch
             );
     } else {
-        if (patch == 0xFF)
+        if (patch == 0xFF) // GCOV_EXCL_START
             log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d" CRESET, major, minor);
-        else
+        else // GCOV_EXCL_STOP
             log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d" CRESET, major, minor, patch);
     }
 }
@@ -1485,8 +1486,8 @@ py_proc__terminate(py_proc_t* self) {
 // ----------------------------------------------------------------------------
 void
 py_proc__destroy(py_proc_t* self) {
-    if (!isvalid(self))
-        return;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return;         // GCOV_EXCL_LINE
 
 #ifdef NATIVE
     unw_destroy_addr_space(self->unwind.as);

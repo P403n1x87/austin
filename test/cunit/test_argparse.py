@@ -1,7 +1,9 @@
-import test.cunit.argparse as argparse
 from ctypes import c_char_p
+import sys
 
 import pytest
+
+import test.cunit.argparse as argparse
 
 
 def parse_args(argv):
@@ -13,10 +15,35 @@ def test_parse_args_command():
     parse_args(["austin", "python"])
 
 
+@pytest.mark.exitcode(64 if sys.platform == "linux" else 1)
+def test_parse_args_no_target():
+    parse_args(["austin", "-1", "100"])
+
+
 def test_parse_args_process():
     parse_args(["austin", "-p", "123"])
 
 
 @pytest.mark.exitcode(64)
-def test_parse_args_invalid_process_id():
+def test_parse_args_non_numeric_process_id():
     parse_args(["austin", "-p", "abc123"])
+
+
+@pytest.mark.exitcode(64)
+def test_parse_args_invalid_process_id():
+    parse_args(["austin", "-p", "0"])
+
+
+@pytest.mark.exitcode(64)
+def test_parse_args_invalid_timeout():
+    parse_args(["austin", "-t", "abc123", "-p", "123"])
+
+
+@pytest.mark.exitcode(64)
+def test_parse_args_invalid_interval():
+    parse_args(["austin", "-i", "abc123", "-p", "123"])
+
+
+@pytest.mark.exitcode(64 if sys.platform == "linux" else 1)
+def test_parse_args_invalid_exposure():
+    parse_args(["austin", "-x", "-1", "-p", "123"])

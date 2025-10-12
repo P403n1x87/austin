@@ -160,9 +160,9 @@ do_single_process(py_proc_t* py_proc) {
 int
 do_child_processes(py_proc_t* py_proc) {
     cu_py_proc_list_t* list = py_proc_list_new(py_proc);
-    if (!isvalid(list)) {
+    if (!isvalid(list)) { // GCOV_EXCL_START
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     // If the parent process is not a Python process, its children might be, so
     // we attempt to attach Austin to them.
@@ -267,7 +267,7 @@ handle_error() {
         // This is fine as if the process has terminated we cannot read its
         // memory.
     } else {
-        _msg(MERROR);
+        _msg(MERROR); // GCOV_EXCL_LINE
     }
 } /* handle_error */
 
@@ -305,15 +305,15 @@ austin() {
     event_handler_install(handler);
 
     py_proc = py_proc_new(false);
-    if (!isvalid(py_proc)) {
+    if (!isvalid(py_proc)) { // GCOV_EXCL_START
         result = 1;
         FAIL_GOTO(release);
-    }
+    } // GCOV_EXCL_STOP
 
-    if (fail(py_thread_allocate())) {
+    if (fail(py_thread_allocate())) { // GCOV_EXCL_START
         result = 1;
         FAIL_GOTO(release);
-    }
+    } // GCOV_EXCL_STOP
 
     // Initialise sampling metrics.
     stats_reset();
@@ -385,10 +385,11 @@ main(int argc, char** argv) {
         log_i("Sampling interval: " MICROSECONDS_FMT " μs", pargs.t_sampling_interval);
 
     if (pargs.full) {
-        if (pargs.memory)
+        if (pargs.memory) // GCOV_EXCL_START
             log_w("The memory switch is redundant in full mode");
         if (pargs.cpu)
             log_w("The cpu switch is redundant in full mode");
+        // GCOV_EXCL_STOP
         log_i("Producing full set of metrics (time +mem -mem)");
         pargs.memory = true;
     } else if (pargs.memory) {

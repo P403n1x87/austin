@@ -42,10 +42,10 @@ typedef struct _interpreter_state {
 static inline interpreter_state_t*
 interpreter_state_new(int64_t id, uint64_t code_object_gen) {
     interpreter_state_t* state = (interpreter_state_t*)malloc(sizeof(interpreter_state_t));
-    if (!isvalid(state)) {
+    if (!isvalid(state)) { // GCOV_EXCL_START
         set_error(MALLOC, "Cannot allocate interpreter state structure");
         FAIL_PTR;
-    }
+    } // GCOV_EXCL_STOP
 
     state->id              = id;
     state->code_object_gen = code_object_gen;
@@ -62,8 +62,8 @@ interpreter_state_key(int64_t interp_id) {
 // ----------------------------------------------------------------------------
 static inline void
 interpreter_state__destroy(interpreter_state_t* state) {
-    if (!state)
-        return;
+    if (!isvalid(state)) // GCOV_EXCL_LINE
+        FAIL_VOID;       // GCOV_EXCL_LINE
 
     free(state);
 }

@@ -121,3 +121,6 @@ def test_python_version(py):
     )
 
     assert reported_version == actual_version, meta
+
+
+# TODO: Test TTY behaviour

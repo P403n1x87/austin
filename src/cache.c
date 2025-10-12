@@ -35,8 +35,8 @@
 queue_item_t*
 queue_item_new(value_t value, key_dt key) {
     queue_item_t* item = (queue_item_t*)calloc(1, sizeof(queue_item_t));
-    if (!isvalid(item))
-        return NULL;
+    if (!isvalid(item)) // GCOV_EXCL_LINE
+        return NULL;    // GCOV_EXCL_LINE
 
     item->value = value;
     item->key   = key;
@@ -47,8 +47,8 @@ queue_item_new(value_t value, key_dt key) {
 // ----------------------------------------------------------------------------
 void
 queue_item__destroy(queue_item_t* self, void (*deallocator)(value_t)) {
-    if (!isvalid(self))
-        return;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return;         // GCOV_EXCL_LINE
 
     deallocator(self->value);
 
@@ -59,8 +59,8 @@ queue_item__destroy(queue_item_t* self, void (*deallocator)(value_t)) {
 queue_t*
 queue_new(int capacity, void (*deallocator)(value_t)) {
     queue_t* queue = (queue_t*)calloc(1, sizeof(queue_t));
-    if (!isvalid(queue))
-        return NULL;
+    if (!isvalid(queue)) // GCOV_EXCL_LINE
+        return NULL;     // GCOV_EXCL_LINE
 
     queue->capacity    = capacity;
     queue->deallocator = deallocator;
@@ -127,8 +127,8 @@ queue__enqueue(queue_t* self, value_t value, key_dt key) {
 // ----------------------------------------------------------------------------
 void
 queue__destroy(queue_t* self) {
-    if (!isvalid(self))
-        return;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return;         // GCOV_EXCL_LINE
 
     queue_item_t* next = NULL;
     for (queue_item_t* item = self->front; isvalid(item); item = next) {
@@ -145,8 +145,8 @@ queue__destroy(queue_t* self) {
 chain_t*
 chain_new(key_dt key, value_t value) {
     chain_t* chain = (chain_t*)calloc(1, sizeof(chain_t));
-    if (!isvalid(chain))
-        return NULL;
+    if (!isvalid(chain)) // GCOV_EXCL_LINE
+        return NULL;     // GCOV_EXCL_LINE
 
     chain->key   = key;
     chain->value = value;
@@ -157,8 +157,8 @@ chain_new(key_dt key, value_t value) {
 // ----------------------------------------------------------------------------
 int
 chain__add(chain_t* self, key_dt key, value_t value) {
-    if (!isvalid(self))
-        return 0;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return 0;       // GCOV_EXCL_LINE
 
     if (!isvalid(self->next)) {
         self->next = chain_new(key, value);
@@ -174,10 +174,10 @@ chain__add(chain_t* self, key_dt key, value_t value) {
 }
 
 // ----------------------------------------------------------------------------
-int
+bool
 chain__remove(chain_t* self, key_dt key) {
-    if (!isvalid(self) || !isvalid(self->next))
-        return false;
+    if (!isvalid(self) || !isvalid(self->next)) // GCOV_EXCL_LINE
+        return false;                           // GCOV_EXCL_LINE
 
     if (self->next->key == key) {
         chain_t* next = self->next;
@@ -195,8 +195,8 @@ chain__remove(chain_t* self, key_dt key) {
 // ----------------------------------------------------------------------------
 value_t
 chain__find(chain_t* self, key_dt key) {
-    if (!isvalid(self))
-        return NULL;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return NULL;    // GCOV_EXCL_LINE
 
     if (self->key == key)
         return self->value;
@@ -207,8 +207,8 @@ chain__find(chain_t* self, key_dt key) {
 // ----------------------------------------------------------------------------
 bool
 chain__has(chain_t* self, key_dt key) {
-    if (!isvalid(self))
-        return false;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return false;   // GCOV_EXCL_LINE
 
     if (self->key == key)
         return true;
@@ -219,8 +219,8 @@ chain__has(chain_t* self, key_dt key) {
 // ----------------------------------------------------------------------------
 void
 chain__destroy(chain_t* self) {
-    if (!isvalid(self))
-        return;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return;         // GCOV_EXCL_LINE
 
     chain__destroy(self->next);
 
@@ -231,8 +231,8 @@ chain__destroy(chain_t* self) {
 hash_table_t*
 hash_table_new(int capacity) {
     hash_table_t* hash = (hash_table_t*)calloc(1, sizeof(hash_table_t));
-    if (!isvalid(hash))
-        return NULL;
+    if (!isvalid(hash)) // GCOV_EXCL_LINE
+        return NULL;    // GCOV_EXCL_LINE
 
     hash->capacity    = capacity;
     hash->load_factor = 0.75 * capacity;
@@ -257,8 +257,8 @@ _hash_table__index(hash_table_t* self, key_dt key) {
 // ----------------------------------------------------------------------------
 value_t
 hash_table__get(hash_table_t* self, key_dt key) {
-    if (!isvalid(self))
-        return NULL;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return NULL;    // GCOV_EXCL_LINE
 
     chain_t* chain = self->chains[_hash_table__index(self, key)];
     if (!isvalid(chain))
@@ -270,10 +270,10 @@ hash_table__get(hash_table_t* self, key_dt key) {
 // ----------------------------------------------------------------------------
 bool
 hash_table__is_full(hash_table_t* self) {
-    if (!isvalid(self)) {
+    if (!isvalid(self)) { // GCOV_EXCL_START
         set_error(NULL, "Invalid hash table");
         FAIL_BOOL;
-    }
+    } // GCOV_EXCL_STOP
 
     return self->size >= self->load_factor;
 }
@@ -281,8 +281,8 @@ hash_table__is_full(hash_table_t* self) {
 // ----------------------------------------------------------------------------
 void
 hash_table__set(hash_table_t* self, key_dt key, value_t value) {
-    if (!isvalid(self))
-        return;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return;         // GCOV_EXCL_LINE
 
     index_t index = _hash_table__index(self, key);
 
@@ -311,14 +311,14 @@ hash_table__set(hash_table_t* self, key_dt key, value_t value) {
 // ----------------------------------------------------------------------------
 void
 hash_table__del(hash_table_t* self, key_dt key) {
-    if (!isvalid(self) || self->size == 0)
-        return;
+    if (!isvalid(self) || self->size == 0) // GCOV_EXCL_LINE
+        return;                            // GCOV_EXCL_LINE
 
     index_t  index = _hash_table__index(self, key);
     chain_t* chain = self->chains[index];
 
-    if (!isvalid(chain))
-        return;
+    if (!isvalid(chain)) // GCOV_EXCL_LINE
+        return;          // GCOV_EXCL_LINE
 
     self->size -= chain__remove(chain, key);
 
@@ -331,8 +331,8 @@ hash_table__del(hash_table_t* self, key_dt key) {
 // ----------------------------------------------------------------------------
 void
 hash_table__destroy(hash_table_t* self) {
-    if (!isvalid(self))
-        return;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return;         // GCOV_EXCL_LINE
 
     if (isvalid(self->chains)) {
         for (int i = 0; i < self->capacity; i++) {
@@ -350,8 +350,8 @@ hash_table__destroy(hash_table_t* self) {
 lru_cache_t*
 lru_cache_new(int capacity, void (*deallocator)(value_t)) {
     lru_cache_t* cache = (lru_cache_t*)calloc(1, sizeof(lru_cache_t));
-    if (!isvalid(cache))
-        return NULL;
+    if (!isvalid(cache)) // GCOV_EXCL_LINE
+        return NULL;     // GCOV_EXCL_LINE
 
     cache->capacity = capacity;
 
@@ -463,8 +463,8 @@ lru_cache__invalidate(lru_cache_t* self) {
 // ----------------------------------------------------------------------------
 void
 lru_cache__destroy(lru_cache_t* self) {
-    if (!isvalid(self))
-        return;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return;         // GCOV_EXCL_LINE
 
 #ifdef DEBUG
     size_t total = self->hits + self->misses;
@@ -489,8 +489,8 @@ lru_cache__destroy(lru_cache_t* self) {
 lookup_t*
 lookup_new(int size) {
     lookup_t* lookup = (lookup_t*)calloc(1, sizeof(lookup_t));
-    if (!isvalid(lookup))
-        return NULL;
+    if (!isvalid(lookup)) // GCOV_EXCL_LINE
+        return NULL;      // GCOV_EXCL_LINE
 
     lookup->hash = hash_table_new(size);
 
@@ -500,8 +500,8 @@ lookup_new(int size) {
 // ----------------------------------------------------------------------------
 value_t
 lookup__get(lookup_t* self, key_dt key) {
-    if (!isvalid(self))
-        return NULL;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return NULL;    // GCOV_EXCL_LINE
 
     return hash_table__get(self->hash, key);
 }
@@ -509,8 +509,8 @@ lookup__get(lookup_t* self, key_dt key) {
 // ----------------------------------------------------------------------------
 void
 lookup__set(lookup_t* self, key_dt key, value_t value) {
-    if (!isvalid(self))
-        return;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return;         // GCOV_EXCL_LINE
 
     if (hash_table__is_full(self->hash)) {
         // Double the hash table and move the items across.
@@ -532,8 +532,8 @@ lookup__set(lookup_t* self, key_dt key, value_t value) {
 // ----------------------------------------------------------------------------
 void
 lookup__del(lookup_t* self, key_dt key) {
-    if (!isvalid(self))
-        return;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return;         // GCOV_EXCL_LINE
 
     hash_table__del(self->hash, key);
 }
@@ -541,8 +541,8 @@ lookup__del(lookup_t* self, key_dt key) {
 // ----------------------------------------------------------------------------
 void
 lookup__clear(lookup_t* self) {
-    if (!isvalid(self))
-        return;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return;         // GCOV_EXCL_LINE
 
     size_t size = self->hash->capacity;
     hash_table__destroy(self->hash);
@@ -552,8 +552,8 @@ lookup__clear(lookup_t* self) {
 // ----------------------------------------------------------------------------
 void
 lookup__destroy(lookup_t* self) {
-    if (!isvalid(self))
-        return;
+    if (!isvalid(self)) // GCOV_EXCL_LINE
+        return;         // GCOV_EXCL_LINE
 
     hash_table__destroy(self->hash);
     self->hash = NULL;

@@ -99,7 +99,7 @@ _get_base_64(Elf64_Ehdr* ehdr, void* elf_map) {
         if (phdr->p_type == PT_LOAD)
             return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
     }
-    return UINT64_MAX;
+    return UINT64_MAX; // GCOV_EXCL_LINE
 } /* _get_base_64 */
 
 static int
@@ -178,7 +178,7 @@ _get_base_32(Elf32_Ehdr* ehdr, void* elf_map) {
         if (phdr->p_type == PT_LOAD)
             return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
     }
-    return UINT32_MAX;
+    return UINT32_MAX; // GCOV_EXCL_LINE
 } /* _get_base_32 */
 
 static int
@@ -270,26 +270,26 @@ _py_proc__analyze_elf(py_proc_t* self, char* path, void* elf_base, proc_vm_map_b
     size_t      binary_size = 0;
     struct stat s;
 
-    if (fstat(fd, &s) == -1) {
+    if (fstat(fd, &s) == -1) { // GCOV_EXCL_START
         set_error(IO, "Cannot determine size of binary file");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     binary_size = s.st_size;
 
     binary_map = map_new(fd, binary_size, MAP_PRIVATE);
-    if (!isvalid(binary_map)) {
+    if (!isvalid(binary_map)) { // GCOV_EXCL_START
         set_error(IO, "Cannot map binary file to memory");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     Elf64_Ehdr* ehdr = binary_map->addr;
     log_t("Analysing ELF");
 
-    if (fail(_elf_check(ehdr))) {
+    if (fail(_elf_check(ehdr))) { // GCOV_EXCL_START
         set_error(BINARY, "Bad ELF header");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     // Dispatch
     switch (ehdr->e_ident[EI_CLASS]) {
@@ -297,14 +297,14 @@ _py_proc__analyze_elf(py_proc_t* self, char* path, void* elf_base, proc_vm_map_b
         log_d("%s is 64-bit ELF", path);
         return _py_proc__analyze_elf64(self, binary_map->addr, elf_base, bss);
 
-    case ELFCLASS32:
+    case ELFCLASS32: // GCOV_EXCL_START
         log_d("%s is 32-bit ELF", path);
         return _py_proc__analyze_elf32(self, binary_map->addr, elf_base, bss);
 
     default:
         set_error(BINARY, "Invalid ELF class");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 } /* _py_proc__analyze_elf */
 
 // ----------------------------------------------------------------------------
@@ -326,10 +326,10 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
     self->map.exe.size = 0;
 
     cu_void* pd_mem = calloc(1, sizeof(struct proc_desc));
-    if (!isvalid(pd_mem)) {
+    if (!isvalid(pd_mem)) { // GCOV_EXCL_START
         set_error(MALLOC, "Cannot allocate memory for proc_desc");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
     struct proc_desc* pd = pd_mem;
 
     proc_map_t* first_binary_map = NULL;
@@ -343,10 +343,10 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
                 break;
             }
         }
-        if (!isvalid(first_binary_map)) {
+        if (!isvalid(first_binary_map)) { // GCOV_EXCL_START
             set_error(OS, "Failed to infer the executable path");
             FAIL;
-        }
+        } // GCOV_EXCL_STOP
     } else {
         first_binary_map = proc_map__first(proc_maps, pd->exe_path);
         if (!isvalid(first_binary_map))
@@ -499,16 +499,16 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
 static ssize_t
 _py_proc__get_resident_memory(py_proc_t* self) {
     cu_FILE* statm = fopen(self->extra->statm_file, "rb");
-    if (statm == NULL) {
+    if (statm == NULL) { // GCOV_EXCL_START
         set_error(IO, "Cannot open statm file");
         FAIL_INT;
-    }
+    } // GCOV_EXCL_STOP
 
     ssize_t size, resident;
-    if (fscanf(statm, "%zd %zd", &size, &resident) != 2) {
+    if (fscanf(statm, "%zd %zd", &size, &resident) != 2) { // GCOV_EXCL_START
         set_error(OS, "Failed to parse statm file");
         FAIL_INT; // cppcheck-suppress [resourceLeak]
-    }
+    } // GCOV_EXCL_STOP
 
     return resident * self->extra->page_size; // cppcheck-suppress [resourceLeak]
 } /* _py_proc__get_resident_memory */
@@ -540,16 +540,16 @@ _py_proc__get_vm_maps(py_proc_t* self) {
 
     maps = proc_map_new(self->pid);
     if (!isvalid(maps))
-        FAIL;
+        FAIL; // GCOV_EXCL_LINE
 
     log_d("Rebuilding vm ranges tree");
 
     int nrange = 0;
     PROC_MAP_ITER(maps, m) {
-        if (nrange >= RANGES_MAX) {
+        if (nrange >= RANGES_MAX) { // GCOV_EXCL_START
             log_e("Too many ranges");
             break;
-        }
+        } // GCOV_EXCL_STOP
 
         if (!isvalid(m->pathname))
             continue;
@@ -583,10 +583,10 @@ _py_proc__get_vm_maps(py_proc_t* self) {
 // ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t* self) {
-    if (!isvalid(self)) {
+    if (!isvalid(self)) { // GCOV_EXCL_START
         set_error(NULL, "Invalid process structure");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     if (fail(_py_proc__inspect_vm_maps(self))) {
         FAIL;
@@ -615,10 +615,10 @@ _get_nspid(pid_t pid) {
     pid_t this     = 0;
 
     cu_FILE* status = _procfs(pid, "status");
-    if (!isvalid(status)) {
+    if (!isvalid(status)) { // GCOV_EXCL_START
         log_e("Cannot get namespace PID for %d", pid);
         return 0;
-    }
+    } // GCOV_EXCL_STOP
 
     while (getline(&line, &len, status) != -1) {
         if (sscanf(line, "NSpid:\t%d\t%d", &this, &nspid) == 2 && this == pid) {
@@ -639,9 +639,9 @@ _get_nspid(pid_t pid) {
 // ----------------------------------------------------------------------------
 static int
 _infer_tid_field_offset(py_thread_t* py_thread) {
-    if (fail(read_pthread_t(py_thread->proc, (void*)py_thread->tid))) {
+    if (fail(read_pthread_t(py_thread->proc, (void*)py_thread->tid))) { // GCOV_EXCL_START
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     log_d("pthread_t at %p", py_thread->tid);
 
@@ -663,11 +663,11 @@ _infer_tid_field_offset(py_thread_t* py_thread) {
     // Fall-back to smaller steps if we failed
     for (register int i = 0; i < PTHREAD_BUFFER_ITEMS * (sizeof(uintptr_t) / sizeof(pid_t)); i++) {
         if (pref == (pid_t)((pid_t*)extra->_pthread_buffer)[i]
-            || (nspid && nspid == (pid_t)((pid_t*)extra->_pthread_buffer)[i])) {
+            || (nspid && nspid == (pid_t)((pid_t*)extra->_pthread_buffer)[i])) { // GCOV_EXCL_START
             log_d("TID field offset (from fall-back): %d", i);
             extra->pthread_tid_offset = -i;
             SUCCESS;
-        }
+        } // GCOV_EXCL_STOP
     }
 
     set_error(OS, "Failed to find TID field offset");

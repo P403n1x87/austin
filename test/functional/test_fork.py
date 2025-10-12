@@ -22,8 +22,8 @@
 
 import platform
 import signal
-from pathlib import Path
 import sys
+from pathlib import Path
 from test.utils import allpythons
 from test.utils import austin
 from test.utils import compress
@@ -39,6 +39,7 @@ from test.utils import sum_metrics
 from test.utils import target
 from test.utils import threads
 from test.utils import variants
+from time import sleep
 
 import pytest
 
@@ -246,3 +247,29 @@ def test_no_logging(py, monkeypatch):
         result.stdout
     )
     assert result.returncode == 0, result.stderr or result.stdout
+
+
+@allpythons()
+def test_max_page_size(py, monkeypatch):
+    monkeypatch.setenv("AUSTIN_PAGE_SIZE_CAP", "1024")
+    result = austin("-i", "1ms", *python(py), target("target34.py"))
+    assert has_pattern(result.stdout, "target34.py:keep_cpu_busy:3"), compress(
+        result.stdout
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Terminate signal not supported")
+@allpythons()
+def test_fork_signal(py):
+    austin.args = ("-i", "10ms", *python(py), target("sleepy.py"), "5")
+    austin.expect_fail = True if sys.platform == "win32" else 256 - signal.SIGTERM
+
+    duration = 1
+    with austin as result:
+        sleep(duration)
+        result.terminate()
+
+    meta = metadata(result.stdout)
+
+    assert int(meta["duration"])

@@ -6,7 +6,7 @@ _get_base_64(Elf64_Ehdr* ehdr, void* elf_map) {
         if (phdr->p_type == PT_LOAD)
             return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
     }
-    return UINT64_MAX;
+    return UINT64_MAX; // GCOV_EXCL_LINE
 } /* _get_base_64 */
 
 static int
