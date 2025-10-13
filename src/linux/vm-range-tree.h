@@ -59,7 +59,7 @@ vm_range_t*
 vm_range_new(addr_t lo, addr_t hi, char* name) {
     vm_range_t* range = (vm_range_t*)malloc(sizeof(vm_range_t));
     if (!isvalid(range))
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
 
     range->lo     = lo;
     range->hi     = hi;
@@ -195,7 +195,7 @@ vm_range_tree__destroy(vm_range_tree_t* self) {
 static inline vm_range_t*
 _vm_range__find(vm_range_t* self, addr_t addr) {
     if (!isvalid(self))
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
 
     if (addr >= self->lo && addr < self->hi)
         return self;

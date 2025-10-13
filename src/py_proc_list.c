@@ -51,8 +51,8 @@
 static void
 _py_proc_list__add(py_proc_list_t* self, py_proc_t* py_proc) {
     py_proc_item_t* item = (py_proc_item_t*)malloc(sizeof(py_proc_item_t));
-    if (item == NULL)
-        return;
+    if (!isvalid(item)) // GCOV_EXCL_LINE
+        return;         // GCOV_EXCL_LINE
 
     // Insert at the beginning of the list
     item->py_proc = py_proc;
@@ -109,20 +109,20 @@ _py_proc_list__remove(py_proc_list_t* self, py_proc_item_t* item) {
 py_proc_list_t*
 py_proc_list_new(py_proc_t* parent_py_proc) {
     py_proc_list_t* list = (py_proc_list_t*)calloc(1, sizeof(py_proc_list_t));
-    if (!isvalid(list))
-        return NULL;
+    if (!isvalid(list)) // GCOV_EXCL_LINE
+        return NULL;    // GCOV_EXCL_LINE
 
     log_t("Maximum number of PIDs: %d", list->pids);
 
     list->py_proc_for_pid = lookup_new(256);
-    if (!isvalid(list->py_proc_for_pid)) {
+    if (!isvalid(list->py_proc_for_pid)) { // GCOV_EXCL_START
         FAIL_GOTO(error);
-    }
+    } // GCOV_EXCL_STOP
 
     list->ppid_for_pid = lookup_new(1024);
-    if (!isvalid(list->ppid_for_pid)) {
+    if (!isvalid(list->ppid_for_pid)) { // GCOV_EXCL_START
         FAIL_GOTO(error);
-    }
+    } // GCOV_EXCL_STOP
 
     // Add the parent process to the list.
     _py_proc_list__add(list, parent_py_proc);
@@ -130,9 +130,9 @@ py_proc_list_new(py_proc_t* parent_py_proc) {
     return list;
 
 error:
-    py_proc_list__destroy(list);
+    py_proc_list__destroy(list); // GCOV_EXCL_LINE
 
-    return NULL;
+    return NULL; // GCOV_EXCL_LINE
 } /* py_proc_list_new */
 
 // ----------------------------------------------------------------------------
@@ -141,8 +141,8 @@ py_proc_list__add_proc_children(py_proc_list_t* self, uintptr_t ppid) {
     lookup__iteritems_start(self->ppid_for_pid, key_dt, pid, value_t, pid_ppid) {
         if (pid_ppid == (value_t)ppid && !_py_proc_list__has_pid(self, pid)) {
             py_proc_t* child_proc = py_proc_new(true);
-            if (child_proc == NULL)
-                continue;
+            if (!isvalid(child_proc)) // GCOV_EXCL_LINE
+                continue;             // GCOV_EXCL_LINE
 
             if (py_proc__attach(child_proc, pid)) {
                 py_proc__destroy(child_proc);
@@ -210,10 +210,10 @@ py_proc_list__update(py_proc_list_t* self) {
     struct dirent* ent;
 
     cu_DIR* proc_dir = opendir("/proc");
-    if (!isvalid(proc_dir)) {
-        log_e("Failed to open /proc directory");
-        return;
-    }
+    if (!isvalid(proc_dir)) { // GCOV_EXCL_START
+        set_error(IO, "Failed to open /proc directory");
+        FAIL_VOID;
+    } // GCOV_EXCL_STOP
 
     for (;;) {
         // This code is inspired by the ps util
@@ -230,10 +230,10 @@ py_proc_list__update(py_proc_list_t* self) {
 
         cu_char* line = NULL;
         size_t   n    = 0;
-        if (getline(&line, &n, stat_file) < 0) {
+        if (getline(&line, &n, stat_file) < 0) { // GCOV_EXCL_START
             log_w("Failed to read stat file for process %d", pid);
             return;
-        }
+        } // GCOV_EXCL_STOP
 
         char* stat = strchr(line, ')');
         if (!isvalid(stat)) {
@@ -246,10 +246,10 @@ py_proc_list__update(py_proc_list_t* self) {
             stat++;
 
         uintptr_t ppid;
-        if (sscanf(stat, "%c %" SCNdPTR, (char*)buffer, &ppid) != 2) {
+        if (sscanf(stat, "%c %" SCNdPTR, (char*)buffer, &ppid) != 2) { // GCOV_EXCL_START
             log_e("Failed to parse stat file for process %d", pid);
             return;
-        }
+        } // GCOV_EXCL_STOP
 
         lookup__set(self->ppid_for_pid, pid, (value_t)ppid);
     }

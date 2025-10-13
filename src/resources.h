@@ -55,10 +55,10 @@
     }                                         \
     struct __allow_semicolon__
 
-CLEANUP_FUNC(void, free);
+CLEANUP_FUNC(void, free); // GCOV_EXCL_LINE
 #define cu_void __attribute__((cleanup(freevoid))) void
 
-CLEANUP_FUNC(char, free);
+CLEANUP_FUNC(char, free); // GCOV_EXCL_LINE
 #define cu_char __attribute__((cleanup(freechar))) char
 
 typedef unsigned char uchar;
@@ -89,17 +89,17 @@ typedef struct {
 static inline map_t*
 map_new(int fd, size_t size, int flags) {
     void* addr = mmap(0, size, PROT_READ, flags, fd, 0);
-    if (addr == MAP_FAILED) {
+    if (addr == MAP_FAILED) { // GCOV_EXCL_START
         set_error(IO, "Cannot map file to memory");
         FAIL_PTR;
-    }
+    } // GCOV_EXCL_STOP
 
     map_t* map = malloc(sizeof(map_t));
-    if (!isvalid(map)) {
+    if (!isvalid(map)) { // GCOV_EXCL_START
         munmap(addr, size);
         set_error(MALLOC, "Cannot allocate memory for map structure");
         FAIL_PTR;
-    }
+    } // GCOV_EXCL_STOP
 
     map->size = size;
     map->addr = addr;
@@ -115,7 +115,7 @@ map__destroy(map_t* map) {
     }
 }
 
-CLEANUP_FUNC(map_t, map__destroy);
+CLEANUP_FUNC(map_t, map__destroy); // GCOV_EXCL_LINE
 #define cu_map_t __attribute__((cleanup(map__destroymap_t))) map_t
 
 CLEANUP_FUNC_SENTINEL(int, close, -1);
@@ -123,7 +123,7 @@ CLEANUP_FUNC_SENTINEL(int, close, -1);
 
 #endif // PL_UNIX
 
-CLEANUP_FUNC(FILE, _pclose);
+CLEANUP_FUNC(FILE, _pclose); // GCOV_EXCL_LINE
 #define cu_pipe __attribute__((cleanup(_pcloseFILE))) FILE
 
 // ---- Linux resources ----
@@ -131,7 +131,7 @@ CLEANUP_FUNC(FILE, _pclose);
 #if defined PL_LINUX
 #include <dirent.h>
 
-CLEANUP_FUNC(DIR, closedir);
+CLEANUP_FUNC(DIR, closedir); // GCOV_EXCL_LINE
 #define cu_DIR __attribute__((cleanup(closedirDIR))) DIR
 
 #endif // PL_LINUX

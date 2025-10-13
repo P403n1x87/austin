@@ -59,7 +59,7 @@ proc_map_new(pid_t pid) {
     proc_map_t* next           = NULL;
 
     cu_FILE* fp = _procfs(pid, "maps");
-    if (!isvalid(fp)) {
+    if (!isvalid(fp)) { // GCOV_EXCL_START
         switch (errno) {
         case EACCES: // Needs elevated privileges
             set_error(PERM, "Cannot read from procfs");
@@ -71,7 +71,7 @@ proc_map_new(pid_t pid) {
             set_error(OS, "Unknown error");
         }
         FAIL_PTR;
-    }
+    } // GCOV_EXCL_STOP
 
     while (getline(&line, &len, fp) != -1) {
         ssize_t lower, upper;
@@ -95,10 +95,10 @@ proc_map_new(pid_t pid) {
         }
 
         next = (proc_map_t*)calloc(1, sizeof(proc_map_t));
-        if (!isvalid(next)) {
+        if (!isvalid(next)) { // GCOV_EXCL_START
             set_error(MALLOC, "Cannot allocate memory for proc_map_t");
             FAIL_PTR;
-        }
+        } // GCOV_EXCL_STOP
         if (!isvalid(head))
             head = next;
         else
@@ -125,10 +125,10 @@ proc_map_new(pid_t pid) {
 // ----------------------------------------------------------------------------
 static inline proc_map_t*
 proc_map__first(proc_map_t* self, char* pathname) {
-    if (!isvalid(self) || !isvalid(pathname)) {
+    if (!isvalid(self) || !isvalid(pathname)) { // GCOV_EXCL_START
         set_error(NULL, "Invalid arguments to proc_map__first");
         return NULL;
-    }
+    } // GCOV_EXCL_STOP
 
     PROC_MAP_ITER(self, map) {
         if (isvalid(map->pathname) && strcmp(map->pathname, pathname) == 0)
@@ -142,8 +142,8 @@ proc_map__first(proc_map_t* self, char* pathname) {
 // ----------------------------------------------------------------------------
 static inline proc_map_t*
 proc_map__first_submatch(proc_map_t* self, char* needle) {
-    if (!isvalid(self) || !isvalid(needle))
-        return NULL;
+    if (!isvalid(self) || !isvalid(needle)) // GCOV_EXCL_LINE
+        return NULL;                        // GCOV_EXCL_LINE
 
     PROC_MAP_ITER(self, map) {
         if (isvalid(map->pathname) && isvalid(strstr(map->pathname, needle))) {

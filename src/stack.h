@@ -151,38 +151,38 @@ stack_chunk_new(proc_ref_t pref, raddr_t origin) {
         FAIL_PTR;
 
     stack_chunk_t* chunk = (stack_chunk_t*)calloc(1, sizeof(stack_chunk_t));
-    if (!isvalid(chunk)) {
+    if (!isvalid(chunk)) { // GCOV_EXCL_START
         set_error(MALLOC, "Cannot allocate memory for stack chunk");
         FAIL_PTR;
-    }
+    } // GCOV_EXCL_STOP
 
     chunk->data = (_PyStackChunk*)malloc(original_chunk.size);
-    if (!isvalid(chunk->data)) {
+    if (!isvalid(chunk->data)) { // GCOV_EXCL_START
         set_error(MALLOC, "Cannot allocate memory for stack chunk data");
         FAIL_GOTO(fail);
-    }
+    } // GCOV_EXCL_STOP
 
-    if (copy_memory(pref, origin, original_chunk.size, chunk->data)) {
+    if (copy_memory(pref, origin, original_chunk.size, chunk->data)) { // GCOV_EXCL_START
         FAIL_GOTO(fail);
-    }
+    } // GCOV_EXCL_STOP
 
     chunk->origin = origin;
 
-    if (original_chunk.previous != NULL) {
+    if (original_chunk.previous != NULL) { // GCOV_EXCL_START
         chunk->previous = stack_chunk_new(pref, original_chunk.previous);
         if (!isvalid(chunk->previous)) {
             FAIL_GOTO(fail);
         }
-    }
+    } // GCOV_EXCL_STOP
 
     return chunk;
 
-fail:
+fail: // GCOV_EXCL_START
     sfree(chunk->data);
     sfree(chunk);
 
     return NULL;
-}
+} // GCOV_EXCL_STOP
 
 // ----------------------------------------------------------------------------
 static inline void
@@ -202,8 +202,8 @@ stack_chunk__resolve(stack_chunk_t* self, raddr_t address) {
     if (address >= self->origin && (char*)address < (char*)self->origin + self->data->size)
         return (char*)self->data + ((char*)address - (char*)self->origin);
 
-    if (self->previous)
-        return stack_chunk__resolve(self->previous, address);
+    if (self->previous)                                       // GCOV_EXCL_LINE
+        return stack_chunk__resolve(self->previous, address); // GCOV_EXCL_LINE
 
     return NULL;
 }

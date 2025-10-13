@@ -125,10 +125,10 @@ _py_thread__push_remote_frame(py_thread_t* self, raddr_t* prev) {
     raddr_t origin = *prev;
 
     *prev = V_FIELD(raddr_t, frame, py_frame, o_back);
-    if (unlikely(origin == *prev)) {
+    if (unlikely(origin == *prev)) { // GCOV_EXCL_START
         set_error(PYOBJECT, "Frame points to itself");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     stack_py_push(origin, V_FIELD(raddr_t, frame, py_frame, o_code), V_FIELD(int, frame, py_frame, o_lasti));
 
@@ -230,10 +230,10 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
             log_d("Failed to retrieve frame #%d (from top).", stack_pointer());
             FAIL;
         }
-        if (stack_full()) {
+        if (stack_full()) { // GCOV_EXCL_START
             log_w("Invalid frame stack: too tall");
             FAIL;
-        }
+        } // GCOV_EXCL_STOP
         if (stack_has_cycle()) {
             log_d("Circular frame reference detected");
             FAIL;
@@ -254,10 +254,10 @@ _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
             FAIL;
         }
 
-        if (stack_full()) {
+        if (stack_full()) { // GCOV_EXCL_START
             log_w("Invalid frame stack: too tall");
             FAIL;
-        }
+        } // GCOV_EXCL_STOP
 
         if (stack_has_cycle()) {
             log_d("Circular frame reference detected");
@@ -290,10 +290,10 @@ py_thread__set_idle(py_thread_t* self) {
     unsigned char bit   = 1 << (self->tid & 7);
     size_t        index = self->tid >> 3;
 
-    if (index > (max_pid >> 3)) {
+    if (index > (max_pid >> 3)) { // GCOV_EXCL_START
         set_error(OS, "Invalid thread identifier");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     if (py_thread__is_idle(self)) {
         _tids_idle[index] |= bit;
@@ -332,30 +332,30 @@ int
 py_thread__save_kernel_stack(py_thread_t* self) {
     char stack_path[48];
 
-    if (!isvalid(_kstacks)) {
+    if (!isvalid(_kstacks)) { // GCOV_EXCL_START
         set_error(NULL, "Kernel stacks not initialized");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     sfree(_kstacks[self->tid]);
 
     sprintf(stack_path, "/proc/%d/task/%" PRIuPTR "/stack", self->proc->pid, self->tid);
     cu_fd fd = open(stack_path, O_RDONLY);
-    if (fd == -1) {
+    if (fd == -1) { // GCOV_EXCL_START
         set_error(IO, "Failed to open kernel stack file");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     _kstacks[self->tid] = (char*)calloc(1, MAX_STACK_FILE_SIZE);
-    if (!isvalid(_kstacks[self->tid])) {
+    if (!isvalid(_kstacks[self->tid])) { // GCOV_EXCL_START
         set_error(MALLOC, "Failed to allocate kernel stack buffer");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
-    if (read(fd, _kstacks[self->tid], MAX_STACK_FILE_SIZE) == -1) {
+    if (read(fd, _kstacks[self->tid], MAX_STACK_FILE_SIZE) == -1) { // GCOV_EXCL_START
         set_error(IO, "Failed to read kernel stack file");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     SUCCESS;
 }
@@ -364,8 +364,8 @@ py_thread__save_kernel_stack(py_thread_t* self) {
 static inline int
 _py_thread__unwind_kernel_frame_stack(py_thread_t* self) {
     char* line = _kstacks[self->tid];
-    if (!isvalid(line))
-        SUCCESS;
+    if (!isvalid(line)) // GCOV_EXCL_LINE
+        SUCCESS;        // GCOV_EXCL_LINE
 
     log_t("linux: unwinding kernel stack");
 
@@ -416,7 +416,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
 
     stack_native_reset();
 
-    if (!isvalid(context)) {
+    if (!isvalid(context)) { // GCOV_EXCL_START
         _tids[self->tid] = _UPT_create(self->tid);
         if (!isvalid(_tids[self->tid])) {
             set_error(OS, "Failed to create libunwind context");
@@ -426,7 +426,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
             set_error(OS, "Unexpected invalid context");
             FAIL;
         }
-    }
+    } // GCOV_EXCL_STOP
 
     if (fail(wait_unw_init_remote(&cursor, self->proc->unwind.as, context))) {
         set_error(OS, "Failed to initialize remote cursor");
@@ -434,10 +434,10 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
     }
 
     do {
-        if (unw_get_reg(&cursor, UNW_REG_IP, &pc)) {
+        if (unw_get_reg(&cursor, UNW_REG_IP, &pc)) { // GCOV_EXCL_START
             set_error(OS, "Failed to read program counter");
             FAIL;
-        }
+        } // GCOV_EXCL_STOP
 
         key_dt frame_key = (key_dt)pc;
 
@@ -509,8 +509,8 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
                 }
 
                 frame = frame_new(frame_key, filename, scope, offset, 0, 0, 0);
-                if (!isvalid(frame))
-                    FAIL;
+                if (!isvalid(frame)) // GCOV_EXCL_LINE
+                    FAIL;            // GCOV_EXCL_LINE
             }
 
             lru_cache__store(cache, frame_key, (value_t)frame);
@@ -529,17 +529,17 @@ static inline int
 _py_thread__seize(py_thread_t* self) {
     // TODO: If a TID is reused we will never seize it!
     if (!isvalid(_tids[self->tid])) {
-        if (fail(wait_ptrace(PTRACE_SEIZE, self->tid, 0, 0))) {
+        if (fail(wait_ptrace(PTRACE_SEIZE, self->tid, 0, 0))) { // GCOV_EXCL_START
             set_error(OS, "Failed to seize thread");
             FAIL;
-        } else {
+        } else { // GCOV_EXCL_STOP
             log_d("ptrace: thread %d seized", self->tid);
         }
         _tids[self->tid] = _UPT_create(self->tid);
-        if (!isvalid(_tids[self->tid])) {
+        if (!isvalid(_tids[self->tid])) { // GCOV_EXCL_START
             set_error(OS, "Failed to create libunwind context");
             FAIL;
-        }
+        } // GCOV_EXCL_STOP
     }
     SUCCESS;
 }
@@ -551,10 +551,10 @@ _py_thread__seize(py_thread_t* self) {
 // ----------------------------------------------------------------------------
 int
 py_thread__read_remote(py_thread_t* self, raddr_t addr) {
-    if (!isvalid(self)) {
+    if (!isvalid(self)) { // GCOV_EXCL_START
         set_error(NULL, "Invalid thread pointer");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     py_proc_t* proc = self->proc;
 
@@ -596,9 +596,9 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
         if (V_MIN(3, 11)) {
 // We already have the native thread id
 #ifdef NATIVE
-            if (fail(_py_thread__seize(self))) {
+            if (fail(_py_thread__seize(self))) { // GCOV_EXCL_START
                 FAIL;
-            }
+            } // GCOV_EXCL_STOP
 #endif
         } else if (likely(proc->extra->pthread_tid_offset) && success(read_pthread_t(self->proc, (void*)self->tid))) {
             int o     = proc->extra->pthread_tid_offset;
@@ -692,12 +692,12 @@ py_thread__unwind(py_thread_t* self) {
 // ----------------------------------------------------------------------------
 int
 py_thread_allocate(void) {
-    if (isvalid(_stack))
-        SUCCESS;
+    if (isvalid(_stack)) // GCOV_EXCL_LINE
+        SUCCESS;         // GCOV_EXCL_LINE
 
-    if (fail(stack_allocate(MAX_STACK_SIZE))) {
+    if (fail(stack_allocate(MAX_STACK_SIZE))) { // GCOV_EXCL_START
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
 #if defined PL_WIN
     // On Windows we need to fetch process and thread information to detect idle
@@ -715,35 +715,35 @@ py_thread_allocate(void) {
 
 #ifdef NATIVE
     _tids = (void**)calloc(max_pid, sizeof(void*));
-    if (!isvalid(_tids)) {
+    if (!isvalid(_tids)) { // GCOV_EXCL_START
         set_error(MALLOC, "Failed to allocate thread context buffer");
         goto failed;
-    }
+    } // GCOV_EXCL_STOP
 
     size_t bmsize = (max_pid >> 3) + 1;
 
     _tids_idle = (unsigned char*)calloc(bmsize, sizeof(unsigned char));
-    if (!isvalid(_tids_idle)) {
+    if (!isvalid(_tids_idle)) { // GCOV_EXCL_START
         set_error(MALLOC, "Failed to allocate thread idle bitmap");
         goto failed;
-    }
+    } // GCOV_EXCL_STOP
 
     _tids_int = (unsigned char*)calloc(bmsize, sizeof(unsigned char));
-    if (!isvalid(_tids_int)) {
+    if (!isvalid(_tids_int)) { // GCOV_EXCL_START
         set_error(MALLOC, "Failed to allocate thread internal bitmap");
         goto failed;
-    }
+    } // GCOV_EXCL_STOP
 
     if (pargs.kernel) {
         _kstacks = (char**)calloc(max_pid, sizeof(char*));
-        if (!isvalid(_kstacks)) {
+        if (!isvalid(_kstacks)) { // GCOV_EXCL_START
             set_error(MALLOC, "Failed to allocate kernel stack buffer");
             goto failed;
-        }
+        } // GCOV_EXCL_STOP
     }
     goto ok;
 
-failed:
+failed: // GCOV_EXCL_START
     sfree(_tids);
     sfree(_tids_idle);
     sfree(_tids_int);
@@ -751,7 +751,7 @@ failed:
 
     FAIL;
 
-ok:
+ok:    // GCOV_EXCL_STOP
 #endif /* NATIVE */
 
     SUCCESS;

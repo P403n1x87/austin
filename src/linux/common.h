@@ -81,7 +81,7 @@ _procfs(pid_t pid, char* file) {
     sprintf(buffer, "/proc/%d/%s", pid, file);
 
     fp = fopen(buffer, "rb");
-    if (fp == NULL) {
+    if (!isvalid(fp)) { // GCOV_EXCL_START
         switch (errno) {
         case EACCES: // Needs elevated privileges
             set_error(PERM, "Cannot read from procfs");
@@ -91,7 +91,7 @@ _procfs(pid_t pid, char* file) {
             break;
         default:
             set_error(OS, "Unknown error");
-        }
+        } // GCOV_EXCL_STOP
     }
 
     return fp;
@@ -100,22 +100,22 @@ _procfs(pid_t pid, char* file) {
 // ----------------------------------------------------------------------------
 static inline char*
 proc_root(pid_t pid, char* file) {
-    if (file[0] != '/') {
-        set_error(IO, "File path is not absolute"); // GCOV_EXCL_START
-        FAIL_PTR;                                   // GCOV_EXCL_STOP
-    }
+    if (file[0] != '/') { // GCOV_EXCL_START
+        set_error(IO, "File path is not absolute");
+        FAIL_PTR;
+    } // GCOV_EXCL_STOP
 
     char* proc_root = calloc(1, strlen(file) + 24);
-    if (!isvalid(proc_root)) {
-        set_error(MALLOC, "Cannot allocate memory for proc root path"); // GCOV_EXCL_START
-        FAIL_PTR;                                                       // GCOV_EXCL_STOP
-    }
+    if (!isvalid(proc_root)) { // GCOV_EXCL_START
+        set_error(MALLOC, "Cannot allocate memory for proc root path");
+        FAIL_PTR;
+    } // GCOV_EXCL_STOP
 
-    if (sprintf(proc_root, "/proc/%d/root%s", pid, file) < 0) {
-        free(proc_root); // GCOV_EXCL_START
+    if (sprintf(proc_root, "/proc/%d/root%s", pid, file) < 0) { // GCOV_EXCL_START
+        free(proc_root);
         set_error(MALLOC, "Cannot format proc root path");
-        FAIL_PTR; // GCOV_EXCL_STOP
-    }
+        FAIL_PTR;
+    } // GCOV_EXCL_STOP
 
     return proc_root;
 }

@@ -353,8 +353,8 @@ get_version_descriptor(int major, int minor, int patch) {
             py_v = &python_v3_13;
             break;
 
-        default:
-            UNSUPPORTED_VERSION;
+        default:                 // GCOV_EXCL_LINE
+            UNSUPPORTED_VERSION; // GCOV_EXCL_LINE
         }
     }
 
@@ -364,9 +364,9 @@ get_version_descriptor(int major, int minor, int patch) {
         py_v->patch = patch;
     }
 
-    if (!isvalid(py_v)) {
+    if (!isvalid(py_v)) { // GCOV_EXCL_START
         set_error(VERSION, "Unsupported Python version");
-    }
+    } // GCOV_EXCL_STOP
 
     return py_v;
 }
@@ -462,8 +462,8 @@ init_version_descriptor(python_v* py_v, _Py_DebugOffsets* py_d) {
         PY_GC_313(3_14);
         break;
 
-    default:
-        log_e("Unsupported Python version %d.%d detected.", py_v->major, py_v->minor);
+    default:                                                                           // GCOV_EXCL_LINE
+        log_e("Unsupported Python version %d.%d detected.", py_v->major, py_v->minor); // GCOV_EXCL_LINE
     }
 }
 

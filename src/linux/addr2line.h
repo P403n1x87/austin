@@ -34,6 +34,7 @@
 #include <libiberty/demangle.h>
 #endif
 
+#include "../hints.h"
 #include "../logging.h"
 #include "../py_string.h"
 #include "../stack.h"
@@ -94,24 +95,24 @@ slurp_symtab(bfd* abfd) {
     long symcount;
     bool dynamic = false;
 
-    if ((bfd_get_file_flags(abfd) & HAS_SYMS) == 0)
-        return;
+    if ((bfd_get_file_flags(abfd) & HAS_SYMS) == 0) // GCOV_EXCL_LINE
+        return;                                     // GCOV_EXCL_LINE
 
     storage = bfd_get_symtab_upper_bound(abfd);
-    if (storage == 0) {
+    if (storage == 0) { // GCOV_EXCL_START
         storage = bfd_get_dynamic_symtab_upper_bound(abfd);
         dynamic = true;
-    }
-    if (storage < 0)
-        return;
+    } // GCOV_EXCL_STOP
+    if (storage < 0) // GCOV_EXCL_LINE
+        return;      // GCOV_EXCL_LINE
 
     syms = (asymbol**)malloc(storage);
     if (dynamic)
         symcount = bfd_canonicalize_dynamic_symtab(abfd, syms);
     else
         symcount = bfd_canonicalize_symtab(abfd, syms);
-    if (symcount < 0)
-        return;
+    if (symcount < 0) // GCOV_EXCL_LINE
+        return;       // GCOV_EXCL_LINE
 
     /* If there are no symbols left after canonicalization and
      we have not tried the dynamic symbols then give them a go.  */
@@ -123,10 +124,10 @@ slurp_symtab(bfd* abfd) {
 
     /* PR 17512: file: 2a1d3b5b.
      Do not pretend that we have some symbols when we don't.  */
-    if (symcount <= 0) {
+    if (symcount <= 0) { // GCOV_EXCL_START
         free(syms);
         syms = NULL;
-    }
+    } // GCOV_EXCL_STOP
 }
 
 static bfd_vma      pc;
@@ -164,24 +165,24 @@ get_native_frame(const char* file_name, bfd_vma addr, key_dt frame_key) {
 
     // TODO: This would be much cheaper if we could read directly from memory.
     abfd = bfd_openr(file_name, NULL);
-    if (abfd == NULL) {
+    if (abfd == NULL) { // GCOV_EXCL_START
         log_e("Failed to open %s", file_name);
-        return NULL;
-    }
+        FAIL_PTR;
+    } // GCOV_EXCL_STOP
 
     /* Decompress sections.  */
     abfd->flags |= BFD_DECOMPRESS;
 
-    if (bfd_check_format(abfd, bfd_archive)) {
+    if (bfd_check_format(abfd, bfd_archive)) { // GCOV_EXCL_START
         log_e("BFD format check failed");
-        return NULL;
-    }
+        FAIL_PTR;
+    } // GCOV_EXCL_STOP
 
-    if (!bfd_check_format_matches(abfd, bfd_object, &matching)) {
+    if (!bfd_check_format_matches(abfd, bfd_object, &matching)) { // GCOV_EXCL_START
         free(matching);
-        log_d("BFC format matches check failed.");
-        return NULL;
-    }
+        log_d("BFD format matches check failed.");
+        FAIL_PTR;
+    } // GCOV_EXCL_STOP
 
     slurp_symtab(abfd);
 

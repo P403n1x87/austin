@@ -215,7 +215,7 @@ chain__add(chain_t*, key_dt, value_t);
  *
  * @return 1 if a chain item was removed, 0 otherwise.
  */
-int
+bool
 chain__remove(chain_t*, key_dt);
 
 /**

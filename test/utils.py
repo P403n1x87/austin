@@ -263,11 +263,16 @@ class Variant:
     def __init__(self, name: str) -> None:
         super().__init__()
 
+        self.name = name
+        self.args = tuple()
+        self.timeout = 60
+        self.expect_fail = False
+        self.convert = True
+
         path = (Path("src") / name).with_suffix(EXEEXT)
         if not path.is_file():
             path = Path(name).with_suffix(EXEEXT)
 
-        self.name = name
         self.path = path
 
         if self.path.is_file():
@@ -314,6 +319,9 @@ class Variant:
                 print_logs(collect_logs(self.name, pid))
             raise
 
+        return self.prepare_result(result, expect_fail, convert)
+
+    def prepare_result(self, result, expect_fail, convert):
         if result.returncode in (-11, 139):  # SIGSEGV
             print(bt(self.path, result.pid))
 
@@ -344,6 +352,50 @@ class Variant:
             f"while expecting {expect_fail}. Output:\n{result.stdout}\n"
             f"Error:\n{result.stderr}"
         )
+
+    def __enter__(self):
+        if not self.path.is_file():
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                pytest.skip(f"{self} not available")
+            else:
+                raise FileNotFoundError(f"Binary {self.path} not found for {self}")
+
+        extra_args = ["-b"] if "-b, --binary" in self.help else []
+
+        try:
+            flags = 0
+            if sys.platform == "win32":
+                flags = CREATE_NEW_PROCESS_GROUP
+
+            self.subprocess = Popen(
+                [str(self.path)] + extra_args + list(self.args),
+                stdout=PIPE,
+                stderr=PIPE,
+                creationflags=flags,
+            )
+        except Exception as exc:
+            if (pid := getattr(exc, "pid", None)) is not None:
+                print_logs(collect_logs(self.name, pid))
+            raise
+
+        return self.subprocess
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.subprocess.wait(timeout=10)
+
+        result = self.subprocess
+
+        result.stdout = result.stdout.read()
+        result.stderr = result.stderr.read()
+
+        self.prepare_result(result, self.expect_fail, self.convert)
+
+        self.args = tuple()
+        self.timeout = 60
+        self.expect_fail = False
+        self.convert = True
+
+        return False
 
     def __repr__(self) -> str:
         return f"Variant({self.name!r})"

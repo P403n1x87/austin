@@ -34,18 +34,18 @@ static size_t max_pid = 0;
 // ----------------------------------------------------------------------------
 size_t
 pid_max() {
-#if defined PL_LINUX /* LINUX */
-    if (max_pid)
-        return max_pid;
+#if defined PL_LINUX    /* LINUX */
+    if (max_pid)        // GCOV_EXCL_LINE
+        return max_pid; // GCOV_EXCL_LINE
 
     FILE* pid_max_file = fopen("/proc/sys/kernel/pid_max", "rb");
-    if (!isvalid(pid_max_file))
-        return 0;
+    if (!isvalid(pid_max_file)) // GCOV_EXCL_LINE
+        return 0;               // GCOV_EXCL_LINE
 
     bool has_pid_max = (fscanf(pid_max_file, "%zu", &max_pid) == 1);
     fclose(pid_max_file);
-    if (!has_pid_max)
-        return 0;
+    if (!has_pid_max) // GCOV_EXCL_LINE
+        return 0;     // GCOV_EXCL_LINE
 
     return max_pid;
 
