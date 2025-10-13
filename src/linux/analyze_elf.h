@@ -1,6 +1,6 @@
 // ----------------------------------------------------------------------------
 static Elf64_Addr
-_get_base_64(Elf64_Ehdr* ehdr, void* elf_map) { // GCOV_EXCL_FUNCTION
+_get_base_64(Elf64_Ehdr* ehdr, void* elf_map) {
     for (int i = 0; i < ehdr->e_phnum; ++i) {
         Elf64_Phdr* phdr = (Elf64_Phdr*)(elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);
         if (phdr->p_type == PT_LOAD)
@@ -10,9 +10,7 @@ _get_base_64(Elf64_Ehdr* ehdr, void* elf_map) { // GCOV_EXCL_FUNCTION
 } /* _get_base_64 */
 
 static int
-_py_proc__analyze_elf64(
-    py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss
-) { // GCOV_EXCL_FUNCTION
+_py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss) {
     register int symbols = 0;
 
     Elf64_Ehdr* ehdr = elf_map;

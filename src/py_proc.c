@@ -262,9 +262,9 @@ _py_proc__infer_python_version(py_proc_t* self) {
             log_d("Python version (from debug offsets): %d.%d.%d", major, minor, patch);
 
             self->py_v = get_version_descriptor(major, minor, patch);
-            if (!isvalid(self->py_v)) {
+            if (!isvalid(self->py_v)) { // GCOV_EXCL_START
                 FAIL;
-            }
+            } // GCOV_EXCL_STOP
 
             init_version_descriptor(self->py_v, &py_d);
 
@@ -277,9 +277,11 @@ _py_proc__infer_python_version(py_proc_t* self) {
     if (isvalid(self->symbols[DYNSYM_HEX_VERSION])) {
         unsigned long py_version = 0;
 
-        if (fail(py_proc__memcpy(self, self->symbols[DYNSYM_HEX_VERSION], sizeof(py_version), &py_version))) {
+        if (fail( // GCOV_EXCL_START
+                py_proc__memcpy(self, self->symbols[DYNSYM_HEX_VERSION], sizeof(py_version), &py_version)
+            )) {
             FAIL;
-        }
+        } // GCOV_EXCL_STOP
 
         major = (py_version >> 24) & 0xFF;
         minor = (py_version >> 16) & 0xFF;
@@ -288,9 +290,9 @@ _py_proc__infer_python_version(py_proc_t* self) {
         log_d("Python version (from symbol): %d.%d.%d", major, minor, patch);
 
         self->py_v = get_version_descriptor(major, minor, patch);
-        if (!isvalid(self->py_v)) {
+        if (!isvalid(self->py_v)) { // GCOV_EXCL_START
             FAIL;
-        }
+        } // GCOV_EXCL_STOP
 
         SUCCESS;
     }
@@ -346,9 +348,9 @@ from_filename:
 
 set_version:
     self->py_v = get_version_descriptor(major, minor, patch);
-    if (!isvalid(self->py_v)) {
+    if (!isvalid(self->py_v)) { // GCOV_EXCL_START
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     SUCCESS;
 }
@@ -398,11 +400,11 @@ _py_proc__check_interp_state(py_proc_t* self, raddr_t interp) {
 
     py_thread_t thread       = py_thread__init(self);
     raddr_t     thread_raddr = NULL;
-    if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, thread_raddr)))
-        FAIL;
+    if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, thread_raddr))) // GCOV_EXCL_LINE
+        FAIL;                                                                                 // GCOV_EXCL_LINE
 
-    if (fail(py_thread__read_remote(&thread, thread_raddr)))
-        FAIL;
+    if (fail(py_thread__read_remote(&thread, thread_raddr))) // GCOV_EXCL_LINE
+        FAIL;                                                // GCOV_EXCL_LINE
 
     log_d("Stack trace constructed from possible interpreter state");
 
@@ -438,8 +440,8 @@ _py_proc__check_interp_state(py_proc_t* self, raddr_t interp) {
             break;
     }
     log_d("tid field offset not ready");
-    FAIL; // GCOV_EXCL_STOP
-
+    FAIL;
+    // GCOV_EXCL_STOP
 #endif /* PL_LINUX */
 
     SUCCESS;
@@ -1248,15 +1250,17 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
     // need to invalidate the frame cache.
     if (V_MIN(3, 14)) {
         uint64_t code_object_gen = 0;
-        if (fail(_py_proc__get_interpreter_state_field(self, interp, code_object_gen, code_object_gen)))
-            FAIL;
+        if (fail( // GCOV_EXCL_LINE
+                _py_proc__get_interpreter_state_field(self, interp, code_object_gen, code_object_gen)
+            ))
+            FAIL; // GCOV_EXCL_LINE
 
         key_dt               key                    = interpreter_state_key(interp_id);
         interpreter_state_t* interpreter_state_info = lru_cache__maybe_hit(self->interpreter_state_cache, key);
         if (!isvalid(interpreter_state_info)) {
             interpreter_state_info = interpreter_state_new(interp_id, code_object_gen);
-            if (!isvalid(interpreter_state_info))
-                FAIL;
+            if (!isvalid(interpreter_state_info)) // GCOV_EXCL_LINE
+                FAIL;                             // GCOV_EXCL_LINE
 
             log_d(
                 "Creating new interpreter state info record for interpreter %lx with code object generation %lu",

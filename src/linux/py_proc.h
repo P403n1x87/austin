@@ -85,6 +85,7 @@ _file_size(char* file) {
     return statbuf.st_size;
 }
 
+// GCOV_EXCL_START
 /*[[[cog
 from pathlib import Path
 analyze_elf = Path("src/linux/analyze_elf.h").read_text()
@@ -93,7 +94,7 @@ print(analyze_elf.replace("64", "32"))
 ]]]*/
 // ----------------------------------------------------------------------------
 static Elf64_Addr
-_get_base_64(Elf64_Ehdr* ehdr, void* elf_map) { // GCOV_EXCL_FUNCTION
+_get_base_64(Elf64_Ehdr* ehdr, void* elf_map) {
     for (int i = 0; i < ehdr->e_phnum; ++i) {
         Elf64_Phdr* phdr = (Elf64_Phdr*)(elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);
         if (phdr->p_type == PT_LOAD)
@@ -103,9 +104,7 @@ _get_base_64(Elf64_Ehdr* ehdr, void* elf_map) { // GCOV_EXCL_FUNCTION
 } /* _get_base_64 */
 
 static int
-_py_proc__analyze_elf64(
-    py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss
-) { // GCOV_EXCL_FUNCTION
+_py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss) {
     register int symbols = 0;
 
     Elf64_Ehdr* ehdr = elf_map;
@@ -174,7 +173,7 @@ _py_proc__analyze_elf64(
 
 // ----------------------------------------------------------------------------
 static Elf32_Addr
-_get_base_32(Elf32_Ehdr* ehdr, void* elf_map) { // GCOV_EXCL_FUNCTION
+_get_base_32(Elf32_Ehdr* ehdr, void* elf_map) {
     for (int i = 0; i < ehdr->e_phnum; ++i) {
         Elf32_Phdr* phdr = (Elf32_Phdr*)(elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);
         if (phdr->p_type == PT_LOAD)
@@ -184,9 +183,7 @@ _get_base_32(Elf32_Ehdr* ehdr, void* elf_map) { // GCOV_EXCL_FUNCTION
 } /* _get_base_32 */
 
 static int
-_py_proc__analyze_elf32(
-    py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss
-) { // GCOV_EXCL_FUNCTION
+_py_proc__analyze_elf32(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss) {
     register int symbols = 0;
 
     Elf32_Ehdr* ehdr = elf_map;
@@ -254,6 +251,7 @@ _py_proc__analyze_elf32(
 } /* _py_proc__analyze_elf32 */
 
 //[[[end]]]
+// GCOV_EXCL_STOP
 
 // ----------------------------------------------------------------------------
 static int
