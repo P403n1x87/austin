@@ -141,13 +141,13 @@ _bytes_remote(proc_ref_t pref, raddr_t raddr, ssize_t* size, python_v* py_v) {
     ssize_t        len   = 0;
     unsigned char* array = NULL;
 
-    if (fail(copy_datatype(pref, raddr, bytes)))
-        FAIL_PTR;
+    if (fail(copy_datatype(pref, raddr, bytes))) // GCOV_EXCL_LINE
+        FAIL_PTR;                                // GCOV_EXCL_LINE
 
-    if ((len = bytes.ob_base.ob_size + 1) < 1) { // Include null-terminator
+    if ((len = bytes.ob_base.ob_size + 1) < 1) { // Include null-terminator // GCOV_EXCL_START
         set_error(PYOBJECT, "PyBytesObject is too short");
         FAIL_PTR;
-    }
+    } // GCOV_EXCL_STOP
 
     if (len > (100 << 20)) { // 100MB
         set_error(PYOBJECT, "PyBytesObject size too big to be valid");
@@ -155,10 +155,10 @@ _bytes_remote(proc_ref_t pref, raddr_t raddr, ssize_t* size, python_v* py_v) {
     }
 
     array = (unsigned char*)malloc((len + 1) * sizeof(unsigned char*));
-    if (!isvalid(array)) {
+    if (!isvalid(array)) { // GCOV_EXCL_START
         set_error(MALLOC, "Cannot allocate memory for PyBytesObject buffer");
-        FAIL_PTR; // GCOV_EXCL_BR_SOURCE
-    }
+        FAIL_PTR;
+    } // GCOV_EXCL_STOP
 
     if (fail(copy_memory(pref, raddr + offsetof(PyBytesObject, ob_sval), len, array))) {
         free(array);

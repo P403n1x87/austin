@@ -426,7 +426,7 @@ _py_proc__check_interp_state(py_proc_t* self, raddr_t interp) {
     while (isvalid(thread.addr)) {
         if (success(_infer_tid_field_offset(&thread)))
             SUCCESS;
-        if (!error_is(OS))
+        if (!error_is(OS)) // GCOV_EXCL_START
             FAIL;
 
         if (fail(py_thread__next(&thread))) {
@@ -438,7 +438,8 @@ _py_proc__check_interp_state(py_proc_t* self, raddr_t interp) {
             break;
     }
     log_d("tid field offset not ready");
-    FAIL;
+    FAIL; // GCOV_EXCL_STOP
+
 #endif /* PL_LINUX */
 
     SUCCESS;
@@ -476,9 +477,9 @@ _py_proc__scan_bss(py_proc_t* self) {
 
     for (int shift = 0; shift < 1; shift++) {
         raddr_t base = self->map.bss.base - (shift * step);
-        if (fail(py_proc__memcpy(self, base, self->map.bss.size, bss))) {
+        if (fail(py_proc__memcpy(self, base, self->map.bss.size, bss))) { // GCOV_EXCL_START
             FAIL;
-        }
+        } // GCOV_EXCL_STOP
 
         log_d("Scanning the BSS section @ %p (shift %d)", base, shift);
 
@@ -503,8 +504,8 @@ _py_proc__scan_bss(py_proc_t* self) {
 #endif
     }
 
-    set_error(OS, "Uninitialized data section scan failed");
-    FAIL;
+    set_error(OS, "Uninitialized data section scan failed"); // GCOV_EXCL_LINE
+    FAIL;                                                    // GCOV_EXCL_LINE
 }
 
 // ----------------------------------------------------------------------------
@@ -608,7 +609,7 @@ _py_proc__current_thread_state(py_proc_t* self) {
         return p_tstate_current;
     }
 
-    return (raddr_t)-1;
+    return (raddr_t)-1; // GCOV_EXCL_LINE
 }
 
 // ----------------------------------------------------------------------------
@@ -822,10 +823,10 @@ py_proc_new(bool child) {
 
     return py_proc;
 
-error:
+error: // GCOV_EXCL_START
     free(py_proc);
     return NULL;
-}
+} // GCOV_EXCL_STOP
 
 // ----------------------------------------------------------------------------
 int
@@ -1049,10 +1050,10 @@ py_proc__wait(py_proc_t* self) {
 
 static inline int
 _py_proc__find_current_thread_offset(py_proc_t* self, raddr_t thread_raddr) {
-    if (!isvalid(self->symbols[DYNSYM_RUNTIME])) {
+    if (!isvalid(self->symbols[DYNSYM_RUNTIME])) { // GCOV_EXCL_START
         set_error(OS, "Invalid runtime symbol");
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     V_DESC(self->py_v);
 
@@ -1343,9 +1344,9 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
         event_handler__emit_stack_end();
     } while (success(py_thread__next(&py_thread)));
 
-    if (!error_is(ITEREND)) {
+    if (!error_is(ITEREND)) { // GCOV_EXCL_START
         FAIL;
-    }
+    } // GCOV_EXCL_STOP
 
     SUCCESS;
 } /* _py_proc__sample_interpreter */

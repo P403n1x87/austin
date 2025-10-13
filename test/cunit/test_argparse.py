@@ -44,6 +44,51 @@ def test_parse_args_invalid_interval():
     parse_args(["austin", "-i", "abc123", "-p", "123"])
 
 
+@pytest.mark.exitcode(64)
+def test_parse_args_invalid_interval_unit():
+    parse_args(["austin", "-i", "123jiffy", "-p", "123"])
+
+
+@pytest.mark.exitcode(64)
+def test_parse_args_invalid_interval_unit_seconds():
+    parse_args(["austin", "-i", "123sm", "-p", "123"])
+
+
+@pytest.mark.exitcode(64)
+def test_parse_args_invalid_interval_unit_milliseconds():
+    parse_args(["austin", "-i", "123msm", "-p", "123"])
+
+
+@pytest.mark.exitcode(64)
+def test_parse_args_invalid_interval_unit_microseconds():
+    parse_args(["austin", "-i", "123usm", "-p", "123"])
+
+
 @pytest.mark.exitcode(64 if sys.platform == "linux" else 1)
 def test_parse_args_invalid_exposure():
     parse_args(["austin", "-x", "-1", "-p", "123"])
+
+
+@pytest.mark.exitcode(64)
+def test_parse_args_invalid_timeout_unit():
+    parse_args(["austin", "-t", "123jiffy", "-p", "123"])
+
+
+@pytest.mark.exitcode(64)
+def test_parse_args_invalid_timeout_unit_seconds():
+    parse_args(["austin", "-t", "123sm", "-p", "123"])
+
+
+@pytest.mark.exitcode(64)
+def test_parse_args_invalid_timeout_unit_milliseconds():
+    parse_args(["austin", "-t", "123msm", "-p", "123"])
+
+
+@pytest.mark.exitcode(64)
+def test_parse_args_invalid_where_pid():
+    parse_args(["austin", "-w", "123asdf"])
+
+
+@pytest.mark.exitcode(64)
+def test_parse_args_pid_and_command():
+    parse_args(["austin", "-p", "123", "python"])

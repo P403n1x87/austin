@@ -646,6 +646,8 @@ cb(const int opt, const char* arg, const int index, char** argv) {
 
     case ARG_ARGUMENT:
         pargs.cmd = &argv[index];
+        if (pargs.attach_pid != 0 && isvalid(pargs.cmd))
+            arg_error("the -p option is incompatible with the command argument");
         return ARG_STOP_PARSING;
 
     default:

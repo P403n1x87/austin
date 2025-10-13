@@ -81,7 +81,7 @@ _procfs(pid_t pid, char* file) {
     sprintf(buffer, "/proc/%d/%s", pid, file);
 
     fp = fopen(buffer, "rb");
-    if (fp == NULL) {
+    if (!isvalid(fp)) { // GCOV_EXCL_START
         switch (errno) {
         case EACCES: // Needs elevated privileges
             set_error(PERM, "Cannot read from procfs");
@@ -89,7 +89,7 @@ _procfs(pid_t pid, char* file) {
         case ENOENT: // Invalid pid
             set_error(OS, "No such process");
             break;
-        default: // GCOV_EXCL_START
+        default:
             set_error(OS, "Unknown error");
         } // GCOV_EXCL_STOP
     }
@@ -111,8 +111,8 @@ proc_root(pid_t pid, char* file) {
         FAIL_PTR;
     } // GCOV_EXCL_STOP
 
-    if (sprintf(proc_root, "/proc/%d/root%s", pid, file) < 0) {
-        free(proc_root); // GCOV_EXCL_START
+    if (sprintf(proc_root, "/proc/%d/root%s", pid, file) < 0) { // GCOV_EXCL_START
+        free(proc_root);
         set_error(MALLOC, "Cannot format proc root path");
         FAIL_PTR;
     } // GCOV_EXCL_STOP

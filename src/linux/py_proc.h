@@ -93,17 +93,19 @@ print(analyze_elf.replace("64", "32"))
 ]]]*/
 // ----------------------------------------------------------------------------
 static Elf64_Addr
-_get_base_64(Elf64_Ehdr* ehdr, void* elf_map) {
+_get_base_64(Elf64_Ehdr* ehdr, void* elf_map) { // GCOV_EXCL_FUNCTION
     for (int i = 0; i < ehdr->e_phnum; ++i) {
         Elf64_Phdr* phdr = (Elf64_Phdr*)(elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);
         if (phdr->p_type == PT_LOAD)
             return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
     }
-    return UINT64_MAX; // GCOV_EXCL_LINE
+    return UINT64_MAX;
 } /* _get_base_64 */
 
 static int
-_py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss) {
+_py_proc__analyze_elf64(
+    py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss
+) { // GCOV_EXCL_FUNCTION
     register int symbols = 0;
 
     Elf64_Ehdr* ehdr = elf_map;
@@ -172,17 +174,19 @@ _py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_
 
 // ----------------------------------------------------------------------------
 static Elf32_Addr
-_get_base_32(Elf32_Ehdr* ehdr, void* elf_map) {
+_get_base_32(Elf32_Ehdr* ehdr, void* elf_map) { // GCOV_EXCL_FUNCTION
     for (int i = 0; i < ehdr->e_phnum; ++i) {
         Elf32_Phdr* phdr = (Elf32_Phdr*)(elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);
         if (phdr->p_type == PT_LOAD)
             return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
     }
-    return UINT32_MAX; // GCOV_EXCL_LINE
+    return UINT32_MAX;
 } /* _get_base_32 */
 
 static int
-_py_proc__analyze_elf32(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss) {
+_py_proc__analyze_elf32(
+    py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss
+) { // GCOV_EXCL_FUNCTION
     register int symbols = 0;
 
     Elf32_Ehdr* ehdr = elf_map;

@@ -20,6 +20,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 import platform
 import signal
 import sys
@@ -112,9 +113,10 @@ def test_fork_cpu_time_idle(py, austin):
     assert a < 1.1 * d
 
 
+@pytest.mark.parametrize("args", ("-m", "-cm"))
 @allpythons()
-def test_fork_memory(py):
-    result = austin("-mi", "1ms", *python(py), target("target34.py"))
+def test_fork_memory(py, args):
+    result = austin(args, "-i", "1ms", *python(py), target("target34.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_pattern(result.stdout, "target34.py:keep_cpu_busy:32")
@@ -201,12 +203,14 @@ def test_fork_full_metrics(py):
     assert alloc * dealloc
 
 
-@pytest.mark.parametrize("exposure", [1, 2])
+@pytest.mark.parametrize("exposure", (1, 2))
+@pytest.mark.parametrize("children", ([], ["-C"]))
 @allpythons()
-def test_fork_exposure(py, exposure):
+def test_fork_exposure(py, exposure, children):
     result = austin(
         "-i",
         "100ms",
+        *children,
         "-x",
         str(exposure),
         *python(py),
@@ -261,7 +265,7 @@ def test_max_page_size(py, monkeypatch):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Terminate signal not supported")
 @allpythons()
-def test_fork_signal(py):
+def test_fork_term_signal(py):
     austin.args = ("-i", "10ms", *python(py), target("sleepy.py"), "5")
     austin.expect_fail = True if sys.platform == "win32" else 256 - signal.SIGTERM
 
@@ -269,6 +273,22 @@ def test_fork_signal(py):
     with austin as result:
         sleep(duration)
         result.terminate()
+
+    meta = metadata(result.stdout)
+
+    assert int(meta["duration"])
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Interrupt signal not supported")
+@allpythons()
+def test_fork_int_signal(py):
+    austin.args = ("-i", "10ms", *python(py), target("sleepy.py"), "5")
+    austin.expect_fail = True if sys.platform == "win32" else 256 - signal.SIGINT
+
+    duration = 1
+    with austin as result:
+        sleep(duration)
+        os.kill(result.pid, signal.SIGINT)
 
     meta = metadata(result.stdout)
 
