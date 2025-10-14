@@ -98,7 +98,7 @@ def test_attach_exposure(py, exposure):
 
         d = int(meta["duration"])
 
-        assert exposure * 800000 <= d < exposure * 1200000
+        assert abs(d - exposure) <= 0.5
 
         p.kill()
 
