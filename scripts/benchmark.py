@@ -13,7 +13,7 @@ from textwrap import wrap
 from common import download_release
 from scipy.stats import ttest_ind
 
-from test.utils import metadata, target
+from test.utils import target
 
 VERSIONS = ("base", "dev")
 SCENARIOS = [
@@ -69,9 +69,8 @@ METRICS = [
 ]
 
 
-def get_stats(output: str) -> t.Optional[dict]:
+def get_stats(meta: dict[str, str]) -> t.Optional[dict]:
     try:
-        meta = metadata(output)
         raw_saturation = meta["saturation"]
         _, _, raw_samples = raw_saturation.partition("/")
 
@@ -318,7 +317,7 @@ def benchmark(opts: ArgumentParser) -> None:
             stats = [
                 _
                 for _ in (
-                    get_stats(run.stderr) or get_stats(run.stdout)
+                    get_stats(run.metadata)
                     for run in (austin(*args) for _ in range(opts.n))
                 )
                 if _ is not None

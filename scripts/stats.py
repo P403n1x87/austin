@@ -4,13 +4,8 @@ from io import BytesIO
 from itertools import chain
 
 import numpy as np
-from austin.format.mojo import (
-    MojoFile,
-    MojoFrame,
-    MojoFrameReference,
-    MojoMetric,
-    MojoStack,
-)
+from austin.format.mojo import MojoStreamReader
+from austin.events import AustinSample, AustinFrame
 from scipy.stats import f
 
 Stack = tuple[str, float]  # (stack frames, metric)
@@ -72,14 +67,11 @@ class AustinFlameGraph(dict):
     def from_mojo(cls, data: bytes) -> "AustinFlameGraph":
         fg = cls()
 
-        stack: t.List[str] = []
-        metric = 0
-
-        def serialize(frame: MojoFrame) -> str:
+        def serialize(frame: AustinFrame) -> str:
             return ":".join(
                 (
-                    frame.filename.string.value,
-                    frame.scope.string.value,
+                    frame.filename,
+                    frame.function,
                     str(frame.line),
                     str(frame.line_end),
                     str(frame.column),
@@ -87,16 +79,9 @@ class AustinFlameGraph(dict):
                 )
             )
 
-        for e in MojoFile(BytesIO(data)).parse():
-            if isinstance(e, MojoStack):
-                if stack:
-                    fg += cls({";".join(stack): metric})
-                stack.clear()
-                metric = 0
-            elif isinstance(e, MojoFrameReference):
-                stack.append(serialize(e.frame))
-            elif isinstance(e, MojoMetric):
-                metric = e.value
+        for e in MojoStreamReader(BytesIO(data)):
+            if isinstance(e, AustinSample) and e.frames:
+                fg += cls({";".join(serialize(f) for f in e.frames): e.metrics.time})
 
         return fg
 

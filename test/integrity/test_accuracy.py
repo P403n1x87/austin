@@ -22,10 +22,8 @@
 
 from test.utils import allpythons
 from test.utils import austin
-from test.utils import compress
-from test.utils import has_pattern
+from test.utils import has_frame
 from test.utils import python
-from test.utils import samples
 from test.utils import target
 
 
@@ -34,8 +32,14 @@ def test_accuracy_fast_recursive(py):
     result = austin("-i", "1ms", "-P", *python(py), target("recursive.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
-    assert has_pattern(result.stdout, "sum_up_to"), compress(result.stdout)
+    assert has_frame(result.samples, "recursive.py", "sum_up_to")
 
-    for _ in samples(result.stdout):
-        if "sum_up_to" in _ and "<module>" in _:
-            assert len(_.split(";")) <= 20 or has_pattern(_, ":INVALID:"), _
+    for sample in result.samples:
+        if (
+            not sample.frames
+            or len(sample.frames) < 2
+            or sample.frames[1].function != "sum_up_to"
+        ):
+            continue
+        if len(sample.frames) > 20:
+            raise AssertionError("recursive stack is not taller than actual recursion")

@@ -22,10 +22,7 @@
 
 from test.utils import allpythons
 from test.utils import austin
-from test.utils import has_pattern
-from test.utils import metadata
 from test.utils import python
-from test.utils import samples
 from test.utils import target
 
 
@@ -34,7 +31,7 @@ def test_gc_off(py):
     result = austin("-i", "1ms", *python(py), target("target_gc.py"))
     assert result.returncode == 0
 
-    assert not has_pattern(":GC:", result.stdout)
+    assert all(not sample.gc for sample in result.samples)
 
 
 @allpythons()
@@ -42,10 +39,10 @@ def test_gc_on(py):
     result = austin("-gi", "1ms", *python(py), target("target_gc.py"))
     assert result.returncode == 0
 
-    meta = metadata(result.stdout)
+    meta = result.metadata
     assert float(meta["gc"]) / float(meta["duration"]) > 0.1
 
-    gcs = [_ for _ in samples(result.stdout) if ":GC:" in _]
+    gcs = [sample for sample in result.samples if sample.gc]
     assert len(gcs) > 10
 
 
@@ -56,8 +53,8 @@ def test_gc_disabled(py, monkeypatch):
     result = austin("-gi", "10ms", *python(py), target("target_gc.py"))
     assert result.returncode == 0
 
-    meta = metadata(result.stdout)
+    meta = result.metadata
     assert int(meta["gc"]) * 0.8 < int(meta["duration"]) / 20
 
-    gcs = [_ for _ in samples(result.stdout) if ":GC:" in _]
+    gcs = [sample for sample in result.samples if sample.gc]
     assert len(gcs) < 5
