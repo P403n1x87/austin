@@ -135,7 +135,7 @@ _code_remote(py_proc_t* py_proc, raddr_t code_raddr) {
     // Get the code location table from the code object
     ssize_t      len    = 0;
     line_table_t lnotab = _code__get_lnotab(&code, pref, &len, py_v);
-    if (!isvalid(lnotab) || len <= 0) {
+    if (!isvalid(lnotab)) {
         FAIL_PTR;
     }
 
