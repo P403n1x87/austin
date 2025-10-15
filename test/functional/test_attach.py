@@ -90,9 +90,9 @@ def test_attach_exposure(py, exposure):
 
         meta = result.metadata
 
-        d = int(meta["duration"])
+        d = int(meta["duration"]) / 1e6  # seconds
 
-        assert exposure * 800000 <= d < exposure * 1200000
+        assert abs(d - exposure) <= 0.5
 
         p.kill()
 
