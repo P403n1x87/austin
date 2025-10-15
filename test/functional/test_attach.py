@@ -30,12 +30,10 @@ from shutil import rmtree
 from test.utils import allpythons
 from test.utils import austin
 from test.utils import austinp
-from test.utils import compress
-from test.utils import has_pattern
-from test.utils import metadata
+from test.utils import has_frame
 from test.utils import requires_sudo
 from test.utils import run_python
-from test.utils import sum_metric
+from test.utils import sum_metrics
 from test.utils import target
 from test.utils import threads
 from test.utils import variants
@@ -58,18 +56,16 @@ def test_attach_wall_time(austin, py, mode, mode_meta):
         result = austin(mode, "2ms", "-p", str(p.pid))
         assert result.returncode == 0
 
-        ts = threads(result.stdout)
-        assert len(ts) == 1, compress(result.stdout)
+        ts = threads(result.samples)
+        assert len(ts) == 1
 
-        assert has_pattern(result.stdout, "sleepy.py:<module>:"), compress(
-            result.stdout
-        )
+        assert has_frame(result.samples, filename="sleepy.py", function="<module>")
 
-        meta = metadata(result.stdout)
+        meta = result.metadata
 
         assert meta["mode"] == mode_meta
 
-        a = sum_metric(result.stdout)
+        a, _ = sum_metrics(result.samples)
         d = int(meta["duration"])
 
         assert a <= 1.1 * d
@@ -90,15 +86,13 @@ def test_attach_exposure(py, exposure):
             expect_fail=True if sys.platform == "win32" else 256 - signal.SIGINT,
         )
 
-        assert has_pattern(result.stdout, "sleepy.py:<module>:"), compress(
-            result.stdout
-        )
+        assert has_frame(result.samples, filename="sleepy.py", function="<module>")
 
-        meta = metadata(result.stdout)
+        meta = result.metadata
 
-        d = int(meta["duration"])
+        d = int(meta["duration"]) / 1e6  # seconds
 
-        assert exposure * 800000 <= d < exposure * 1200000
+        assert abs(d - exposure) <= 0.5
 
         p.kill()
 
@@ -148,13 +142,11 @@ def test_where_multiprocess(py):
             if sum(c for line, c in lines.items() if "Process" in line) >= 3:
                 break
         else:
-            raise AssertionError(compress(result.stdout))
+            raise AssertionError("expected number of processes")
 
-        assert sum(c for line, c in lines.items() if "fact" in line) == 2, compress(
-            result.stdout
-        )
+        assert sum(c for line, c in lines.items() if "fact" in line) == 2
         (join_line,) = (line for line in lines if "join" in line)
-        assert lines[join_line] == 1, compress(result.stdout)
+        assert lines[join_line] == 1
 
 
 @pytest.mark.xfail(reason="Fails in CI with some Python versions")
@@ -165,12 +157,12 @@ def test_where_kernel(py):
         result = austinp("-kw", str(p.pid))
         assert result.returncode == 0
 
-        assert "Process" in result.stdout, compress(result.stdout)
-        assert "Thread" in result.stdout, compress(result.stdout)
-        assert "sleepy.py" in result.stdout, compress(result.stdout)
-        assert "<module>" in result.stdout, compress(result.stdout)
-        assert "libc" in result.stdout, compress(result.stdout)
-        assert "do_syscall" in result.stdout, compress(result.stdout)
+        assert "Process" in result.stdout
+        assert "Thread" in result.stdout
+        assert "sleepy.py" in result.stdout
+        assert "<module>" in result.stdout
+        assert "libc" in result.stdout
+        assert "do_syscall" in result.stdout
 
 
 @pytest.mark.parametrize("prefix", [[], ["unshare", "-p", "-f", "-r"]])
@@ -204,15 +196,13 @@ def test_attach_container_like(py, tmp_path, prefix):
         assert result.returncode == 0
 
         ts = threads(result.stdout)
-        assert len(ts) == 1, compress(result.stdout)
+        assert len(ts) == 1
 
-        assert has_pattern(result.stdout, "sleepy.py:<module>:"), compress(
-            result.stdout
-        )
+        assert has_frame(result.samples, filename="sleepy.py", function="<module>")
 
-        meta = metadata(result.stdout)
+        meta = result.metadata
 
-        a = sum_metric(result.stdout)
+        a = sum_metrics(result.stdout)
         d = int(meta["duration"])
 
         assert abs(a - d) <= (a + d) * 0.25

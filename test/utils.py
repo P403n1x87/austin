@@ -29,7 +29,6 @@ from collections import Counter
 from collections import defaultdict
 from functools import cached_property
 from io import BytesIO
-from io import StringIO
 from itertools import count
 from pathlib import Path
 from shutil import rmtree
@@ -44,9 +43,11 @@ from test import PYTHON_VERSIONS
 from time import sleep
 from types import FrameType
 from types import ModuleType
+from typing import Dict
 from typing import Iterator
 from typing import List
 from typing import Optional
+from typing import Tuple
 from typing import TypeVar
 from typing import Union
 
@@ -60,7 +61,8 @@ try:
 except ImportError:
     pytest = None
 
-from austin.format.mojo import MojoFile
+from austin.events import AustinSample
+from austin.format.mojo import MojoStreamReader
 
 
 HERE = Path(__file__).parent
@@ -329,7 +331,7 @@ class Variant:
         if result.stdout.startswith(b"MOJ"):
             if convert:
                 try:
-                    result.stdout = demojo(result.stdout)
+                    result.samples, result.metadata = parse_mojo(result.stdout)
                 except Exception as e:
                     dump_mojo(result.stdout)
                     raise e
@@ -424,10 +426,6 @@ def run_python(
     return result
 
 
-def samples(data: str) -> Iterator[bytes]:
-    return (_ for _ in data.splitlines() if _ and _[0] == "P")
-
-
 T = TypeVar("T")
 
 
@@ -440,28 +438,14 @@ def denoise(data: Iterator[T], threshold: float = 0.1) -> set[T]:
     return {t for t, c in c.items() if c / m > threshold}
 
 
-def processes(data: str) -> set[str]:
-    return denoise(_.partition(";")[0] for _ in samples(data))
+def processes(samples: List[AustinSample]) -> set[str]:
+    return denoise(_.pid for _ in samples)
 
 
-def threads(data: str, threshold: float = 0.1) -> set[tuple[str, str]]:
-    return denoise(
-        tuple(_.rpartition(" ")[0].split(";", maxsplit=2)[:2]) for _ in samples(data)
-    )
-
-
-def metadata(data: str) -> dict[str, str]:
-    meta = dict(
-        _[1:].strip().split(": ", maxsplit=1)
-        for _ in data.splitlines()
-        if _ and _[0] == "#" and not _.startswith("# map:")
-    )
-
-    for v in ("austin", "python"):
-        if v in meta:
-            meta[v] = tuple(int(_.replace("?", "-1")) for _ in meta[v].split(".")[:3])
-
-    return meta
+def threads(
+    samples: List[AustinSample], threshold: float = 0.1
+) -> set[tuple[str, str, str]]:
+    return denoise(((_.pid, _.thread, _.iid) for _ in samples), threshold)
 
 
 def maps(data: str) -> defaultdict[str, list[str]]:
@@ -475,63 +459,53 @@ def maps(data: str) -> defaultdict[str, list[str]]:
     return maps
 
 
-def has_pattern(data: str, pattern: str) -> bool:
-    for _ in samples(data):
-        if pattern in _:
-            return True
+def has_frame(
+    samples: List[AustinSample],
+    filename,
+    function,
+    line=None,
+    line_end=None,
+    column=None,
+    column_end=None,
+):
+    for sample in samples:
+        if not sample.frames:
+            continue
+        for frame in sample.frames:
+            if all(
+                (
+                    Path(frame.filename).name == filename,
+                    frame.function == function,
+                    line is None or frame.line == line,
+                    line_end is None or frame.line_end == line_end,
+                    column is None or frame.column == column,
+                    column_end is None or frame.column_end == column,
+                )
+            ):
+                return True
     return False
 
 
-def sum_metric(data: str) -> int:
-    return sum(int(_.rpartition(" ")[-1]) for _ in samples(data))
-
-
-def sum_metrics(data: str) -> tuple[int, int, int, int]:
-    wall = cpu = alloc = dealloc = 0
-    for _t, i, m in (
-        _.rpartition(" ")[-1].split(",", maxsplit=2) for _ in samples(data)
-    ):
-        time = int(_t)
-        wall += time
-        if i == "0":
-            cpu += time
-
-        memory = int(m)
-        if memory > 0:
-            alloc += memory
-        else:
-            dealloc += memory
-
-    return wall, cpu, alloc, dealloc
-
-
-def compress(data: str) -> str:
-    stacks: dict[str, int] = {}
-
-    for _ in (_.strip() for _ in data.splitlines() if _ and _[0] == "P"):
-        stack, _, metric = _.rpartition(" ")
-        stacks[stack] = stacks.setdefault(stack, 0) + int(metric)
-
-    compressed_stacks = "\n".join((f"{k} {v}" for k, v in stacks.items()))
-
-    output = (
-        f"# Metadata\n{metadata(data)}\n\n# Stacks\n{compressed_stacks or '<no data>'}"
+def sum_metrics(samples: List[AustinSample]) -> tuple[int, int]:
+    return sum(_.metrics.time or 0 for _ in samples), sum(
+        _.metrics.memory or 0 for _ in samples
     )
 
-    ms = maps(data)
-    if ms:
-        output = f"# Maps\n{list(ms.keys())}\n\n" + output
 
-    return output
+def sum_full_metrics(samples: List[AustinSample]) -> tuple[int, int, int, int]:
+    mem = [_.metrics.memory or 0 for _ in samples]
+    return (
+        sum(_.metrics.time or 0 for _ in samples),
+        sum(_.metrics.time or 0 for _ in samples if not _.idle),
+        sum(_ for _ in mem if _ > 0),
+        sum(_ for _ in mem if _ < 0),
+    )
 
 
-def demojo(data: bytes) -> str:
-    result = StringIO()
-
-    for e in MojoFile(BytesIO(data)).parse():
-        result.write(e.to_austin())
-
-    return result.getvalue()
+def parse_mojo(data: bytes) -> Tuple[List[AustinSample], Dict[str, str]]:
+    mojo = MojoStreamReader(BytesIO(data))
+    samples = [_ for _ in mojo if isinstance(_, AustinSample)]
+    return samples, mojo.metadata
 
 
 # Load from the utils scripts

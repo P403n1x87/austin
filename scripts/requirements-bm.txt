@@ -1,2 +1,2 @@
-austin-python~=1.6
+austin-python~=2.1
 scipy~=1.10
