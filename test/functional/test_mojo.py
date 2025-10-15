@@ -26,8 +26,8 @@ from test.utils import austin
 from test.utils import python
 from test.utils import target
 
-from austin.format.mojo import MojoFile
-from austin.format.mojo import MojoFrame
+from austin.events import AustinSample
+from austin.format.mojo import MojoStreamReader
 
 
 @allpythons(min=(3, 11))
@@ -38,14 +38,18 @@ def test_mojo_column_data(py, tmp_path: Path):
     assert result.returncode == 0, result.stderr or result.stdout
 
     def strip(f):
-        return (f.scope.string.value, f.line, f.line_end, f.column, f.column_end)
+        return (f.function, f.line, f.line_end, f.column, f.column_end)
 
     with datafile.open("rb") as f:
         frames = {
-            strip(_)
-            for _ in MojoFile(f).parse()
-            if isinstance(_, MojoFrame)
-            and _.filename.string.value.endswith("column.py")
+            strip(frame)
+            for e in (
+                _
+                for _ in MojoStreamReader(f)
+                if isinstance(_, AustinSample) and _.frames
+            )
+            for frame in e.frames
+            if Path(frame.filename).name == "column.py"
         }
 
         assert frames & {
@@ -67,12 +71,14 @@ def test_mojo_no_column_data(py, tmp_path: Path):
     result = austin("-i", "100", "-o", str(datafile), *python(py), target("column.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
-    def strip(f):
-        return
-
     with datafile.open("rb") as f:
         assert {
-            (e.line_end, e.column, e.column_end)
-            for e in MojoFile(f).parse()
-            if isinstance(e, MojoFrame)
+            (frame.line_end, frame.column, frame.column_end)
+            for e in (
+                _
+                for _ in MojoStreamReader(f)
+                if isinstance(_, AustinSample) and _.frames
+            )
+            for frame in e.frames
+            if isinstance(e, AustinSample)
         } == {(0, 0, 0)}
