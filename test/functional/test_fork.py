@@ -225,8 +225,8 @@ def test_fork_exposure(py, exposure, children):
 
     assert meta["mode"] == "wall"
 
-    d = int(meta["duration"])
-    assert abs(d - exposure) <= 0.5e6
+    d = int(meta["duration"]) / 1e6  # seconds
+    assert abs(d - exposure) <= 0.5
 
 
 @variants
