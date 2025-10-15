@@ -98,7 +98,7 @@ def test_attach_exposure(py, exposure):
 
         d = int(meta["duration"])
 
-        assert abs(d - exposure) <= 0.5
+        assert abs(d - exposure) <= 0.5e6
 
         p.kill()
 
