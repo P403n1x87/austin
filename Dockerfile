@@ -1,7 +1,7 @@
 FROM  ubuntu:24.04
 COPY  . /austin
 RUN   apt-get update && \
-      apt-get install -y autoconf build-essential libunwind-dev binutils-dev libiberty-dev zlib1g-dev && \
+      apt-get install -y autoconf build-essential libunwind-dev binutils-dev libiberty-dev zlib1g-dev libcap-dev && \
       cd /austin && \
       autoreconf --install && \
       ./configure && \

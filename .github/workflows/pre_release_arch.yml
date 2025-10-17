@@ -31,7 +31,7 @@ jobs:
             sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
           run: |
             apt-get update
-            apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools zlib1g-dev
+            apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev libcap-dev musl-tools zlib1g-dev
 
             # Build austin
             autoreconf --install

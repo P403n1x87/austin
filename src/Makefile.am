@@ -32,7 +32,7 @@ endif
 
 if DEBUG
 DEBUG_OPTS += -DDEBUG
-austin_LDADD = -lm
+austin_LDADD = -lm @AUSTIN_LDADD@
 endif
 
 if COVERAGE

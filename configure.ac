@@ -24,6 +24,11 @@ AC_CANONICAL_TARGET
 AC_LANG([C])
 
 # Checks for libraries.
+AC_CHECK_LIB(cap, cap_get_pid, [
+    AUSTIN_LDADD="-l:libcap.a"
+], [
+    echo "Cannot find libcap. Not Linux?"
+])
 AC_CHECK_HEADER(libunwind-ptrace.h, [
     AM_CONDITIONAL(BUILD_AUSTINP, true)
     AUSTINP_CFLAGS="-DAUSTINP -fPIC"
@@ -65,6 +70,7 @@ case $target_cpu in
         ;;
 esac
 
+AC_SUBST(AUSTIN_LDADD, [$AUSTIN_LDADD])
 AC_SUBST(AUSTINP_CFLAGS, [$AUSTINP_CFLAGS])
 AC_SUBST(AUSTINP_LDADD, [$AUSTINP_LDADD])
 

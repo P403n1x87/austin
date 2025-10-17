@@ -19,7 +19,7 @@ jobs:
           sudo add-apt-repository -y universe
           sudo add-apt-repository -y ppa:inkscape.dev/stable
           sudo apt-get update
-          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev help2man inkscape
+          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev libcap-dev help2man inkscape
 
       - name: Compile Austin
         run: |
@@ -131,7 +131,7 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev gcovr
+          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev libcap-dev gcovr
 
       - name: Install test dependencies
         run: |

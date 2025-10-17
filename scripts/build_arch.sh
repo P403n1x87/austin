@@ -12,6 +12,7 @@ apt-get -y install \
     binutils-dev \
     libiberty-dev \
     liblzma-dev \
+    libcap-dev \
     musl-tools \
     zlib1g-dev \
     git

@@ -26,7 +26,7 @@ jobs:
           pip install -r scripts/requirements-bw.txt
           
           sudo apt-get update
-          sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools zlib1g-dev
+          sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev libcap-dev musl-tools zlib1g-dev
 
           # Build austin
           autoreconf --install

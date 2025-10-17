@@ -51,6 +51,10 @@
 #include "py_proc_list.h"
 #include "py_thread.h"
 
+#if defined PL_LINUX
+#include <sys/capability.h>
+#endif
+
 // ---- SIGNAL HANDLING -------------------------------------------------------
 
 static int interrupt_signal = 0;
@@ -284,6 +288,28 @@ austin() {
     // On MacOS, we need to be root to use Austin.
     if (geteuid() != 0) {
         set_error(PERM, "Insufficient permissions to run Austin on MacOS");
+        FAIL;
+    }
+#elif defined PL_LINUX
+    cap_flag_value_t cap_value = 0;
+
+    cap_t cap = cap_get_pid(0);
+    if (!isvalid(cap)) {
+        set_error(OS, "Cannot determine Austin capabilities");
+        FAIL;
+    }
+
+    int get_flag_result = cap_get_flag(cap, CAP_SYS_PTRACE, CAP_EFFECTIVE, &cap_value);
+
+    cap_free(cap);
+
+    if (fail(get_flag_result)) {
+        set_error(OS, "Cannot get effective status of the cap_sys_ptrace capability");
+        FAIL;
+    }
+
+    if (cap_value != CAP_SET) {
+        set_error(PERM, "Austin has no effective cap_sys_ptrace capability");
         FAIL;
     }
 #endif
