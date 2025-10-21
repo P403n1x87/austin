@@ -594,6 +594,15 @@ _py_proc__init(py_proc_t* self) {
         FAIL;
     }
 
+    // We try to copy some remote memory to check that we have the permissions
+    // to do so.
+    char    c;
+    raddr_t addr = self->symbols[DYNSYM_RUNTIME];
+    if (!isvalid(addr))
+        addr = self->map.bss.base;
+    if (!isvalid(addr) || fail(copy_memory(self->ref, self->symbols[DYNSYM_RUNTIME], sizeof(c), &c)))
+        FAIL;
+
     self->extra->page_size = get_page_size();
     log_d("Page size: %u", self->extra->page_size);
 

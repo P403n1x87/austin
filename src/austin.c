@@ -141,6 +141,7 @@ do_single_process(py_proc_t* py_proc) {
         }
 
         // If we spawned the process, we need to wait for it to terminate.
+        py_proc__terminate(py_proc);
         py_proc__wait(py_proc);
     }
 
