@@ -696,8 +696,11 @@ _py_proc__run(py_proc_t* self) {
 
     if (!init) {
         log_d("Interpreter state search timed out");
-        if (error_is(VERSION)) {
-            // Nothing more we can do if we don't have a version
+        // Nothing more we can do if we don't have a version or permissions
+        if (error_is(VERSION) || error_is(PERM))
+            FAIL;
+        if (!isvalid(self->py_v)) {
+            set_error(VERSION, "No valid Python version detected");
             FAIL;
         }
 #if defined PL_LINUX

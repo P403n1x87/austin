@@ -54,16 +54,9 @@ def test_cli_no_python():
         assert result.returncode == 0
         dest.chmod(0o755)
 
-    result = austin(
-        str(dest),
-        expect_fail=(
-            AustinError.VERSION if sys.platform == "linux" else AustinError.BINARY
-        ),
-    )
+    result = austin(str(dest), expect_fail=AustinError.VERSION)
 
-    assert (
-        "Cannot determine" if sys.platform == "linux" else "not a Python"
-    ) in result.stderr
+    assert "Cannot determine" in result.stderr
 
 
 def test_cli_short_lived():
