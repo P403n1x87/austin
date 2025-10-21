@@ -88,7 +88,7 @@ def test_cli_invalid_pid():
 )
 @no_sudo
 def test_cli_permissions():
-    with run_python("3", target("sleepy.py")) as p:
+    with run_python("5", target("sleepy.py")) as p:
         result = austin("-i", "1ms", "-p", str(p.pid), expect_fail=AustinError.PERM)
         assert "Insufficient permissions" in result.stderr, result.stderr
 
