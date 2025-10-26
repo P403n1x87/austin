@@ -181,11 +181,14 @@ py_proc_list__sample(py_proc_list_t* self) {
             // to continue traversing the process tree.
             continue;
         if (fail(py_proc__sample(item->py_proc))) {
-            if (!error_is(PYOBJECT)) {
-                py_proc__terminate(item->py_proc);
-                py_proc__wait(item->py_proc);
+            // Try to re-initialise
+            if (fail(py_proc__init(item->py_proc))) {
+                if (!error_is(PYOBJECT)) {
+                    py_proc__terminate(item->py_proc);
+                    py_proc__wait(item->py_proc);
+                }
+                _py_proc_list__remove(self, item);
             }
-            _py_proc_list__remove(self, item);
         }
         stopwatch_duration();
     }

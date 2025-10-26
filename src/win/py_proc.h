@@ -123,10 +123,6 @@ _py_proc__analyze_pe(py_proc_t* self, char* path, void* base) {
 }
 
 // ----------------------------------------------------------------------------
-// Forward declaration.
-static int
-_py_proc__run(py_proc_t*);
-
 // On Windows, if we fail with the parent process we look if it has a single
 // child and try to attach to that instead. We keep going until we either find
 // a single Python process or more or less than a single child.
@@ -170,7 +166,7 @@ _py_proc__try_child_proc(py_proc_t* self) {
                 log_e("Cannot open child process handle");
                 goto rollback;
             }
-            if (success(_py_proc__run(self))) {
+            if (success(py_proc__init(self))) {
                 log_d("Process has a single Python child with PID %d. We will attach to that", child_pid);
                 SUCCESS;
             } else {
