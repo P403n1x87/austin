@@ -100,8 +100,11 @@ do_single_process(py_proc_t* py_proc) {
         while (interrupt_signal == 0) {
             stopwatch_start();
 
-            if (fail(result = py_proc__sample(py_proc)))
-                FAIL_BREAK;
+            if (fail(result = py_proc__sample(py_proc))) {
+                // Try to re-initialise
+                if (fail(py_proc__init(py_proc)))
+                    FAIL_BREAK;
+            }
 
 #ifdef NATIVE
             stopwatch_pause(0);
@@ -110,7 +113,7 @@ do_single_process(py_proc_t* py_proc) {
 #endif
         }
     } else {
-        if (!pargs.where && !pargs.pipe) {
+        if (!pargs.where) {
             log_m("");
             log_m("🕑 Sampling for %d second%s ...", pargs.exposure, pargs.exposure != 1 ? "s" : "");
         }
@@ -118,8 +121,11 @@ do_single_process(py_proc_t* py_proc) {
         while (interrupt_signal == 0) {
             stopwatch_start();
 
-            if (fail(result = py_proc__sample(py_proc)))
-                FAIL_BREAK;
+            if (fail(result = py_proc__sample(py_proc))) {
+                // Try to re-initialise
+                if (pargs.where || fail(py_proc__init(py_proc)))
+                    FAIL_BREAK;
+            }
 
 #ifdef NATIVE
             stopwatch_pause(0);

@@ -283,3 +283,35 @@ def test_fork_int_signal(py):
     meta = result.metadata
 
     assert int(meta["duration"])
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="UNIX only")
+@pytest.mark.parametrize("children", ([], ["-C"]))
+@allpythons()
+@variants
+def test_fork_exec(austin, py, children):
+    result = austin("-i", "2ms", *children, *python(py), target("target_exec.py"))
+    assert py in (result.stderr or result.stdout), result.stderr or result.stdout
+
+    assert len(processes(result.samples)) == 1
+    ts = threads(result.samples)
+    assert len(ts) == 2
+
+    assert has_frame(
+        result.samples, filename="target34.py", function="keep_cpu_busy", line=32
+    )
+    assert b"Unwanted" not in result.stdout
+
+    meta = result.metadata
+
+    assert meta["mode"] == "wall"
+
+    a, _ = sum_metrics(result.samples)
+    d = int(meta["duration"])
+
+    assert 0 < a < 2.1 * d
+
+    if austin == "austinp":
+        ms = maps(result.stdout)
+        assert len(ms) >= 2, ms
+        assert [_ for _ in ms if "python" in _], ms

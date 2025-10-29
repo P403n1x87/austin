@@ -191,6 +191,16 @@ int
 py_proc__sample(py_proc_t*);
 
 /**
+ * Initialise the process. Useful after an exec.
+ *
+ * @param  py_proc_t * self
+ *
+ * @return 0 on success; 1 otherwise
+ */
+int
+py_proc__init(py_proc_t*);
+
+/**
  * Get a datatype from the process
  *
  * @param self  the process object.

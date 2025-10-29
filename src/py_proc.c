@@ -639,7 +639,7 @@ _py_proc__find_interpreter_state(py_proc_t* self) {
             FAIL;
         }
 
-        log_d("✨ Interpreter head de-referenced from symbols ✨ ");
+        log_d("Interpreter head resolved from symbols");
     } else {
         // Attempt a BSS scan if we don't have symbols
         if (fail(_py_proc__scan_bss(self))) { // GCOV_EXCL_START
@@ -654,8 +654,8 @@ _py_proc__find_interpreter_state(py_proc_t* self) {
 }
 
 // ----------------------------------------------------------------------------
-static int
-_py_proc__run(py_proc_t* self) {
+int
+py_proc__init(py_proc_t* self) {
     bool try_once = self->child;
     bool init     = false;
     int  attempts = 0;
@@ -691,8 +691,6 @@ _py_proc__run(py_proc_t* self) {
     }
 
     TIMER_END
-
-    log_d("_py_proc__init timer loop terminated");
 
     if (!init) {
         log_d("Interpreter state search timed out");
@@ -770,7 +768,7 @@ _py_proc__run(py_proc_t* self) {
     log_d("Python process initialization successful");
 
     SUCCESS;
-} /* _py_proc__run */
+} /* py_proc__init */
 
 // ---- PUBLIC ----------------------------------------------------------------
 
@@ -852,7 +850,7 @@ py_proc__attach(py_proc_t* self, pid_t pid) {
     self->ref = pid;
 #endif
 
-    if (fail(_py_proc__run(self))) {
+    if (fail(py_proc__init(self))) {
         FAIL;
     }
 
@@ -1005,7 +1003,7 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
 
     log_d("New process created with PID %d", self->pid);
 
-    if (fail(_py_proc__run(self))) {
+    if (fail(py_proc__init(self))) {
         FAIL;
     }
 

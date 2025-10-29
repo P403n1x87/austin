@@ -11,11 +11,14 @@
 
   Added support for CPython 3.14.
 
+  Added support for the exec system call.
+
   Bugfix: fixed a bug that caused Austin to fail to attach to a MacOS process
   for a second time with CPython 3.13.
 
   Bugfix: fixed a bug that caused the sampling to halt if Austin failed to
   retrieve valid thread information.
+
 
 2024-10-14 v3.7.0
 
