@@ -45,7 +45,7 @@
 #else
 #define DEFAULT_SAMPLING_INTERVAL 100
 #endif
-#define DEFAULT_INIT_TIMEOUT_MS 1000 // 1 second
+#define DEFAULT_INIT_TIMEOUT_MS 3000 // 3 second
 
 // Globals for command line arguments
 parsed_args_t pargs = {
@@ -185,7 +185,7 @@ static struct argp_option options[] = {
   },
   {
     "timeout",      't', "n_ms",        0,
-    "Start up wait time in milliseconds (default is 100). Accepted units: s, ms."
+    "Start up wait time in milliseconds (default is 3000). Accepted units: s, ms."
   },
   {
     "cpu",          'c', NULL,          0,
@@ -486,7 +486,7 @@ print(";")
 "  -p, --pid=PID              Attach to the process with the given PID.\n"
 "  -P, --pipe                 Pipe mode. Use when piping Austin output.\n"
 "  -t, --timeout=n_ms         Start up wait time in milliseconds (default is\n"
-"                             100). Accepted units: s, ms.\n"
+"                             3000). Accepted units: s, ms.\n"
 "  -w, --where=PID            Dump the stacks of all the threads within the\n"
 "                             process with the given PID.\n"
 "  -x, --exposure=n_sec       Sample for n_sec seconds only.\n"

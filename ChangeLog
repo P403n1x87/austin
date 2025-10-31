@@ -14,6 +14,8 @@
   Improved accuracy and performance by more than doubling the maximum attainable
   sampling rate.
 
+  Added support for the exec system call.
+
   Bugfix: fixed a bug that caused Austin to fail to attach to a MacOS process
   for a second time with CPython 3.13.
 

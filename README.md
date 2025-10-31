@@ -306,7 +306,7 @@ requires no instrumentation and has practically no impact on the tracee.
   -p, --pid=PID              Attach to the process with the given PID.
   -P, --pipe                 Pipe mode. Use when piping Austin output.
   -t, --timeout=n_ms         Start up wait time in milliseconds (default is
-                             100). Accepted units: s, ms.
+                             3000). Accepted units: s, ms.
   -w, --where=PID            Dump the stacks of all the threads within the
                              process with the given PID.
   -x, --exposure=n_sec       Sample for n_sec seconds only.

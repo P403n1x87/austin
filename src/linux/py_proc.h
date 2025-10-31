@@ -594,6 +594,15 @@ _py_proc__init(py_proc_t* self) {
         FAIL;
     }
 
+    // We try to copy some remote memory to check that we have the permissions
+    // to do so.
+    char    c;
+    raddr_t addr = self->symbols[DYNSYM_RUNTIME];
+    if (!isvalid(addr))
+        addr = self->map.bss.base;
+    if (!isvalid(addr) || fail(copy_memory(self->ref, self->symbols[DYNSYM_RUNTIME], sizeof(c), &c)))
+        FAIL;
+
     self->extra->page_size = get_page_size();
     log_d("Page size: %u", self->extra->page_size);
 
@@ -641,6 +650,14 @@ _get_nspid(pid_t pid) {
 // ----------------------------------------------------------------------------
 static int
 _infer_tid_field_offset(py_thread_t* py_thread) {
+    py_proc_t*       proc  = py_thread->proc;
+    proc_extra_info* extra = proc->extra;
+
+    if (extra->pthread_tid_offset != 0) {
+        // We already have the offset so nothing more to do
+        SUCCESS;
+    }
+
     if (fail(read_pthread_t(py_thread->proc, (void*)py_thread->tid))) { // GCOV_EXCL_START
         FAIL;
     } // GCOV_EXCL_STOP
@@ -649,10 +666,8 @@ _infer_tid_field_offset(py_thread_t* py_thread) {
 
     // If the target process is in a different PID namespace, we need to get its
     // other PID to be able to determine the offset of the TID field.
-    py_proc_t*       proc  = py_thread->proc;
-    proc_ref_t       pref  = proc->ref;
-    proc_extra_info* extra = proc->extra;
-    pid_t            nspid = _get_nspid(pref);
+    proc_ref_t pref  = proc->ref;
+    pid_t      nspid = _get_nspid(pref);
 
     for (register int i = 0; i < PTHREAD_BUFFER_ITEMS; i++) {
         if (pref == extra->_pthread_buffer[i] || (nspid && nspid == extra->_pthread_buffer[i])) {
@@ -669,11 +684,13 @@ _infer_tid_field_offset(py_thread_t* py_thread) {
             log_d("TID field offset (from fall-back): %d", i);
             extra->pthread_tid_offset = -i;
             SUCCESS;
-        } // GCOV_EXCL_STOP
+        }
     }
+
+    extra->pthread_tid_offset = 0;
 
     set_error(OS, "Failed to find TID field offset");
     FAIL;
-}
+} // GCOV_EXCL_STOP
 
 #endif
