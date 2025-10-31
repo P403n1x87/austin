@@ -1,4 +1,8 @@
-2025-10-xx v4.0.0
+2025-10-31 v4.0.0
+
+  Added support for CPython 3.14.
+  
+  Dropped support for CPython 3.8.
 
   The MOJO binary output format is now the default. The augmented collapsed
   stack format is no longer supported.
@@ -7,9 +11,8 @@
 
   Removed the heap option.
 
-  Dropped support for CPython 3.8.
-
-  Added support for CPython 3.14.
+  Improved accuracy and performance by more than doubling the maximum attainable
+  sampling rate.
 
   Added support for the exec system call.
 

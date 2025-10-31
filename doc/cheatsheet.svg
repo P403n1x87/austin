@@ -756,16 +756,16 @@
      borderopacity="1.0"
      inkscape:pageopacity="1"
      inkscape:pageshadow="2"
-     inkscape:zoom="1.4"
-     inkscape:cx="273.21429"
-     inkscape:cy="20"
+     inkscape:zoom="0.82603188"
+     inkscape:cx="442.47687"
+     inkscape:cy="863.76812"
      inkscape:document-units="mm"
      inkscape:current-layer="layer3"
      showgrid="false"
      inkscape:window-width="1440"
-     inkscape:window-height="900"
+     inkscape:window-height="847"
      inkscape:window-x="0"
-     inkscape:window-y="0"
+     inkscape:window-y="25"
      inkscape:window-maximized="0"
      inkscape:pagecheckerboard="0"
      inkscape:showpageshadow="2"
@@ -5588,16 +5588,16 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:end;letter-spacing:7.18873px;word-spacing:0px;text-anchor:end;fill:#5c5c5c;fill-opacity:1;stroke:none;stroke-width:0.264583"
        x="6.3167839"
-       y="91.305237"
+       y="99.242744"
        id="text843"><tspan
          sodipodi:role="line"
          id="tspan841"
          x="6.3167839"
-         y="91.305237"
+         y="99.242744"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.35px;font-family:'action is';-inkscape-font-specification:'action is';text-align:start;letter-spacing:0px;text-anchor:start;fill:#5c5c5c;fill-opacity:1;stroke-width:0.264583">LAUNCH</tspan></text>
     <path
        style="fill:none;stroke:#236693;stroke-width:1.05833;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-       d="M 6.3811852,93.466185 H 101.66276"
+       d="M 6.3811852,101.4037 H 101.66276"
        id="path1326"
        inkscape:connector-curvature="0" />
     <text
@@ -5634,23 +5634,23 @@
        style="fill:none;stroke:#236693;stroke-width:1.05833;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <text
        id="text1348"
-       y="229.62231"
+       y="214.8058"
        x="110.83051"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:end;letter-spacing:7.18873px;word-spacing:0px;text-anchor:end;fill:#5c5c5c;fill-opacity:1;stroke:none;stroke-width:0.264583"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.35px;font-family:'action is';-inkscape-font-specification:'action is';text-align:start;letter-spacing:0px;text-anchor:start;fill:#5c5c5c;fill-opacity:1;stroke-width:0.264583"
-         y="229.62231"
+         y="214.8058"
          x="110.83051"
          id="tspan1346"
          sodipodi:role="line">TOOLS</tspan></text>
     <path
        inkscape:connector-curvature="0"
        id="path1350"
-       d="m 110.77157,231.78465 h 95.28158"
+       d="m 110.77157,216.96792 h 95.28158"
        style="fill:none;stroke:#236693;stroke-width:1.05833;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <g
        id="g7283"
-       transform="translate(-0.22647449,8.9958338)">
+       transform="translate(-0.22647449,16.933338)">
       <g
          id="g7112">
         <text
@@ -5692,7 +5692,7 @@
     </g>
     <g
        id="g7273"
-       transform="translate(-0.15072512,10.746268)">
+       transform="translate(-0.15072512,18.683773)">
       <g
          id="g7121">
         <text
@@ -5734,7 +5734,7 @@
     </g>
     <g
        id="g7263"
-       transform="translate(-0.07497574,12.441289)">
+       transform="translate(-0.07497574,20.378794)">
       <g
          id="g7130">
         <text
@@ -5776,7 +5776,7 @@
     </g>
     <g
        id="g7253"
-       transform="translate(7.7312038e-4,14.287503)">
+       transform="translate(7.7312038e-4,22.225008)">
       <g
          id="g7139">
         <text
@@ -5818,7 +5818,7 @@
     </g>
     <g
        id="g7243"
-       transform="translate(0.07652251,15.875004)">
+       transform="translate(0.07652251,23.812509)">
       <g
          id="g7154">
         <text
@@ -5886,7 +5886,7 @@
     </g>
     <g
        id="g7227"
-       transform="translate(0.15227187,16.933338)">
+       transform="translate(0.15227187,24.870843)">
       <g
          id="g7159">
         <text
@@ -5926,7 +5926,7 @@
     </g>
     <g
        id="g7198"
-       transform="translate(0,21.373007)">
+       transform="translate(1.0583333,29.310512)">
       <g
          id="g7175">
         <text
@@ -6154,7 +6154,7 @@
            id="tspan1841"
            sodipodi:role="line">Emit to STDOUT <tspan
    style="font-weight:normal;font-size:2.99861px"
-   id="tspan9831">(Python STDOUT suppressed)</tspan></tspan></text>
+   id="tspan9831">(Python STDOUT suppressed, not recommended)</tspan></tspan></text>
       <rect
          y="152.21356"
          x="110.08945"
@@ -6211,11 +6211,13 @@
    style="font-weight:bold;fill:#eeff81;fill-opacity:1"
    id="tspan9869">-P</tspan> ./myscript.py <tspan
    style="font-weight:bold;fill:#eeff81;fill-opacity:1"
-   id="tspan9863">| ./flamegraph.pl</tspan> &gt; fg.svg</tspan></text>
+   id="tspan9863">| <tspan
+   style="font-weight:normal"
+   id="tspan3004">...</tspan></tspan></tspan></text>
     </g>
     <g
        id="g7217"
-       transform="translate(0.22802124,18.469211)">
+       transform="translate(0.22802124,26.406716)">
       <g
          id="g7164">
         <text
@@ -6342,26 +6344,26 @@
          y="293.48233"
          x="49.886612"
          id="tspan9522"
-         sodipodi:role="line">3.9 | 3.10 | 3.11 | 3.12 | 3.13</tspan></text>
+         sodipodi:role="line">3.9 | 3.10 | 3.11 | 3.12 | 3.13 | 3.14</tspan></text>
     <text
        id="text9528"
-       y="35.175755"
+       y="37.82159"
        x="6.1702833"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:end;letter-spacing:7.18873px;word-spacing:0px;text-anchor:end;fill:#5c5c5c;fill-opacity:1;stroke:none;stroke-width:0.264583"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:6.35px;font-family:'action is';-inkscape-font-specification:'action is';text-align:start;letter-spacing:0px;text-anchor:start;fill:#5c5c5c;fill-opacity:1;stroke-width:0.264583"
-         y="35.175755"
+         y="37.82159"
          x="6.1702833"
          id="tspan9526"
          sodipodi:role="line">INSTALL</tspan></text>
     <path
        inkscape:connector-curvature="0"
        id="path9530"
-       d="M 6.4569346,37.336736 H 101.73851"
+       d="M 6.4569346,39.982571 H 101.73851"
        style="fill:none;stroke:#236693;stroke-width:1.05833;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1" />
     <g
        id="g7103"
-       transform="translate(0.30377062,7.9374963)">
+       transform="translate(0.30377062,10.58333)">
       <g
          id="g9735"
          transform="translate(0,-5.114449)">
@@ -6394,7 +6396,7 @@
     </g>
     <g
        id="g2144"
-       transform="translate(0.37952,5.8208336)">
+       transform="translate(0.37952,8.4666671)">
       <g
          transform="translate(0,-4.2333335)"
          id="g9745">
@@ -6482,7 +6484,7 @@
     </g>
     <g
        id="g2126"
-       transform="translate(0.45526937,8.4666709)">
+       transform="translate(0.45526937,11.112505)">
       <g
          transform="translate(0,-5.2215323)"
          id="g9730">
@@ -6583,7 +6585,7 @@
            y="169.07222"
            style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.264583">austin -p 123 <tspan
    style="font-weight:bold;fill:#eeff81;fill-opacity:1"
-   id="tspan9847">&gt; /path/to/samples.austin</tspan></tspan></text>
+   id="tspan9847">&gt; /path/to/samples.mojo</tspan></tspan></text>
     </g>
     <g
        id="g8692"
@@ -6620,11 +6622,11 @@
            id="tspan9859"
            sodipodi:role="line">austin <tspan
    id="tspan9857"
-   style="font-weight:bold;fill:#eeff81;fill-opacity:1">-o /path/to/samples.austin</tspan> -p 123</tspan></text>
+   style="font-weight:bold;fill:#eeff81;fill-opacity:1">-o /path/to/samples.mojo</tspan> -p 123</tspan></text>
     </g>
     <g
        id="g2118"
-       transform="translate(0.53101874,7.4083337)">
+       transform="translate(0.53101874,10.054167)">
       <g
          transform="translate(0,-3.7041668)"
          id="g9725">
@@ -6717,7 +6719,7 @@
     </g>
     <g
        id="g8603"
-       transform="translate(0.49115219,-2.6458334)">
+       transform="translate(0.49115219,-17.462504)">
       <text
          xml:space="preserve"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.264583"
@@ -6822,7 +6824,7 @@
     </g>
     <g
        id="g8624"
-       transform="translate(0.54285285,-3.7041668)">
+       transform="translate(0.54285285,-18.520837)">
       <text
          id="text9877"
          y="240.40784"
@@ -6925,109 +6927,20 @@
          d="m 199.785,244.0363 1.70092,-0.23165 5.9e-4,1.64064 -1.70008,0.01 z m 1.7001,1.59804 9.2e-4,1.6421 -1.70008,-0.23373 -1e-4,-1.41936 z m 0.20619,-1.85999 2.25526,-0.32915 v 1.97924 l -2.25526,0.0179 z m 2.25579,1.87543 -5.1e-4,1.97032 -2.25525,-0.3183 -0.003,-1.6557 z"
          id="path2078" />
     </g>
-    <g
-       transform="matrix(0.28909903,0,0,-0.28909903,-206.41651,253.48185)"
-       inkscape:label="ink_ext_XXXXXX"
-       id="g2107"
-       style="fill:#e6f0ff;fill-opacity:1">
-      <g
-         transform="scale(0.1)"
-         id="g2109"
-         style="fill:#e6f0ff;fill-opacity:1">
-        <g
-           id="g2394"
-           transform="matrix(0.10277773,0,0,0.10277773,10644.73,-1143.7549)"
-           style="fill:#e6f0ff;fill-opacity:1">
-          <path
-             d="m 3506.09,4935.55 c -333.47,0 -603.88,-270.36 -603.88,-603.88 0,-266.81 173.03,-493.17 412.97,-573.02 30.18,-5.59 41.26,13.1 41.26,29.05 0,14.4 -0.56,61.97 -0.82,112.43 -168,-36.53 -203.45,71.25 -203.45,71.25 -27.47,69.8 -67.05,88.36 -67.05,88.36 -54.79,37.48 4.13,36.71 4.13,36.71 60.64,-4.25 92.57,-62.24 92.57,-62.24 53.86,-92.31 141.27,-65.62 175.73,-50.19 5.42,39.03 21.07,65.68 38.34,80.75 -134.13,15.27 -275.13,67.05 -275.13,298.44 0,65.93 23.59,119.8 62.22,162.09 -6.27,15.22 -26.94,76.63 5.85,159.81 0,0 50.71,16.23 166.11,-61.9 48.17,13.38 99.83,20.09 151.15,20.32 51.32,-0.23 103.02,-6.94 151.28,-20.32 115.26,78.13 165.9,61.9 165.9,61.9 32.87,-83.18 12.19,-144.59 5.92,-159.81 38.72,-42.29 62.15,-96.16 62.15,-162.09 0,-231.94 -141.27,-283.01 -275.74,-297.96 21.66,-18.74 40.96,-55.49 40.96,-111.83 0,-80.8 -0.7,-145.83 -0.7,-165.72 0,-16.07 10.87,-34.9 41.48,-28.97 239.81,79.94 412.62,306.22 412.62,572.94 0,333.52 -270.37,603.88 -603.87,603.88"
-             style="fill:#e6f0ff;fill-opacity:1;fill-rule:evenodd;stroke:none"
-             id="path2115"
-             inkscape:connector-curvature="0" />
-          <path
-             d="m 3130.93,4068.51 c -1.33,-3.01 -6.05,-3.9 -10.35,-1.84 -4.38,1.97 -6.84,6.06 -5.42,9.07 1.3,3.08 6.03,3.94 10.4,1.89 4.39,-1.98 6.89,-6.11 5.37,-9.12 v 0"
-             style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
-             id="path2117"
-             inkscape:connector-curvature="0" />
-          <path
-             d="m 3155.39,4041.23 c -2.88,-2.67 -8.51,-1.43 -12.33,2.79 -3.95,4.21 -4.69,9.84 -1.77,12.55 2.97,2.66 8.43,1.41 12.39,-2.79 3.95,-4.26 4.72,-9.85 1.71,-12.55 v 0"
-             style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
-             id="path2119"
-             inkscape:connector-curvature="0" />
-          <path
-             d="m 3179.2,4006.45 c -3.7,-2.57 -9.75,-0.16 -13.49,5.21 -3.7,5.37 -3.7,11.81 0.08,14.39 3.75,2.58 9.71,0.25 13.5,-5.07 3.69,-5.46 3.69,-11.9 -0.09,-14.53 v 0"
-             style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
-             id="path2121"
-             inkscape:connector-curvature="0" />
-          <path
-             d="m 3211.82,3972.85 c -3.31,-3.65 -10.36,-2.67 -15.52,2.31 -5.28,4.87 -6.75,11.78 -3.43,15.43 3.35,3.66 10.44,2.63 15.64,-2.31 5.24,-4.86 6.84,-11.82 3.31,-15.43 v 0"
-             style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
-             id="path2123"
-             inkscape:connector-curvature="0" />
-          <path
-             d="m 3256.82,3953.34 c -1.46,-4.73 -8.25,-6.88 -15.09,-4.87 -6.83,2.07 -11.3,7.61 -9.92,12.39 1.42,4.76 8.24,7 15.13,4.85 6.82,-2.06 11.3,-7.56 9.88,-12.37 v 0"
-             style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
-             id="path2125"
-             inkscape:connector-curvature="0" />
-          <path
-             d="m 3306.24,3949.72 c 0.17,-4.98 -5.63,-9.11 -12.81,-9.2 -7.22,-0.16 -13.06,3.87 -13.14,8.77 0,5.03 5.67,9.12 12.89,9.24 7.18,0.14 13.06,-3.86 13.06,-8.81 v 0"
-             style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
-             id="path2127"
-             inkscape:connector-curvature="0" />
-          <path
-             d="m 3352.23,3957.55 c 0.86,-4.86 -4.13,-9.85 -11.26,-11.18 -7.01,-1.28 -13.5,1.72 -14.39,6.54 -0.87,4.98 4.21,9.97 11.21,11.26 7.14,1.24 13.53,-1.68 14.44,-6.62 v 0"
-             style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
-             id="path2129"
-             inkscape:connector-curvature="0" />
-        </g>
-      </g>
-    </g>
-    <text
-       xml:space="preserve"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#e6f0ff;fill-opacity:1;stroke:none;stroke-width:0.264583"
-       x="116.23132"
-       y="274.57465"
-       id="text2398"><tspan
-         sodipodi:role="line"
-         id="tspan2396"
-         x="116.23132"
-         y="274.57465"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.264583">p403n1x87/austin</tspan></text>
-    <g
-       transform="matrix(0.0251115,0,0,0.0251115,102.49634,268.69094)"
-       id="layer1-8"
-       inkscape:label="Layer 1"
-       style="fill:#e6f0ff;fill-opacity:1">
-      <path
-         d="m 453.82593,412.80619 c -6.3097,2.79897 -13.09189,4.68982 -20.20852,5.54049 7.26413,-4.35454 12.84406,-11.24992 15.47067,-19.46675 -6.79934,4.03295 -14.3293,6.96055 -22.34461,8.53841 -6.41775,-6.83879 -15.56243,-11.111 -25.68298,-11.111 -19.43159,0 -35.18696,15.75365 -35.18696,35.18525 0,2.75781 0.31128,5.44359 0.91155,8.01875 -29.24344,-1.46723 -55.16995,-15.47582 -72.52461,-36.76396 -3.02879,5.19662 -4.76443,11.24048 -4.76443,17.6891 0,12.20777 6.21194,22.97747 15.65332,29.28716 -5.76773,-0.18265 -11.19331,-1.76565 -15.93716,-4.40083 -0.004,0.14663 -0.004,0.29412 -0.004,0.44248 0,17.04767 12.12889,31.26806 28.22555,34.50266 -2.95247,0.80436 -6.06101,1.23398 -9.26989,1.23398 -2.2673,0 -4.47114,-0.22124 -6.62011,-0.63114 4.47801,13.97857 17.47214,24.15143 32.86992,24.43441 -12.04227,9.43796 -27.21366,15.06335 -43.69965,15.06335 -2.84014,0 -5.64082,-0.16722 -8.39349,-0.49223 15.57186,9.98421 34.06703,15.8094 53.93768,15.8094 64.72024,0 100.11301,-53.61524 100.11301,-100.11387 0,-1.52554 -0.0343,-3.04251 -0.10204,-4.55261 6.87394,-4.95995 12.83891,-11.15646 17.55618,-18.21305 z"
-         id="path5-2"
-         inkscape:connector-curvature="0"
-         style="fill:#e6f0ff;fill-opacity:1" />
-    </g>
-    <text
-       id="text2454"
-       y="281.31534"
-       x="116.34068"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#e6f0ff;fill-opacity:1;stroke:none;stroke-width:0.264583"
-       xml:space="preserve"><tspan
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.264583"
-         y="281.31534"
-         x="116.34068"
-         id="tspan2452"
-         sodipodi:role="line">@AustinSampler</tspan></text>
     <text
        id="text2458"
-       y="288.56863"
+       y="275.86847"
        x="108.92651"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#e6f0ff;fill-opacity:1;stroke:none;stroke-width:0.264583"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.88056px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.264583"
-         y="288.56863"
+         y="275.86847"
          x="108.92651"
          id="tspan2456"
          sodipodi:role="line">Report issues at</tspan></text>
     <g
        id="g7095"
-       transform="translate(0.60676812,6.8791711)">
+       transform="translate(0.60676812,9.5250046)">
       <g
          id="g9740"
          transform="translate(0,-4.8331193)">
@@ -7062,53 +6975,16 @@
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#e6f0ff;fill-opacity:1;stroke:none;stroke-width:0.264583"
        x="108.87568"
-       y="293.27173"
+       y="280.57156"
        id="text2462"><tspan
          sodipodi:role="line"
          id="tspan2460"
          x="108.87568"
-         y="293.27173"
+         y="280.57156"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.264583">https://github.com/P403n1x87/austin/issues</tspan></text>
     <g
-       id="g7188"
-       transform="translate(0.07574938,22.754175)">
-      <text
-         inkscape:export-ydpi="191.99664"
-         inkscape:export-xdpi="191.99664"
-         xml:space="preserve"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.264583"
-         x="5.5122108"
-         y="208.66808"
-         id="text2089"><tspan
-           sodipodi:role="line"
-           id="tspan2087"
-           x="5.5122108"
-           y="208.66808"
-           style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52778px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.264583">Set heap size (for more accurate results)</tspan></text>
-      <rect
-         style="display:inline;opacity:1;fill:#404040;fill-opacity:0.501961;fill-rule:nonzero;stroke:none;stroke-width:0.897307;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-         id="rect2091"
-         width="95.000885"
-         height="6.4413304"
-         x="5.2449455"
-         y="210.53897" />
-      <text
-         xml:space="preserve"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.264583"
-         x="6.741787"
-         y="214.69775"
-         id="text2099"><tspan
-           sodipodi:role="line"
-           id="tspan2097"
-           x="6.741787"
-           y="214.69775"
-           style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.264583">austin <tspan
-   style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Bold';fill:#eeff81;fill-opacity:1"
-   id="tspan2101">-h 512</tspan> python -m mymodule</tspan></text>
-    </g>
-    <g
        id="g7207"
-       transform="translate(0.68251749,20.413779)">
+       transform="translate(0.68251749,28.351284)">
       <g
          id="g7169">
         <text
@@ -7190,43 +7066,6 @@
    id="tspan1799"
    style="font-weight:bold;fill:#eeff81;fill-opacity:1;stroke-width:0.264583">-m</tspan> python myscript.py</tspan></text>
     </g>
-    <g
-       id="g8701"
-       transform="translate(0.42361755,8.4666671)">
-      <text
-         xml:space="preserve"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#404040;fill-opacity:1;stroke:none;stroke-width:0.264583"
-         x="110.35671"
-         y="200.73251"
-         id="text2251"><tspan
-           sodipodi:role="line"
-           id="tspan2249"
-           x="110.35671"
-           y="200.73251"
-           style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:3.52778px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';fill:#404040;fill-opacity:1;stroke-width:0.264583">Emit to file in binary (MOJO) format <tspan
-   style="font-weight:normal"
-   id="tspan2261">(STDOUT preserved)</tspan></tspan></text>
-      <rect
-         style="display:inline;opacity:1;fill:#404040;fill-opacity:0.501961;fill-rule:nonzero;stroke:none;stroke-width:0.897307;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
-         id="rect2253"
-         width="95.000885"
-         height="6.4413304"
-         x="110.08945"
-         y="202.60333" />
-      <text
-         xml:space="preserve"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#f0f0f0;fill-opacity:1;stroke:none;stroke-width:0.264583"
-         x="111.58628"
-         y="206.7621"
-         id="text2259"><tspan
-           sodipodi:role="line"
-           id="tspan2257"
-           x="111.58628"
-           y="206.7621"
-           style="fill:#f0f0f0;fill-opacity:1;stroke-width:0.264583">austin <tspan
-   style="font-weight:bold;fill:#eeff81;fill-opacity:1"
-   id="tspan2255">-bo /path/to/samples.austin</tspan> -p 123</tspan></text>
-    </g>
   </g>
   <g
      inkscape:groupmode="layer"
@@ -7264,12 +7103,12 @@
          style="font-weight:bold;font-size:5.57082px;text-align:center;letter-spacing:0px;text-anchor:middle;fill:#ffe8e1;fill-opacity:1;stroke-width:0.232117">CHEATSHEET</tspan></text>
     <text
        id="text869"
-       y="6.5234571"
+       y="19.752621"
        x="206.75958"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:end;letter-spacing:0px;word-spacing:0px;text-anchor:end;display:inline;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.264583"
        xml:space="preserve"><tspan
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;font-family:Ubuntu;-inkscape-font-specification:'Ubuntu Bold';text-align:end;letter-spacing:0px;text-anchor:end;fill:#ffe8e1;fill-opacity:1;stroke-width:0.264583"
-         y="6.5234571"
+         y="19.752621"
          x="206.75958"
          id="tspan867"
          sodipodi:role="line">for version 4.0</tspan></text>
@@ -7337,6 +7176,73 @@
          id="flowPara8916"
          style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:13.3333px;line-height:1;font-family:Ubuntu;-inkscape-font-specification:Ubuntu;text-align:start;text-anchor:start;fill:#e6f0ff;fill-opacity:1">Frame stack sampler for CPython</flowPara></flowRoot>
   </g>
+  <g
+     transform="matrix(0.28909903,0,0,-0.28909903,-141.7386,-14.927743)"
+     inkscape:label="ink_ext_XXXXXX"
+     id="g2107"
+     style="display:inline;fill:#e6f0ff;fill-opacity:1">
+    <g
+       transform="scale(0.1)"
+       id="g2109"
+       style="fill:#e6f0ff;fill-opacity:1">
+      <g
+         id="g2394"
+         transform="matrix(0.10277773,0,0,0.10277773,10644.73,-1143.7549)"
+         style="fill:#e6f0ff;fill-opacity:1">
+        <path
+           d="m 3506.09,4935.55 c -333.47,0 -603.88,-270.36 -603.88,-603.88 0,-266.81 173.03,-493.17 412.97,-573.02 30.18,-5.59 41.26,13.1 41.26,29.05 0,14.4 -0.56,61.97 -0.82,112.43 -168,-36.53 -203.45,71.25 -203.45,71.25 -27.47,69.8 -67.05,88.36 -67.05,88.36 -54.79,37.48 4.13,36.71 4.13,36.71 60.64,-4.25 92.57,-62.24 92.57,-62.24 53.86,-92.31 141.27,-65.62 175.73,-50.19 5.42,39.03 21.07,65.68 38.34,80.75 -134.13,15.27 -275.13,67.05 -275.13,298.44 0,65.93 23.59,119.8 62.22,162.09 -6.27,15.22 -26.94,76.63 5.85,159.81 0,0 50.71,16.23 166.11,-61.9 48.17,13.38 99.83,20.09 151.15,20.32 51.32,-0.23 103.02,-6.94 151.28,-20.32 115.26,78.13 165.9,61.9 165.9,61.9 32.87,-83.18 12.19,-144.59 5.92,-159.81 38.72,-42.29 62.15,-96.16 62.15,-162.09 0,-231.94 -141.27,-283.01 -275.74,-297.96 21.66,-18.74 40.96,-55.49 40.96,-111.83 0,-80.8 -0.7,-145.83 -0.7,-165.72 0,-16.07 10.87,-34.9 41.48,-28.97 239.81,79.94 412.62,306.22 412.62,572.94 0,333.52 -270.37,603.88 -603.87,603.88"
+           style="fill:#e6f0ff;fill-opacity:1;fill-rule:evenodd;stroke:none"
+           id="path2115"
+           inkscape:connector-curvature="0" />
+        <path
+           d="m 3130.93,4068.51 c -1.33,-3.01 -6.05,-3.9 -10.35,-1.84 -4.38,1.97 -6.84,6.06 -5.42,9.07 1.3,3.08 6.03,3.94 10.4,1.89 4.39,-1.98 6.89,-6.11 5.37,-9.12 v 0"
+           style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
+           id="path2117"
+           inkscape:connector-curvature="0" />
+        <path
+           d="m 3155.39,4041.23 c -2.88,-2.67 -8.51,-1.43 -12.33,2.79 -3.95,4.21 -4.69,9.84 -1.77,12.55 2.97,2.66 8.43,1.41 12.39,-2.79 3.95,-4.26 4.72,-9.85 1.71,-12.55 v 0"
+           style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
+           id="path2119"
+           inkscape:connector-curvature="0" />
+        <path
+           d="m 3179.2,4006.45 c -3.7,-2.57 -9.75,-0.16 -13.49,5.21 -3.7,5.37 -3.7,11.81 0.08,14.39 3.75,2.58 9.71,0.25 13.5,-5.07 3.69,-5.46 3.69,-11.9 -0.09,-14.53 v 0"
+           style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
+           id="path2121"
+           inkscape:connector-curvature="0" />
+        <path
+           d="m 3211.82,3972.85 c -3.31,-3.65 -10.36,-2.67 -15.52,2.31 -5.28,4.87 -6.75,11.78 -3.43,15.43 3.35,3.66 10.44,2.63 15.64,-2.31 5.24,-4.86 6.84,-11.82 3.31,-15.43 v 0"
+           style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
+           id="path2123"
+           inkscape:connector-curvature="0" />
+        <path
+           d="m 3256.82,3953.34 c -1.46,-4.73 -8.25,-6.88 -15.09,-4.87 -6.83,2.07 -11.3,7.61 -9.92,12.39 1.42,4.76 8.24,7 15.13,4.85 6.82,-2.06 11.3,-7.56 9.88,-12.37 v 0"
+           style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
+           id="path2125"
+           inkscape:connector-curvature="0" />
+        <path
+           d="m 3306.24,3949.72 c 0.17,-4.98 -5.63,-9.11 -12.81,-9.2 -7.22,-0.16 -13.06,3.87 -13.14,8.77 0,5.03 5.67,9.12 12.89,9.24 7.18,0.14 13.06,-3.86 13.06,-8.81 v 0"
+           style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
+           id="path2127"
+           inkscape:connector-curvature="0" />
+        <path
+           d="m 3352.23,3957.55 c 0.86,-4.86 -4.13,-9.85 -11.26,-11.18 -7.01,-1.28 -13.5,1.72 -14.39,6.54 -0.87,4.98 4.21,9.97 11.21,11.26 7.14,1.24 13.53,-1.68 14.44,-6.62 v 0"
+           style="fill:#e6f0ff;fill-opacity:1;fill-rule:nonzero;stroke:none"
+           id="path2129"
+           inkscape:connector-curvature="0" />
+      </g>
+    </g>
+  </g>
+  <text
+     xml:space="preserve"
+     style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.52778px;line-height:0;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono';text-align:start;letter-spacing:0px;word-spacing:0px;text-anchor:start;display:inline;fill:#e6f0ff;fill-opacity:1;stroke:none;stroke-width:0.264583"
+     x="180.90862"
+     y="6.165082"
+     id="text2398"><tspan
+       sodipodi:role="line"
+       id="tspan2396"
+       x="180.90862"
+       y="6.165082"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.175px;font-family:'Ubuntu Mono';-inkscape-font-specification:'Ubuntu Mono Bold';fill:#e6f0ff;fill-opacity:1;stroke-width:0.264583">p403n1x87/austin</tspan></text>
   <g
      inkscape:groupmode="layer"
      id="layer4"
