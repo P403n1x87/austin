@@ -23,7 +23,7 @@ from typing import Type
 
 from pycparser import c_ast
 from pycparser import c_parser
-from pycparser.plyparser import ParseError
+from pycparser.c_parser import ParseError
 
 
 HERE = Path(__file__).resolve().parent
