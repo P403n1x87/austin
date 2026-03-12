@@ -51,7 +51,6 @@ from typing import Tuple
 from typing import TypeVar
 from typing import Union
 
-
 if sys.platform == "win32":
     from subprocess import CREATE_NEW_PROCESS_GROUP
 
@@ -63,7 +62,6 @@ except ImportError:
 
 from austin.events import AustinSample
 from austin.format.mojo import MojoStreamReader
-
 
 HERE = Path(__file__).parent
 

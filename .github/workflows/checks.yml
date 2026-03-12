@@ -85,7 +85,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install clang-format
-        run: pip install clang-format
+        run: pip install clang-format~=22.1.1
 
       - name: Check formatting
         run: find src -name "*.c" -o -name "*.h" | xargs clang-format -style=file --dry-run --Werror
@@ -101,7 +101,7 @@ jobs:
           python-version: "3.10"
 
       - name: Install black
-        run: pip install black
+        run: pip install black~=26.3.1
 
       - name: Check formatting
         run: black --check --exclude=test/targets test/
