@@ -228,14 +228,14 @@ jobs:
           deactivate
 
   build-osx-gcc:
-    runs-on: macos-latest
+    runs-on: macos-15
 
     name: Build Austin on macOS (gcc)
     steps:
       - uses: actions/checkout@v3
 
       - name: Compile Austin
-        run: gcc-12 -Wall -Werror -O3 -g src/*.c -o src/austin
+        run: gcc-15 -Wall -Werror -O3 -g src/*.c -o src/austin
 
       - uses: actions/upload-artifact@v4
         with:
