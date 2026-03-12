@@ -19,7 +19,6 @@ import psutil
 import pytest
 from requests import get
 
-
 pytestmark = pytest.mark.skipif(
     sys.platform == "win32", reason="Not supported on Windows"
 )
