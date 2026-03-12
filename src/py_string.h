@@ -105,8 +105,8 @@ _string_remote(proc_ref_t pref, raddr_t raddr, python_v* py_v) {
     ssize_t ascii_size = V_MIN(3, 12) ? sizeof(unicode.v3_12._base._base) : sizeof(unicode.v3._base._base);
     raddr_t data       = ascii.state.compact ? p_ascii_data(raddr, ascii_size)
                                              : (V_MIN(3, 12) ? unicode.v3_12._base.utf8 : unicode.v3._base.utf8);
-    len                = ascii.state.compact ? ascii.length
-                                             : (V_MIN(3, 12) ? unicode.v3_12._base.utf8_length : unicode.v3._base.utf8_length);
+    len = ascii.state.compact ? ascii.length
+                              : (V_MIN(3, 12) ? unicode.v3_12._base.utf8_length : unicode.v3._base.utf8_length);
 
     if (!isvalid(data)) { // GCOV_EXCL_START
         set_error(PYOBJECT, "Invalid PyASCIIObject data pointer");
