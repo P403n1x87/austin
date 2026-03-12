@@ -307,7 +307,7 @@ jobs:
 
       - name: Run unit tests
         env:
-          CC: gcc-12
+          CC: gcc-15
         run: |
           source .venv/bin/activate
           pytest -vv test/cunit
