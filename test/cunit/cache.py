@@ -3,7 +3,6 @@ from pathlib import Path
 from test.cunit import SRC
 from test.cunit import CModule
 
-
 CFLAGS = ["-g", "-fprofile-arcs", "-ftest-coverage", "-fPIC"]
 
 EXTRA_SOURCES = [
