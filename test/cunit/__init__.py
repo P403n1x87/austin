@@ -64,6 +64,7 @@ typedef struct __builtin_va_list { } __builtin_va_list;
 #  undef __LDBL_MANT_DIG__
 #  define __LDBL_MANT_DIG__ __DBL_MANT_DIG__
 #endif
+typedef int bool;
 """
 
 
