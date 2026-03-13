@@ -1,11 +1,11 @@
 austin-python~=2.1
-flaky
-pytest
-pytest-xdist
+flaky~=3.8
+pytest~=9.0
+pytest-xdist~=3.8
 
 # C unit tests
-pycparser
+pycparser~=2.23
 
 # Support tests
-psutil
-requests
+psutil~=7.2
+requests~=2.32

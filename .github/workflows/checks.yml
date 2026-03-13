@@ -73,7 +73,7 @@ jobs:
           python-version: "3.9"
 
       - name: Install codespell
-        run: pip install codespell
+        run: pip install codespell~=2.4
 
       - name: Check source code spelling
         run: codespell -I .github/workflows/wordlist.txt -S "src/python/*" src
@@ -117,7 +117,7 @@ jobs:
           python-version: "3.10"
 
       - name: Install flake8
-        run: pip install flake8
+        run: pip install flake8~=7.3
 
       - name: Lint code
         run: flake8 --config test/.flake8 test/
@@ -178,7 +178,7 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install cog
-        run: pip install cogapp
+        run: pip install cogapp~=3.6
 
       - name: Compile Austin
         run: |
