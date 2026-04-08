@@ -24,46 +24,59 @@ AC_CANONICAL_TARGET
 AC_LANG([C])
 
 # Checks for libraries.
-AC_CHECK_HEADER(libunwind-ptrace.h, [
-    AM_CONDITIONAL(BUILD_AUSTINP, true)
-    AUSTINP_CFLAGS="-DAUSTINP -fPIC"
-    AUSTINP_LDADD="-l:libunwind-ptrace.a -l:liblzma.a -l:libunwind-generic.a -l:libunwind.a"
-    echo "including build of austinp"
-], [
-    AM_CONDITIONAL(BUILD_AUSTINP, false)
-    echo "not building austinp: missing libunwind"
-])
-AC_CHECK_LIB(bfd, bfd_openr, [
-    AC_DEFINE([HAVE_BFD], [1], ["Compile with BFD support"])
-    AUSTINP_CFLAGS+=" -DHAVE_BFD"
-    AUSTINP_LDADD+=" -l:libbfd.a -l:libz.a"
-    AC_CHECK_LIB(sframe, sframe_encode, [
-        AUSTINP_LDADD+=" -l:libsframe.a"
-    ])
-    AC_CHECK_LIB(zstd, ZSTD_compress, [
-        AUSTINP_LDADD+=" -l:libzstd.a"
-    ])
-    echo "enabling symbol resolution support for austinp"
-], [
-    echo "austinp will be built without symbol resolution support: missing libbfd"
-])
-AC_CHECK_LIB(iberty, bfd_demangle, [
-    AC_DEFINE([HAVE_LIBERTY], [1], ["Compile with C++ name demangling support"])
-    AUSTINP_CFLAGS+=" -DHAVE_LIBERTY"
-    AUSTINP_LDADD+=" -l:libiberty.a"
-    echo "enabling C++ name demangling support for austinp"
-], [
-    echo "austinp will be built without C++ names demangling support: missing libiberty"
-], [
-    -lbfd
-])
-AUSTINP_LDADD+=" -ldl"
+# austinp (native stack sampling) uses different mechanisms per platform:
+#   macOS  – Mach task APIs (no extra libraries needed)
+#   Linux  – libunwind-ptrace + optional BFD/libiberty for symbol resolution
+build_austinp=false
 
-case $target_cpu in
-    powerpc64le )
-        AUSTINP_CFLAGS+=" -Wno-error=stringop-overflow"
+case $host_os in
+    darwin*)
+        echo "native stack sampling is built into austin on macOS (use -n/--native to enable)"
+        ;;
+    *)
+        AC_CHECK_HEADER(libunwind-ptrace.h, [
+            build_austinp=true
+            AUSTINP_CFLAGS="-DAUSTINP -fPIC"
+            AUSTINP_LDADD="-l:libunwind-ptrace.a -l:liblzma.a -l:libunwind-generic.a -l:libunwind.a"
+            echo "including build of austinp"
+        ], [
+            echo "not building austinp: missing libunwind"
+        ])
+        AC_CHECK_LIB(bfd, bfd_openr, [
+            AC_DEFINE([HAVE_BFD], [1], ["Compile with BFD support"])
+            AUSTINP_CFLAGS+=" -DHAVE_BFD"
+            AUSTINP_LDADD+=" -l:libbfd.a -l:libz.a"
+            AC_CHECK_LIB(sframe, sframe_encode, [
+                AUSTINP_LDADD+=" -l:libsframe.a"
+            ])
+            AC_CHECK_LIB(zstd, ZSTD_compress, [
+                AUSTINP_LDADD+=" -l:libzstd.a"
+            ])
+            echo "enabling symbol resolution support for austinp"
+        ], [
+            echo "austinp will be built without symbol resolution support: missing libbfd"
+        ])
+        AC_CHECK_LIB(iberty, bfd_demangle, [
+            AC_DEFINE([HAVE_LIBERTY], [1], ["Compile with C++ name demangling support"])
+            AUSTINP_CFLAGS+=" -DHAVE_LIBERTY"
+            AUSTINP_LDADD+=" -l:libiberty.a"
+            echo "enabling C++ name demangling support for austinp"
+        ], [
+            echo "austinp will be built without C++ names demangling support: missing libiberty"
+        ], [
+            -lbfd
+        ])
+        AUSTINP_LDADD+=" -ldl"
+
+        case $target_cpu in
+            powerpc64le )
+                AUSTINP_CFLAGS+=" -Wno-error=stringop-overflow"
+                ;;
+        esac
         ;;
 esac
+
+AM_CONDITIONAL(BUILD_AUSTINP, [test x$build_austinp = xtrue])
 
 AC_SUBST(AUSTINP_CFLAGS, [$AUSTINP_CFLAGS])
 AC_SUBST(AUSTINP_LDADD, [$AUSTINP_LDADD])

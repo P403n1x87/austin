@@ -56,7 +56,7 @@
 
 #define MICROSECONDS_FMT "%" PRIu64
 
-#ifdef NATIVE
+#if defined(NATIVE) && defined(PL_LINUX)
 #define log_header()                                                                                         \
     {                                                                                                        \
         log_m(BOLD "              _   _      " CRESET);                                                      \

@@ -50,7 +50,10 @@ typedef HANDLE proc_ref_t;
 
 // ----------------------------------------------------------------------------
 
-#if defined(AUSTINP) && defined(PL_LINUX)
+// Native stack sampling is always compiled in on macOS (uses Mach APIs, no
+// extra dependencies).  On Linux it still requires libunwind and is therefore
+// gated on AUSTINP.  On all other platforms NATIVE is not defined.
+#if defined(PL_MACOS) || (defined(AUSTINP) && defined(PL_LINUX))
 #define NATIVE
 #endif
 

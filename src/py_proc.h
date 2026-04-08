@@ -27,8 +27,10 @@
 
 #ifdef NATIVE
 #include "cache.h"
+#ifdef PL_LINUX
 #include "linux/vm-range-tree.h"
 #include <libunwind-ptrace.h>
+#endif
 #endif
 
 #include "cache.h"
@@ -91,7 +93,7 @@ typedef struct {
     // Offset of the tstate_current field within the _PyRuntimeState structure
     unsigned int tstate_current_offset;
 
-#ifdef NATIVE
+#if defined(NATIVE) && defined(PL_LINUX)
     struct _puw {
         unw_addr_space_t as;
     } unwind;

@@ -597,4 +597,43 @@ _py_proc__init(py_proc_t* self) {
     return _py_proc__get_maps(self);
 } // _py_proc__init
 
+// ----------------------------------------------------------------------------
+#ifdef NATIVE
+static int
+_py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
+    py_thread_t py_thread = py_thread__init(self);
+
+    if (fail(py_thread__read_remote(&py_thread, tstate_head)))
+        FAIL;
+
+    do {
+        // Seize the Mach port first so that _mac_thread__is_idle_now() can use
+        // thread_info(THREAD_BASIC_INFO) instead of proc_pidinfo (faster, no
+        // _silly_offset needed).  Idle state must still be captured *before*
+        // thread_suspend, which is what py_thread__suspend() calls next.
+        if (fail(_mac_thread_seize(&py_thread)))
+            FAIL;
+
+        if (fail(py_thread__set_idle(&py_thread)))
+            FAIL;
+
+        if (fail(py_thread__suspend(&py_thread)))
+            FAIL;
+
+        if (fail(py_thread__set_interrupted(&py_thread, true))) {
+            py_thread__resume(&py_thread);
+            FAIL;
+        }
+
+        log_t("mac: thread %p suspended", (void*)py_thread.tid);
+    } while (success(py_thread__next(&py_thread)));
+
+    if (!error_is(ITEREND))
+        FAIL;
+
+    SUCCESS;
+}
+
+#endif /* NATIVE */
+
 #endif

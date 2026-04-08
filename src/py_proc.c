@@ -58,13 +58,11 @@
 // ---- PRIVATE ---------------------------------------------------------------
 
 // In native mode we have both the Python and native stacks (the kernel stack
-// is negligible). We make sure we have a cache large enough to hold the full.
-// stack.
-#ifdef NATIVE
-#define MAX_FRAME_CACHE_SIZE (MAX_STACK_SIZE << 1)
-#else
-#define MAX_FRAME_CACHE_SIZE MAX_STACK_SIZE
-#endif
+// is negligible). We make sure we have a cache large enough to hold the full
+// stack.  The size is determined at runtime so that non-native mode on macOS
+// (where NATIVE is defined but pargs_native is false) uses the smaller cache
+// and avoids unnecessary memory pressure.
+#define MAX_FRAME_CACHE_SIZE  (pargs_native ? (MAX_STACK_SIZE << 1) : MAX_STACK_SIZE)
 #define MAX_STRING_CACHE_SIZE LRU_CACHE_EXPAND
 #define MAX_CODE_CACHE_SIZE   LRU_CACHE_EXPAND
 
@@ -733,7 +731,7 @@ py_proc__init(py_proc_t* self) {
 
     self->timestamp = gettime();
 
-#ifdef NATIVE
+#if defined(NATIVE) && defined(PL_LINUX)
     self->unwind.as = unw_create_addr_space(&_UPT_accessors, 0);
 #endif
 
@@ -998,7 +996,7 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
 #ifndef NATIVE
     // On Linux we need to wait for the forked process or otherwise it will
     // become a zombie and we cannot tell with kill if it has terminated.
-    // In NATIVE mode, py_proc__wait handles this with a ptrace-stop draining
+    // In native mode, py_proc__wait handles this with a ptrace-stop draining
     // loop instead (the process may be in signal-delivery-stop and won't exit
     // until the tracer delivers the signal via ptrace(PTRACE_CONT)).
     pthread_create(&(self->extra->wait_thread_id), NULL, wait_thread, (void*)self);
@@ -1012,9 +1010,8 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
         FAIL;
     }
 
-#ifdef NATIVE
-    self->timestamp = gettime();
-#endif
+    if (pargs_native)
+        self->timestamp = gettime();
 
     if (self->pid == 0) { // GCOV_EXCL_START
         set_error(OS, "Failed to start process");
@@ -1045,12 +1042,13 @@ py_proc__wait(py_proc_t* self) {
     WaitForSingleObject(self->ref, INFINITE);
     CloseHandle(self->ref);
 #else /* UNIX */
-#ifdef NATIVE
-    // In NATIVE mode, threads are ptrace-seized. A signal sent to the process
-    // (e.g. SIGTERM) is intercepted by ptrace as a signal-delivery-stop: the
-    // signal is NOT delivered until the tracer calls ptrace(PTRACE_CONT) with
-    // the signal number. Loop here draining ptrace-stops and forwarding signals
-    // until the main process exits; otherwise the process hangs forever.
+#if defined(NATIVE) && defined(PL_LINUX)
+    // In native mode, threads are ptrace-seized. A signal sent to the
+    // process (e.g. SIGTERM) is intercepted by ptrace as a
+    // signal-delivery-stop: the signal is NOT delivered until the tracer
+    // calls ptrace(PTRACE_CONT) with the signal number. Loop here draining
+    // ptrace-stops and forwarding signals until the main process exits;
+    // otherwise the process hangs forever.
     {
         int status;
         for (;;) {
@@ -1163,7 +1161,7 @@ py_proc__get_gc_state(py_proc_t* self) {
     return V_FIELD(int, gc_state, py_gc, o_collecting);
 }
 
-#ifdef NATIVE
+#if defined(NATIVE) && defined(PL_LINUX)
 // ----------------------------------------------------------------------------
 static int
 _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
@@ -1213,7 +1211,7 @@ _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
     SUCCESS;
 }
 
-#endif
+#endif /* defined(NATIVE) && defined(PL_LINUX) */
 
 // ----------------------------------------------------------------------------
 static inline int
@@ -1397,20 +1395,22 @@ py_proc__sample(py_proc_t* self) {
             SUCCESS;
 
 #ifdef NATIVE
-        if (fail(_py_proc__interrupt_threads(self, tstate_head))) { // GCOV_EXCL_LINE
-            // Interrupt failed partway through: some threads may already be in
-            // ptrace-stop. Resume them via the interrupted bitmap to avoid leaving
-            // the target application hanging, then bail out of this sample.
-            py_thread__resume_all_interrupted(); // GCOV_EXCL_LINE
-            FAIL;                                // GCOV_EXCL_LINE
+        if (pargs_native) {
+            if (fail(_py_proc__interrupt_threads(self, tstate_head))) { // GCOV_EXCL_LINE
+                // Interrupt failed partway through: some threads may already be in
+                // ptrace-stop/thread_suspend. Resume them to avoid leaving the
+                // target application hanging, then bail out of this sample.
+                py_thread__resume_all_interrupted(); // GCOV_EXCL_LINE
+                FAIL;                                // GCOV_EXCL_LINE
+            }
+            time_delta = gettime() - self->timestamp;
         }
-
-        time_delta = gettime() - self->timestamp;
 #endif
         int result = _py_proc__sample_interpreter(self, current_interp, time_delta);
 
 #ifdef NATIVE
-        py_thread__resume_all_interrupted();
+        if (pargs_native)
+            py_thread__resume_all_interrupted();
 #endif
 
         if (fail(result))
@@ -1420,11 +1420,10 @@ py_proc__sample(py_proc_t* self) {
             FAIL;                                                                                    // GCOV_EXCL_LINE
     } while (isvalid(current_interp));
 
-#ifdef NATIVE
-    self->timestamp = gettime();
-#else
-    self->timestamp += time_delta;
-#endif
+    if (pargs_native)
+        self->timestamp = gettime();
+    else
+        self->timestamp += time_delta;
 
     SUCCESS;
 } /* py_proc__sample */
@@ -1516,7 +1515,7 @@ py_proc__destroy(py_proc_t* self) {
     if (!isvalid(self)) // GCOV_EXCL_LINE
         return;         // GCOV_EXCL_LINE
 
-#ifdef NATIVE
+#if defined(NATIVE) && defined(PL_LINUX)
     unw_destroy_addr_space(self->unwind.as);
     vm_range_tree__destroy(self->maps_tree);
     hash_table__destroy(self->base_table);

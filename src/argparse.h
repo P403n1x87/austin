@@ -51,6 +51,9 @@ typedef struct {
     seconds_t      exposure;
     bool           pipe;
     bool           gc;
+#ifdef PL_MACOS
+    bool native;
+#endif
 #ifdef NATIVE
     bool kernel;
 #endif
@@ -58,6 +61,16 @@ typedef struct {
 
 #ifndef ARGPARSE_C
 extern parsed_args_t pargs;
+#endif
+
+// On Linux, austinp always operates in native mode; the field doesn't exist so
+// we map pargs.native to a compile-time constant.
+#if defined(NATIVE) && defined(PL_LINUX)
+#define pargs_native true
+#elif defined(PL_MACOS)
+#define pargs_native pargs.native
+#else
+#define pargs_native false
 #endif
 
 #define ARG_ARGUMENT 0

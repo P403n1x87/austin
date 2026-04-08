@@ -71,21 +71,42 @@ _infer_thread_id_offset(py_thread_t* py_thread) {
 }
 
 // ----------------------------------------------------------------------------
-bool
-py_thread__is_idle(py_thread_t* self) {
-    if (unlikely(_silly_offset == 0)) {
-        _infer_thread_id_offset(self);
+// Raw idle check.  In NATIVE mode, called after the port has been seized so
+// we can use thread_info(THREAD_BASIC_INFO) directly — faster than going
+// through the proc_info layer, and avoids the _silly_offset dependency.
+// In non-NATIVE mode, falls back to proc_pidinfo (no port available yet).
+static inline bool
+_mac_thread__is_idle_now(py_thread_t* self) {
+#ifdef NATIVE
+    thread_act_t port = (thread_act_t)(uintptr_t)hash_table__get(_mac_ports, (key_dt)self->tid);
+    if (port) {
+        thread_basic_info_data_t info  = {0};
+        mach_msg_type_number_t   count = THREAD_BASIC_INFO_COUNT;
+        if (thread_info(port, THREAD_BASIC_INFO, (thread_info_t)&info, &count) == KERN_SUCCESS)
+            return info.run_state != TH_STATE_RUNNING;
     }
+    // Port not yet cached (shouldn't happen if seize runs first) — fall through.
+#endif
+    if (unlikely(_silly_offset == 0))
+        _infer_thread_id_offset(self);
 
-    // Here we could potentially be more accurate than just reporting the
-    // thread as idle, since proc_threadinfo has the pth_user_time and
-    // pth_system_time fields.
     struct proc_threadinfo ti;
-
     if (proc_pidinfo(self->proc->pid, PROC_PIDTHREADINFO, self->tid + _silly_offset, &ti, sizeof(ti)) != sizeof(ti)) {
         set_error(OS, "Cannot get thread info");
         FAIL_BOOL;
     }
-
     return ti.pth_run_state != TH_STATE_RUNNING;
+}
+
+// ----------------------------------------------------------------------------
+bool
+py_thread__is_idle(py_thread_t* self) {
+#ifdef NATIVE
+    // In NATIVE mode the thread has already been suspended by the time this is
+    // called from the sampling loop.  Return the pre-suspension state that was
+    // cached by py_thread__set_idle().
+    return isvalid(hash_table__get(_mac_idle, (key_dt)self->tid));
+#else
+    return _mac_thread__is_idle_now(self);
+#endif
 }

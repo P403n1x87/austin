@@ -106,11 +106,7 @@ do_single_process(py_proc_t* py_proc) {
                     FAIL_BREAK;
             }
 
-#ifdef NATIVE
-            stopwatch_pause(0);
-#else
-            stopwatch_pause(stopwatch_duration());
-#endif
+            stopwatch_pause(pargs_native ? 0 : stopwatch_duration());
         }
     } else {
         if (!pargs.where) {
@@ -127,11 +123,7 @@ do_single_process(py_proc_t* py_proc) {
                     FAIL_BREAK;
             }
 
-#ifdef NATIVE
-            stopwatch_pause(0);
-#else
-            stopwatch_pause(stopwatch_duration());
-#endif
+            stopwatch_pause(pargs_native ? 0 : stopwatch_duration());
             if (pargs.where)
                 break;
 
@@ -202,16 +194,10 @@ do_child_processes(py_proc_t* py_proc) {
 
     if (pargs.exposure == 0) {
         while (!py_proc_list__is_empty(list) && interrupt_signal == 0) {
-#ifndef NATIVE
-            microseconds_t start_time = gettime();
-#endif
+            microseconds_t start_time = pargs_native ? 0 : gettime();
             py_proc_list__update(list);
             py_proc_list__sample(list);
-#ifdef NATIVE
-            stopwatch_pause(0);
-#else
-            stopwatch_pause(gettime() - start_time);
-#endif
+            stopwatch_pause(pargs_native ? 0 : gettime() - start_time);
         }
     } else {
         if (!pargs.pipe && !pargs.where) {
@@ -220,16 +206,10 @@ do_child_processes(py_proc_t* py_proc) {
         }
         microseconds_t end_time = gettime() + pargs.exposure * 1000000;
         while (!py_proc_list__is_empty(list) && interrupt_signal == 0) {
-#ifndef NATIVE
-            microseconds_t start_time = gettime();
-#endif
+            microseconds_t start_time = pargs_native ? 0 : gettime();
             py_proc_list__update(list);
             py_proc_list__sample(list);
-#ifdef NATIVE
-            stopwatch_pause(0);
-#else
-            stopwatch_pause(gettime() - start_time);
-#endif
+            stopwatch_pause(pargs_native ? 0 : gettime() - start_time);
 
             if (pargs.where)
                 break;
