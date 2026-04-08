@@ -995,10 +995,15 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
 #if defined PL_LINUX
     self->ref = self->pid;
 
+#ifndef NATIVE
     // On Linux we need to wait for the forked process or otherwise it will
     // become a zombie and we cannot tell with kill if it has terminated.
+    // In NATIVE mode, py_proc__wait handles this with a ptrace-stop draining
+    // loop instead (the process may be in signal-delivery-stop and won't exit
+    // until the tracer delivers the signal via ptrace(PTRACE_CONT)).
     pthread_create(&(self->extra->wait_thread_id), NULL, wait_thread, (void*)self);
     log_d("Wait thread created with ID %x", self->extra->wait_thread_id);
+#endif
 #endif
 
     log_d("New process created with PID %d", self->pid);
@@ -1026,7 +1031,7 @@ void
 py_proc__wait(py_proc_t* self) {
     log_d("Waiting for process %d to terminate", self->pid);
 
-#if defined PL_LINUX
+#if defined PL_LINUX && !defined NATIVE
     if (self->extra->wait_thread_id) {
         pthread_join(self->extra->wait_thread_id, NULL);
     }
@@ -1041,7 +1046,33 @@ py_proc__wait(py_proc_t* self) {
     CloseHandle(self->ref);
 #else /* UNIX */
 #ifdef NATIVE
-    wait(NULL);
+    // In NATIVE mode, threads are ptrace-seized. A signal sent to the process
+    // (e.g. SIGTERM) is intercepted by ptrace as a signal-delivery-stop: the
+    // signal is NOT delivered until the tracer calls ptrace(PTRACE_CONT) with
+    // the signal number. Loop here draining ptrace-stops and forwarding signals
+    // until the main process exits; otherwise the process hangs forever.
+    {
+        int status;
+        for (;;) {
+            pid_t r = waitpid(-1, &status, __WALL);
+            if (r <= 0)
+                break; // ECHILD or error: no more traced children
+            if (WIFEXITED(status) || WIFSIGNALED(status)) {
+                if (r == (pid_t)self->pid)
+                    break; // Main process exited
+                continue;  // A thread exited; keep waiting for the main process
+            }
+            if (WIFSTOPPED(status)) {
+                // Resume the thread, forwarding any pending signal.
+                // Do not forward SIGTRAP (ptrace events) or SIGSTOP (ptrace
+                // interrupt stops) — pass 0 for those to avoid spurious signals.
+                int sig = WSTOPSIG(status);
+                if (sig == SIGTRAP || sig == SIGSTOP)
+                    sig = 0;
+                ptrace(PTRACE_CONT, r, 0, (void*)(intptr_t)sig);
+            }
+        }
+    }
 #else
     waitpid(self->pid, 0, 0);
 #endif
@@ -1154,6 +1185,18 @@ _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
         if (fail(wait_ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0))) // GCOV_EXCL_LINE
             FAIL;                                                     // GCOV_EXCL_LINE
 
+        // Consume the ptrace-stop notification so that the thread is fully
+        // stopped before libunwind tries to read its registers. Without this
+        // waitpid the thread may still be running when unw_init_remote is
+        // called, causing UNW_EBADREG failures and inconsistent stack data.
+        if (fail(wait_thread_stop(py_thread.tid))) { // GCOV_EXCL_START
+            log_d("ptrace: thread %d did not stop in time, resuming", py_thread.tid);
+            if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
+                log_d("ptrace: failed to resume thread %d (errno: %d)", py_thread.tid, errno);
+            }
+            FAIL;
+        } // GCOV_EXCL_STOP
+
         if (fail(py_thread__set_interrupted(&py_thread, true))) { // GCOV_EXCL_START
             if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
                 log_d("ptrace: failed to resume interrupted thread %d (errno: %d)", py_thread.tid, errno);
@@ -1170,32 +1213,6 @@ _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
     SUCCESS;
 }
 
-// ----------------------------------------------------------------------------
-static int
-_py_proc__resume_threads(py_proc_t* self, raddr_t tstate_head) {
-    py_thread_t py_thread = py_thread__init(self);
-
-    if (fail(py_thread__read_remote(&py_thread, tstate_head))) { // GCOV_EXCL_START
-        FAIL;
-    } // GCOV_EXCL_STOP
-
-    do {
-        if (py_thread__is_interrupted(&py_thread)) {
-            if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) // GCOV_EXCL_LINE
-                FAIL;                                                // GCOV_EXCL_LINE
-
-            log_t("ptrace: thread %d resumed", py_thread.tid);
-            if (fail(py_thread__set_interrupted(&py_thread, false))) { // GCOV_EXCL_START
-                FAIL;
-            } // GCOV_EXCL_STOP
-        }
-    } while (success(py_thread__next(&py_thread)));
-
-    if (!error_is(ITEREND)) // GCOV_EXCL_LINE
-        FAIL;               // GCOV_EXCL_LINE
-
-    SUCCESS;
-}
 #endif
 
 // ----------------------------------------------------------------------------
@@ -1380,16 +1397,20 @@ py_proc__sample(py_proc_t* self) {
             SUCCESS;
 
 #ifdef NATIVE
-        if (fail(_py_proc__interrupt_threads(self, tstate_head))) // GCOV_EXCL_LINE
-            FAIL;                                                 // GCOV_EXCL_LINE
+        if (fail(_py_proc__interrupt_threads(self, tstate_head))) { // GCOV_EXCL_LINE
+            // Interrupt failed partway through: some threads may already be in
+            // ptrace-stop. Resume them via the interrupted bitmap to avoid leaving
+            // the target application hanging, then bail out of this sample.
+            py_thread__resume_all_interrupted(); // GCOV_EXCL_LINE
+            FAIL;                                // GCOV_EXCL_LINE
+        }
 
         time_delta = gettime() - self->timestamp;
 #endif
         int result = _py_proc__sample_interpreter(self, current_interp, time_delta);
 
 #ifdef NATIVE
-        if (fail(_py_proc__resume_threads(self, tstate_head))) // GCOV_EXCL_LINE
-            FAIL;                                              // GCOV_EXCL_LINE
+        py_thread__resume_all_interrupted();
 #endif
 
         if (fail(result))

@@ -66,11 +66,13 @@ union {
 } ehdr_v;
 
 // ----------------------------------------------------------------------------
+#ifndef NATIVE
 static void*
 wait_thread(void* py_proc) {
     waitpid(((py_proc_t*)py_proc)->pid, 0, 0);
     return NULL;
 }
+#endif
 
 // ----------------------------------------------------------------------------
 static ssize_t

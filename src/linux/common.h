@@ -47,27 +47,71 @@ struct _proc_extra_info {
 
 #ifdef NATIVE
 #include <sched.h>
+#include <sys/wait.h>
 
+// General ptrace wrapper. Does NOT retry on ESRCH because that error is
+// terminal for most requests (thread doesn't exist or isn't traced).
 static inline int
 wait_ptrace(enum __ptrace_request request, pid_t pid, void* addr, void* data) {
-    int            outcome = 0;
-    microseconds_t end     = gettime() + 100000; // Wait for 100ms
+    int outcome = ptrace(request, pid, addr, data);
 
-    while (gettime() < end && (outcome = ptrace(request, pid, addr, data)) && errno == 3)
+    if (fail(outcome)) {
+        set_error(OS, "ptrace request failed");
+        FAIL;
+    }
+
+    SUCCESS;
+}
+
+// PTRACE_SEIZE wrapper that retries briefly on ESRCH. A thread that was just
+// created may be momentarily invisible to ptrace while the kernel is setting up
+// its task struct, so a short retry is warranted here (and only here).
+static inline int
+wait_ptrace_seize(pid_t pid) {
+    int            outcome = 0;
+    microseconds_t end     = gettime() + 100000; // 100ms
+
+    while (gettime() < end && (outcome = ptrace(PTRACE_SEIZE, pid, 0, 0)) && errno == ESRCH)
         sched_yield();
 
 #ifdef DEBUG
     microseconds_t wait = gettime() - end + 100000;
     if (wait > 1000)
-        log_d("ptrace long wait for request %d: " MICROSECONDS_FMT " microseconds", request, wait);
+        log_d("ptrace SEIZE long wait for pid %d: " MICROSECONDS_FMT " microseconds", pid, wait);
 #endif
 
     if (fail(outcome)) {
-        set_error(OS, "wait for ptrace request failed");
+        set_error(OS, "PTRACE_SEIZE failed");
         FAIL;
     }
 
     SUCCESS;
+}
+
+// Wait for a thread to enter ptrace-stop after PTRACE_INTERRUPT.
+// PTRACE_INTERRUPT is asynchronous: it only queues the stop request; the thread
+// enters ptrace-stop at the next safe point. The kernel delivers this as a
+// waitpid notification, which must be consumed before any ptrace register-read
+// (e.g. via libunwind _UPT_accessors) will succeed on the thread.
+static inline int
+wait_thread_stop(pid_t tid) {
+    int            status;
+    microseconds_t end = gettime() + 100000; // 100ms timeout, same as wait_ptrace
+
+    for (;;) {
+        pid_t r = waitpid(tid, &status, __WALL | WNOHANG);
+        if (r == tid) {
+            if (WIFSTOPPED(status))
+                return 0;
+            // Thread exited or was killed while we were waiting
+            return -1;
+        }
+        if (r == -1 && errno != EINTR)
+            return -1;
+        if (gettime() >= end)
+            return -1;
+        sched_yield();
+    }
 }
 
 #endif
