@@ -105,6 +105,9 @@ py_thread__set_interrupted(py_thread_t*, bool);
 int
 py_thread__is_interrupted(py_thread_t* self);
 
+void
+py_thread__resume_all_interrupted(void);
+
 int
 py_thread__save_kernel_stack(py_thread_t*);
 #endif

@@ -326,6 +326,34 @@ py_thread__is_interrupted(py_thread_t* self) {
 }
 
 // ----------------------------------------------------------------------------
+// Resume every thread whose interrupted bit is set by scanning the bitmap
+// directly rather than re-traversing the Python linked list. This correctly
+// handles threads that were removed from the list between the interrupt and
+// resume phases (e.g. a thread that exited mid-sample), which a linked-list
+// walk would silently miss, leaving those threads stuck in ptrace-stop.
+void
+py_thread__resume_all_interrupted(void) {
+    size_t bmsize = (max_pid >> 3) + 1;
+
+    for (size_t i = 0; i < bmsize; i++) {
+        if (!_tids_int[i])
+            continue;
+        for (int b = 0; b < 8; b++) {
+            unsigned char bit = (unsigned char)(1 << b);
+            if (!(_tids_int[i] & bit))
+                continue;
+            pid_t tid = (pid_t)((i << 3) | b);
+            if (ptrace(PTRACE_CONT, tid, 0, 0)) {
+                log_d("ptrace: failed to resume thread %d (errno: %d)", tid, errno);
+            } else {
+                log_t("ptrace: thread %d resumed", tid);
+            }
+            _tids_int[i] &= ~bit; // always clear so the thread isn't stuck
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
 #define MAX_STACK_FILE_SIZE 2048
 
 int
@@ -396,10 +424,7 @@ static char _native_buf[MAXLEN];
 
 static inline int
 wait_unw_init_remote(unw_cursor_t* c, unw_addr_space_t as, void* arg) {
-    int            outcome = 0;
-    microseconds_t end     = gettime() + 1000;
-    while (gettime() <= end && (outcome = unw_init_remote(c, as, arg)) == -UNW_EBADREG)
-        sched_yield();
+    int outcome = unw_init_remote(c, as, arg);
     if (fail(outcome))
         log_e("unwind: failed to initialize cursor (%d)", outcome);
     return outcome;
@@ -527,20 +552,36 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__seize(py_thread_t* self) {
-    // TODO: If a TID is reused we will never seize it!
-    if (!isvalid(_tids[self->tid])) {
-        if (fail(wait_ptrace(PTRACE_SEIZE, self->tid, 0, 0))) { // GCOV_EXCL_START
-            set_error(OS, "Failed to seize thread");
-            FAIL;
-        } else { // GCOV_EXCL_STOP
-            log_d("ptrace: thread %d seized", self->tid);
-        }
-        _tids[self->tid] = _UPT_create(self->tid);
-        if (!isvalid(_tids[self->tid])) { // GCOV_EXCL_START
-            set_error(OS, "Failed to create libunwind context");
-            FAIL;
-        } // GCOV_EXCL_STOP
+    if (isvalid(_tids[self->tid])) {
+        // A context already exists for this TID. Verify the thread is still
+        // alive to detect TID reuse: if the original thread exited and a new
+        // thread was assigned the same TID, the old libunwind context is stale
+        // and must be replaced before we can safely unwind the new thread.
+        char task_path[48];
+        sprintf(task_path, "/proc/%d/task/%" PRIuPTR, self->proc->pid, self->tid);
+        if (access(task_path, F_OK) == 0)
+            SUCCESS; // Same thread still alive; context is valid
+
+        // Thread exited — tear down the stale context and re-seize the new one.
+        log_d("ptrace: TID %" PRIuPTR " reused, releasing stale context", self->tid);
+        _UPT_destroy(_tids[self->tid]);
+        _tids[self->tid]            = NULL;
+        _tids_int[self->tid >> 3]  &= ~(1 << (self->tid & 7));
+        _tids_idle[self->tid >> 3] &= ~(1 << (self->tid & 7));
     }
+
+    if (fail(wait_ptrace_seize(self->tid))) { // GCOV_EXCL_START
+        set_error(OS, "Failed to seize thread");
+        FAIL;
+    } // GCOV_EXCL_STOP
+
+    log_d("ptrace: thread %" PRIuPTR " seized", self->tid);
+    _tids[self->tid] = _UPT_create(self->tid);
+    if (!isvalid(_tids[self->tid])) { // GCOV_EXCL_START
+        set_error(OS, "Failed to create libunwind context");
+        FAIL;
+    } // GCOV_EXCL_STOP
+
     SUCCESS;
 }
 
@@ -644,21 +685,23 @@ py_thread__unwind(py_thread_t* self) {
     bool error = false;
 
 #ifdef NATIVE
-
-    // We sample the kernel frame stack BEFORE interrupting because otherwise
-    // we would see the ptrace syscall call stack, which is not very interesting.
-    // The downside is that the kernel stack might not be in sync with the other
-    // ones.
-    if (pargs.kernel) {
-        _py_thread__unwind_kernel_frame_stack(self);
+    // Only unwind the native stack if this thread was stopped during the
+    // interrupt phase. A thread that appears in the Python linked list but
+    // was NOT interrupted (i.e. it was created after we finished interrupting)
+    // is still running — unwinding its registers would produce garbage or
+    // crash libunwind.
+    if (py_thread__is_interrupted(self)) {
+        // We sample the kernel frame stack BEFORE interrupting because
+        // otherwise we would see the ptrace syscall call stack, which is not
+        // very interesting. The downside is that the kernel stack might not be
+        // in sync with the other ones.
+        if (pargs.kernel) {
+            _py_thread__unwind_kernel_frame_stack(self);
+        }
+        if (fail(_py_thread__unwind_native_frame_stack(self))) {
+            error = true;
+        }
     }
-    if (fail(_py_thread__unwind_native_frame_stack(self))) {
-        error = true;
-    }
-
-    // Update the thread state to improve guarantees that it will be in sync with
-    // the native stack just collected
-    py_thread__read_remote(self, self->addr);
 #endif
     V_DESC(self->proc->py_v);
 
