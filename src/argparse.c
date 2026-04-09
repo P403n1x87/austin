@@ -57,6 +57,9 @@ parsed_args_t pargs = {
     /* exposure            */ 0,
     /* pipe                */ 0,
     /* gc                  */ 0,
+#ifdef PL_MACOS
+    /* native              */ 0,
+#endif
 #ifdef NATIVE
     /* kernel              */ 0,
 #endif
@@ -191,6 +194,12 @@ static arg_option options[] = {
     "memory",    'm', NULL,    0,
     "Profile memory usage."
   },
+#ifdef PL_MACOS
+  {
+    "native",    'n', NULL,    0,
+    "Collect native (C/C++) call stacks alongside Python stacks."
+  },
+#endif
   {
     "output",    'o', "FILE",  0,
     "Specify an output file for the collected samples."
@@ -635,6 +644,12 @@ cb(const int opt, const char* arg, const int index, char** argv) {
     case 'g':
         pargs.gc = true;
         break;
+
+#ifdef PL_MACOS
+    case 'n':
+        pargs.native = true;
+        break;
+#endif
 
 #ifdef NATIVE
     case 'k':

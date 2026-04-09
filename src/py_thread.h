@@ -108,8 +108,21 @@ py_thread__is_interrupted(py_thread_t* self);
 void
 py_thread__resume_all_interrupted(void);
 
+#ifdef PL_LINUX
 int
 py_thread__save_kernel_stack(py_thread_t*);
+#endif
+
+#ifdef PL_MACOS
+int
+_mac_thread_seize(py_thread_t*);
+
+int
+py_thread__suspend(py_thread_t*);
+
+int
+py_thread__resume(py_thread_t*);
+#endif
 #endif
 
 bool

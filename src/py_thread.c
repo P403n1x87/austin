@@ -46,11 +46,25 @@
 // ---- PRIVATE ---------------------------------------------------------------
 
 static size_t max_pid = 0;
-#ifdef NATIVE
-static void**         _tids      = NULL;
-static unsigned char* _tids_idle = NULL;
-static unsigned char* _tids_int  = NULL;
-static char**         _kstacks   = NULL;
+
+// Platform-specific NATIVE thread state storage.
+// These are declared here so they are visible to the platform headers below.
+#if defined(NATIVE) && defined(PL_LINUX)
+static void**         _tids      = NULL; // libunwind-ptrace contexts, indexed by kernel TID
+static unsigned char* _tids_idle = NULL; // idle-state bitmap, indexed by kernel TID
+static unsigned char* _tids_int  = NULL; // interrupted-state bitmap, indexed by kernel TID
+static char**         _kstacks   = NULL; // kernel stack strings, indexed by kernel TID
+#elif defined(NATIVE) && defined(PL_MACOS)
+static hash_table_t* _mac_ports = NULL; // pthread_t → thread_act_t (Mach thread port)
+static hash_table_t* _mac_idle  = NULL; // pthread_t → (void*)1  if thread was idle before suspend
+static hash_table_t* _mac_int   = NULL; // pthread_t → (void*)1  if thread was suspended by us
+static hash_table_t* _mac_regs  = NULL; // pthread_t → mac_thread_regs_t* (PC/FP/SP captured at suspend)
+
+typedef struct {
+    uintptr_t pc;
+    uintptr_t fp;
+    uintptr_t sp;
+} mac_thread_regs_t;
 #endif
 
 // ----------------------------------------------------------------------------
@@ -71,6 +85,10 @@ static char**         _kstacks   = NULL;
 #elif defined(PL_MACOS)
 
 #include "mac/py_thread.h"
+#ifdef NATIVE
+#include "mac/addr2line.h"
+#include "mac/common.h"
+#endif
 
 #endif
 
@@ -284,9 +302,17 @@ _py_thread__unwind_cframe_stack(py_thread_t* self) {
 }
 
 #ifdef NATIVE
+
+// ============================================================
+// Shared NATIVE helpers: idle/interrupted state management.
+// Linux uses bitmaps indexed by kernel TID (small integer).
+// macOS uses hash tables keyed by pthread_t (pointer value).
+// ============================================================
+
 // ----------------------------------------------------------------------------
 int
 py_thread__set_idle(py_thread_t* self) {
+#if defined(PL_LINUX)
     unsigned char bit   = 1 << (self->tid & 7);
     size_t        index = self->tid >> 3;
 
@@ -300,13 +326,21 @@ py_thread__set_idle(py_thread_t* self) {
     } else {
         _tids_idle[index] &= ~bit;
     }
-
+#elif defined(PL_MACOS)
+    // Query idle state now, before the thread is suspended.
+    if (_mac_thread__is_idle_now(self)) {
+        hash_table__set(_mac_idle, (key_dt)self->tid, (value_t)1);
+    } else {
+        hash_table__del(_mac_idle, (key_dt)self->tid);
+    }
+#endif
     SUCCESS;
 }
 
 // ----------------------------------------------------------------------------
 int
 py_thread__set_interrupted(py_thread_t* self, bool state) {
+#if defined(PL_LINUX)
     unsigned char bit   = 1 << (self->tid & 7);
     size_t        index = self->tid >> 3;
 
@@ -315,15 +349,32 @@ py_thread__set_interrupted(py_thread_t* self, bool state) {
     } else {
         _tids_int[index] &= ~bit;
     }
-
+#elif defined(PL_MACOS)
+    if (state) {
+        hash_table__set(_mac_int, (key_dt)self->tid, (value_t)1);
+    } else {
+        hash_table__del(_mac_int, (key_dt)self->tid);
+    }
+#endif
     SUCCESS;
 }
 
 // ----------------------------------------------------------------------------
 int
 py_thread__is_interrupted(py_thread_t* self) {
+#if defined(PL_LINUX)
     return _tids_int[self->tid >> 3] & (1 << (self->tid & 7));
+#elif defined(PL_MACOS)
+    return isvalid(hash_table__get(_mac_int, (key_dt)self->tid));
+#endif
+    return 0;
 }
+
+// ============================================================
+// Linux-only: kernel stack capture
+// ============================================================
+
+#ifdef PL_LINUX
 
 // ----------------------------------------------------------------------------
 // Resume every thread whose interrupted bit is set by scanning the bitmap
@@ -419,8 +470,18 @@ _py_thread__unwind_kernel_frame_stack(py_thread_t* self) {
     SUCCESS;
 }
 
-// ----------------------------------------------------------------------------
+#endif /* PL_LINUX */
+
+// ============================================================
+// Native stack unwinding — platform-specific implementations
+// ============================================================
+
 static char _native_buf[MAXLEN];
+
+// ----------------------------------------------------------------------------
+// Linux: remote unwinding via libunwind-ptrace
+// ----------------------------------------------------------------------------
+#if defined(PL_LINUX)
 
 static inline int
 wait_unw_init_remote(unw_cursor_t* c, unw_addr_space_t as, void* arg) {
@@ -550,6 +611,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
 } /* _py_thread__unwind_native_frame_stack */
 
 // ----------------------------------------------------------------------------
+// Linux: ptrace-based thread seize
+// ----------------------------------------------------------------------------
+
 static inline int
 _py_thread__seize(py_thread_t* self) {
     if (isvalid(_tids[self->tid])) {
@@ -584,6 +648,302 @@ _py_thread__seize(py_thread_t* self) {
 
     SUCCESS;
 }
+
+// ----------------------------------------------------------------------------
+// macOS: frame-pointer walk via Mach APIs
+// ----------------------------------------------------------------------------
+#elif defined(PL_MACOS)
+
+// Mask off pointer-authentication bits from a return address on arm64.
+// User-space VAs on Apple Silicon are at most 39 bits wide.
+#if defined(__arm64__)
+#define _MAC_STRIP_PAC(addr) ((uintptr_t)(addr) & 0x0000007fffffffffull)
+#else
+#define _MAC_STRIP_PAC(addr) ((uintptr_t)(addr))
+#endif
+
+// Find the Mach thread port for self->tid (a pthread_t value) and cache it
+// in _mac_ports.  Idempotent: does nothing if the port is already cached.
+int
+_mac_thread_seize(py_thread_t* self) {
+    if (isvalid(hash_table__get(_mac_ports, (key_dt)self->tid)))
+        SUCCESS;
+
+    // _silly_offset adjusts pthread_t to the value stored in thread_handle.
+    // It is initialised by _mac_thread__is_idle_now(), called before us in
+    // _py_proc__interrupt_threads.  Fall back to SILLY_OFFSET if not yet set.
+    if (unlikely(_silly_offset == 0))
+        _infer_thread_id_offset(self);
+
+    thread_act_t port = _mac_find_thread_port(self->proc->ref, self->tid + _silly_offset);
+    if (port == MACH_PORT_NULL) {
+        set_error(OS, "Failed to find Mach thread port");
+        FAIL;
+    }
+
+    hash_table__set(_mac_ports, (key_dt)self->tid, (value_t)(uintptr_t)port);
+    log_d("mac: seized thread %p → port %u", (void*)self->tid, port);
+    SUCCESS;
+}
+
+// Suspend the thread and capture its registers into _mac_regs.
+// Locates and caches the Mach port if not already done.
+int
+py_thread__suspend(py_thread_t* self) {
+    if (fail(_mac_thread_seize(self)))
+        FAIL;
+
+    thread_act_t port = (thread_act_t)(uintptr_t)hash_table__get(_mac_ports, (key_dt)self->tid);
+
+    // NOTE: profiling shows thread_suspend is the dominant cost in native-mode
+    // sampling (~23% of py_proc__sample).  thread_get_state works on live
+    // threads too, so we could skip the suspend/resume pair and walk the stack
+    // opportunistically at the cost of occasional torn frames.  We keep the
+    // suspend for now because native code is generally much faster than CPython
+    // and its stacks mutate more rapidly, so the window for a corrupt read is
+    // larger here than it is for pure Python sampling.
+    if (thread_suspend(port) != KERN_SUCCESS) {
+        set_error(OS, "thread_suspend failed");
+        FAIL;
+    }
+
+    // Capture PC/FP/SP while the thread is freshly suspended so that
+    // _py_thread__unwind_native_frame_stack can use them directly, avoiding
+    // a second thread_get_state Mach call per thread per sample.
+    mac_thread_regs_t* regs = (mac_thread_regs_t*)malloc(sizeof(mac_thread_regs_t));
+    if (!isvalid(regs)) {
+        thread_resume(port);
+        set_error(MALLOC, "Cannot allocate thread register cache");
+        FAIL;
+    }
+
+#if defined(__x86_64__)
+    x86_thread_state64_t   state = {0};
+    mach_msg_type_number_t count = x86_THREAD_STATE64_COUNT;
+    if (thread_get_state(port, x86_THREAD_STATE64, (thread_state_t)&state, &count) != KERN_SUCCESS) {
+        free(regs);
+        thread_resume(port);
+        set_error(OS, "thread_get_state failed during suspend");
+        FAIL;
+    }
+    regs->pc = (uintptr_t)state.__rip;
+    regs->fp = (uintptr_t)state.__rbp;
+    regs->sp = (uintptr_t)state.__rsp;
+#elif defined(__arm64__)
+    arm_thread_state64_t   state = {0};
+    mach_msg_type_number_t count = ARM_THREAD_STATE64_COUNT;
+    if (thread_get_state(port, ARM_THREAD_STATE64, (thread_state_t)&state, &count) != KERN_SUCCESS) {
+        free(regs);
+        thread_resume(port);
+        set_error(OS, "thread_get_state failed during suspend");
+        FAIL;
+    }
+    regs->pc = (uintptr_t)arm_thread_state64_get_pc(state);
+    regs->fp = (uintptr_t)arm_thread_state64_get_fp(state);
+    regs->sp = (uintptr_t)arm_thread_state64_get_sp(state);
+#endif
+
+    // Free any stale entry from a prior sample (e.g. error-path resume).
+    mac_thread_regs_t* prev = (mac_thread_regs_t*)hash_table__get(_mac_regs, (key_dt)self->tid);
+    sfree(prev);
+    hash_table__set(_mac_regs, (key_dt)self->tid, (value_t)regs);
+
+    SUCCESS;
+}
+
+// Resume the thread.  No-op if the port was never cached.
+int
+py_thread__resume(py_thread_t* self) {
+    thread_act_t port = (thread_act_t)(uintptr_t)hash_table__get(_mac_ports, (key_dt)self->tid);
+    if (!port)
+        SUCCESS;
+
+    mac_thread_regs_t* regs = (mac_thread_regs_t*)hash_table__get(_mac_regs, (key_dt)self->tid);
+    sfree(regs);
+    hash_table__del(_mac_regs, (key_dt)self->tid);
+
+    if (thread_resume(port) != KERN_SUCCESS) {
+        set_error(OS, "thread_resume failed");
+        FAIL;
+    }
+    SUCCESS;
+}
+
+// Resume all interrupted threads without walking the Python thread linked list.
+// Iterates _mac_int directly (avoids N copy_remote calls).
+// The hash_table iterator is not mutation-safe, so collect TIDs first.
+void
+py_thread__resume_all_interrupted(void) {
+    key_dt interrupted[256];
+    int    n = 0;
+    hash_table__iteritems_start(_mac_int, key_dt, _itid, void*, _sentinel) {
+        (void)_sentinel;
+        if (n < 256)
+            interrupted[n++] = _itid;
+    }
+    hash_table__iter_stop(_mac_int);
+
+    for (int i = 0; i < n; i++) {
+        key_dt       rtid = interrupted[i];
+        thread_act_t port = (thread_act_t)(uintptr_t)hash_table__get(_mac_ports, rtid);
+        if (port != MACH_PORT_NULL) {
+            if (thread_resume(port) != KERN_SUCCESS) {
+                log_d("mac: thread_resume failed for port %u", port);
+            } else {
+                log_t("mac: thread %p resumed", (void*)rtid);
+            }
+        }
+        mac_thread_regs_t* regs = (mac_thread_regs_t*)hash_table__get(_mac_regs, rtid);
+        sfree(regs);
+        hash_table__del(_mac_regs, rtid);
+        hash_table__del(_mac_int, rtid);
+    }
+}
+
+// Walk the native call stack of a suspended thread using the frame-pointer
+// chain.  Initial registers are obtained via thread_get_state(); subsequent
+// frames are read from the remote address space with mach_vm_read_overwrite().
+//
+// The filename is set to the path of the mapped binary obtained via
+// proc_regionfilename(), or "native@<pc>" when the mapping is unknown.
+// Scope (function name) is resolved via mac_get_func_name() which reads
+// the Mach-O LC_SYMTAB and performs an ASLR-adjusted binary search.
+static inline int
+_py_thread__unwind_native_frame_stack(py_thread_t* self) {
+    stack_native_reset();
+
+    // ---- Seed registers from the state captured at suspend time ----
+    // py_thread__suspend() already called thread_get_state and cached the
+    // result in _mac_regs, so we avoid a redundant Mach trap here.
+    mac_thread_regs_t* regs = (mac_thread_regs_t*)hash_table__get(_mac_regs, (key_dt)self->tid);
+    if (!isvalid(regs)) {
+        set_error(OS, "No cached register state for thread");
+        FAIL;
+    }
+    uintptr_t pc = regs->pc;
+    uintptr_t fp = regs->fp;
+    uintptr_t sp = regs->sp;
+
+    lru_cache_t* cache        = self->proc->frame_cache;
+    lru_cache_t* string_cache = self->proc->string_cache;
+
+    // ---- Prefetch one page of stack into a local buffer -------------------
+    // Replaces per-frame mach_vm_read_overwrite(16 bytes) with a single read
+    // for frames whose FP falls within the page.  Falls back to per-frame
+    // reads for deeper/split stacks.
+#define _STACK_BUF_SIZE 4096
+    uint8_t   _stack_buf[_STACK_BUF_SIZE];
+    uintptr_t _stack_buf_base = sp & ~((uintptr_t)(_STACK_BUF_SIZE - 1));
+    {
+        mach_vm_size_t _sz = 0;
+        if (mach_vm_read_overwrite(
+                self->proc->ref, (mach_vm_address_t)_stack_buf_base, _STACK_BUF_SIZE, (mach_vm_address_t)_stack_buf,
+                &_sz
+            ) != KERN_SUCCESS
+            || _sz != _STACK_BUF_SIZE) {
+            _stack_buf_base = 0; // disable buffer; use per-frame fallback
+        }
+    }
+
+    // ---- Walk frame-pointer chain ----
+    while (!stack_native_full() && pc != 0) {
+        key_dt   frame_key = (key_dt)pc;
+        frame_t* frame     = lru_cache__maybe_hit(cache, frame_key);
+
+        if (!isvalid(frame)) {
+            // Resolve filename from the mapped binary that owns this PC.
+            char region_path[MAXPATHLEN + 1] = {0};
+            int  path_len                    = -1;
+
+            key_dt           filename_key = (key_dt)pc;
+            cached_string_t* filename     = lru_cache__maybe_hit(string_cache, filename_key);
+            if (!isvalid(filename)) {
+                path_len = proc_regionfilename(self->proc->pid, pc, region_path, MAXPATHLEN);
+                if (path_len > 0) {
+                    snprintf(_native_buf, MAXLEN, "%s", region_path);
+                } else {
+                    snprintf(_native_buf, MAXLEN, "native@%" PRIxPTR, pc);
+                }
+                filename = cached_string_new(filename_key, strdup(_native_buf));
+                if (!isvalid(filename))
+                    FAIL;
+                lru_cache__store(string_cache, filename_key, (value_t)filename);
+                event_handler__emit_new_string(filename);
+            }
+
+            // Resolve scope (function name) via Mach-O symbol table.
+            key_dt           scope_key = frame_key + 1;
+            cached_string_t* scope     = lru_cache__maybe_hit(string_cache, scope_key);
+            if (!isvalid(scope)) {
+                // path_len is -1 when filename was already cached; re-resolve.
+                if (path_len < 0)
+                    path_len = proc_regionfilename(self->proc->pid, pc, region_path, MAXPATHLEN);
+                const char* fname = NULL;
+                if (path_len > 0)
+                    fname = mac_get_func_name(self->proc->ref, self->proc->pid, pc, region_path);
+                if (isvalid(fname)) {
+                    scope = cached_string_new(scope_key, strdup(fname));
+                    if (!isvalid(scope))
+                        FAIL;
+                    lru_cache__store(string_cache, scope_key, (value_t)scope);
+                    event_handler__emit_new_string(scope);
+                } else {
+                    scope = UNKNOWN_SCOPE;
+                }
+            }
+
+            frame = frame_new(frame_key, filename, scope, 0, 0, 0, 0);
+            if (!isvalid(frame))
+                FAIL;
+            lru_cache__store(cache, frame_key, (value_t)frame);
+            event_handler__emit_new_frame(frame);
+        }
+
+        stack_native_push(frame);
+
+        if (fp == 0)
+            break;
+
+        // Read the next frame record: [fp] = saved_fp, [fp+8] = return address.
+        // Serve from the prefetched stack buffer when possible; otherwise re-read
+        // a new page (covers frames in deeper stack regions or split across pages).
+        uintptr_t frame_data[2] = {0, 0};
+        if (_stack_buf_base != 0 && fp >= _stack_buf_base
+            && fp + sizeof(frame_data) <= _stack_buf_base + _STACK_BUF_SIZE) {
+            memcpy(frame_data, _stack_buf + (fp - _stack_buf_base), sizeof(frame_data));
+        } else {
+            // fp is outside the current buffer: read the page that contains fp.
+            uintptr_t      new_base = fp & ~((uintptr_t)(_STACK_BUF_SIZE - 1));
+            mach_vm_size_t _sz      = 0;
+            if (mach_vm_read_overwrite(
+                    self->proc->ref, (mach_vm_address_t)new_base, _STACK_BUF_SIZE, (mach_vm_address_t)_stack_buf, &_sz
+                ) == KERN_SUCCESS
+                && _sz == _STACK_BUF_SIZE) {
+                _stack_buf_base = new_base;
+                memcpy(frame_data, _stack_buf + (fp - _stack_buf_base), sizeof(frame_data));
+            } else {
+                // Give up on buffering; single-frame fallback.
+                _stack_buf_base          = 0;
+                mach_vm_size_t read_size = 0;
+                if (mach_vm_read_overwrite(
+                        self->proc->ref, (mach_vm_address_t)fp, sizeof(frame_data), (mach_vm_address_t)frame_data,
+                        &read_size
+                    ) != KERN_SUCCESS
+                    || read_size != sizeof(frame_data)) {
+                    break;
+                }
+            }
+        }
+
+        fp = frame_data[0];
+        pc = _MAC_STRIP_PAC(frame_data[1]);
+    }
+#undef _STACK_BUF_SIZE
+
+    SUCCESS;
+} /* _py_thread__unwind_native_frame_stack */
+
+#endif /* PL_LINUX / PL_MACOS */
 
 #endif /* NATIVE */
 
@@ -685,6 +1045,8 @@ py_thread__unwind(py_thread_t* self) {
     bool error = false;
 
 #ifdef NATIVE
+
+#ifdef PL_LINUX
     // Only unwind the native stack if this thread was stopped during the
     // interrupt phase. A thread that appears in the Python linked list but
     // was NOT interrupted (i.e. it was created after we finished interrupting)
@@ -702,7 +1064,17 @@ py_thread__unwind(py_thread_t* self) {
             error = true;
         }
     }
-#endif
+#endif /* PL_LINUX */
+
+#ifdef PL_MACOS
+    if (pargs_native && fail(_py_thread__unwind_native_frame_stack(self))) {
+        error = true;
+    }
+    // No re-read here: the thread is suspended (thread_suspend) so its
+    // state cannot change between _py_proc__interrupt_threads and now.
+#endif /* PL_MACOS */
+
+#endif /* NATIVE */
     V_DESC(self->proc->py_v);
 
     if (isvalid(self->top_frame)) {
@@ -756,7 +1128,7 @@ py_thread_allocate(void) {
 
     max_pid = pid_max() + 1;
 
-#ifdef NATIVE
+#if defined(NATIVE) && defined(PL_LINUX)
     _tids = (void**)calloc(max_pid, sizeof(void*));
     if (!isvalid(_tids)) { // GCOV_EXCL_START
         set_error(MALLOC, "Failed to allocate thread context buffer");
@@ -795,7 +1167,25 @@ failed: // GCOV_EXCL_START
     FAIL;
 
 ok:    // GCOV_EXCL_STOP
-#endif /* NATIVE */
+#endif /* defined(NATIVE) && defined(PL_LINUX) */
+
+#if defined(NATIVE) && defined(PL_MACOS)
+#define MAC_THREAD_TABLE_SIZE 256
+    _mac_ports = hash_table_new(MAC_THREAD_TABLE_SIZE);
+    _mac_idle  = hash_table_new(MAC_THREAD_TABLE_SIZE);
+    _mac_int   = hash_table_new(MAC_THREAD_TABLE_SIZE);
+    _mac_regs  = hash_table_new(MAC_THREAD_TABLE_SIZE);
+
+    if (!isvalid(_mac_ports) || !isvalid(_mac_idle) || !isvalid(_mac_int) || !isvalid(_mac_regs)) { // GCOV_EXCL_START
+        set_error(MALLOC, "Failed to allocate macOS thread state tables");
+        hash_table__destroy(_mac_ports);
+        hash_table__destroy(_mac_idle);
+        hash_table__destroy(_mac_int);
+        hash_table__destroy(_mac_regs);
+        _mac_ports = _mac_idle = _mac_int = _mac_regs = NULL;
+        FAIL;
+    } // GCOV_EXCL_STOP
+#endif /* defined(NATIVE) && defined(PL_MACOS) */
 
     SUCCESS;
 }
@@ -818,7 +1208,7 @@ py_thread_free(void) {
 
     stack_deallocate();
 
-#ifdef NATIVE
+#if defined(NATIVE) && defined(PL_LINUX)
     for (pid_t tid = 0; tid < max_pid; tid++) {
         if (isvalid(_tids[tid])) {
             _UPT_destroy(_tids[tid]);
@@ -836,5 +1226,24 @@ py_thread_free(void) {
     sfree(_tids_idle);
     sfree(_tids_int);
     sfree(_kstacks);
-#endif
+#endif /* defined(NATIVE) && defined(PL_LINUX) */
+
+#if defined(NATIVE) && defined(PL_MACOS)
+    // Release all cached Mach thread ports before destroying the table.
+    if (isvalid(_mac_ports)) {
+        hash_table__iter_start(_mac_ports, void*, raw_port) {
+            mach_port_deallocate(mach_task_self(), (thread_act_t)(uintptr_t)raw_port);
+        }
+        hash_table__iter_stop(_mac_ports);
+    }
+    hash_table__destroy(_mac_ports);
+    hash_table__destroy(_mac_idle);
+    hash_table__destroy(_mac_int);
+    if (isvalid(_mac_regs)) {
+        hash_table__iter_start(_mac_regs, mac_thread_regs_t*, regs) { free(regs); }
+        hash_table__iter_stop(_mac_regs);
+    }
+    hash_table__destroy(_mac_regs);
+    _mac_ports = _mac_idle = _mac_int = _mac_regs = NULL;
+#endif /* defined(NATIVE) && defined(PL_MACOS) */
 }

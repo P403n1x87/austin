@@ -118,10 +118,23 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
                     frame = stack_pop();
                 }
             } else {
-                mojo_frame_ref(frame);
+                if (frame != CFRAME_MAGIC) {
+                    mojo_frame_ref(frame);
+                }
             }
         } else {
             mojo_frame_ref(native_frame);
+        }
+    }
+
+    // In non-native mode the native stack is always empty so the interleaving
+    // loop above never runs.  Drain Python frames directly in that case.
+    if (!pargs_native) {
+        while (!stack_is_empty()) {
+            frame_t* frame = stack_pop();
+            if (frame != CFRAME_MAGIC) {
+                mojo_frame_ref(frame);
+            }
         }
     }
 #ifdef DEBUG
@@ -206,10 +219,7 @@ const char* WHERE_HEAD_FORMAT = "\n\n%4$s Process " BMAG "%1$d" CRESET " 🧵 Th
 static inline void
 format_frame_ref(const char* format, frame_t* frame) {
     cached_string_t* scope = frame->scope;
-    fprintfp(
-        pargs.output_file, format, frame->filename->value, scope == UNKNOWN_SCOPE ? "<unknown>" : scope->value,
-        frame->line
-    );
+    fprintfp(pargs.output_file, format, frame->filename->value, scope->value, frame->line);
 }
 
 #ifdef NATIVE
@@ -262,10 +272,23 @@ where_event_handler__handle_stack_end(base_event_handler_t* self) {
                     frame = stack_pop();
                 }
             } else {
-                format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+                if (frame != CFRAME_MAGIC) {
+                    format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+                }
             }
         } else {
             format_frame_ref(WHERE_SAMPLE_FORMAT_NATIVE, native_frame);
+        }
+    }
+
+    // In non-native mode the native stack is always empty so the interleaving
+    // loop above never runs.  Drain Python frames directly in that case.
+    if (!pargs_native) {
+        while (!stack_is_empty()) {
+            frame_t* frame = stack_pop();
+            if (frame != CFRAME_MAGIC) {
+                format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+            }
         }
     }
 #ifdef DEBUG

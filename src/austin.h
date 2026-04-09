@@ -24,7 +24,7 @@
 
 #include "platform.h"
 
-#ifdef NATIVE
+#if defined(AUSTINP) && defined(PL_LINUX)
 #define PROGRAM_NAME "austinp"
 #else
 #define PROGRAM_NAME "austin"

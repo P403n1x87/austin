@@ -38,13 +38,18 @@
 #define MAGIC_BIG                 1000003
 #define p_ascii_data(raddr, size) (raddr + size)
 
-#define UNKNOWN_SCOPE ((cached_string_t*)1)
-
 // ----------------------------------------------------------------------------
 typedef struct _string {
     key_dt key;
     char*  value;
 } cached_string_t;
+
+#if defined(NATIVE) || defined(PL_MACOS)
+static cached_string_t _unknown_scope __attribute__((unused)) = {.key = 1, .value = "<unknown>"};
+#define UNKNOWN_SCOPE (&_unknown_scope)
+#else
+#define UNKNOWN_SCOPE ((cached_string_t*)1)
+#endif
 
 static inline cached_string_t*
 cached_string_new(key_dt key, char* value) {
