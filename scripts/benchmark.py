@@ -2,10 +2,12 @@
 # Ensure dependencies from requirements-bm.txt are installed.
 
 import abc
+import json
 import re
 import sys
 import typing as t
 from argparse import ArgumentParser
+from dataclasses import dataclass
 from math import floor, log
 from pathlib import Path
 from textwrap import wrap
@@ -16,48 +18,65 @@ from scipy.stats import ttest_ind
 from test.utils import target
 
 VERSIONS = ("base", "dev")
-SCENARIOS = [
+
+
+@dataclass(frozen=True)
+class Scenario:
+    group: str
+    title: str
+    args: t.List[str]
+    variant: str = "austin"
+
+    @property
+    def group_slug(self) -> str:
+        return self.group.lower().replace(" ", "-")
+
+
+SCENARIOS: t.List[Scenario] = [
     *[
-        (
-            "austin",
-            f"Wall time [sampling interval: {i}]",
-            ["-i", str(i), sys.executable, target("target34.py")],
+        Scenario(
+            group="Wall time",
+            title=f"Wall time [sampling interval: {i}]",
+            args=["-i", str(i), sys.executable, target("target34.py")],
         )
         for i in (1, 10, 100, 1000)
     ],
     *[
-        (
-            "austin",
-            f"CPU time [sampling interval: {i}]",
-            ["-ci", str(i), sys.executable, target("target34.py")],
+        Scenario(
+            group="CPU time",
+            title=f"CPU time [sampling interval: {i}]",
+            args=["-ci", str(i), sys.executable, target("target34.py")],
         )
         for i in (1, 10, 100, 1000)
     ],
     *[
-        (
-            "austin",
-            f"RSA keygen [sampling interval: {i}]",
-            ["-ci", str(i), sys.executable, "-m", "test.bm.rsa_key_generator"],
+        Scenario(
+            group="RSA keygen",
+            title=f"RSA keygen [sampling interval: {i}]",
+            args=["-ci", str(i), sys.executable, "-m", "test.bm.rsa_key_generator"],
         )
         for i in (1, 10, 100, 1000)
     ],
     *[
-        (
-            "austin",
-            f"Full metrics [sampling interval: {i}]",
-            ["-fi", str(i), sys.executable, target("target34.py")],
+        Scenario(
+            group="Full metrics",
+            title=f"Full metrics [sampling interval: {i}]",
+            args=["-fi", str(i), sys.executable, target("target34.py")],
         )
         for i in (1, 10, 100, 1000)
     ],
     *[
-        (
-            "austin",
-            f"Multiprocess wall time [sampling interval: {i}]",
-            ["-Cfi", str(i), sys.executable, target("target_mp.py"), "16"],
+        Scenario(
+            group="Multiprocess wall time",
+            title=f"Multiprocess wall time [sampling interval: {i}]",
+            args=["-Cfi", str(i), sys.executable, target("target_mp.py"), "16"],
         )
         for i in (1, 10, 100, 1000)
     ],
 ]
+
+# Ordered unique groups, derived from SCENARIOS (preserves definition order).
+SCENARIO_GROUPS: t.List[str] = list(dict.fromkeys(s.group for s in SCENARIOS))
 
 
 # The metrics we evaluate and whether they are to be maximised or minimised.
@@ -238,10 +257,7 @@ class MarkdownRenderer(TerminalRenderer):
     def render_table(self, table: t.List[t.Tuple[str, t.List[Results]]]) -> None:
         _, row = table[0]
         cols = list(row.keys())
-        max_vh = max(len(e[0]) for e in table)
-
         col_widths = [max(max(len(r[col]), len(col)) for _, r in table) for col in cols]
-        div_len = sum(col_widths) + (len(cols) + 1) * 2 + max_vh
 
         print("|     |" + "|".join(f" {col} " for col in cols) + "|")
         print("| --- |" + "|".join(f":{'-' * len(col)}:" for col in cols) + "|")
@@ -283,34 +299,68 @@ def summarize(results: t.List[t.Tuple[str, t.List[Results]]]):
     return summary
 
 
+def results_to_json(results: t.List[t.Tuple[str, t.List[Results]]]) -> str:
+    """Serialise results to JSON."""
+    serialisable = []
+    for title, table in results:
+        rows = []
+        for version, metrics in table:
+            rows.append(
+                {
+                    "version": version,
+                    "metrics": {k: v.data for k, v in metrics.items()},
+                }
+            )
+        serialisable.append({"title": title, "table": rows})
+    return json.dumps(serialisable, indent=2)
+
+
+def results_from_json(raw: str) -> t.List[t.Tuple[str, t.List[Results]]]:
+    """Deserialise results produced by results_to_json."""
+    results = []
+    for entry in json.loads(raw):
+        table = []
+        for row in entry["table"]:
+            metrics = {k: Outcome(v) for k, v in row["metrics"].items()}
+            table.append((row["version"], metrics))
+        results.append((entry["title"], table))
+    return results
+
+
+def merge_results(
+    parts: t.List[t.List[t.Tuple[str, t.List[Results]]]]
+) -> t.List[t.Tuple[str, t.List[Results]]]:
+    """Merge partial result lists into one, preserving the SCENARIOS order."""
+    order = {s.title: i for i, s in enumerate(SCENARIOS)}
+    merged: t.Dict[str, t.List[Results]] = {}
+    for part in parts:
+        for title, table in part:
+            merged[title] = table
+    return sorted(merged.items(), key=lambda x: order.get(x[0], len(order)))
+
+
 def benchmark(opts: ArgumentParser) -> None:
     Outcome.__critical_p__ = opts.pvalue
 
-    renderer = {"terminal": TerminalRenderer, "markdown": MarkdownRenderer}[
-        opts.format
-    ]()
-
-    renderer.render_header("Austin Benchmarks")
-    renderer.render_paragraph(
-        f"Running Austin benchmarks with Python {'.'.join(str(_) for _ in sys.version_info[:3])}",
-    )
-
     results: t.List[t.Tuple[str, t.List[Results]]] = []
 
-    for variant, title, args in SCENARIOS:
-        if opts.k is not None and not opts.k.match(title):
+    for scenario in SCENARIOS:
+        if opts.k is not None and not opts.k.search(scenario.title):
             continue
 
-        print(f"Running scenario {title} with {variant} ...", file=sys.stderr)
+        print(f"Running scenario {scenario.title} ...", file=sys.stderr)
 
         table: t.List[Results] = []
         for version in VERSIONS:
             print(f"> Running with Austin {version} ...    ", end="\r", file=sys.stderr)
             try:
-                austin = download_release(version, Path("/tmp"), variant_name=variant)
+                austin = download_release(
+                    version, Path("/tmp"), variant_name=scenario.variant
+                )
             except RuntimeError:
                 print(
-                    f"WARNING: Could not download {variant} {version}", file=sys.stderr
+                    f"WARNING: Could not download {scenario.variant} {version}",
+                    file=sys.stderr,
                 )
                 continue
 
@@ -318,13 +368,14 @@ def benchmark(opts: ArgumentParser) -> None:
                 _
                 for _ in (
                     get_stats(run.metadata)
-                    for run in (austin(*args) for _ in range(opts.n))
+                    for run in (austin(*scenario.args) for _ in range(opts.n))
                 )
                 if _ is not None
             ]
             if not stats:
                 print(
-                    f"WARNING: No valid stats for {variant} {version} with args {args}",
+                    f"WARNING: No valid stats for {scenario.variant} {version} "
+                    f"with args {scenario.args}",
                     file=sys.stderr,
                 )
                 continue
@@ -338,7 +389,26 @@ def benchmark(opts: ArgumentParser) -> None:
                 )
             )
 
-        results.append((title, table))
+        results.append((scenario.title, table))
+
+    if opts.format == "json":
+        print(results_to_json(results))
+        return
+
+    render(results, opts)
+
+
+def render(
+    results: t.List[t.Tuple[str, t.List[Results]]], opts: ArgumentParser
+) -> None:
+    renderer = {"terminal": TerminalRenderer, "markdown": MarkdownRenderer}[
+        opts.format
+    ]()
+
+    renderer.render_header("Austin Benchmarks")
+    renderer.render_paragraph(
+        f"Running Austin benchmarks with Python {'.'.join(str(_) for _ in sys.version_info[:3])}",
+    )
 
     summary = summarize(results)
 
@@ -355,7 +425,7 @@ def main():
     argp.add_argument(
         "-k",
         type=re.compile,
-        help="Run benchmark scenarios that match the given regular expression",
+        help="Run benchmark scenarios matching the given regular expression",
     )
 
     argp.add_argument(
@@ -369,7 +439,7 @@ def main():
         "-f",
         "--format",
         type=str,
-        choices=["terminal", "markdown"],
+        choices=["terminal", "markdown", "json"],
         default="terminal",
         help="The output format",
     )
@@ -382,7 +452,37 @@ def main():
         help="The p-value to use when testing for statistical significance",
     )
 
+    argp.add_argument(
+        "--merge",
+        nargs="+",
+        metavar="FILE",
+        help="Merge JSON result files produced by --format json and render a report",
+    )
+
+    argp.add_argument(
+        "--list-groups",
+        action="store_true",
+        help="Print the benchmark groups as a GitHub Actions matrix JSON and exit",
+    )
+
     opts = argp.parse_args()
+
+    if opts.list_groups:
+        matrix = [
+            {"name": g.lower().replace(" ", "-"), "filter": g}
+            for g in SCENARIO_GROUPS
+        ]
+        print(json.dumps({"include": matrix}))
+        return
+
+    if opts.merge:
+        parts = [results_from_json(Path(f).read_text()) for f in opts.merge]
+        results = merge_results(parts)
+        if opts.format == "json":
+            print(results_to_json(results))
+        else:
+            render(results, opts)
+        return
 
     benchmark(opts)
 
