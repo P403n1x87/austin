@@ -9,18 +9,41 @@ on:
       - src/**
 
 jobs:
-  benchmarks:
+  setup:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.groups.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - name: Install benchmark dependencies
+        run: |
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-bm.txt
+
+      - name: Generate benchmark group matrix
+        id: groups
+        env:
+          PYTHONPATH: .
+        run: |
+          source .venv/bin/activate
+          matrix=$(python scripts/benchmark.py --list-groups)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
     runs-on: ubuntu-24.04
     steps:
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
-
-      - name: Install Python 3.13
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.13"
 
       - uses: actions/checkout@v3
         with:
@@ -47,6 +70,46 @@ jobs:
           make
           cd -
 
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          cp austin-base/src/austin dist/austin-base
+          cp austin/src/austin       dist/austin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: austin-binaries
+          path: dist/
+          retention-days: 1
+
+  benchmark:
+    needs: [setup, build]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: austin-binaries
+          path: dist/
+
+      - name: Install binaries
+        run: |
+          chmod +x dist/austin dist/austin-base
+          cp dist/austin      austin/src/austin
+          cp dist/austin-base austin/src/austin-base
+
       - name: Install runtime dependencies
         run: |
           python3.13 -m venv .venv
@@ -56,22 +119,71 @@ jobs:
           pip install -r scripts/requirements-bm.txt
           cd -
 
-      - name: Run benchmarks
+      - name: Run benchmark group
         shell: bash
         env:
-          PYTHONPATH: "."
+          PYTHONPATH: austin
         run: |
           set -eo pipefail
           ulimit -c unlimited
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           source .venv/bin/activate
-          mv ${{ github.workspace}}/austin-base/src/austin ${{ github.workspace}}/austin/src/austin-base
           cd austin
-          python scripts/benchmark.py --format markdown | tee ${{ github.workspace}}/comment.txt
+          python scripts/benchmark.py \
+            -k "${{ matrix.filter }}" \
+            --format json \
+            > ../results-${{ matrix.name }}.json
+          cd -
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-${{ matrix.name }}
+          path: results-${{ matrix.name }}.json
+          retention-days: 1
+
+  report:
+    needs: benchmark
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bench-results-*
+          path: results/
+          merge-multiple: true
+
+      - name: Install runtime dependencies
+        run: |
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          cd austin
+          pip install -r scripts/requirements-bm.txt
+          cd -
+
+      - name: Merge results and render report
+        shell: bash
+        env:
+          PYTHONPATH: austin
+        run: |
+          source .venv/bin/activate
+          cd austin
+          python scripts/benchmark.py \
+            --merge ../results/*.json \
+            --format markdown \
+            > ${{ github.workspace }}/comment.txt
           cd -
 
       - name: Post results on PR
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: benchmarks
-          path: ${{ github.workspace}}/comment.txt
+          path: ${{ github.workspace }}/comment.txt
