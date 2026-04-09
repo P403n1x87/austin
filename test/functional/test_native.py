@@ -21,7 +21,6 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import platform
-from pathlib import Path
 from test.utils import allpythons
 from test.utils import austin
 from test.utils import has_frame
@@ -33,7 +32,6 @@ from test.utils import target
 from time import sleep
 
 import pytest
-
 
 pytestmark = pytest.mark.skipif(
     platform.system() != "Darwin",
@@ -69,9 +67,9 @@ def test_native_wall_time_darwin(py):
         result.samples, filename="target34.py", function="keep_cpu_busy", line=32
     )
 
-    assert has_native_frame(result.samples, function="Py_RunMain"), (
-        "Expected Py_RunMain native frame from the Python runtime"
-    )
+    assert has_native_frame(
+        result.samples, function="Py_RunMain"
+    ), "Expected Py_RunMain native frame from the Python runtime"
 
     meta = result.metadata
     assert meta["mode"] == "wall"
@@ -101,9 +99,9 @@ def test_native_interleaved_darwin(py):
             found_interleaved = True
             break
 
-    assert found_interleaved, (
-        "Expected at least one sample with both Python and native frames interleaved"
-    )
+    assert (
+        found_interleaved
+    ), "Expected at least one sample with both Python and native frames interleaved"
 
 
 @requires_sudo
@@ -115,9 +113,9 @@ def test_native_attach_darwin(py):
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_frame(result.samples, filename="sleepy.py", function="<module>")
-    assert has_native_frame(result.samples, function="Py_RunMain"), (
-        "Expected Py_RunMain native frame from the Python runtime in attach mode"
-    )
+    assert has_native_frame(
+        result.samples, function="Py_RunMain"
+    ), "Expected Py_RunMain native frame from the Python runtime in attach mode"
 
     meta = result.metadata
     assert meta["mode"] == "wall"
@@ -133,6 +131,6 @@ def test_native_where_darwin(py):
 
     assert "sleepy.py" in result.stdout, result.stdout
     assert "<module>" in result.stdout, result.stdout
-    assert "Py_RunMain" in result.stdout, (
-        "Expected Py_RunMain native frame in where output"
-    )
+    assert (
+        "Py_RunMain" in result.stdout
+    ), "Expected Py_RunMain native frame in where output"
