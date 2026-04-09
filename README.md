@@ -290,34 +290,34 @@ print(check_output(["src/austin", "--help"]).decode().strip())
 print("~~~")
 ]]] -->
 ~~~
-Usage: austin [OPTION...] command [ARG...]
+Usage: austin [-CcfgmP?V] [-x n_sec] [-i n_us] [-o FILE] [-p PID] [-t n_ms]
+               [-w PID] command [ARG...]
+
 Austin is a frame stack sampler for CPython that is used to extract profiling
 data out of a running Python process (and all its children, if required) that
 requires no instrumentation and has practically no impact on the tracee.
 
-  -c, --cpu                  Sample on-CPU stacks only.
-  -C, --children             Attach to child processes.
-  -f, --full                 Produce the full set of metrics (time +mem -mem).
-  -g, --gc                   Sample the garbage collector state.
-  -i, --interval=n_us        Sampling interval in microseconds (default is
-                             100). Accepted units: s, ms, us.
-  -m, --memory               Profile memory usage.
-  -o, --output=FILE          Specify an output file for the collected samples.
-  -p, --pid=PID              Attach to the process with the given PID.
-  -P, --pipe                 Pipe mode. Use when piping Austin output.
-  -t, --timeout=n_ms         Start up wait time in milliseconds (default is
-                             3000). Accepted units: s, ms.
-  -w, --where=PID            Dump the stacks of all the threads within the
-                             process with the given PID.
-  -x, --exposure=n_sec       Sample for n_sec seconds only.
-  -?, --help                 Give this help list
-      --usage                Give a short usage message
-  -V, --version              Print program version
+Options:
+  -C, --children              Attach to child processes.
+  -c, --cpu                   Sample on-CPU stacks only.
+  -x, --exposure <n_sec>      Sample for n_sec seconds only.
+  -f, --full                  Produce the full set of metrics (time +mem -mem).
+  -g, --gc                    Sample the garbage collector state.
+  -i, --interval <n_us>       Sampling interval in microseconds (default is
+                              100). Accepted units: s, ms, us.
+  -m, --memory                Profile memory usage.
+  -o, --output <FILE>         Specify an output file for the collected samples.
+  -p, --pid <PID>             Attach to the process with the given PID.
+  -P, --pipe                  Pipe mode. Use when piping Austin output.
+  -t, --timeout <n_ms>        Start up wait time in milliseconds (default is
+                              3000). Accepted units: s, ms.
+  -w, --where <PID>           Dump the stacks of all the threads within the
+                              process with the given PID.
+  -?, --help                  Give this help list.
+      --usage                 Give a short usage message.
+  -V, --version               Print program version.
 
-Mandatory or optional arguments to long options are also mandatory or optional
-for any corresponding short options.
-
-Report bugs to <https://github.com/P403n1x87/austin/issues>.
+Report bugs at https://github.com/P403n1x87/austin/issues
 ~~~
 <!-- [[[end]]] -->
 

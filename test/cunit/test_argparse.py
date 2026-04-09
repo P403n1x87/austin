@@ -1,5 +1,4 @@
 from ctypes import c_char_p
-import sys
 
 import pytest
 
@@ -15,7 +14,7 @@ def test_parse_args_command():
     parse_args(["austin", "python"])
 
 
-@pytest.mark.exitcode(64 if sys.platform == "linux" else 1)
+@pytest.mark.exitcode(64)
 def test_parse_args_no_target():
     parse_args(["austin", "-1", "100"])
 
@@ -64,7 +63,7 @@ def test_parse_args_invalid_interval_unit_microseconds():
     parse_args(["austin", "-i", "123usm", "-p", "123"])
 
 
-@pytest.mark.exitcode(64 if sys.platform == "linux" else 1)
+@pytest.mark.exitcode(64)
 def test_parse_args_invalid_exposure():
     parse_args(["austin", "-x", "-1", "-p", "123"])
 

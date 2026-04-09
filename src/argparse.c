@@ -30,22 +30,16 @@
 #endif
 
 #include <limits.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "argparse.h"
 #include "austin.h"
 #include "hints.h"
 #include "platform.h"
 
-#if defined PL_LINUX && !defined __MUSL__
-#define GNU_ARGP
-#endif
-
-#ifdef NATIVE
-#define DEFAULT_SAMPLING_INTERVAL 10000 // reduces impact on tracee
-#else
 #define DEFAULT_SAMPLING_INTERVAL 100
-#endif
-#define DEFAULT_INIT_TIMEOUT_MS 3000 // 3 second
+#define DEFAULT_INIT_TIMEOUT_MS   3000 // 3 second
 
 // Globals for command line arguments
 parsed_args_t pargs = {
@@ -149,207 +143,277 @@ parse_timeout(char* str, long* num) {
     SUCCESS;
 }
 
-// ---- GNU C -----------------------------------------------------------------
-
-#ifdef GNU_ARGP /* LINUX */
-
-#include <argp.h>
-
-const char* argp_program_version = PROGRAM_NAME " " VERSION;
-
-const char* argp_program_bug_address = "<https://github.com/P403n1x87/austin/issues>";
-
-static const char* doc = "Austin is a frame stack sampler for CPython that is used to extract profiling "
-                         "data out of a running Python process (and all its children, if required) "
-                         "that requires no instrumentation and has practically no impact on the tracee.";
-
-#else
+// ---- Argument parser -------------------------------------------------------
 
 #define ARG_USAGE -1
 
-typedef struct argp_option {
+typedef struct {
     const char* long_name;
     int         opt;
     const char* has_arg;
-    int         _flag; /* Unused */
-    const char* _doc;  /* Unused */
+    int         flags; // reserved
+    const char* doc;
 } arg_option;
 
-#endif
-
 // clang-format off
-static struct argp_option options[] = {
+static arg_option options[] = {
   {
-    "interval",     'i', "n_us",        0,
-    "Sampling interval in microseconds (default is 100). Accepted units: s, ms, us."
-  },
-  {
-    "timeout",      't', "n_ms",        0,
-    "Start up wait time in milliseconds (default is 3000). Accepted units: s, ms."
-  },
-  {
-    "cpu",          'c', NULL,          0,
-    "Sample on-CPU stacks only."
-  },
-  {
-    "memory",       'm', NULL,          0,
-    "Profile memory usage."
-  },
-  {
-    "full",         'f', NULL,          0,
-    "Produce the full set of metrics (time +mem -mem)."
-  },
-  {
-    "pid",          'p', "PID",         0,
-    "Attach to the process with the given PID."
-  },
-  {
-    "where",        'w', "PID",         0,
-    "Dump the stacks of all the threads within the process with the given PID."
-  },
-  {
-    "output",       'o', "FILE",        0,
-    "Specify an output file for the collected samples."
-  },
-  {
-    "children",     'C', NULL,          0,
+    "children",  'C', NULL,    0,
     "Attach to child processes."
   },
   {
-    "exposure",     'x', "n_sec",       0,
+    "cpu",       'c', NULL,    0,
+    "Sample on-CPU stacks only."
+  },
+  {
+    "exposure",  'x', "n_sec", 0,
     "Sample for n_sec seconds only."
   },
   {
-    "pipe",         'P', NULL,          0,
+    "full",      'f', NULL,    0,
+    "Produce the full set of metrics (time +mem -mem)."
+  },
+  {
+    "gc",        'g', NULL,    0,
+    "Sample the garbage collector state."
+  },
+  {
+    "interval",  'i', "n_us",  0,
+    "Sampling interval in microseconds (default is 100). Accepted units: s, ms, us."
+  },
+#ifdef NATIVE
+  {
+    "kernel",    'k', NULL,    0,
+    "Sample the kernel call stack."
+  },
+#endif
+  {
+    "memory",    'm', NULL,    0,
+    "Profile memory usage."
+  },
+  {
+    "output",    'o', "FILE",  0,
+    "Specify an output file for the collected samples."
+  },
+  {
+    "pid",       'p', "PID",   0,
+    "Attach to the process with the given PID."
+  },
+  {
+    "pipe",      'P', NULL,    0,
     "Pipe mode. Use when piping Austin output."
   },
   {
-    "gc",           'g', NULL,          0,
-    "Sample the garbage collector state."
-  },
-
-  #ifdef NATIVE
-  {
-    "kernel",       'k', NULL,          0,
-    "Sample the kernel call stack."
-  },
-  #endif
-  #ifndef GNU_ARGP
-  {
-    "help",         '?', NULL
+    "timeout",   't', "n_ms",  0,
+    "Start up wait time in milliseconds (default is 3000). Accepted units: s, ms."
   },
   {
-    "usage",        ARG_USAGE, NULL
+    "where",     'w', "PID",   0,
+    "Dump the stacks of all the threads within the process with the given PID."
   },
   {
-    "version",      'V', NULL
+    "help",      '?', NULL,    0,
+    "Give this help list."
   },
-  #endif
-  {0, 0, 0}
+  {
+    "usage",  ARG_USAGE, NULL, 0,
+    "Give a short usage message."
+  },
+  {
+    "version",   'V', NULL,    0,
+    "Print program version."
+  },
+  {0}
 };
 // clang-format on
 
-#ifdef GNU_ARGP
+// ---- Help formatter --------------------------------------------------------
 
-// ----------------------------------------------------------------------------
-static int
-parse_opt(int key, char* arg, struct argp_state* state) {
-    if (state->argc == 1) {
-        state->name = PROGRAM_NAME; // TODO: Check if there are better ways.
-        argp_state_help(state, stdout, ARGP_HELP_USAGE);
-        exit(0);
-    }
-
-    // Consume all the remaining arguments if the next one is not an option so
-    // that they can be passed to the command to execute
-    if ((state->next == 0 && state->argv[1][0] != '-')
-        || (state->next > 0 && state->next < state->argc && state->argv[state->next][0] != '-')) {
-        pargs.cmd   = &state->argv[state->next == 0 ? 1 : state->next];
-        state->next = state->argc;
-    }
-
-    long l_pid;
-    switch (key) {
-    case 'i':
-        if (fail(parse_interval(arg, (long*)&(pargs.t_sampling_interval))) || pargs.t_sampling_interval > LONG_MAX)
-            argp_error(state, "the sampling interval must be a positive integer");
-        break;
-
-    case 't':
-        if (fail(parse_timeout(arg, (long*)&(pargs.timeout))) || pargs.timeout > LONG_MAX / 1000)
-            argp_error(state, "timeout must be a positive integer");
-        pargs.timeout *= 1000;
-        break;
-
-    case 'c':
-        pargs.cpu = true;
-        break;
-
-    case 'm':
-        pargs.memory = true;
-        break;
-
-    case 'f':
-        pargs.full = true;
-        break;
-
-    case 'p':
-        if (str_to_num(arg, &l_pid) == 1 || l_pid <= 0)
-            argp_error(state, "invalid PID");
-        pargs.attach_pid = (pid_t)l_pid;
-        break;
-
-    case 'o':
-        pargs.output_filename = arg;
-        break;
-
-    case 'C':
-        pargs.children = true;
-        break;
-
-    case 'x':
-        if (str_to_num(arg, (long*)&(pargs.exposure)) == 1 || pargs.exposure > LONG_MAX)
-            argp_error(state, "the exposure must be a positive integer");
-        break;
-
-    case 'P':
-        pargs.pipe = true;
-        break;
-
-    case 'g':
-        pargs.gc = true;
-        break;
-
-    case 'w':
-        if (str_to_num(arg, &l_pid) == 1 || l_pid <= 0)
-            argp_error(state, "invalid PID");
-        pargs.attach_pid = (pid_t)l_pid;
-        pargs.where      = true;
-
-        break;
-
-#ifdef NATIVE
-    case 'k':
-        pargs.kernel = true;
-        break;
+#ifdef PL_WIN
+#include <io.h>
+#define _isatty(fd) _isatty(fd)
+#else
+#include <unistd.h>
+#define _isatty(fd) isatty(fd)
 #endif
 
-    case ARGP_KEY_ARG:
-    case ARGP_KEY_END:
-        if (pargs.attach_pid != 0 && isvalid(pargs.cmd))
-            argp_error(state, "the -p option is incompatible with the command argument");
-        break;
+#include "ansi.h"
 
-    default:
-        return ARGP_ERR_UNKNOWN;
-    }
+// Column at which option doc strings start.
+#define OPT_COL    30
+// Maximum line width before wrapping.
+#define LINE_WIDTH 80
 
-    return 0;
+static const char* _prog_doc = "Austin is a frame stack sampler for CPython that is used to extract "
+                               "profiling data out of a running Python process (and all its children, "
+                               "if required) that requires no instrumentation and has practically no "
+                               "impact on the tracee.";
+
+// Returns true if color output is appropriate: stdout is a TTY, TERM is not
+// "dumb", and the NO_COLOR environment variable is not set.
+static int
+_use_color(void) {
+    if (!_isatty(STDOUT_FILENO))
+        return 0;
+    char* term = getenv("TERM");
+    if (term && strcmp(term, "dumb") == 0)
+        return 0;
+    if (getenv("NO_COLOR"))
+        return 0;
+    return 1;
 }
 
-#else /* !LINUX */
-#include <stdio.h>
-#include <string.h>
+// Emit a color escape only when appropriate. Cached on first call.
+#define C(code) (_color ? (code) : "")
+
+// Print plain text with word-wrapping. col is the current cursor column;
+// indent is the column to resume on after each line break.
+static void
+_print_text(const char* text, int col, int indent) {
+    const char* p = text;
+
+    while (*p) {
+        while (*p == ' ')
+            p++;
+        if (!*p)
+            break;
+
+        const char* word = p;
+        while (*p && *p != ' ')
+            p++;
+        int wlen = (int)(p - word);
+
+        if (col > indent && col + 1 + wlen > LINE_WIDTH) {
+            putchar('\n');
+            for (int i = 0; i < indent; i++)
+                putchar(' ');
+            col = indent;
+        } else if (col > indent) {
+            putchar(' ');
+            col++;
+        }
+
+        fwrite(word, 1, wlen, stdout);
+        col += wlen;
+    }
+
+    putchar('\n');
+}
+
+static void
+print_usage(void) {
+    int         _color     = _use_color();
+    // Build a compact synopsis: flag-only options grouped as [-abc],
+    // then options with arguments as [-x ARG], then the positional.
+    const char* prefix     = "Usage: ";
+    int         prefix_len = (int)(strlen(prefix) + strlen(PROGRAM_NAME) + 1);
+    int         indent     = prefix_len;
+    int         col        = indent;
+
+    printf("%s%s%s%s", C(BOLD), prefix, PROGRAM_NAME, C(CRESET));
+
+    // Flags: short options without arguments
+    char flags[64];
+    int  nflags = 0;
+    for (int i = 0; options[i].opt != 0; i++) {
+        if (options[i].opt > 0 && options[i].has_arg == NULL)
+            flags[nflags++] = (char)options[i].opt;
+    }
+    if (nflags > 0) {
+        flags[nflags] = '\0';
+        char token[72];
+        sprintf(token, " [-%s]", flags);
+        int tlen = (int)strlen(token);
+        if (col + tlen > LINE_WIDTH) {
+            printf("\n%*s", indent, "");
+            col = indent;
+        }
+        printf("%s%s%s", C(HBLK), token, C(CRESET));
+        col += tlen;
+    }
+
+    // Options with arguments
+    for (int i = 0; options[i].opt != 0; i++) {
+        if (options[i].has_arg == NULL)
+            continue;
+        char plain[64];
+        if (options[i].opt > 0)
+            sprintf(plain, " [-%c %s]", (char)options[i].opt, options[i].has_arg);
+        else
+            sprintf(plain, " [--%s=%s]", options[i].long_name, options[i].has_arg);
+        int tlen = (int)strlen(plain);
+        if (col + tlen > LINE_WIDTH) {
+            printf("\n%*s", indent, "");
+            col = indent;
+        }
+        printf("%s%s%s", C(HBLK), plain, C(CRESET));
+        col += tlen;
+    }
+
+    // Positional
+    const char* positional = " command [ARG...]";
+    if (col + (int)strlen(positional) > LINE_WIDTH)
+        printf("\n%*s", indent, "");
+    printf("%s%s%s\n", C(HBLK), positional, C(CRESET));
+}
+
+static void
+print_help(void) {
+    int _color = _use_color();
+    print_usage();
+    putchar('\n');
+    _print_text(_prog_doc, 0, 0);
+
+    // Options section
+    printf("\n%sOptions:%s\n", C(BYEL), C(CRESET));
+
+    for (int i = 0; options[i].opt != 0; i++) {
+        arg_option* o   = &options[i];
+        int         col = 0;
+
+        fputs("  ", stdout);
+        col += 2;
+
+        // Short option
+        if (o->opt > 0) {
+            printf("%s-%c%s, ", C(BCYN), (char)o->opt, C(CRESET));
+            col += 4;
+        } else {
+            fputs("    ", stdout);
+            col += 4;
+        }
+
+        // Long option
+        printf("%s--%s%s", C(BCYN), o->long_name, C(CRESET));
+        col += 2 + (int)strlen(o->long_name);
+
+        // Metavar
+        if (o->has_arg) {
+            printf("%s <%s>%s", C(HBLK), o->has_arg, C(CRESET));
+            col += 3 + (int)strlen(o->has_arg);
+        }
+
+        // Doc string
+        if (o->doc) {
+            if (col >= OPT_COL) {
+                putchar('\n');
+                for (int j = 0; j < OPT_COL; j++)
+                    putchar(' ');
+            } else {
+                for (int j = col; j < OPT_COL; j++)
+                    putchar(' ');
+            }
+            _print_text(o->doc, OPT_COL, OPT_COL);
+        } else {
+            putchar('\n');
+        }
+    }
+
+    putchar('\n');
+    printf("%sReport bugs at%s https://github.com/P403n1x87/austin/issues\n", C(HBLK), C(CRESET));
+}
+
+// ---- Parser ----------------------------------------------------------------
 
 // Argument callback. Called on every argument parser event.
 //
@@ -358,23 +422,22 @@ parse_opt(int key, char* arg, struct argp_state* state) {
 // or NULL, when the first argument is not null, or the value of the non-option
 // argument.
 //
-// Return 0 to continue parsing the arguments, or otherwise to stop.
+// Return 0 to continue parsing, or otherwise to stop.
 typedef int (*arg_callback)(const int opt, const char* arg, const int index, char** argv);
 
 // ----------------------------------------------------------------------------
 static arg_option*
 _find_long_opt(arg_option* opts, const char* opt_name) {
-    arg_option* retval = NULL;
+    arg_option*  retval = NULL;
+    register int i      = 0;
 
-    register int i = 0;
     while (retval == NULL && opts[i].opt != 0) {
         if (opts[i].long_name != NULL) {
             char* equal = strchr(opt_name, '=');
             if (equal)
                 *equal = 0;
-            if (strcmp(opt_name, opts[i].long_name) == 0) {
+            if (strcmp(opt_name, opts[i].long_name) == 0)
                 retval = &opts[i];
-            }
             if (equal)
                 *equal = '=';
         }
@@ -462,94 +525,34 @@ _handle_opts(arg_option* opts, arg_callback cb, int* argi, int argc, char** argv
     return 0;
 }
 
-// clang-format off
-static const char* help_msg =
-/*[[[cog
-from subprocess import check_output
-for line in check_output(["src/austin", "--help"]).decode().strip().splitlines():
-    print(f'"{line}\\n"')
-print(";")
-]]]*/
-"Usage: austin [OPTION...] command [ARG...]\n"
-"Austin is a frame stack sampler for CPython that is used to extract profiling\n"
-"data out of a running Python process (and all its children, if required) that\n"
-"requires no instrumentation and has practically no impact on the tracee.\n"
-"\n"
-"  -c, --cpu                  Sample on-CPU stacks only.\n"
-"  -C, --children             Attach to child processes.\n"
-"  -f, --full                 Produce the full set of metrics (time +mem -mem).\n"
-"  -g, --gc                   Sample the garbage collector state.\n"
-"  -i, --interval=n_us        Sampling interval in microseconds (default is\n"
-"                             100). Accepted units: s, ms, us.\n"
-"  -m, --memory               Profile memory usage.\n"
-"  -o, --output=FILE          Specify an output file for the collected samples.\n"
-"  -p, --pid=PID              Attach to the process with the given PID.\n"
-"  -P, --pipe                 Pipe mode. Use when piping Austin output.\n"
-"  -t, --timeout=n_ms         Start up wait time in milliseconds (default is\n"
-"                             3000). Accepted units: s, ms.\n"
-"  -w, --where=PID            Dump the stacks of all the threads within the\n"
-"                             process with the given PID.\n"
-"  -x, --exposure=n_sec       Sample for n_sec seconds only.\n"
-"  -?, --help                 Give this help list\n"
-"      --usage                Give a short usage message\n"
-"  -V, --version              Print program version\n"
-"\n"
-"Mandatory or optional arguments to long options are also mandatory or optional\n"
-"for any corresponding short options.\n"
-"\n"
-"Report bugs to <https://github.com/P403n1x87/austin/issues>.\n"
-;
-/*[[[end]]]*/
-
-static const char* usage_msg = 
-/*[[[cog
-from subprocess import check_output
-for line in check_output(["src/austin", "--usage"]).decode().strip().splitlines():
-    print(f'"{line}\\n"')
-print(";")
-]]]*/
-"Usage: austin [-cCfgmP?V] [-i n_us] [-o FILE] [-p PID] [-t n_ms] [-w PID]\n"
-"            [-x n_sec] [--cpu] [--children] [--full] [--gc] [--interval=n_us]\n"
-"            [--memory] [--output=FILE] [--pid=PID] [--pipe] [--timeout=n_ms]\n"
-"            [--where=PID] [--exposure=n_sec] [--help] [--usage] [--version]\n"
-"            command [ARG...]\n"
-;
-/*[[[end]]]*/
-// clang-format on
-
+// ----------------------------------------------------------------------------
 static void
 arg_error(const char* message) {
     fputs(PROGRAM_NAME ": ", stderr);
     fputs(message, stderr);
     fputc('\n', stderr);
-    fputs("Try `austin --help' or `austin --usage' for more information.\n", stderr);
+    fputs("Try `" PROGRAM_NAME " --help' or `" PROGRAM_NAME " --usage' for more information.\n", stderr);
     exit(ARG_ERR_EXIT_STATUS);
 }
 
 // ----------------------------------------------------------------------------
-// Return 0 if all the arguments have been parsed. If interrupted, returns the
-// number of arguments consumed so far. Otherwise return an error code.
 static void
 arg_parse(arg_option* opts, arg_callback cb, int argc, char** argv) {
     int a      = 1;
     int cb_res = 0;
 
     if (argc <= 1) {
-        puts(usage_msg);
+        print_usage();
         exit(0);
     }
 
     while (a < argc) {
         if (argv[a][0] == '-') {
-            if (argv[a][1] == '-') {
-                // Long option
+            if (argv[a][1] == '-')
                 cb_res = _handle_long_opt(opts, cb, &a, argc, argv);
-            } else {
-                // Simple option
+            else
                 cb_res = _handle_opts(opts, cb, &a, argc, argv);
-            }
         } else {
-            // Argument
             cb_res = cb(ARG_ARGUMENT, argv[a], a, argv);
             a++;
         }
@@ -558,12 +561,19 @@ arg_parse(arg_option* opts, arg_callback cb, int argc, char** argv) {
             return;
 
         if (cb_res != ARG_CONTINUE_PARSING) {
-            puts(usage_msg);
-            exit(1);
+            switch (cb_res) {
+            case ARG_MISSING_OPT_ARG:
+                arg_error("option requires an argument");
+            case ARG_UNRECOGNISED_OPT:
+            case ARG_UNRECOGNISED_LONG_OPT:
+                arg_error("unrecognised option");
+            case ARG_UNEXPECTED_OPT_ARG:
+                arg_error("option takes no argument");
+            default:
+                arg_error("invalid argument");
+            }
         }
     }
-
-    return;
 }
 
 // ----------------------------------------------------------------------------
@@ -572,15 +582,13 @@ cb(const int opt, const char* arg, const int index, char** argv) {
     switch (opt) {
     case 'i':
         if (fail(parse_interval((char*)arg, (long*)&(pargs.t_sampling_interval)))
-            || pargs.t_sampling_interval > LONG_MAX) {
+            || pargs.t_sampling_interval > LONG_MAX)
             arg_error("the sampling interval must be a positive integer");
-        }
         break;
 
     case 't':
-        if (fail(parse_timeout((char*)arg, (long*)&(pargs.timeout))) || pargs.timeout > LONG_MAX / 1000) {
+        if (fail(parse_timeout((char*)arg, (long*)&(pargs.timeout))) || pargs.timeout > LONG_MAX / 1000)
             arg_error("the timeout must be a positive integer");
-        }
         pargs.timeout *= 1000;
         break;
 
@@ -597,17 +605,14 @@ cb(const int opt, const char* arg, const int index, char** argv) {
         break;
 
     case 'p':
-        if (str_to_num((char*)arg, (long*)&pargs.attach_pid) == 1 || pargs.attach_pid <= 0) {
+        if (str_to_num((char*)arg, (long*)&pargs.attach_pid) == 1 || pargs.attach_pid <= 0)
             arg_error("invalid PID");
-        }
         break;
 
     case 'w':
-        if (str_to_num((char*)arg, (long*)&pargs.attach_pid) == 1 || pargs.attach_pid <= 0) {
+        if (str_to_num((char*)arg, (long*)&pargs.attach_pid) == 1 || pargs.attach_pid <= 0)
             arg_error("invalid PID");
-        }
         pargs.where = true;
-
         break;
 
     case 'o':
@@ -619,9 +624,8 @@ cb(const int opt, const char* arg, const int index, char** argv) {
         break;
 
     case 'x':
-        if (str_to_num((char*)arg, (long*)&(pargs.exposure)) == 1 || pargs.exposure > LONG_MAX) {
+        if (str_to_num((char*)arg, (long*)&(pargs.exposure)) == 1 || pargs.exposure > LONG_MAX)
             arg_error("the exposure must be a positive integer");
-        }
         break;
 
     case 'P':
@@ -632,8 +636,14 @@ cb(const int opt, const char* arg, const int index, char** argv) {
         pargs.gc = true;
         break;
 
+#ifdef NATIVE
+    case 'k':
+        pargs.kernel = true;
+        break;
+#endif
+
     case '?':
-        puts(help_msg);
+        print_help();
         exit(0);
 
     case 'V':
@@ -641,7 +651,7 @@ cb(const int opt, const char* arg, const int index, char** argv) {
         exit(0);
 
     case ARG_USAGE:
-        puts(usage_msg);
+        print_usage();
         exit(0);
 
     case ARG_ARGUMENT:
@@ -651,14 +661,12 @@ cb(const int opt, const char* arg, const int index, char** argv) {
         return ARG_STOP_PARSING;
 
     default:
-        puts(usage_msg);
+        print_usage();
         exit(ARG_UNRECOGNISED_OPT);
     }
 
     return ARG_CONTINUE_PARSING;
 }
-
-#endif
 
 // ---- PUBLIC ----------------------------------------------------------------
 
@@ -667,13 +675,7 @@ int
 parse_args(int argc, char** argv) {
     pargs.output_file = stdout;
 
-#ifdef GNU_ARGP
-    struct argp args = {options, parse_opt, "command [ARG...]", doc};
-    argp_parse(&args, argc, argv, 0, 0, 0);
-
-#else
     arg_parse(options, cb, argc, argv);
-#endif
 
     if ((!isvalid(pargs.cmd) || !isvalid(*pargs.cmd)) && pargs.attach_pid == 0) {
         set_error(CMDLINE, "No command nor process ID provided");
