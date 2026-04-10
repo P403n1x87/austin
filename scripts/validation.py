@@ -98,6 +98,26 @@ SCENARIOS = [
             target("target_mp.py"),
         ),
     ),
+    Scenario(
+        "Native wall time",
+        "austin",
+        (
+            "-ni",
+            "500",
+            *PYTHON,
+            target("target34.py"),
+        ),
+    ),
+    Scenario(
+        "Native CPU time",
+        "austin",
+        (
+            "-nci",
+            "500",
+            *PYTHON,
+            target("target34.py"),
+        ),
+    ),
 ]
 
 

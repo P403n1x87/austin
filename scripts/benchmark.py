@@ -73,6 +73,14 @@ SCENARIOS: t.List[Scenario] = [
         )
         for i in (1, 10, 100, 1000)
     ],
+    *[
+        Scenario(
+            group="Native wall time",
+            title=f"Native wall time [sampling interval: {i}]",
+            args=["-ni", str(i), sys.executable, target("target34.py")],
+        )
+        for i in (1, 10, 100, 1000)
+    ],
 ]
 
 # Ordered unique groups, derived from SCENARIOS (preserves definition order).
