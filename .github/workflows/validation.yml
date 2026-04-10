@@ -49,6 +49,14 @@ jobs:
         with:
           path: austin
 
+      - name: Setup libunwind
+        uses: ./austin/.github/actions/setup-libunwind
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev zlib1g-dev libzstd-dev gdb
+
       - name: Compile Austin on the base branch
         run: |
           cd austin-base
