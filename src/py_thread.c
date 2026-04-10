@@ -185,7 +185,8 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
 #ifdef NATIVE
         // In native mode we take this as the marker for the beginning of the stack
         // for a call to PyEval_EvalFrameDefault.
-        stack_py_push_cframe();
+        if (pargs_native)
+            stack_py_push_cframe();
 #endif
         SUCCESS;
     }
@@ -197,7 +198,7 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
     );
 
 #ifdef NATIVE
-    if (V_EQ(3, 11) && V_FIELD_PTR(int, iframe, py_iframe, o_is_entry)) {
+    if (pargs_native && V_EQ(3, 11) && V_FIELD_PTR(int, iframe, py_iframe, o_is_entry)) {
         // This marks the end of a CFrame
         stack_py_push_cframe();
     }

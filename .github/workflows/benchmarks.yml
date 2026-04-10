@@ -40,10 +40,17 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - name: Setup libunwind
+        uses: ./austin/.github/actions/setup-libunwind
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
+          sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev zlib1g-dev libzstd-dev
 
       - uses: actions/checkout@v3
         with:
@@ -57,10 +64,6 @@ jobs:
           ./configure --enable-debug=symbols
           make
           cd -
-
-      - uses: actions/checkout@v3
-        with:
-          path: austin
 
       - name: Compile Austin from the PR
         run: |

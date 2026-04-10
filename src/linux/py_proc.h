@@ -66,13 +66,11 @@ union {
 } ehdr_v;
 
 // ----------------------------------------------------------------------------
-#ifndef NATIVE
 static void*
 wait_thread(void* py_proc) {
     waitpid(((py_proc_t*)py_proc)->pid, 0, 0);
     return NULL;
 }
-#endif
 
 // ----------------------------------------------------------------------------
 static ssize_t
@@ -617,7 +615,8 @@ _py_proc__init(py_proc_t* self) {
     self->last_resident_memory = _py_proc__get_resident_memory(self);
 
 #ifdef NATIVE
-    _py_proc__get_vm_maps(self);
+    if (pargs.where || pargs_native)
+        _py_proc__get_vm_maps(self);
 #endif
 
     SUCCESS;

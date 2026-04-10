@@ -52,7 +52,7 @@ struct _proc_extra_info {
 // General ptrace wrapper. Does NOT retry on ESRCH because that error is
 // terminal for most requests (thread doesn't exist or isn't traced).
 static inline int
-wait_ptrace(enum __ptrace_request request, pid_t pid, void* addr, void* data) {
+wait_ptrace(int request, pid_t pid, void* addr, void* data) {
     int outcome = ptrace(request, pid, addr, data);
 
     if (fail(outcome)) {

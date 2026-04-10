@@ -13,11 +13,16 @@ jobs:
       - uses: actions/checkout@v3
         name: Checkout Austin
 
-      - name: Generate artifacts
+      - name: Setup libunwind
+        uses: ./.github/actions/setup-libunwind
+
+      - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools zlib1g-dev
+          sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev musl-tools zlib1g-dev libzstd-dev
 
+      - name: Generate artifacts
+        run: |
           # Build austin
           autoreconf --install
           ./configure
