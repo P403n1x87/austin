@@ -57,8 +57,13 @@ parsed_args_t pargs = {
     /* exposure            */ 0,
     /* pipe                */ 0,
     /* gc                  */ 0,
-#ifdef PL_MACOS
-    /* native              */ 0,
+#if defined(PL_MACOS) || defined(PL_LINUX)
+/* native              */
+#ifdef AUSTINP
+    true, // native is always on for austinp
+#else
+    false,
+#endif
 #endif
 #ifdef NATIVE
     /* kernel              */ 0,
@@ -194,10 +199,10 @@ static arg_option options[] = {
     "memory",    'm', NULL,    0,
     "Profile memory usage."
   },
-#ifdef PL_MACOS
+#if (defined(PL_MACOS) || defined(PL_LINUX)) && !defined(AUSTINP)
   {
     "native",    'n', NULL,    0,
-    "Collect native (C/C++) call stacks alongside Python stacks."
+    "Collect native call stacks alongside Python stacks."
   },
 #endif
   {
@@ -645,9 +650,16 @@ cb(const int opt, const char* arg, const int index, char** argv) {
         pargs.gc = true;
         break;
 
-#ifdef PL_MACOS
+#if (defined(PL_MACOS) || defined(PL_LINUX)) && !defined(AUSTINP)
     case 'n':
+#if defined(PL_LINUX) && !defined(__x86_64__) && !defined(__aarch64__)
+        fprintf(
+            stderr, PROGRAM_NAME ": warning: native mode is not supported on this architecture "
+                                 "and will be ignored (consider using austinp instead)\n"
+        );
+#else
         pargs.native = true;
+#endif
         break;
 #endif
 

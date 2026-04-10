@@ -127,21 +127,19 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
         }
     }
 
-    // In non-native mode the native stack is always empty so the interleaving
-    // loop above never runs.  Drain Python frames directly in that case.
-    if (!pargs_native) {
-        while (!stack_is_empty()) {
-            frame_t* frame = stack_pop();
-            if (frame != CFRAME_MAGIC) {
-                mojo_frame_ref(frame);
-            }
+    // Drain any Python frames left after interleaving. In the normal case
+    // (deep native stack reaching _PyEval_EvalFrameDefault) this is a no-op.
+    // In the fallback case (e.g. libunwind stopping early on aarch64 before
+    // reaching _PyEval_EvalFrameDefault) this emits the Python frames that
+    // would otherwise be silently discarded. In non-native mode the native
+    // stack is always empty so the interleaving loop above never runs and all
+    // Python frames are drained here.
+    while (!stack_is_empty()) {
+        frame_t* frame = stack_pop();
+        if (frame != CFRAME_MAGIC) {
+            mojo_frame_ref(frame);
         }
     }
-#ifdef DEBUG
-    if (!stack_is_empty()) {
-        log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
-    }
-#endif
     while (!stack_kernel_is_empty()) {
         char* scope = stack_kernel_pop();
         mojo_frame_kernel(scope);
@@ -281,21 +279,19 @@ where_event_handler__handle_stack_end(base_event_handler_t* self) {
         }
     }
 
-    // In non-native mode the native stack is always empty so the interleaving
-    // loop above never runs.  Drain Python frames directly in that case.
-    if (!pargs_native) {
-        while (!stack_is_empty()) {
-            frame_t* frame = stack_pop();
-            if (frame != CFRAME_MAGIC) {
-                format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
-            }
+    // Drain any Python frames left after interleaving. In the normal case
+    // (deep native stack reaching _PyEval_EvalFrameDefault) this is a no-op.
+    // In the fallback case (e.g. libunwind stopping early on aarch64 before
+    // reaching _PyEval_EvalFrameDefault) this emits the Python frames that
+    // would otherwise be silently discarded. In non-native mode the native
+    // stack is always empty so the interleaving loop above never runs and all
+    // Python frames are drained here.
+    while (!stack_is_empty()) {
+        frame_t* frame = stack_pop();
+        if (frame != CFRAME_MAGIC) {
+            format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
         }
     }
-#ifdef DEBUG
-    if (!stack_is_empty()) {
-        log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
-    }
-#endif
     while (!stack_kernel_is_empty()) {
         char* scope = stack_kernel_pop();
         format_kernel_frame_ref(WHERE_SAMPLE_FORMAT_KERNEL, scope);

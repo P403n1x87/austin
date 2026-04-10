@@ -620,12 +620,14 @@ _py_proc__find_interpreter_state(py_proc_t* self) {
         FAIL;
     } // GCOV_EXCL_STOP
 
-    if (fail(_py_proc__init(self)))
+    if (fail(_py_proc__init(self))) {
         FAIL;
+    }
 
     // Determine and set version
-    if (fail(_py_proc__infer_python_version(self)))
+    if (fail(_py_proc__infer_python_version(self))) {
         FAIL;
+    }
 
     if (self->sym_loaded || isvalid(self->map.runtime.base)) {
         // Try to resolve the symbols or the runtime section, if we have them
@@ -731,7 +733,7 @@ py_proc__init(py_proc_t* self) {
 
     self->timestamp = gettime();
 
-#if defined(NATIVE) && defined(PL_LINUX)
+#if defined(NATIVE) && defined(PL_LINUX) && defined(AUSTINP)
     self->unwind.as = unw_create_addr_space(&_UPT_accessors, 0);
 #endif
 
@@ -1516,7 +1518,9 @@ py_proc__destroy(py_proc_t* self) {
         return;         // GCOV_EXCL_LINE
 
 #if defined(NATIVE) && defined(PL_LINUX)
+#ifdef AUSTINP
     unw_destroy_addr_space(self->unwind.as);
+#endif
     vm_range_tree__destroy(self->maps_tree);
     hash_table__destroy(self->base_table);
 #endif

@@ -29,7 +29,9 @@
 #include "cache.h"
 #ifdef PL_LINUX
 #include "linux/vm-range-tree.h"
+#ifdef AUSTINP
 #include <libunwind-ptrace.h>
+#endif
 #endif
 #endif
 
@@ -94,9 +96,11 @@ typedef struct {
     unsigned int tstate_current_offset;
 
 #if defined(NATIVE) && defined(PL_LINUX)
+#ifdef AUSTINP
     struct _puw {
         unw_addr_space_t as;
     } unwind;
+#endif
     vm_range_tree_t* maps_tree;
     hash_table_t*    base_table;
 #endif
