@@ -54,7 +54,7 @@ typedef HANDLE proc_ref_t;
 // extra dependencies).  On Linux it is available either via libunwind-ptrace
 // (austinp, any arch) or via frame-pointer walking (plain austin, x86-64 and
 // aarch64 only).  On all other platforms NATIVE is not defined.
-#if defined(PL_MACOS) || (defined(PL_LINUX) && defined(AUSTINP))                         \
+#if defined(PL_MACOS) || (defined(PL_LINUX) && defined(AUSTINP))                                  \
     || (defined(PL_LINUX) && !defined(__MUSL__) && (defined(__x86_64__) || defined(__aarch64__)))
 #define NATIVE
 #endif

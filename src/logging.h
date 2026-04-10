@@ -116,7 +116,8 @@ void
 log_d(const char*, ...);
 #else
 #define log_d(f, args...) \
-    do {} while (0)
+    do {                  \
+    } while (0)
 #endif
 
 #ifdef TRACE
@@ -124,7 +125,8 @@ void
 log_t(const char*, ...);
 #else
 #define log_t(f, args...) \
-    do {} while (0)
+    do {                  \
+    } while (0)
 #endif
 
 /**
