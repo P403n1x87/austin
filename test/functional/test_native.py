@@ -34,9 +34,11 @@ from time import sleep
 import pytest
 
 pytestmark = pytest.mark.skipif(
-    platform.system() != "Darwin",
-    reason="Native stack sampling with -n is only supported on Darwin",
+    platform.system() not in ("Darwin", "Linux"),
+    reason="Native stack sampling with -n is only supported on Darwin and Linux",
 )
+
+_IS_LINUX = platform.system() == "Linux"
 
 
 def has_native_frame(samples, function=None, filename_contains=None):
@@ -59,13 +61,13 @@ def has_native_frame(samples, function=None, filename_contains=None):
 
 @requires_sudo
 @allpythons()
-def test_native_wall_time_darwin(py):
+def test_native_wall_time(py):
     result = austin("-n", "-i", "1ms", *python(py), target("target34.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_frame(
         result.samples, filename="target34.py", function="keep_cpu_busy", line=32
-    )
+    ), "Expected Python frame from target34.py"
 
     assert has_native_frame(
         result.samples, function="Py_RunMain"
@@ -81,10 +83,8 @@ def test_native_wall_time_darwin(py):
 
 @requires_sudo
 @allpythons()
-def test_native_interleaved_darwin(py):
-    """Python frames must be interleaved with native frames — verifies that
-    at least one sample contains both a Python frame and a native frame from
-    the Python runtime library."""
+def test_native_interleaved(py):
+    """At least one sample must contain both Python and native frames."""
     result = austin("-n", "-i", "1ms", *python(py), target("target34.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
@@ -106,13 +106,17 @@ def test_native_interleaved_darwin(py):
 
 @requires_sudo
 @allpythons()
-def test_native_attach_darwin(py):
+def test_native_attach(py):
+    """Native mode works when attaching to an already-running process."""
     with run_python(py, target("sleepy.py"), "2") as p:
         sleep(0.5)
         result = austin("-n", "-i", "2ms", "-p", str(p.pid))
     assert result.returncode == 0, result.stderr or result.stdout
 
-    assert has_frame(result.samples, filename="sleepy.py", function="<module>")
+    assert has_frame(
+        result.samples, filename="sleepy.py", function="<module>"
+    ), "Expected Python frame from sleepy.py in attach mode"
+
     assert has_native_frame(
         result.samples, function="Py_RunMain"
     ), "Expected Py_RunMain native frame from the Python runtime in attach mode"
@@ -123,7 +127,8 @@ def test_native_attach_darwin(py):
 
 @requires_sudo
 @allpythons()
-def test_native_where_darwin(py):
+def test_native_where(py):
+    """--where output must include Python source information in native mode."""
     with run_python(py, target("sleepy.py"), "2") as p:
         sleep(0.5)
         result = austin("-n", "-w", str(p.pid))
@@ -131,6 +136,32 @@ def test_native_where_darwin(py):
 
     assert "sleepy.py" in result.stdout, result.stdout
     assert "<module>" in result.stdout, result.stdout
-    assert (
-        "Py_RunMain" in result.stdout
-    ), "Expected Py_RunMain native frame in where output"
+
+    assert "Py_RunMain" in result.stdout, "Expected Py_RunMain native frame in where output"
+
+
+@requires_sudo
+@allpythons()
+@pytest.mark.skipif(not _IS_LINUX, reason="Linux-specific regression test")
+def test_native_does_not_affect_cpu_time_linux(py):
+    """Running without -n must still correctly filter idle threads in CPU mode.
+
+    Previously, NATIVE being defined for plain austin caused py_thread__is_idle
+    to always return False (bitmap never populated without seizing), making CPU
+    mode degenerate to wall time and inflating metrics.
+    """
+    wall = austin("-i", "1ms", *python(py), target("target34.py"))
+    cpu = austin("-ci", "1ms", *python(py), target("target34.py"))
+
+    assert wall.returncode == 0, wall.stderr or wall.stdout
+    assert cpu.returncode == 0, cpu.stderr or cpu.stdout
+
+    wall_total, _ = sum_metrics(wall.samples)
+    cpu_total, _ = sum_metrics(cpu.samples)
+
+    # CPU time must be strictly less than wall time for a target that does
+    # real sleep: the idle periods should be filtered out.
+    assert cpu_total < wall_total, (
+        f"CPU total ({cpu_total}) should be less than wall total ({wall_total}): "
+        "idle threads may not be filtered correctly"
+    )
