@@ -122,30 +122,16 @@ jobs:
       - name: Lint code
         run: flake8 --config test/.flake8 test/
 
-  coverage:
+  build-coverage:
     runs-on: ubuntu-24.04
-    name: Code coverage
+    name: Code coverage (build)
     steps:
       - uses: actions/checkout@v3
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev gcovr
-
-      - name: Install test dependencies
-        run: |
-          sudo add-apt-repository -y ppa:deadsnakes/ppa
-          sudo apt-get update
-          sudo apt-get -y install \
-            valgrind \
-            python3.{9..14} \
-            python3.13-full python3.13-dev
-
-          python3.13 -m venv .venv
-          source .venv/bin/activate
-          pip install --upgrade pip
-          pip install -r test/requirements.txt
+          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
 
       - name: Compile Austin
         run: |
@@ -153,16 +139,97 @@ jobs:
           ./configure --enable-coverage
           make
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: austin-coverage-build
+          path: |
+            src/austin
+            src/austinp
+            src/*.gcno
+          retention-days: 1
+
+  test-coverage:
+    runs-on: ubuntu-24.04
+    needs: build-coverage
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+    name: Code coverage (Python ${{ matrix.python-version }})
+    env:
+      AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: austin-coverage-build
+          path: src
+
+      - run: chmod +x src/austin src/austinp
+
+      - name: Install Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}-dev
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install valgrind gcovr
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r test/requirements.txt
+
       - name: Run tests
         run: |
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           ulimit -c unlimited
           .venv/bin/pytest -svr a test/cunit || true
-          .venv/bin/pytest -svr a test/functional || true
-          sudo -E env PATH="$PATH" .venv/bin/pytest -svr a test/functional || true
+          .venv/bin/pytest -n auto -svr a test/functional || true
+          sudo -E env PATH="$PATH" .venv/bin/pytest -n auto -svr a test/functional || true
+
+      - name: Generate coverage tracefile
+        run: gcovr --json coverage-py${{ matrix.python-version }}.json -r src/ --gcov-ignore-errors=no_working_dir_found
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-py${{ matrix.python-version }}
+          path: coverage-py${{ matrix.python-version }}.json
+          retention-days: 1
+
+  report-coverage:
+    runs-on: ubuntu-24.04
+    needs: test-coverage
+    name: Code coverage (report)
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install gcovr
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install gcovr
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-py*
+          path: coverage-data/
+          merge-multiple: true
 
       - name: Generate Cobertura report
-        run: gcovr --xml ./cobertura.xml -r src/
+        shell: bash
+        run: |
+          args=()
+          for f in coverage-data/*.json; do
+            args+=(--add-tracefile "$f")
+          done
+          gcovr "${args[@]}" --xml cobertura.xml -r src/
 
       - name: Upload report to Codecov
         uses: codecov/codecov-action@v2
