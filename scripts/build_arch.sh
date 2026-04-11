@@ -17,14 +17,24 @@ apt-get -y install \
     libzstd-dev \
     git
 
-# Compile and install libunwind from sources
-git clone https://github.com/libunwind/libunwind.git
-cd libunwind
-autoreconf -i
-./configure CFLAGS="-fPIC"
-make
-make install
-cd -
+# Compile and install libunwind from sources (use cache if available)
+LIBUNWIND_CACHE=/libunwind-cache
+
+if [ -f "$LIBUNWIND_CACHE/lib/libunwind.a" ]; then
+    echo "Restoring libunwind from cache"
+else
+    git clone --depth=1 --branch $LIBUNWIND_VERSION https://github.com/libunwind/libunwind.git
+    cd libunwind
+    autoreconf -i
+    ./configure --prefix=$LIBUNWIND_CACHE --disable-tests CFLAGS="-fPIC"
+    make -j$(nproc)
+    make install
+    cd -
+fi
+
+cp -r $LIBUNWIND_CACHE/include/* /usr/local/include/
+cp -r $LIBUNWIND_CACHE/lib/*     /usr/local/lib/
+ldconfig
 
 # Build Austin
 autoreconf --install

@@ -1,6 +1,11 @@
 name: Build/Release (Linux archs)
 
 on:
+  workflow_dispatch:
+    inputs:
+      libunwind-version:
+        description: 'libunwind git tag to build'
+        default: 'v1.8.3'
   push:
     branches:
       - master
@@ -17,6 +22,9 @@ on:
   release:
     types: [published]
 
+env:
+  LIBUNWIND_VERSION: ${{ inputs.libunwind-version || 'v1.8.3' }}
+
 jobs:
   release-linux-archs:
     runs-on: ubuntu-22.04
@@ -29,6 +37,12 @@ jobs:
       - uses: actions/checkout@v3
         name: Checkout sources
 
+      - name: Cache libunwind for ${{ matrix.arch }}
+        uses: actions/cache@v4
+        with:
+          path: .libunwind-cache
+          key: libunwind-${{ matrix.arch }}-${{ env.LIBUNWIND_VERSION }}
+
       - uses: uraimo/run-on-arch-action@v3
         name: Build Austin on ${{ matrix.arch }}
         id: build-on-arch
@@ -36,10 +50,25 @@ jobs:
           arch: ${{ matrix.arch }}
           distro: ubuntu22.04
           githubToken: ${{ github.token }}
-          dockerRunArgs:  --volume "${GITHUB_WORKSPACE}/artifacts:/artifacts"
+          dockerRunArgs: --volume "${GITHUB_WORKSPACE}/artifacts:/artifacts" --volume "${GITHUB_WORKSPACE}/.libunwind-cache:/libunwind-cache"
           setup: |
-            mkdir -p ./artifacts
-          run: ARCH=${{ matrix.arch }} bash scripts/build_arch.sh
+            mkdir -p ./artifacts .libunwind-cache
+          install: |
+            apt-get update
+            apt-get -y install --no-install-recommends \
+                autoconf \
+                automake \
+                build-essential \
+                ca-certificates \
+                libtool \
+                binutils-dev \
+                libiberty-dev \
+                liblzma-dev \
+                musl-tools \
+                zlib1g-dev \
+                libzstd-dev \
+                git
+          run: ARCH=${{ matrix.arch }} LIBUNWIND_VERSION=${{ env.LIBUNWIND_VERSION }} bash scripts/build_arch.sh
 
       - name: Show artifacts
         run: |

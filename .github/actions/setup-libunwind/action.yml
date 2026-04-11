@@ -34,7 +34,7 @@ runs:
         git clone --depth=1 --branch ${{ inputs.version }} https://github.com/libunwind/libunwind.git /tmp/libunwind
         cd /tmp/libunwind
         autoreconf -i
-        ./configure --prefix=/opt/libunwind CFLAGS="-fPIC"
+        ./configure --prefix=/opt/libunwind --disable-tests CFLAGS="-fPIC"
         make -j$(nproc)
         sudo make install
 
