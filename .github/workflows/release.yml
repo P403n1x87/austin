@@ -18,15 +18,20 @@ jobs:
         with:
           python-version: "3.10"
 
+      - name: Setup libunwind
+        uses: ./.github/actions/setup-libunwind
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev musl-tools zlib1g-dev libzstd-dev
+
       - name: Generate artifacts
         run: |
           python3.10 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-bw.txt
-          
-          sudo apt-get update
-          sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools zlib1g-dev
 
           # Build austin
           autoreconf --install
