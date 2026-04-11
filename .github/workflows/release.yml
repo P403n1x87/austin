@@ -5,10 +5,20 @@ on:
       - 'v[0-9]+.[0-9]+.[0-9]+'
 jobs:
   release-linux:
-    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
-    name: Release (Linux)
+      matrix:
+        include:
+          - arch: amd64
+            runs-on: ubuntu-24.04
+            manylinux-platform: manylinux_2_12_x86_64.manylinux2010_x86_64
+            musl-platform: musllinux_1_1_x86_64
+          - arch: arm64
+            runs-on: ubuntu-24.04-arm
+            manylinux-platform: manylinux_2_17_aarch64.manylinux2014_aarch64
+            musl-platform: musllinux_1_1_aarch64
+    runs-on: ${{ matrix.runs-on }}
+    name: Release (Linux, ${{ matrix.arch }})
     steps:
       - uses: actions/checkout@v3
         name: Checkout Austin
@@ -37,30 +47,30 @@ jobs:
           autoreconf --install
           ./configure
           make
-          
+
           export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p");
 
           pushd src
-          tar -Jcf austin-$VERSION-gnu-linux-amd64.tar.xz austin
-          tar -Jcf austinp-$VERSION-gnu-linux-amd64.tar.xz austinp
+          tar -Jcf austin-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz austin
+          tar -Jcf austinp-$VERSION-gnu-linux-${{ matrix.arch }}.tar.xz austinp
           popd
 
           # Build gnu wheel
           python scripts/build-wheel.py \
             --version=$VERSION \
-            --platform=manylinux_2_12_x86_64.manylinux2010_x86_64 \
+            --platform=${{ matrix.manylinux-platform }} \
             --files austin:src/austin austinp:src/austinp
 
           # Build with musl
           musl-gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austin -D__MUSL__
           pushd src
-          tar -Jcf austin-$VERSION-musl-linux-amd64.tar.xz austin
+          tar -Jcf austin-$VERSION-musl-linux-${{ matrix.arch }}.tar.xz austin
           popd
 
           # Build musl wheel
           python scripts/build-wheel.py \
             --version=$VERSION \
-            --platform=musllinux_1_1_x86_64 \
+            --platform=${{ matrix.musl-platform }} \
             --files austin:src/austin
 
           deactivate
@@ -73,7 +83,7 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
-      
+
       - name: Upload Python wheels to PyPI
         run: |
           source .venv/bin/activate

@@ -24,8 +24,16 @@ concurrency:
 
 jobs:
   build-linux:
-    runs-on: ubuntu-24.04    
-    name: Build Austin on Linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    name: Build Austin on Linux (${{ matrix.arch }})
     steps:
       - uses: actions/checkout@v3
 
@@ -45,15 +53,23 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}
+          name: austin-binaries-Linux-${{ matrix.arch }}
           overwrite: true
           path: |
             src/austin
             src/austinp
 
   build-linux-musl:
-    runs-on: ubuntu-24.04    
-    name: Build Austin on Linux (musl)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    name: Build Austin on Linux (${{ matrix.arch }}, musl)
     steps:
       - uses: actions/checkout@v3
 
@@ -68,31 +84,36 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}-musl
+          name: austin-binaries-Linux-musl-${{ matrix.arch }}
           overwrite: true
           path: |
             src/austin.musl
 
   tests-linux:
-    runs-on: ubuntu-24.04
-
-    needs: [build-linux, build-linux-musl]
-
     strategy:
       fail-fast: false
       matrix:
+        arch: [x86_64, aarch64]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
-    
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+
+    needs: [build-linux, build-linux-musl]
+
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
-    
-    name: Tests on Linux with Python ${{ matrix.python-version }}
+
+    name: Tests on Linux (${{ matrix.arch }}) with Python ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}
+          name: austin-binaries-Linux-${{ matrix.arch }}
           path: src
 
       - run: chmod +x src/austin && chmod +x src/austinp
@@ -113,28 +134,27 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
+
       - name: Install test dependencies
         run: |
           python3.10 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r test/requirements.txt
-          
+
       - name: Set core dump file pattern
         run: |
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
-
           ulimit -c unlimited
           python3.10 -c "import ctypes;ctypes.string_at(0)" || true
-          ls core.*
-          rm core.*
+          ls core.* && rm core.* || true
 
       - name: Run unit tests
         run: |
           ulimit -c unlimited
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           .venv/bin/pytest -vv test/cunit
-  
+
       - name: Run functional Austin tests (with sudo)
         run: |
           ulimit -c unlimited
@@ -162,7 +182,7 @@ jobs:
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           .venv/bin/pytest --pastebin=failed -svr a test/functional -k "austinp"
         if: always()
-  
+
       - name: Run integrity tests (with sudo)
         run: |
           ulimit -c unlimited
@@ -185,22 +205,34 @@ jobs:
         if: always()
 
   wheels-linux:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+            manylinux-platform: manylinux_2_12_x86_64.manylinux2010_x86_64
+            musl-platform: musllinux_1_1_x86_64
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+            manylinux-platform: manylinux_2_17_aarch64.manylinux2014_aarch64
+            musl-platform: musllinux_1_1_aarch64
+    runs-on: ${{ matrix.runs-on }}
 
     needs: [build-linux, build-linux-musl]
 
-    name: Build Linux wheels
+    name: Build Linux wheels (${{ matrix.arch }})
     steps:
       - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}
+          name: austin-binaries-Linux-${{ matrix.arch }}
           path: src
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}-musl
+          name: austin-binaries-Linux-musl-${{ matrix.arch }}
           path: src
 
       - run: chmod +x src/austin && chmod +x src/austinp
@@ -216,17 +248,17 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-bw.txt
-          
+
           export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p");
 
           python scripts/build-wheel.py \
             --version=$VERSION \
-            --platform=manylinux_2_12_x86_64.manylinux2010_x86_64 \
+            --platform=${{ matrix.manylinux-platform }} \
             --files austin:src/austin austinp:src/austinp
 
           python scripts/build-wheel.py \
             --version=$VERSION \
-            --platform=musllinux_1_1_x86_64 \
+            --platform=${{ matrix.musl-platform }} \
             --files austin:src/austin.musl
 
           deactivate

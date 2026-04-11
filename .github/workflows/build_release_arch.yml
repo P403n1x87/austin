@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-22.04
     strategy:
       matrix:
-        arch: ["armv7", "aarch64", "ppc64le"]
+        arch: ["armv7", "ppc64le"]
       fail-fast: false
     name: Build on ${{ matrix.arch }}
     steps:
@@ -102,10 +102,6 @@ jobs:
             armv7)
               PLATFORM=manylinux_2_17_armv7l.manylinux2014_armv7l
               MUSL_PLATFORM=musllinux_1_1_armv7l
-              ;;
-            aarch64)
-              PLATFORM=manylinux_2_17_aarch64.manylinux2014_aarch64
-              MUSL_PLATFORM=musllinux_1_1_aarch64
               ;;
             ppc64le)
               PLATFORM=manylinux_2_17_ppc64le.manylinux2014_ppc64le
