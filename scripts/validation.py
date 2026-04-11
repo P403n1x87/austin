@@ -176,6 +176,9 @@ if __name__ == "__main__":
 
     failures: t.List[tuple[Scenario, float]] = []
     for scenario in SCENARIOS:
+        if opts.k is not None and not opts.k.search(scenario.title):
+            continue
+
         print(f"Validating {scenario.title} ...", flush=True, file=sys.stderr, end=" ")
 
         result_icon = "✅"
