@@ -25,9 +25,10 @@ runs:
       with:
         path: /opt/libunwind
         key: libunwind-${{ runner.os }}-${{ steps.libunwind-sha.outputs.sha }}
+        restore-keys: libunwind-${{ runner.os }}-
 
     - name: Build and install libunwind
-      if: steps.cache.outputs.cache-hit != 'true'
+      if: steps.cache.outputs.cache-matched-key == ''
       shell: bash
       run: |
         git clone --depth=1 --branch ${{ inputs.version }} https://github.com/libunwind/libunwind.git /tmp/libunwind
