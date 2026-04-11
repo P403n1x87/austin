@@ -14,6 +14,7 @@ apt-get -y install \
     liblzma-dev \
     musl-tools \
     zlib1g-dev \
+    libzstd-dev \
     git
 
 # Compile and install libunwind from sources

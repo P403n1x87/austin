@@ -14,12 +14,16 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Setup libunwind
+        uses: ./.github/actions/setup-libunwind
+
       - name: Install build dependencies
         run: |
           sudo add-apt-repository -y universe
           sudo add-apt-repository -y ppa:inkscape.dev/stable
           sudo apt-get update
-          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev help2man inkscape
+          sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev zlib1g-dev libzstd-dev \
+            help2man inkscape
 
       - name: Compile Austin
         run: |
@@ -128,10 +132,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Setup libunwind
+        uses: ./.github/actions/setup-libunwind
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
+          sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev zlib1g-dev libzstd-dev
 
       - name: Compile Austin
         run: |

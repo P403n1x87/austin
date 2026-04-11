@@ -28,10 +28,13 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
+      - name: Setup libunwind
+        uses: ./.github/actions/setup-libunwind
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
+          sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev zlib1g-dev libzstd-dev
 
       - name: Compile Austin
         run: |
