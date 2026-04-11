@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/benchmarks.yml
+      - .github/actions/setup-libunwind/action.yml
       - scripts/benchmark.py
       - scripts/requirements-bm.txt
       - src/**

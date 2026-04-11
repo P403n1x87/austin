@@ -8,6 +8,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/tests.yml
+      - .github/actions/setup-libunwind/action.yml
       - scripts/build-wheel.py
       - scripts/requirements-bw.txt
       - scripts/requirements-val.txt

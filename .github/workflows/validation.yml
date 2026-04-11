@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - .github/workflows/validation.yml
+      - .github/actions/setup-libunwind/action.yml
       - scripts/requirements-val.txt
       - scripts/validation.py
       - src/**
