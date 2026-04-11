@@ -24,8 +24,8 @@ runs:
       uses: actions/cache@v4
       with:
         path: /opt/libunwind
-        key: libunwind-${{ runner.os }}-${{ steps.libunwind-sha.outputs.sha }}
-        restore-keys: libunwind-${{ runner.os }}-
+        key: libunwind-${{ runner.os }}-${{ runner.arch }}-${{ steps.libunwind-sha.outputs.sha }}
+        restore-keys: libunwind-${{ runner.os }}-${{ runner.arch }}-
 
     - name: Build and install libunwind
       if: steps.cache.outputs.cache-matched-key == ''
