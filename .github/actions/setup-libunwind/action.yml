@@ -1,17 +1,22 @@
 name: 'Setup libunwind'
 description: >
-  Build libunwind from source and cache it by upstream HEAD SHA.
+  Build libunwind from source and cache it by tag SHA.
   Exports CPATH, LIBRARY_PATH, and PKG_CONFIG_PATH so subsequent
   steps pick up the custom prefix without changes to ./configure calls.
+
+inputs:
+  version:
+    description: 'libunwind git tag to build'
+    default: 'v1.8.3'
 
 runs:
   using: composite
   steps:
-    - name: Get libunwind HEAD SHA
+    - name: Get libunwind SHA
       id: libunwind-sha
       shell: bash
       run: |
-        SHA=$(git ls-remote https://github.com/libunwind/libunwind.git HEAD | cut -f1)
+        SHA=$(git ls-remote https://github.com/libunwind/libunwind.git refs/tags/${{ inputs.version }} | cut -f1)
         echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
     - name: Cache libunwind
@@ -25,7 +30,7 @@ runs:
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
-        git clone --depth=1 https://github.com/libunwind/libunwind.git /tmp/libunwind
+        git clone --depth=1 --branch ${{ inputs.version }} https://github.com/libunwind/libunwind.git /tmp/libunwind
         cd /tmp/libunwind
         autoreconf -i
         ./configure --prefix=/opt/libunwind CFLAGS="-fPIC"
