@@ -11,8 +11,6 @@ on:
       - .github/actions/setup-libunwind/action.yml
       - scripts/build-wheel.py
       - scripts/requirements-bw.txt
-      - scripts/requirements-val.txt
-      - scripts/validation.py
       - src/**
       - test/**
       - configure.ac
@@ -23,6 +21,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request'
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+      tests: ${{ steps.filter.outputs.tests }}
+      wheel-scripts: ${{ steps.filter.outputs.wheel-scripts }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            src:
+              - .github/workflows/tests.yml
+              - .github/actions/setup-libunwind/action.yml
+              - src/**
+              - configure.ac
+              - Makefile.am
+            tests:
+              - .github/workflows/tests.yml
+              - test/**
+            wheel-scripts:
+              - .github/workflows/tests.yml
+              - scripts/build-wheel.py
+              - scripts/requirements-bw.txt
+
   build-linux:
     strategy:
       fail-fast: false
@@ -101,8 +126,9 @@ jobs:
           - arch: aarch64
             runs-on: ubuntu-24.04-arm
     runs-on: ${{ matrix.runs-on }}
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.tests == 'true' || needs.changes.result == 'skipped'
 
-    needs: [build-linux, build-linux-musl]
+    needs: [changes, build-linux, build-linux-musl]
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
@@ -218,8 +244,9 @@ jobs:
             manylinux-platform: manylinux_2_17_aarch64.manylinux2014_aarch64
             musl-platform: musllinux_1_1_aarch64
     runs-on: ${{ matrix.runs-on }}
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.wheel-scripts == 'true' || needs.changes.result == 'skipped'
 
-    needs: [build-linux, build-linux-musl]
+    needs: [changes, build-linux, build-linux-musl]
 
     name: Build Linux wheels (${{ matrix.arch }})
     steps:
@@ -297,8 +324,9 @@ jobs:
 
   tests-osx:
     runs-on: macos-latest
-    
-    needs: [build-osx-gcc, build-osx-clang]
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.tests == 'true' || needs.changes.result == 'skipped'
+
+    needs: [changes, build-osx-gcc, build-osx-clang]
 
     strategy:
       fail-fast: false
@@ -374,8 +402,9 @@ jobs:
 
   wheels-osx:
     runs-on: macos-latest
-    
-    needs: [build-osx-gcc, build-osx-clang]
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.wheel-scripts == 'true' || needs.changes.result == 'skipped'
+
+    needs: [changes, build-osx-gcc, build-osx-clang]
 
     name: Build macOS wheels
     steps:
@@ -431,8 +460,9 @@ jobs:
 
   tests-win:
     runs-on: windows-latest
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.tests == 'true' || needs.changes.result == 'skipped'
 
-    needs: build-win
+    needs: [changes, build-win]
 
     strategy:
       fail-fast: false
@@ -500,8 +530,9 @@ jobs:
 
   wheels-win:
     runs-on: windows-latest
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.wheel-scripts == 'true' || needs.changes.result == 'skipped'
 
-    needs: build-win
+    needs: [changes, build-win]
 
     name: Build Windows wheels
     steps:
