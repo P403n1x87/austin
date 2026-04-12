@@ -32,22 +32,23 @@ class Scenario:
     def run(
         self, austin: common.VersionedVariant, n: int = 10
     ) -> t.List[AustinFlameGraph]:
-        try:
-            return [
-                AustinFlameGraph.from_mojo(
-                    tee(
-                        austin(
-                            *scenario.args,
-                            convert=False,
-                        ).stdout,
-                        f"{scenario.title}-{austin.version}-{i}",
+        results = []
+        for i in range(n):
+            try:
+                data = austin(*self.args, convert=False).stdout
+                if data:
+                    results.append(
+                        AustinFlameGraph.from_mojo(
+                            tee(data, f"{self.title}-{austin.version}-{i}")
+                        )
                     )
+            except Exception as e:
+                print(
+                    f"WARNING: run {i} of scenario {self.title!r} with {austin} "
+                    f"failed: {e}",
+                    file=sys.stderr,
                 )
-                for i in range(n)
-            ]
-        except Exception as e:
-            msg = f"Error running scenario {self.title} with {austin} and arguments {self.args}: {e}"
-            raise RuntimeError(msg) from e
+        return results
 
 
 if (PYTHON_VERSION := os.getenv("AUSTIN_TESTS_PYTHON_VERSIONS")) is None:
@@ -101,10 +102,19 @@ SCENARIOS = [
 ]
 
 
-def validate(scenario: Scenario, runs: int = 10) -> float:
+_NOT_APPLICABLE = object()
+
+
+def validate(scenario: Scenario, runs: int = 10) -> t.Union[float, object]:
+    base_results = scenario.run(common.get_base(variant_name=scenario.variant), runs)
+    if not base_results:
+        # We might be testing a new feature that is not available from the base
+        # version.
+        return _NOT_APPLICABLE
+
     return compare(
         # Base branch version
-        x=scenario.run(common.get_base(variant_name=scenario.variant), runs),
+        x=base_results,
         # Development version
         y=scenario.run(common.get_dev(variant_name=scenario.variant), runs),
         # Keep only the stacks that are present in all runs
@@ -113,7 +123,9 @@ def validate(scenario: Scenario, runs: int = 10) -> float:
 
 
 def generate_markdown_report(
-    failures: t.List[tuple[Scenario, float]], path: Path
+    failures: t.List[tuple[Scenario, float]],
+    skipped: t.List[Scenario],
+    path: Path,
 ) -> None:
     output = f"### Python {PYTHON_VERSION}\n\n"
 
@@ -125,6 +137,13 @@ def generate_markdown_report(
         output += "|----------|---------|\n"
         for scenario, p in failures:
             output += f"| {scenario.title} | {p:.2%} |\n"
+
+    if skipped:
+        output += (
+            "\n\n⚪ The following scenarios were skipped (base produced no data):\n\n"
+        )
+        for scenario in skipped:
+            output += f"- {scenario.title}\n"
 
     path.write_text(output)
 
@@ -175,21 +194,28 @@ if __name__ == "__main__":
     print("# Austin Data Validation\n")
 
     failures: t.List[tuple[Scenario, float]] = []
+    skipped: t.List[Scenario] = []
     for scenario in SCENARIOS:
         if opts.k is not None and not opts.k.search(scenario.title):
             continue
 
         print(f"Validating {scenario.title} ...", flush=True, file=sys.stderr, end=" ")
 
+        p = validate(scenario, runs=opts.n)
+        if p is _NOT_APPLICABLE:
+            skipped.append(scenario)
+            print("⚪ (not applicable — base produced no data)", file=sys.stderr)
+            continue
+
         result_icon = "✅"
-        if (p := validate(scenario, runs=opts.n)) < opts.p_value:
+        if p < opts.p_value:
             failures.append((scenario, p))
             result_icon = "❌"
 
         print(result_icon, file=sys.stderr)
 
     if opts.report:
-        generate_markdown_report(failures, opts.report)
+        generate_markdown_report(failures, skipped, opts.report)
 
     if failures:
         print("💥 The following scenarios failed to validate:\n")
