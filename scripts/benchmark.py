@@ -69,7 +69,7 @@ SCENARIOS: t.List[Scenario] = [
         Scenario(
             group="Multiprocess wall time",
             title=f"Multiprocess wall time [sampling interval: {i}]",
-            args=["-Cfi", str(i), sys.executable, target("target_mp.py"), "16"],
+            args=["-Cfi", str(i), sys.executable, target("target_mp.py"), "8"],
         )
         for i in (1, 10, 100, 1000)
     ],
@@ -328,7 +328,7 @@ def results_from_json(raw: str) -> t.List[t.Tuple[str, t.List[Results]]]:
 
 
 def merge_results(
-    parts: t.List[t.List[t.Tuple[str, t.List[Results]]]]
+    parts: t.List[t.List[t.Tuple[str, t.List[Results]]]],
 ) -> t.List[t.Tuple[str, t.List[Results]]]:
     """Merge partial result lists into one, preserving the SCENARIOS order."""
     order = {s.title: i for i, s in enumerate(SCENARIOS)}
@@ -469,8 +469,7 @@ def main():
 
     if opts.list_groups:
         matrix = [
-            {"name": g.lower().replace(" ", "-"), "filter": g}
-            for g in SCENARIO_GROUPS
+            {"name": g.lower().replace(" ", "-"), "filter": g} for g in SCENARIO_GROUPS
         ]
         print(json.dumps({"include": matrix}))
         return
