@@ -721,6 +721,14 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         FAIL;
     }
 
+    // On x86-64 and arm64, a valid frame pointer must point to a saved frame
+    // record on the stack, which is always at or above the current SP (stack
+    // grows down).  If fp < sp, the binary was compiled without frame pointers
+    // and RBP/X29 is a general-purpose register whose value is unrelated to
+    // the call chain.  Zero it out so we take the CFI path from the start.
+    if (fp < sp)
+        fp = 0;
+
     lru_cache_t* cache        = self->proc->frame_cache;
     lru_cache_t* string_cache = self->proc->string_cache;
 
@@ -1226,9 +1234,17 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
         if (V_MIN(3, 11)) {
 // We already have the native thread id
 #ifdef NATIVE
-            if (pargs_native && fail(_py_thread__seize(self))) { // GCOV_EXCL_START
-                FAIL;
-            } // GCOV_EXCL_STOP
+            if (pargs_native) {
+                // native_thread_id is read directly from CPython's struct; validate
+                // before indexing the bitmap or passing to ptrace.
+                if ((uintptr_t)self->tid >= (uintptr_t)max_pid) { // GCOV_EXCL_START
+                    log_t("native TID %" PRIuPTR " out of range, skipping thread", self->tid);
+                    FAIL;
+                } // GCOV_EXCL_STOP
+                if (fail(_py_thread__seize(self))) { // GCOV_EXCL_START
+                    FAIL;
+                } // GCOV_EXCL_STOP
+            }
 #endif
         } else if (likely(proc->extra->pthread_tid_offset)) {
             // self->tid currently holds the raw pthread_t value from CPython's
@@ -1252,16 +1268,6 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
             }
 #endif
         }
-    }
-
-    // Final sanity check: on Linux the resolved TID must fit within the valid
-    // OS PID range.  A value >= max_pid means the pthread → OS-TID translation
-    // never completed (e.g. pthread_tid_offset not yet known, or the thread
-    // state we sampled was transiently inconsistent during GC).  Proceeding
-    // with such a TID would corrupt the interrupted/idle bitmaps or crash.
-    if ((uintptr_t)self->tid >= (uintptr_t)max_pid) {
-        log_t("TID %" PRIuPTR " out of valid range, skipping thread", self->tid);
-        FAIL;
     }
 #endif
 

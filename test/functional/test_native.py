@@ -182,7 +182,6 @@ def has_native_frame(samples, function=None, filename_contains=None):
     return False
 
 
-@requires_sudo
 @allpythons()
 def test_native_wall_time(py, save_mojo):
     result = austin("-n", "-i", "1ms", *python(py), target("target34.py"))
@@ -210,7 +209,6 @@ def test_native_wall_time(py, save_mojo):
     assert 0 < a < 2.1 * d
 
 
-@requires_sudo
 @allpythons()
 def test_native_interleaved(py):
     """At least one sample must contain both Python and native frames."""
@@ -276,7 +274,6 @@ def test_native_where(py):
         assert "Py_RunMain" in result.stdout, "Expected Py_RunMain native frame in where output"
 
 
-@requires_sudo
 @allpythons()
 @pytest.mark.skipif(not _IS_LINUX, reason="Linux-specific regression test")
 def test_native_does_not_affect_cpu_time_linux(py):
