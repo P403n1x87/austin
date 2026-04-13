@@ -69,7 +69,7 @@ SCENARIOS: t.List[Scenario] = [
         Scenario(
             group="Multiprocess wall time",
             title=f"Multiprocess wall time [sampling interval: {i}]",
-            args=["-Cfi", str(i), sys.executable, target("target_mp.py"), "16"],
+            args=["-Cfi", str(i), sys.executable, target("target_mp.py"), "8"],
         )
         for i in (1, 10, 100, 1000)
     ],
