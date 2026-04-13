@@ -21,6 +21,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import platform
+import shutil
+import subprocess
+from functools import lru_cache
 from test.utils import allpythons
 from test.utils import austin
 from test.utils import has_frame
@@ -41,6 +44,123 @@ pytestmark = pytest.mark.skipif(
 _IS_LINUX = platform.system() == "Linux"
 
 
+def _nm_has_Py_RunMain(path: str) -> bool:
+    """Return True if `nm` finds Py_RunMain in the given binary or library."""
+    try:
+        out = subprocess.check_output(
+            ["nm", path], stderr=subprocess.DEVNULL, text=True
+        )
+        # Matches `Py_RunMain` (ELF/Linux) and `_Py_RunMain` (Mach-O/macOS)
+        return "Py_RunMain" in out
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+
+def _has_frame_pointer_prologue(library: str, symbol: str) -> bool:
+    """Return True if `symbol` in `library` was compiled with frame pointers.
+
+    Checks for a frame-pointer prologue (`push %rbp` on x86-64,
+    `stp x29, x30` on aarch64/arm64) in the first instructions of the symbol.
+    A symbol present in nm but lacking a frame-pointer prologue cannot be
+    reached by the frame-pointer unwinder.
+    """
+    system = platform.system()
+    machine = platform.machine().lower()
+    is_x86 = "x86_64" in machine or "i686" in machine
+    is_arm64 = "aarch64" in machine or "arm64" in machine
+
+    try:
+        if system == "Darwin":
+            out = subprocess.check_output(
+                ["otool", "-tV", library], stderr=subprocess.DEVNULL, text=True
+            )
+            in_sym = False
+            for line in out.splitlines():
+                # Mach-O symbol labels: `_Py_RunMain:` or `Py_RunMain:`
+                if f"_{symbol}:" in line or f"{symbol}:" in line:
+                    in_sym = True
+                    continue
+                if in_sym:
+                    # A bare label ending in `:` marks the next function
+                    if line and not line[0].isspace() and line.rstrip().endswith(":"):
+                        break
+                    if is_x86 and "pushq" in line and "%rbp" in line:
+                        return True
+                    if is_arm64 and "stp" in line and "x29" in line:
+                        return True
+        else:
+            # --disassemble=SYMBOL requires binutils >= 2.32 (Ubuntu 20.04+)
+            out = subprocess.check_output(
+                ["objdump", "--no-show-raw-insn", f"--disassemble={symbol}", library],
+                stderr=subprocess.DEVNULL, text=True,
+            )
+            for line in out.splitlines():
+                if is_x86 and "push" in line and "%rbp" in line:
+                    return True
+                if is_arm64 and "stp" in line and "x29" in line:
+                    return True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    return False
+
+
+def _python_linked_runtime(exe: str) -> list:
+    """Return paths of Python runtime shared libraries linked by exe."""
+    system = platform.system()
+    try:
+        if system == "Linux":
+            out = subprocess.check_output(
+                ["ldd", exe], stderr=subprocess.DEVNULL, text=True
+            )
+            paths = []
+            for line in out.splitlines():
+                # ldd lines: "  libpython3.x.so => /path/to/lib (0x...)"
+                if "python" not in line.lower():
+                    continue
+                parts = line.split("=>")
+                if len(parts) == 2:
+                    path = parts[1].split()[0].strip()
+                    if path and path != "(not":
+                        paths.append(path)
+            return paths
+        elif system == "Darwin":
+            out = subprocess.check_output(
+                ["otool", "-L", exe], stderr=subprocess.DEVNULL, text=True
+            )
+            paths = []
+            for line in out.splitlines()[1:]:
+                path = line.strip().split()[0]
+                if "python" in path.lower() or "Python" in path:
+                    paths.append(path)
+            return paths
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    return []
+
+
+@lru_cache(maxsize=None)
+def _python_has_Py_RunMain_symbol(py: str) -> bool:
+    """Return True if Py_RunMain is reachable via frame-pointer unwinding.
+
+    Two conditions must both hold:
+    1. The symbol is present in the binary or its linked Python runtime library
+       (so addr2line can resolve the name from an address).
+    2. The function has a frame-pointer prologue (push rbp / stp x29,x30),
+       so the frame-pointer unwinder can actually walk up to it.
+
+    The python executable may be a thin launcher with the runtime in a shared
+    library (libpython3.x.so on Linux, Python.framework/.../Python on macOS).
+    We check the executable first, then fall back to linked runtime libraries.
+    """
+    exe = shutil.which(f"python{py}")
+    if exe is None:
+        return False
+    for path in [exe] + _python_linked_runtime(exe):
+        if _nm_has_Py_RunMain(path) and _has_frame_pointer_prologue(path, "Py_RunMain"):
+            return True
+    return False
+
+
 def has_native_frame(samples, function=None, filename_contains=None):
     """Check whether any sample contains a native (non-Python) frame."""
     for sample in samples:
@@ -52,7 +172,7 @@ def has_native_frame(samples, function=None, filename_contains=None):
                 continue
             if (
                 filename_contains is not None
-                and filename_contains not in frame.filename
+                and filename_contains.lower() not in frame.filename.lower()
             ):
                 continue
             return True
@@ -70,8 +190,13 @@ def test_native_wall_time(py):
     ), "Expected Python frame from target34.py"
 
     assert has_native_frame(
-        result.samples, function="Py_RunMain"
-    ), "Expected Py_RunMain native frame from the Python runtime"
+        result.samples, filename_contains="python"
+    ), "Expected native frame from the Python runtime"
+
+    if _python_has_Py_RunMain_symbol(py):
+        assert has_native_frame(
+            result.samples, function="Py_RunMain"
+        ), "Expected Py_RunMain native frame from the Python runtime"
 
     meta = result.metadata
     assert meta["mode"] == "wall"
@@ -118,8 +243,13 @@ def test_native_attach(py):
     ), "Expected Python frame from sleepy.py in attach mode"
 
     assert has_native_frame(
-        result.samples, function="Py_RunMain"
-    ), "Expected Py_RunMain native frame from the Python runtime in attach mode"
+        result.samples, filename_contains="python"
+    ), "Expected native frame from the Python runtime in attach mode"
+
+    if _python_has_Py_RunMain_symbol(py):
+        assert has_native_frame(
+            result.samples, function="Py_RunMain"
+        ), "Expected Py_RunMain native frame from the Python runtime in attach mode"
 
     meta = result.metadata
     assert meta["mode"] == "wall"
@@ -137,7 +267,8 @@ def test_native_where(py):
     assert "sleepy.py" in result.stdout, result.stdout
     assert "<module>" in result.stdout, result.stdout
 
-    assert "Py_RunMain" in result.stdout, "Expected Py_RunMain native frame in where output"
+    if _python_has_Py_RunMain_symbol(py):
+        assert "Py_RunMain" in result.stdout, "Expected Py_RunMain native frame in where output"
 
 
 @requires_sudo
