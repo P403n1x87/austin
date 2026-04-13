@@ -184,8 +184,9 @@ def has_native_frame(samples, function=None, filename_contains=None):
 
 @requires_sudo
 @allpythons()
-def test_native_wall_time(py):
+def test_native_wall_time(py, save_mojo):
     result = austin("-n", "-i", "1ms", *python(py), target("target34.py"))
+    save_mojo(result.stdout)
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_frame(
@@ -234,11 +235,12 @@ def test_native_interleaved(py):
 
 @requires_sudo
 @allpythons()
-def test_native_attach(py):
+def test_native_attach(py, save_mojo):
     """Native mode works when attaching to an already-running process."""
     with run_python(py, target("sleepy.py"), "2") as p:
         sleep(0.5)
         result = austin("-n", "-i", "2ms", "-p", str(p.pid))
+    save_mojo(result.stdout)
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert has_frame(

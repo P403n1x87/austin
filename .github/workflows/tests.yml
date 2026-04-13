@@ -231,6 +231,14 @@ jobs:
           sudo -E env PATH="$PATH" .venv/bin/pytest -n 0 -sv test/support
         if: always()
 
+      - name: Collect native test profiles
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-profiles-linux-${{ matrix.arch }}-py${{ matrix.python-version }}
+          path: test-profiles/
+          if-no-files-found: ignore
+
       - name: Collect crash reports
         uses: ./.github/actions/collect-crashes
         if: always()
@@ -406,6 +414,14 @@ jobs:
           source .venv/bin/activate
           pytest --pastebin=failed -svr a -k "_darwin" test/functional
         if: always()
+
+      - name: Collect native test profiles
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-profiles-macos-py${{ matrix.python-version }}
+          path: test-profiles/
+          if-no-files-found: ignore
 
       - name: Collect crash reports
         uses: ./.github/actions/collect-crashes
