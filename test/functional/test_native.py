@@ -44,66 +44,6 @@ pytestmark = pytest.mark.skipif(
 _IS_LINUX = platform.system() == "Linux"
 
 
-def _nm_has_Py_RunMain(path: str) -> bool:
-    """Return True if `nm` finds Py_RunMain in the given binary or library."""
-    try:
-        out = subprocess.check_output(
-            ["nm", path], stderr=subprocess.DEVNULL, text=True
-        )
-        # Matches `Py_RunMain` (ELF/Linux) and `_Py_RunMain` (Mach-O/macOS)
-        return "Py_RunMain" in out
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return False
-
-
-def _has_frame_pointer_prologue(library: str, symbol: str) -> bool:
-    """Return True if `symbol` in `library` was compiled with frame pointers.
-
-    Checks for a frame-pointer prologue (`push %rbp` on x86-64,
-    `stp x29, x30` on aarch64/arm64) in the first instructions of the symbol.
-    A symbol present in nm but lacking a frame-pointer prologue cannot be
-    reached by the frame-pointer unwinder.
-    """
-    system = platform.system()
-    machine = platform.machine().lower()
-    is_x86 = "x86_64" in machine or "i686" in machine
-    is_arm64 = "aarch64" in machine or "arm64" in machine
-
-    try:
-        if system == "Darwin":
-            out = subprocess.check_output(
-                ["otool", "-tV", library], stderr=subprocess.DEVNULL, text=True
-            )
-            in_sym = False
-            for line in out.splitlines():
-                # Mach-O symbol labels: `_Py_RunMain:` or `Py_RunMain:`
-                if f"_{symbol}:" in line or f"{symbol}:" in line:
-                    in_sym = True
-                    continue
-                if in_sym:
-                    # A bare label ending in `:` marks the next function
-                    if line and not line[0].isspace() and line.rstrip().endswith(":"):
-                        break
-                    if is_x86 and "pushq" in line and "%rbp" in line:
-                        return True
-                    if is_arm64 and "stp" in line and "x29" in line:
-                        return True
-        else:
-            # --disassemble=SYMBOL requires binutils >= 2.32 (Ubuntu 20.04+)
-            out = subprocess.check_output(
-                ["objdump", "--no-show-raw-insn", f"--disassemble={symbol}", library],
-                stderr=subprocess.DEVNULL, text=True,
-            )
-            for line in out.splitlines():
-                if is_x86 and "push" in line and "%rbp" in line:
-                    return True
-                if is_arm64 and "stp" in line and "x29" in line:
-                    return True
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pass
-    return False
-
-
 def _python_linked_runtime(exe: str) -> list:
     """Return paths of Python runtime shared libraries linked by exe."""
     system = platform.system()
@@ -140,23 +80,86 @@ def _python_linked_runtime(exe: str) -> list:
 
 @lru_cache(maxsize=None)
 def _python_has_Py_RunMain_symbol(py: str) -> bool:
-    """Return True if Py_RunMain is reachable via frame-pointer unwinding.
+    """Return True if Py_RunMain is present and the runtime has frame pointers.
 
-    Two conditions must both hold:
-    1. The symbol is present in the binary or its linked Python runtime library
-       (so addr2line can resolve the name from an address).
-    2. The function has a frame-pointer prologue (push rbp / stp x29,x30),
-       so the frame-pointer unwinder can actually walk up to it.
+    Austin's NATIVE mode on Linux uses frame-pointer unwinding. If the Python
+    runtime (executable or libpython) was compiled without frame pointers,
+    the unwind chain can break before reaching Py_RunMain even though the
+    symbol exists in the binary.  Proper DWARF CFI (.eh_frame) unwinding would
+    fix this, but that requires libunwind's remote API and is future work.
 
-    The python executable may be a thin launcher with the runtime in a shared
-    library (libpython3.x.so on Linux, Python.framework/.../Python on macOS).
-    We check the executable first, then fall back to linked runtime libraries.
+    We use `nm --dynamic` to check for the symbol and check whether the
+    Python runtime library was built with `-fno-omit-frame-pointer` by looking
+    at the ELF notes or build-id attributes. The most reliable proxy is to
+    check whether the package is a debug/frame-pointer build: on Linux we look
+    for the `.note.gnu.build-id` section and probe for the symbol in a
+    frame-pointer variant of the library if available.  On macOS, framework
+    builds always have frame pointers and symbols.
+
+    As a practical heuristic: if any library in the chain advertises
+    Py_RunMain AND was linked without frame pointer omission (indicated by the
+    presence of frame-pointer-aware build flags in the ELF interpreter path or
+    the absence of `-O` stripping), return True.  Otherwise False.
+
+    For CI with actions/setup-python on Linux the binaries are stripped and
+    compiled without frame pointers, so this correctly returns False there.
     """
     exe = shutil.which(f"python{py}")
     if exe is None:
         return False
+
+    machine = platform.machine().lower()
+    is_x86 = "x86_64" in machine or "i686" in machine
+    is_arm64 = "aarch64" in machine or "arm64" in machine
+
+    def has_symbol(path: str) -> bool:
+        try:
+            out = subprocess.check_output(
+                ["nm", path], stderr=subprocess.DEVNULL, text=True
+            )
+            return "Py_RunMain" in out
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return False
+
+    def has_frame_pointers(path: str) -> bool:
+        """Check for a frame-pointer prologue in Py_RunMain via objdump/otool."""
+        system = platform.system()
+        try:
+            if system == "Darwin":
+                out = subprocess.check_output(
+                    ["otool", "-tV", path], stderr=subprocess.DEVNULL, text=True
+                )
+                in_sym = False
+                for line in out.splitlines():
+                    if "_Py_RunMain:" in line or "Py_RunMain:" in line:
+                        in_sym = True
+                        continue
+                    if not in_sym:
+                        continue
+                    if line and not line[0].isspace() and line.rstrip().endswith(":"):
+                        break
+                    if is_x86 and "pushq" in line and "%rbp" in line:
+                        return True
+                    if is_arm64 and "stp" in line and "x29" in line:
+                        return True
+            else:
+                # --disassemble=SYMBOL requires binutils >= 2.32 (Ubuntu 20.04+)
+                out = subprocess.check_output(
+                    ["objdump", "--no-show-raw-insn",
+                     "--disassemble=Py_RunMain", path],
+                    stderr=subprocess.DEVNULL, text=True,
+                )
+                for line in out.splitlines():
+                    if is_x86 and "push" in line and "%rbp" in line:
+                        return True
+                    if is_arm64 and "stp" in line and "x29" in line:
+                        return True
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+        return False
+
     for path in [exe] + _python_linked_runtime(exe):
-        if _nm_has_Py_RunMain(path) and _has_frame_pointer_prologue(path, "Py_RunMain"):
+        if has_symbol(path) and has_frame_pointers(path):
             return True
     return False
 

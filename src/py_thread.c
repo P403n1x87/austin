@@ -671,6 +671,8 @@ _py_thread__seize(py_thread_t* self) {
 #include <asm/ptrace.h> // struct user_pt_regs
 #endif
 
+#include "linux/unwind.h"
+
 #if defined(__aarch64__)
 // Mask off pointer-authentication bits; user VAs on aarch64 Linux are ≤ 48 bits.
 #define _LINUX_STRIP_PAC(addr) ((uintptr_t)(addr) & 0x0000ffffffffffffull)
@@ -789,8 +791,15 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
 
         stack_native_push(frame);
 
-        if (fp == 0)
-            break;
+        if (fp == 0) {
+            // fp chain is broken — fall back to CFI (.eh_frame) unwinding.
+            if (!cfi_step(self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp))
+                break;
+            pc              = _LINUX_STRIP_PAC(pc);
+            // Invalidate the prefetch buffer since we've jumped to a new SP.
+            _stack_buf_base = 0;
+            continue;
+        }
 
         // Read the next frame record: [fp] = saved_fp, [fp+8] = return_addr.
         // Serve from the prefetched page when FP falls within it; otherwise
@@ -802,12 +811,31 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         } else {
             struct iovec local  = {.iov_base = frame_data, .iov_len = sizeof(frame_data)};
             struct iovec remote = {.iov_base = (void*)fp, .iov_len = sizeof(frame_data)};
-            if (process_vm_readv(self->proc->pid, &local, 1, &remote, 1, 0) != (ssize_t)sizeof(frame_data))
-                break;
+            if (process_vm_readv(self->proc->pid, &local, 1, &remote, 1, 0) != (ssize_t)sizeof(frame_data)) {
+                // process_vm_readv failed — fp may be garbage; try CFI.
+                if (!cfi_step(self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp))
+                    break;
+                pc              = _LINUX_STRIP_PAC(pc);
+                _stack_buf_base = 0;
+                continue;
+            }
         }
 
-        fp = frame_data[0];
-        pc = _LINUX_STRIP_PAC(frame_data[1]);
+        uintptr_t new_fp = frame_data[0];
+        uintptr_t new_pc = _LINUX_STRIP_PAC(frame_data[1]);
+
+        // If fp didn't advance (or went backwards) the chain is corrupt;
+        // fall back to CFI before we loop forever.
+        if (new_fp != 0 && new_fp <= fp) {
+            if (!cfi_step(self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp))
+                break;
+            pc              = _LINUX_STRIP_PAC(pc);
+            _stack_buf_base = 0;
+            continue;
+        }
+
+        fp = new_fp;
+        pc = new_pc;
     }
 #undef _STACK_BUF_SIZE
 
@@ -1455,6 +1483,7 @@ py_thread_free(void) {
     sfree(_tids);
 #else
     sfree(_linux_seized);
+    cfi_cache_destroy();
 #endif
     sfree(_tids_idle);
     sfree(_tids_int);
