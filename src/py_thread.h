@@ -102,7 +102,7 @@ py_thread__set_idle(py_thread_t*);
 int
 py_thread__set_interrupted(py_thread_t*, bool);
 
-int
+bool
 py_thread__is_interrupted(py_thread_t* self);
 
 void
