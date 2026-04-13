@@ -369,7 +369,7 @@ py_thread__set_interrupted(py_thread_t* self, bool state) {
 bool
 py_thread__is_interrupted(py_thread_t* self) {
 #if defined(PL_LINUX)
-    return _tids_int[self->tid >> 3] & (1 << (self->tid & 7));
+    return (_tids_int[self->tid >> 3] & (1 << (self->tid & 7))) != 0;
 #elif defined(PL_MACOS)
     return isvalid(hash_table__get(_mac_int, (key_dt)self->tid));
 #endif

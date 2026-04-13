@@ -483,14 +483,19 @@ _cfi_load(const char* path, uintptr_t load_base) {
 
     size_t map_size = (size_t)st.st_size;
 
-    // Compute ASLR slide from the first executable PT_LOAD segment.
+    // Compute ASLR slide from the first PT_LOAD segment.
+    // load_base comes from the first mapping address in /proc/pid/maps, which
+    // corresponds to the first PT_LOAD segment (p_vaddr is typically 0 for
+    // modern shared libraries).  Using the first *executable* PT_LOAD's p_vaddr
+    // is wrong: its p_vaddr > 0, producing a slide offset by -p_vaddr and
+    // breaking all FDE pc_begin comparisons.
     const _Elf_Ehdr* ehdr  = (const _Elf_Ehdr*)map;
     const _Elf_Phdr* phdrs = (const _Elf_Phdr*)((const char*)map + ehdr->e_phoff);
 
     intptr_t slide = 0;
     if (ehdr->e_phoff + (uint64_t)ehdr->e_phnum * sizeof(_Elf_Phdr) <= map_size) {
         for (uint16_t i = 0; i < ehdr->e_phnum; i++) {
-            if (phdrs[i].p_type == PT_LOAD && (phdrs[i].p_flags & PF_X)) {
+            if (phdrs[i].p_type == PT_LOAD) {
                 slide = (intptr_t)load_base - (intptr_t)phdrs[i].p_vaddr;
                 break;
             }
