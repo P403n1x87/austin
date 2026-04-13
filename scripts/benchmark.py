@@ -69,7 +69,7 @@ SCENARIOS: t.List[Scenario] = [
         Scenario(
             group="Multiprocess wall time",
             title=f"Multiprocess wall time [sampling interval: {i}]",
-            args=["-Cfi", str(i), sys.executable, target("target_mp.py"), "16"],
+            args=["-Cfi", str(i), sys.executable, target("target_mp.py"), "8"],
         )
         for i in (1, 10, 100, 1000)
     ],
@@ -173,7 +173,9 @@ class Renderer(abc.ABC):
 
     @abc.abstractmethod
     def render_summary(
-        self, summary: t.List[t.Tuple[str, t.List[t.Tuple[str, bool, int]]]]
+        self,
+        summary: t.List[t.Tuple[str, t.List[t.Tuple[str, bool, int]]]],
+        skipped: t.List[str],
     ) -> None: ...
 
 
@@ -185,7 +187,7 @@ class TerminalRenderer(Renderer):
         self.render_table(table)
         print()
 
-    def render_summary(self, summary):
+    def render_summary(self, summary, skipped):
         self.render_header("Benchmark Summary", level=2)
         self.render_paragraph(
             f"Comparison of **{VERSIONS[-1]}** against **{VERSIONS[-2]}**."
@@ -195,25 +197,31 @@ class TerminalRenderer(Renderer):
             self.render_paragraph(
                 "No significant difference in performance between versions."
             )
-            return
+        else:
+            self.render_paragraph(
+                "The following scenarios show a statistically significant difference "
+                "in performance between the two versions."
+            )
 
-        self.render_paragraph(
-            "The following scenarios show a statistically significant difference "
-            "in performance between the two versions."
-        )
+            self.render_table(
+                [
+                    (
+                        title,
+                        {
+                            m: {1: self.BETTER, -1: self.WORSE}[s] if c else self.SAME
+                            for m, c, s in tests
+                        },
+                    )
+                    for title, tests in summary
+                ]
+            )
 
-        self.render_table(
-            [
-                (
-                    title,
-                    {
-                        m: {1: self.BETTER, -1: self.WORSE}[s] if c else self.SAME
-                        for m, c, s in tests
-                    },
-                )
-                for title, tests in summary
-            ]
-        )
+        if skipped:
+            self.render_paragraph(
+                "The following scenarios were skipped because the base version "
+                "produced no data (e.g. unsupported flag or new Python version):\n"
+                + "".join(f"\n- {t}" for t in skipped)
+            )
 
     def render_table(self, table: t.List[t.Tuple[str, t.List[Results]]]) -> None:
         _, row = table[0]
@@ -336,7 +344,7 @@ def results_from_json(raw: str) -> t.List[t.Tuple[str, t.List[Results]]]:
 
 
 def merge_results(
-    parts: t.List[t.List[t.Tuple[str, t.List[Results]]]]
+    parts: t.List[t.List[t.Tuple[str, t.List[Results]]]],
 ) -> t.List[t.Tuple[str, t.List[Results]]]:
     """Merge partial result lists into one, preserving the SCENARIOS order."""
     order = {s.title: i for i, s in enumerate(SCENARIOS)}
@@ -351,6 +359,7 @@ def benchmark(opts: ArgumentParser) -> None:
     Outcome.__critical_p__ = opts.pvalue
 
     results: t.List[t.Tuple[str, t.List[Results]]] = []
+    skipped: t.List[str] = []
 
     for scenario in SCENARIOS:
         if opts.k is not None and not opts.k.search(scenario.title):
@@ -397,17 +406,28 @@ def benchmark(opts: ArgumentParser) -> None:
                 )
             )
 
+        if len(table) < 2:
+            print(
+                f"WARNING: Skipping scenario {scenario.title!r} — "
+                "insufficient data (base may not support this scenario)",
+                file=sys.stderr,
+            )
+            skipped.append(scenario.title)
+            continue
+
         results.append((scenario.title, table))
 
     if opts.format == "json":
         print(results_to_json(results))
         return
 
-    render(results, opts)
+    render(results, skipped, opts)
 
 
 def render(
-    results: t.List[t.Tuple[str, t.List[Results]]], opts: ArgumentParser
+    results: t.List[t.Tuple[str, t.List[Results]]],
+    skipped: t.List[str],
+    opts: ArgumentParser,
 ) -> None:
     renderer = {"terminal": TerminalRenderer, "markdown": MarkdownRenderer}[
         opts.format
@@ -420,7 +440,7 @@ def render(
 
     summary = summarize(results)
 
-    renderer.render_summary(summary)
+    renderer.render_summary(summary, skipped)
 
     renderer.render_header("Benchmark Results", level=2)
     for title, table in results:
@@ -477,8 +497,7 @@ def main():
 
     if opts.list_groups:
         matrix = [
-            {"name": g.lower().replace(" ", "-"), "filter": g}
-            for g in SCENARIO_GROUPS
+            {"name": g.lower().replace(" ", "-"), "filter": g} for g in SCENARIO_GROUPS
         ]
         print(json.dumps({"include": matrix}))
         return
@@ -489,7 +508,7 @@ def main():
         if opts.format == "json":
             print(results_to_json(results))
         else:
-            render(results, opts)
+            render(results, [], opts)
         return
 
     benchmark(opts)

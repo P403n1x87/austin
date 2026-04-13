@@ -8,10 +8,10 @@ on:
   pull_request:
     paths:
       - .github/workflows/tests.yml
+      - .github/actions/setup-libunwind/action.yml
+      - .github/actions/collect-crashes/action.yml
       - scripts/build-wheel.py
       - scripts/requirements-bw.txt
-      - scripts/requirements-val.txt
-      - scripts/validation.py
       - src/**
       - test/**
       - configure.ac
@@ -22,9 +22,44 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request'
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+      tests: ${{ steps.filter.outputs.tests }}
+      wheel-scripts: ${{ steps.filter.outputs.wheel-scripts }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            src:
+              - .github/workflows/tests.yml
+              - .github/actions/setup-libunwind/action.yml
+              - src/**
+              - configure.ac
+              - Makefile.am
+            tests:
+              - .github/workflows/tests.yml
+              - test/**
+            wheel-scripts:
+              - .github/workflows/tests.yml
+              - scripts/build-wheel.py
+              - scripts/requirements-bw.txt
+
   build-linux:
-    runs-on: ubuntu-24.04    
-    name: Build Austin on Linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    name: Build Austin on Linux (${{ matrix.arch }})
     steps:
       - uses: actions/checkout@v3
 
@@ -44,15 +79,23 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}
+          name: austin-binaries-Linux-${{ matrix.arch }}
           overwrite: true
           path: |
             src/austin
             src/austinp
 
   build-linux-musl:
-    runs-on: ubuntu-24.04    
-    name: Build Austin on Linux (musl)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    name: Build Austin on Linux (${{ matrix.arch }}, musl)
     steps:
       - uses: actions/checkout@v3
 
@@ -67,31 +110,37 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}-musl
+          name: austin-binaries-Linux-musl-${{ matrix.arch }}
           overwrite: true
           path: |
             src/austin.musl
 
   tests-linux:
-    runs-on: ubuntu-24.04
-
-    needs: [build-linux, build-linux-musl]
-
     strategy:
       fail-fast: false
       matrix:
+        arch: [x86_64, aarch64]
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
-    
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.tests == 'true' || needs.changes.result == 'skipped'
+
+    needs: [changes, build-linux, build-linux-musl]
+
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
-    
-    name: Tests on Linux with Python ${{ matrix.python-version }}
+
+    name: Tests on Linux (${{ matrix.arch }}) with Python ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}
+          name: austin-binaries-Linux-${{ matrix.arch }}
           path: src
 
       - run: chmod +x src/austin && chmod +x src/austinp
@@ -112,28 +161,27 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: "3.10"
+
       - name: Install test dependencies
         run: |
           python3.10 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r test/requirements.txt
-          
+
       - name: Set core dump file pattern
         run: |
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
-
           ulimit -c unlimited
           python3.10 -c "import ctypes;ctypes.string_at(0)" || true
-          ls core.*
-          rm core.*
+          ls core.* && rm core.* || true
 
       - name: Run unit tests
         run: |
           ulimit -c unlimited
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           .venv/bin/pytest -vv test/cunit
-  
+
       - name: Run functional Austin tests (with sudo)
         run: |
           ulimit -c unlimited
@@ -161,7 +209,7 @@ jobs:
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           .venv/bin/pytest --pastebin=failed -svr a test/functional -k "austinp"
         if: always()
-  
+
       - name: Run integrity tests (with sudo)
         run: |
           ulimit -c unlimited
@@ -183,23 +231,42 @@ jobs:
           sudo -E env PATH="$PATH" .venv/bin/pytest -n 0 -sv test/support
         if: always()
 
+      - name: Collect crash reports
+        uses: ./.github/actions/collect-crashes
+        if: always()
+        with:
+          label: linux-${{ matrix.arch }}-py${{ matrix.python-version }}
+
   wheels-linux:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+            manylinux-platform: manylinux_2_12_x86_64.manylinux2010_x86_64
+            musl-platform: musllinux_1_1_x86_64
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+            manylinux-platform: manylinux_2_17_aarch64.manylinux2014_aarch64
+            musl-platform: musllinux_1_1_aarch64
+    runs-on: ${{ matrix.runs-on }}
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.wheel-scripts == 'true' || needs.changes.result == 'skipped'
 
-    needs: [build-linux, build-linux-musl]
+    needs: [changes, build-linux, build-linux-musl]
 
-    name: Build Linux wheels
+    name: Build Linux wheels (${{ matrix.arch }})
     steps:
       - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}
+          name: austin-binaries-Linux-${{ matrix.arch }}
           path: src
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}-musl
+          name: austin-binaries-Linux-musl-${{ matrix.arch }}
           path: src
 
       - run: chmod +x src/austin && chmod +x src/austinp
@@ -215,17 +282,17 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-bw.txt
-          
+
           export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p");
 
           python scripts/build-wheel.py \
             --version=$VERSION \
-            --platform=manylinux_2_12_x86_64.manylinux2010_x86_64 \
+            --platform=${{ matrix.manylinux-platform }} \
             --files austin:src/austin austinp:src/austinp
 
           python scripts/build-wheel.py \
             --version=$VERSION \
-            --platform=musllinux_1_1_x86_64 \
+            --platform=${{ matrix.musl-platform }} \
             --files austin:src/austin.musl
 
           deactivate
@@ -264,8 +331,9 @@ jobs:
 
   tests-osx:
     runs-on: macos-latest
-    
-    needs: [build-osx-gcc, build-osx-clang]
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.tests == 'true' || needs.changes.result == 'skipped'
+
+    needs: [changes, build-osx-gcc, build-osx-clang]
 
     strategy:
       fail-fast: false
@@ -339,10 +407,17 @@ jobs:
           pytest --pastebin=failed -svr a -k "_darwin" test/functional
         if: always()
 
+      - name: Collect crash reports
+        uses: ./.github/actions/collect-crashes
+        if: always()
+        with:
+          label: macos-py${{ matrix.python-version }}
+
   wheels-osx:
     runs-on: macos-latest
-    
-    needs: [build-osx-gcc, build-osx-clang]
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.wheel-scripts == 'true' || needs.changes.result == 'skipped'
+
+    needs: [changes, build-osx-gcc, build-osx-clang]
 
     name: Build macOS wheels
     steps:
@@ -398,8 +473,9 @@ jobs:
 
   tests-win:
     runs-on: windows-latest
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.tests == 'true' || needs.changes.result == 'skipped'
 
-    needs: build-win
+    needs: [changes, build-win]
 
     strategy:
       fail-fast: false
@@ -467,8 +543,9 @@ jobs:
 
   wheels-win:
     runs-on: windows-latest
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.wheel-scripts == 'true' || needs.changes.result == 'skipped'
 
-    needs: build-win
+    needs: [changes, build-win]
 
     name: Build Windows wheels
     steps:
@@ -496,3 +573,69 @@ jobs:
             --version=$VERSION \
             --platform=win_amd64 \
             --files austin.exe:src/austin.exe
+
+  crash-report:
+    runs-on: ubuntu-24.04
+    needs: [tests-linux, tests-osx, tests-win]
+    if: always() && github.event_name == 'pull_request'
+    name: Crash report
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download crash reports
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: crash-reports-*
+          path: crash-reports/
+          merge-multiple: false
+
+      - name: Generate crash report
+        id: report
+        shell: bash
+        run: |
+          mkdir -p crash-reports
+          files=$(find crash-reports/ -type f | sort)
+          if [ -z "$files" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "found=true" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## :rotating_light: Austin crashed during CI"
+            echo ""
+            echo "Crash artefacts were collected in the following jobs:"
+            echo ""
+            for dir in crash-reports/*/; do
+              label="${dir#crash-reports/}"
+              label="${label%/}"
+              echo "### \`${label}\`"
+              echo ""
+              for f in "$dir"*; do
+                echo "<details><summary><code>$(basename $f)</code></summary>"
+                echo ""
+                echo '```'
+                cat "$f"
+                echo '```'
+                echo "</details>"
+                echo ""
+              done
+            done
+          } > crash-comment.md
+
+      - name: Post crash report on PR
+        if: steps.report.outputs.found == 'true'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: crash-report
+          path: crash-comment.md
+
+      - name: Clear stale crash comment
+        if: steps.report.outputs.found == 'false'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: crash-report
+          delete: true
