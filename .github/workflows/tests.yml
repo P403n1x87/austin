@@ -9,6 +9,7 @@ on:
     paths:
       - .github/workflows/tests.yml
       - .github/actions/setup-libunwind/action.yml
+      - .github/actions/collect-crashes/action.yml
       - scripts/build-wheel.py
       - scripts/requirements-bw.txt
       - src/**
@@ -230,6 +231,12 @@ jobs:
           sudo -E env PATH="$PATH" .venv/bin/pytest -n 0 -sv test/support
         if: always()
 
+      - name: Collect crash reports
+        uses: ./.github/actions/collect-crashes
+        if: always()
+        with:
+          label: linux-${{ matrix.arch }}-py${{ matrix.python-version }}
+
   wheels-linux:
     strategy:
       fail-fast: false
@@ -400,6 +407,12 @@ jobs:
           pytest --pastebin=failed -svr a -k "_darwin" test/functional
         if: always()
 
+      - name: Collect crash reports
+        uses: ./.github/actions/collect-crashes
+        if: always()
+        with:
+          label: macos-py${{ matrix.python-version }}
+
   wheels-osx:
     runs-on: macos-latest
     if: needs.changes.outputs.src == 'true' || needs.changes.outputs.wheel-scripts == 'true' || needs.changes.result == 'skipped'
@@ -560,3 +573,69 @@ jobs:
             --version=$VERSION \
             --platform=win_amd64 \
             --files austin.exe:src/austin.exe
+
+  crash-report:
+    runs-on: ubuntu-24.04
+    needs: [tests-linux, tests-osx, tests-win]
+    if: always() && github.event_name == 'pull_request'
+    name: Crash report
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download crash reports
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: crash-reports-*
+          path: crash-reports/
+          merge-multiple: false
+
+      - name: Generate crash report
+        id: report
+        shell: bash
+        run: |
+          mkdir -p crash-reports
+          files=$(find crash-reports/ -type f | sort)
+          if [ -z "$files" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "found=true" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## :rotating_light: Austin crashed during CI"
+            echo ""
+            echo "Crash artefacts were collected in the following jobs:"
+            echo ""
+            for dir in crash-reports/*/; do
+              label="${dir#crash-reports/}"
+              label="${label%/}"
+              echo "### \`${label}\`"
+              echo ""
+              for f in "$dir"*; do
+                echo "<details><summary><code>$(basename $f)</code></summary>"
+                echo ""
+                echo '```'
+                cat "$f"
+                echo '```'
+                echo "</details>"
+                echo ""
+              done
+            done
+          } > crash-comment.md
+
+      - name: Post crash report on PR
+        if: steps.report.outputs.found == 'true'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: crash-report
+          path: crash-comment.md
+
+      - name: Clear stale crash comment
+        if: steps.report.outputs.found == 'false'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: crash-report
+          delete: true

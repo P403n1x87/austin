@@ -5,6 +5,7 @@ on:
     paths:
       - .github/workflows/validation.yml
       - .github/actions/setup-libunwind/action.yml
+      - .github/actions/collect-crashes/action.yml
       - scripts/requirements-val.txt
       - scripts/validation.py
       - src/**
@@ -95,6 +96,13 @@ jobs:
           cd -
           deactivate
 
+      - name: Collect crash reports
+        uses: ./austin/.github/actions/collect-crashes
+        if: always()
+        with:
+          austin-bin: austin/src/austin
+          label: validation-py${{ matrix.python-version }}
+
       - name: List collected samples
         run: ls austin/*.mojo
         if: always()
@@ -148,3 +156,58 @@ jobs:
         with:
           header: validation
           path: validation.txt
+
+      - name: Download crash reports
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: crash-reports-validation-*
+          path: crash-reports/
+          merge-multiple: false
+
+      - name: Generate crash report
+        id: crash
+        shell: bash
+        run: |
+          mkdir -p crash-reports
+          files=$(find crash-reports/ -type f | sort)
+          if [ -z "$files" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "found=true" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## :rotating_light: Austin crashed during data validation"
+            echo ""
+            for dir in crash-reports/*/; do
+              label="${dir#crash-reports/}"
+              label="${label%/}"
+              echo "### \`${label}\`"
+              echo ""
+              for f in "$dir"*; do
+                echo "<details><summary><code>$(basename $f)</code></summary>"
+                echo ""
+                echo '```'
+                cat "$f"
+                echo '```'
+                echo "</details>"
+                echo ""
+              done
+            done
+          } > crash-comment.md
+
+      - name: Post crash report on PR
+        if: steps.crash.outputs.found == 'true'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: validation-crash-report
+          path: crash-comment.md
+
+      - name: Clear stale crash comment
+        if: steps.crash.outputs.found == 'false'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: validation-crash-report
+          delete: true
