@@ -234,7 +234,12 @@ _linux_sym_cmp(const void* a, const void* b) {
     return (sa->addr > sb->addr) - (sa->addr < sb->addr);
 }
 
-// Compute the ASLR slide: (runtime load_base) - (first executable PT_LOAD p_vaddr).
+// Compute the ASLR slide: (runtime load_base) - (first PT_LOAD p_vaddr).
+// load_base comes from the first mapping address in /proc/pid/maps, which
+// corresponds to the first PT_LOAD segment (p_vaddr is typically 0 for modern
+// shared libraries).  Using the first *executable* PT_LOAD's p_vaddr is wrong:
+// its p_vaddr > 0, producing a slide offset by -p_vaddr and breaking all
+// symbol address comparisons.
 static intptr_t
 _linux_compute_slide(const void* map, size_t map_size, uintptr_t load_base) {
     const _Elf_Ehdr* ehdr  = (const _Elf_Ehdr*)map;
@@ -244,7 +249,7 @@ _linux_compute_slide(const void* map, size_t map_size, uintptr_t load_base) {
         return 0;
 
     for (uint16_t i = 0; i < ehdr->e_phnum; i++) {
-        if (phdrs[i].p_type == PT_LOAD && (phdrs[i].p_flags & PF_X))
+        if (phdrs[i].p_type == PT_LOAD)
             return (intptr_t)load_base - (intptr_t)phdrs[i].p_vaddr;
     }
     return 0;

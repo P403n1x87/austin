@@ -80,86 +80,36 @@ def _python_linked_runtime(exe: str) -> list:
 
 @lru_cache(maxsize=None)
 def _python_has_Py_RunMain_symbol(py: str) -> bool:
-    """Return True if Py_RunMain is present and the runtime has frame pointers.
+    """Return True if Py_RunMain is present in the Python runtime.
 
-    Austin's NATIVE mode on Linux uses frame-pointer unwinding. If the Python
-    runtime (executable or libpython) was compiled without frame pointers,
-    the unwind chain can break before reaching Py_RunMain even though the
-    symbol exists in the binary.  Proper DWARF CFI (.eh_frame) unwinding would
-    fix this, but that requires libunwind's remote API and is future work.
+    On Linux, Austin's NATIVE mode uses DWARF CFI (.eh_frame) unwinding on
+    x86-64 and frame-pointer walking on aarch64 (where the AAPCS mandates
+    frame pointers).  CFI can unwind through binaries compiled without frame
+    pointers, so we only need to verify the symbol exists — not that the
+    binary was built with -fno-omit-frame-pointer.
 
-    We use `nm --dynamic` to check for the symbol and check whether the
-    Python runtime library was built with `-fno-omit-frame-pointer` by looking
-    at the ELF notes or build-id attributes. The most reliable proxy is to
-    check whether the package is a debug/frame-pointer build: on Linux we look
-    for the `.note.gnu.build-id` section and probe for the symbol in a
-    frame-pointer variant of the library if available.  On macOS, framework
-    builds always have frame pointers and symbols.
+    On macOS, the ABI mandates frame pointers on both x86-64 and arm64, so
+    frame-pointer walking always reaches Py_RunMain if the symbol exists.
 
-    As a practical heuristic: if any library in the chain advertises
-    Py_RunMain AND was linked without frame pointer omission (indicated by the
-    presence of frame-pointer-aware build flags in the ELF interpreter path or
-    the absence of `-O` stripping), return True.  Otherwise False.
-
-    For CI with actions/setup-python on Linux the binaries are stripped and
-    compiled without frame pointers, so this correctly returns False there.
+    We check both .symtab (nm) and .dynsym (nm -D) to handle stripped
+    binaries where only the dynamic symbol table remains.
     """
     exe = shutil.which(f"python{py}")
     if exe is None:
         return False
 
-    machine = platform.machine().lower()
-    is_x86 = "x86_64" in machine or "i686" in machine
-    is_arm64 = "aarch64" in machine or "arm64" in machine
-
     def has_symbol(path: str) -> bool:
-        try:
-            out = subprocess.check_output(
-                ["nm", path], stderr=subprocess.DEVNULL, text=True
-            )
-            return "Py_RunMain" in out
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            return False
-
-    def has_frame_pointers(path: str) -> bool:
-        """Check for a frame-pointer prologue in Py_RunMain via objdump/otool."""
-        system = platform.system()
-        try:
-            if system == "Darwin":
-                out = subprocess.check_output(
-                    ["otool", "-tV", path], stderr=subprocess.DEVNULL, text=True
-                )
-                in_sym = False
-                for line in out.splitlines():
-                    if "_Py_RunMain:" in line or "Py_RunMain:" in line:
-                        in_sym = True
-                        continue
-                    if not in_sym:
-                        continue
-                    if line and not line[0].isspace() and line.rstrip().endswith(":"):
-                        break
-                    if is_x86 and "pushq" in line and "%rbp" in line:
-                        return True
-                    if is_arm64 and "stp" in line and "x29" in line:
-                        return True
-            else:
-                # --disassemble=SYMBOL requires binutils >= 2.32 (Ubuntu 20.04+)
-                out = subprocess.check_output(
-                    ["objdump", "--no-show-raw-insn",
-                     "--disassemble=Py_RunMain", path],
-                    stderr=subprocess.DEVNULL, text=True,
-                )
-                for line in out.splitlines():
-                    if is_x86 and "push" in line and "%rbp" in line:
-                        return True
-                    if is_arm64 and "stp" in line and "x29" in line:
-                        return True
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            pass
+        for cmd in [["nm", path], ["nm", "-D", path]]:
+            try:
+                out = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, text=True)
+                if "Py_RunMain" in out:
+                    return True
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                pass
         return False
 
     for path in [exe] + _python_linked_runtime(exe):
-        if has_symbol(path) and has_frame_pointers(path):
+        if has_symbol(path):
             return True
     return False
 
@@ -192,14 +142,14 @@ def test_native_wall_time(py, save_mojo):
         result.samples, filename="target34.py", function="keep_cpu_busy", line=32
     ), "Expected Python frame from target34.py"
 
-    assert has_native_frame(
-        result.samples, filename_contains="python"
-    ), "Expected native frame from the Python runtime"
+    assert has_native_frame(result.samples, filename_contains="python"), (
+        "Expected native frame from the Python runtime"
+    )
 
     if _python_has_Py_RunMain_symbol(py):
-        assert has_native_frame(
-            result.samples, function="Py_RunMain"
-        ), "Expected Py_RunMain native frame from the Python runtime"
+        assert has_native_frame(result.samples, function="Py_RunMain"), (
+            "Expected Py_RunMain native frame from the Python runtime"
+        )
 
     meta = result.metadata
     assert meta["mode"] == "wall"
@@ -226,9 +176,9 @@ def test_native_interleaved(py):
             found_interleaved = True
             break
 
-    assert (
-        found_interleaved
-    ), "Expected at least one sample with both Python and native frames interleaved"
+    assert found_interleaved, (
+        "Expected at least one sample with both Python and native frames interleaved"
+    )
 
 
 @requires_sudo
@@ -241,18 +191,18 @@ def test_native_attach(py, save_mojo):
     save_mojo(result.stdout)
     assert result.returncode == 0, result.stderr or result.stdout
 
-    assert has_frame(
-        result.samples, filename="sleepy.py", function="<module>"
-    ), "Expected Python frame from sleepy.py in attach mode"
+    assert has_frame(result.samples, filename="sleepy.py", function="<module>"), (
+        "Expected Python frame from sleepy.py in attach mode"
+    )
 
-    assert has_native_frame(
-        result.samples, filename_contains="python"
-    ), "Expected native frame from the Python runtime in attach mode"
+    assert has_native_frame(result.samples, filename_contains="python"), (
+        "Expected native frame from the Python runtime in attach mode"
+    )
 
     if _python_has_Py_RunMain_symbol(py):
-        assert has_native_frame(
-            result.samples, function="Py_RunMain"
-        ), "Expected Py_RunMain native frame from the Python runtime in attach mode"
+        assert has_native_frame(result.samples, function="Py_RunMain"), (
+            "Expected Py_RunMain native frame from the Python runtime in attach mode"
+        )
 
     meta = result.metadata
     assert meta["mode"] == "wall"
@@ -271,7 +221,9 @@ def test_native_where(py):
     assert "<module>" in result.stdout, result.stdout
 
     if _python_has_Py_RunMain_symbol(py):
-        assert "Py_RunMain" in result.stdout, "Expected Py_RunMain native frame in where output"
+        assert "Py_RunMain" in result.stdout, (
+            "Expected Py_RunMain native frame in where output"
+        )
 
 
 @allpythons()

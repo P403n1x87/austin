@@ -721,20 +721,23 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         FAIL;
     }
 
-    // On x86-64 and arm64, a valid frame pointer must point to a saved frame
-    // record on the stack, which is always at or above the current SP (stack
-    // grows down).  If fp < sp, the binary was compiled without frame pointers
-    // and RBP/X29 is a general-purpose register whose value is unrelated to
-    // the call chain.  Zero it out so we take the CFI path from the start.
-    // Also reject non-canonical addresses (bits 48-63 set) which are kernel
-    // addresses or garbage values like UINTPTR_MAX.
-    if (fp < sp || fp >> 48)
-        fp = 0;
-
     // Once we start using CFI we must not revert to fp-walk: the fp recovered
     // by cfi_step is the saved RBP (a callee-saved register), not necessarily
     // a frame-pointer record.  Mixing modes causes spurious / repeated frames.
+#if defined(__x86_64__)
+    // On x86-64, most binaries are compiled without frame pointers
+    // (-fomit-frame-pointer is the default at -O2).  RBP is a general-purpose
+    // register whose value may look like a valid stack address but isn't a
+    // frame-pointer record.  Always use CFI.  We keep fp intact because
+    // cfi_step needs it when the CFA rule says CFA = RBP + offset.
+    bool use_cfi = true;
+#elif defined(__aarch64__)
+    // On aarch64, the AAPCS mandates frame pointers (x29/x30 pairs on the
+    // stack).  fp-walk is the preferred fast path.
+    if (fp < sp || fp >> 48)
+        fp = 0;
     bool use_cfi = (fp == 0);
+#endif
 
     lru_cache_t* cache        = self->proc->frame_cache;
     lru_cache_t* string_cache = self->proc->string_cache;

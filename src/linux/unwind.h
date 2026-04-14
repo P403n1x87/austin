@@ -781,9 +781,12 @@ _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
         if (!_cfi_eval(p, record_end, pc_begin, lookup_pc, code_align, data_align, out, &cie_row))
             return false;
 
-        out->regs[_CFI_RA_REG].kind = REG_CFA_OFFSET;
-        // If the RA rule was not set by instructions keep the x86 default (-8)
-        if (out->regs[_CFI_RA_REG].offset == 0 && out->regs[_CFI_RA_REG].kind == REG_CFA_OFFSET) {
+        // If the CIE/FDE instructions never set the RA column (still REG_UNDEF
+        // from the initial memset), apply the platform default.  On x86-64 the
+        // return address lives at CFA-8 (pushed by CALL).  Do NOT override when
+        // the CIE/FDE explicitly set a rule (even REG_SAME or an expression).
+        if (out->regs[_CFI_RA_REG].kind == REG_UNDEF) {
+            out->regs[_CFI_RA_REG].kind = REG_CFA_OFFSET;
 #if defined(__x86_64__)
             out->regs[_CFI_RA_REG].offset = -8;
 #endif
