@@ -668,7 +668,15 @@ _py_thread__seize(py_thread_t* self) {
 #if defined(__x86_64__)
 #include <sys/user.h> // struct user_regs_struct
 #elif defined(__aarch64__)
-#include <asm/ptrace.h> // struct user_pt_regs
+// struct user_pt_regs is defined in <asm/ptrace.h> on glibc, but musl doesn't
+// ship kernel headers.  The layout is stable kernel ABI so we define it
+// ourselves to avoid the dependency.
+struct user_pt_regs {
+    unsigned long long regs[31];
+    unsigned long long sp;
+    unsigned long long pc;
+    unsigned long long pstate;
+};
 #endif
 
 #include "linux/unwind.h"
