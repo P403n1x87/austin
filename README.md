@@ -290,7 +290,7 @@ print(check_output(["src/austin", "--help"]).decode().strip())
 print("~~~")
 ]]] -->
 ~~~
-Usage: austin [-CcfgmP?V] [-x n_sec] [-i n_us] [-o FILE] [-p PID] [-t n_ms]
+Usage: austin [-CcfgmnP?V] [-x n_sec] [-i n_us] [-o FILE] [-p PID] [-t n_ms]
                [-w PID] command [ARG...]
 
 Austin is a frame stack sampler for CPython that is used to extract profiling
@@ -306,6 +306,8 @@ Options:
   -i, --interval <n_us>       Sampling interval in microseconds (default is
                               100). Accepted units: s, ms, us.
   -m, --memory                Profile memory usage.
+  -n, --native                Collect native call stacks alongside Python
+                              stacks.
   -o, --output <FILE>         Specify an output file for the collected samples.
   -p, --pid <PID>             Attach to the process with the given PID.
   -P, --pipe                  Pipe mode. Use when piping Austin output.

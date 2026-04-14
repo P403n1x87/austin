@@ -491,7 +491,7 @@ _cfi_load(const char* path, uintptr_t load_base, pid_t pid) {
         // The vDSO is a kernel-mapped ELF in the target process's address
         // space; there is no file to open.  Read the ELF header to determine
         // the total size, then copy the whole image into an anonymous mapping.
-        _Elf_Ehdr    ehdr;
+        _Elf_Ehdr    ehdr = {0};
         struct iovec lh = {.iov_base = &ehdr, .iov_len = sizeof(ehdr)};
         struct iovec rh = {.iov_base = (void*)load_base, .iov_len = sizeof(ehdr)};
         if (process_vm_readv(pid, &lh, 1, &rh, 1, 0) != (ssize_t)sizeof(ehdr))

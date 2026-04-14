@@ -3,7 +3,6 @@ from pathlib import Path
 
 import pytest
 
-
 _uid = getattr(os, "getuid", lambda: 0)()
 
 _MOJO_DIR = (

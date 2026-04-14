@@ -189,7 +189,7 @@ static arg_option options[] = {
     "interval",  'i', "n_us",  0,
     "Sampling interval in microseconds (default is 100). Accepted units: s, ms, us."
   },
-#ifdef NATIVE
+#ifdef AUSTINP
   {
     "kernel",    'k', NULL,    0,
     "Sample the kernel call stack."
@@ -663,7 +663,7 @@ cb(const int opt, const char* arg, const int index, char** argv) {
         break;
 #endif
 
-#ifdef NATIVE
+#ifdef AUSTINP
     case 'k':
         pargs.kernel = true;
         break;

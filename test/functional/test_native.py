@@ -142,14 +142,14 @@ def test_native_wall_time(py, save_mojo):
         result.samples, filename="target34.py", function="keep_cpu_busy", line=32
     ), "Expected Python frame from target34.py"
 
-    assert has_native_frame(result.samples, filename_contains="python"), (
-        "Expected native frame from the Python runtime"
-    )
+    assert has_native_frame(
+        result.samples, filename_contains="python"
+    ), "Expected native frame from the Python runtime"
 
     if _python_has_Py_RunMain_symbol(py):
-        assert has_native_frame(result.samples, function="Py_RunMain"), (
-            "Expected Py_RunMain native frame from the Python runtime"
-        )
+        assert has_native_frame(
+            result.samples, function="Py_RunMain"
+        ), "Expected Py_RunMain native frame from the Python runtime"
 
     meta = result.metadata
     assert meta["mode"] == "wall"
@@ -176,9 +176,9 @@ def test_native_interleaved(py):
             found_interleaved = True
             break
 
-    assert found_interleaved, (
-        "Expected at least one sample with both Python and native frames interleaved"
-    )
+    assert (
+        found_interleaved
+    ), "Expected at least one sample with both Python and native frames interleaved"
 
 
 @requires_sudo
@@ -191,18 +191,18 @@ def test_native_attach(py, save_mojo):
     save_mojo(result.stdout)
     assert result.returncode == 0, result.stderr or result.stdout
 
-    assert has_frame(result.samples, filename="sleepy.py", function="<module>"), (
-        "Expected Python frame from sleepy.py in attach mode"
-    )
+    assert has_frame(
+        result.samples, filename="sleepy.py", function="<module>"
+    ), "Expected Python frame from sleepy.py in attach mode"
 
-    assert has_native_frame(result.samples, filename_contains="python"), (
-        "Expected native frame from the Python runtime in attach mode"
-    )
+    assert has_native_frame(
+        result.samples, filename_contains="python"
+    ), "Expected native frame from the Python runtime in attach mode"
 
     if _python_has_Py_RunMain_symbol(py):
-        assert has_native_frame(result.samples, function="Py_RunMain"), (
-            "Expected Py_RunMain native frame from the Python runtime in attach mode"
-        )
+        assert has_native_frame(
+            result.samples, function="Py_RunMain"
+        ), "Expected Py_RunMain native frame from the Python runtime in attach mode"
 
     meta = result.metadata
     assert meta["mode"] == "wall"
@@ -221,9 +221,9 @@ def test_native_where(py):
     assert "<module>" in result.stdout, result.stdout
 
     if _python_has_Py_RunMain_symbol(py):
-        assert "Py_RunMain" in result.stdout, (
-            "Expected Py_RunMain native frame in where output"
-        )
+        assert (
+            "Py_RunMain" in result.stdout
+        ), "Expected Py_RunMain native frame in where output"
 
 
 @allpythons()
