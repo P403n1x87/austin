@@ -333,6 +333,8 @@ def results_to_json(results: t.List[t.Tuple[str, t.List[Results]]]) -> str:
 
 def results_from_json(raw: str) -> t.List[t.Tuple[str, t.List[Results]]]:
     """Deserialise results produced by results_to_json."""
+    if not raw or not raw.strip():
+        return []
     results = []
     for entry in json.loads(raw):
         table = []

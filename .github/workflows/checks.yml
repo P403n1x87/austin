@@ -258,9 +258,88 @@ jobs:
           path: coverage-py${{ matrix.python-version }}.json
           retention-days: 1
 
+  build-coverage-aarch64:
+    runs-on: ubuntu-24.04-arm
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.result == 'skipped'
+    name: Code coverage (build, aarch64)
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install autoconf build-essential libtool pkg-config
+
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure --enable-coverage
+          make
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: austin-coverage-build-aarch64
+          path: |
+            src/austin
+            src/*.gcno
+          retention-days: 1
+
+  test-coverage-aarch64:
+    runs-on: ubuntu-24.04-arm
+    needs: build-coverage-aarch64
+    name: Code coverage (native, aarch64)
+    env:
+      AUSTIN_TESTS_PYTHON_VERSIONS: "3.12"
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: austin-coverage-build-aarch64
+          path: src
+
+      - run: chmod +x src/austin
+
+      - name: Install Python 3.12
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12-dev"
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install gcovr
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r test/requirements.txt
+
+      - name: Run native tests
+        run: |
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+          ulimit -c unlimited
+          .venv/bin/pytest -svr a test/functional/test_native.py || true
+          sudo -E env PATH="$PATH" .venv/bin/pytest -svr a test/functional/test_native.py || true
+
+      - name: Generate coverage tracefile
+        run: gcovr --json coverage-native-aarch64.json -r src/ --gcov-ignore-errors=no_working_dir_found
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-native-aarch64
+          path: coverage-native-aarch64.json
+          retention-days: 1
+
   report-coverage:
     runs-on: ubuntu-24.04
-    needs: test-coverage
+    needs: [test-coverage, test-coverage-aarch64]
+    if: always() && needs.test-coverage.result != 'cancelled'
     name: Code coverage (report)
     steps:
       - uses: actions/checkout@v3
@@ -272,7 +351,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          pattern: coverage-py*
+          pattern: coverage-*
           path: coverage-data/
           merge-multiple: true
 

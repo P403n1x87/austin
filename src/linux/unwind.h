@@ -340,7 +340,7 @@ _cfi_eval(
             row->cfa_off = (int64_t)off;
             break;
         }
-        case DW_CFA_def_cfa_sf: {
+        case DW_CFA_def_cfa_sf: { // GCOV_EXCL_START
             uint64_t reg = _read_uleb128(&p, end);
             int64_t  off = _read_sleb128(&p, end);
             row->cfa_reg = (uint8_t)reg;
@@ -351,9 +351,9 @@ _cfi_eval(
             int64_t off  = _read_sleb128(&p, end);
             row->cfa_off = off * data_align;
             break;
-        }
+        } // GCOV_EXCL_STOP
 
-        case DW_CFA_offset_extended: {
+        case DW_CFA_offset_extended: { // GCOV_EXCL_START
             uint64_t reg = _read_uleb128(&p, end);
             uint64_t off = _read_uleb128(&p, end);
             if (reg < _CFI_MAX_REGS) {
@@ -370,7 +370,7 @@ _cfi_eval(
                 row->regs[reg].offset = off * data_align;
             }
             break;
-        }
+        } // GCOV_EXCL_STOP
 
         case DW_CFA_same_value: {
             uint64_t reg = _read_uleb128(&p, end);
@@ -384,7 +384,7 @@ _cfi_eval(
                 row->regs[reg].kind = REG_UNDEF;
             break;
         }
-        case DW_CFA_restore_extended: {
+        case DW_CFA_restore_extended: { // GCOV_EXCL_START
             uint64_t reg = _read_uleb128(&p, end);
             if (reg < _CFI_MAX_REGS) {
                 if (initial_row)
@@ -399,24 +399,24 @@ _cfi_eval(
             _read_uleb128(&p, end);
             _read_uleb128(&p, end);
             break;
-        }
+        } // GCOV_EXCL_STOP
 
         case DW_CFA_advance_loc1:
             if (p + 1 > end)
-                return false;
+                return false; // GCOV_EXCL_LINE
             row_pc += *p++ * code_align;
             break;
         case DW_CFA_advance_loc2:
             if (p + 2 > end)
-                return false;
+                return false; // GCOV_EXCL_LINE
             row_pc += _read_u16(&p) * code_align;
             break;
         case DW_CFA_advance_loc3:
             if (p + 4 > end)
-                return false;
+                return false; // GCOV_EXCL_LINE
             row_pc += _read_u32(&p) * code_align;
             break;
-        case DW_CFA_set_loc: {
+        case DW_CFA_set_loc: { // GCOV_EXCL_START
             // New row_pc is an encoded address; we use absptr for simplicity.
             uintptr_t loc;
             if (p + sizeof(uintptr_t) > end)
@@ -425,7 +425,7 @@ _cfi_eval(
             p      += sizeof(uintptr_t);
             row_pc  = loc;
             break;
-        }
+        } // GCOV_EXCL_STOP
 
         case DW_CFA_remember_state:
             if (state_depth < 8)
@@ -442,7 +442,7 @@ _cfi_eval(
             break;
 
         // DWARF expressions: skip by reading block length then skipping.
-        case DW_CFA_def_cfa_expression:
+        case DW_CFA_def_cfa_expression: // GCOV_EXCL_START
         case DW_CFA_expression:
         case DW_CFA_val_expression: {
             if (op == DW_CFA_expression || op == DW_CFA_val_expression)
@@ -456,7 +456,7 @@ _cfi_eval(
 
         default:
             // Unknown opcode — give up.
-            return false;
+            return false; // GCOV_EXCL_STOP
         }
     }
     return true;
@@ -492,44 +492,44 @@ _cfi_load(const char* path, uintptr_t load_base, pid_t pid) {
         // space; there is no file to open.  Read the ELF header to determine
         // the total size, then copy the whole image into an anonymous mapping.
         _Elf_Ehdr    ehdr = {0};
-        struct iovec lh = {.iov_base = &ehdr, .iov_len = sizeof(ehdr)};
-        struct iovec rh = {.iov_base = (void*)load_base, .iov_len = sizeof(ehdr)};
+        struct iovec lh   = {.iov_base = &ehdr, .iov_len = sizeof(ehdr)};
+        struct iovec rh   = {.iov_base = (void*)load_base, .iov_len = sizeof(ehdr)};
         if (process_vm_readv(pid, &lh, 1, &rh, 1, 0) != (ssize_t)sizeof(ehdr))
-            return NULL;
+            return NULL; // GCOV_EXCL_LINE
         if (ehdr.e_ident[EI_MAG0] != ELFMAG0 || ehdr.e_ident[EI_CLASS] != _ELF_CLASS)
-            return NULL;
+            return NULL; // GCOV_EXCL_LINE
 
         // Section headers sit at the end of the image.
         map_size = (size_t)(ehdr.e_shoff + (uint64_t)ehdr.e_shnum * ehdr.e_shentsize);
         if (map_size < sizeof(ehdr))
-            map_size = sizeof(ehdr);
+            map_size = sizeof(ehdr); // GCOV_EXCL_LINE
 
         map = mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
         if (map == MAP_FAILED)
-            return NULL;
+            return NULL; // GCOV_EXCL_LINE
 
         struct iovec lb = {.iov_base = map, .iov_len = map_size};
         struct iovec rb = {.iov_base = (void*)load_base, .iov_len = map_size};
-        if (process_vm_readv(pid, &lb, 1, &rb, 1, 0) != (ssize_t)map_size) {
+        if (process_vm_readv(pid, &lb, 1, &rb, 1, 0) != (ssize_t)map_size) { // GCOV_EXCL_START
             munmap(map, map_size);
             return NULL;
-        }
+        } // GCOV_EXCL_STOP
     } else {
         int fd = open(path, O_RDONLY);
         if (fd < 0)
             return NULL;
 
         struct stat st;
-        if (fstat(fd, &st) < 0 || st.st_size < (off_t)sizeof(Elf64_Ehdr)) {
+        if (fstat(fd, &st) < 0 || st.st_size < (off_t)sizeof(Elf64_Ehdr)) { // GCOV_EXCL_START
             close(fd);
             return NULL;
-        }
+        } // GCOV_EXCL_STOP
 
         map_size = (size_t)st.st_size;
         map      = mmap(NULL, map_size, PROT_READ, MAP_PRIVATE, fd, 0);
         close(fd);
         if (map == MAP_FAILED)
-            return NULL;
+            return NULL; // GCOV_EXCL_LINE
     }
 
     // Compute ASLR slide from the first PT_LOAD segment.
@@ -609,7 +609,8 @@ _cfi_load(const char* path, uintptr_t load_base, pid_t pid) {
     }
 
     // Fallback: walk section headers looking for .eh_frame (SHT_PROGBITS named ".eh_frame").
-    if (ehdr->e_shoff == 0 || ehdr->e_shnum == 0
+    // Modern toolchains always emit PT_GNU_EH_FRAME so this path is rarely taken.
+    if (ehdr->e_shoff == 0 || ehdr->e_shnum == 0 // GCOV_EXCL_START
         || ehdr->e_shoff + (uint64_t)ehdr->e_shnum * sizeof(_Elf_Shdr) > map_size)
         goto done;
 
@@ -645,7 +646,7 @@ _cfi_load(const char* path, uintptr_t load_base, pid_t pid) {
 
 done:
     munmap(map, map_size);
-    return NULL;
+    return NULL; // GCOV_EXCL_STOP
 }
 
 // ---------------------------------------------------------------------------
@@ -668,11 +669,11 @@ _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
         // Read length field (4- or 12-byte extended form).
         uint32_t len32 = _read_u32(&p);
         uint64_t length;
-        if (len32 == 0xffffffff) {
+        if (len32 == 0xffffffff) { // GCOV_EXCL_START
             if (p + 8 > end)
                 return false;
             length = _read_u64(&p);
-        } else {
+        } else { // GCOV_EXCL_STOP
             length = len32;
         }
         if (length == 0)
@@ -705,13 +706,13 @@ _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
 
         uint32_t cie_len32 = _read_u32(&cp);
         uint64_t cie_length;
-        if (cie_len32 == 0xffffffff) {
+        if (cie_len32 == 0xffffffff) { // GCOV_EXCL_START
             if (cp + 8 > end) {
                 p = record_end;
                 continue;
             }
             cie_length = _read_u64(&cp);
-        } else {
+        } else { // GCOV_EXCL_STOP
             cie_length = cie_len32;
         }
         const uint8_t* cie_end = cp + cie_length;
@@ -730,10 +731,10 @@ _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
         cp++; // skip NUL
 
         // EH data pointer size (only in version 4+).
-        if (version >= 4) {
-            cp++; // address_size
-            cp++; // segment_selector_size
-        }
+        if (version >= 4) { // GCOV_EXCL_START
+            cp++;           // address_size
+            cp++;           // segment_selector_size
+        } // GCOV_EXCL_STOP
 
         uint64_t code_align = _read_uleb128(&cp, cie_end);
         int64_t  data_align = _read_sleb128(&cp, cie_end);

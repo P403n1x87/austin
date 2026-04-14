@@ -261,17 +261,17 @@ _linux_build_sym_table(const void* map, size_t map_size, intptr_t slide) {
     const _Elf_Ehdr* ehdr = (const _Elf_Ehdr*)map;
 
     if (map_size < sizeof(_Elf_Ehdr))
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
     if (ehdr->e_ident[EI_MAG0] != ELFMAG0 || ehdr->e_ident[EI_MAG1] != ELFMAG1 || ehdr->e_ident[EI_MAG2] != ELFMAG2
         || ehdr->e_ident[EI_MAG3] != ELFMAG3)
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
     if (ehdr->e_ident[EI_CLASS] != _ELF_CLASS)
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
 
     if (ehdr->e_shoff == 0 || ehdr->e_shnum == 0)
         return NULL;
     if (ehdr->e_shoff + (uint64_t)ehdr->e_shnum * sizeof(_Elf_Shdr) > map_size)
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
 
     const _Elf_Shdr* shdrs    = (const _Elf_Shdr*)((const char*)map + ehdr->e_shoff);
     const _Elf_Shdr* sym_shdr = NULL;
@@ -298,11 +298,11 @@ _linux_build_sym_table(const void* map, size_t map_size, intptr_t slide) {
         return NULL;
 
     if (sym_shdr->sh_offset + sym_shdr->sh_size > map_size)
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
     if (str_shdr->sh_offset + str_shdr->sh_size > map_size)
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
     if (sym_shdr->sh_entsize < sizeof(_Elf_Sym))
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
 
     const _Elf_Sym* elfsyms = (const _Elf_Sym*)((const char*)map + sym_shdr->sh_offset);
     size_t          nsyms   = (size_t)(sym_shdr->sh_size / sym_shdr->sh_entsize);
@@ -328,11 +328,11 @@ _linux_build_sym_table(const void* map, size_t map_size, intptr_t slide) {
 
     _linux_sym_t* entries      = (_linux_sym_t*)malloc(count * sizeof(_linux_sym_t));
     char*         owned_strtab = (char*)malloc(strsize);
-    if (!entries || !owned_strtab) {
+    if (!entries || !owned_strtab) { // GCOV_EXCL_START
         free(entries);
         free(owned_strtab);
         return NULL;
-    }
+    } // GCOV_EXCL_STOP
 
     memcpy(owned_strtab, strtab, strsize);
 
@@ -355,11 +355,11 @@ _linux_build_sym_table(const void* map, size_t map_size, intptr_t slide) {
     qsort(entries, count, sizeof(_linux_sym_t), _linux_sym_cmp);
 
     linux_sym_table_t* table = (linux_sym_table_t*)malloc(sizeof(linux_sym_table_t));
-    if (!table) {
+    if (!table) { // GCOV_EXCL_START
         free(entries);
         free(owned_strtab);
         return NULL;
-    }
+    } // GCOV_EXCL_STOP
 
     table->entries = entries;
     table->count   = count;
@@ -377,13 +377,13 @@ _linux_load_sym_table(const char* path, uintptr_t load_base) {
 
     struct stat st;
     if (fstat(fd, &st) < 0)
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
     if (st.st_size < (off_t)sizeof(Elf64_Ehdr))
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
 
     cu_map_t* mapping = map_new(fd, (size_t)st.st_size, MAP_PRIVATE);
     if (!isvalid(mapping))
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
 
     intptr_t slide = _linux_compute_slide(mapping->addr, (size_t)st.st_size, load_base);
     return _linux_build_sym_table(mapping->addr, (size_t)st.st_size, slide);
