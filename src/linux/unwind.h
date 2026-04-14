@@ -467,7 +467,7 @@ _cfi_eval(
 // ---------------------------------------------------------------------------
 
 static cfi_cache_entry_t*
-_cfi_load(const char* path, uintptr_t load_base) {
+_cfi_load(const char* path, uintptr_t load_base, pid_t pid) {
     uint64_t key    = (uint64_t)string__hash((char*)path);
     unsigned bucket = (unsigned)(key % _CFI_CACHE_BUCKETS);
 
@@ -484,19 +484,53 @@ _cfi_load(const char* path, uintptr_t load_base) {
     entry->next        = _cfi_cache[bucket];
     _cfi_cache[bucket] = entry;
 
-    cu_fd fd = open(path, O_RDONLY);
-    if (fd < 0)
-        return NULL;
+    void*  map      = MAP_FAILED;
+    size_t map_size = 0;
 
-    struct stat st;
-    if (fstat(fd, &st) < 0 || st.st_size < (off_t)sizeof(Elf64_Ehdr))
-        return NULL;
+    if (strcmp(path, "[vdso]") == 0) {
+        // The vDSO is a kernel-mapped ELF in the target process's address
+        // space; there is no file to open.  Read the ELF header to determine
+        // the total size, then copy the whole image into an anonymous mapping.
+        _Elf_Ehdr    ehdr;
+        struct iovec lh = {.iov_base = &ehdr, .iov_len = sizeof(ehdr)};
+        struct iovec rh = {.iov_base = (void*)load_base, .iov_len = sizeof(ehdr)};
+        if (process_vm_readv(pid, &lh, 1, &rh, 1, 0) != (ssize_t)sizeof(ehdr))
+            return NULL;
+        if (ehdr.e_ident[EI_MAG0] != ELFMAG0 || ehdr.e_ident[EI_CLASS] != _ELF_CLASS)
+            return NULL;
 
-    void* map = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-    if (map == MAP_FAILED)
-        return NULL;
+        // Section headers sit at the end of the image.
+        map_size = (size_t)(ehdr.e_shoff + (uint64_t)ehdr.e_shnum * ehdr.e_shentsize);
+        if (map_size < sizeof(ehdr))
+            map_size = sizeof(ehdr);
 
-    size_t map_size = (size_t)st.st_size;
+        map = mmap(NULL, map_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        if (map == MAP_FAILED)
+            return NULL;
+
+        struct iovec lb = {.iov_base = map, .iov_len = map_size};
+        struct iovec rb = {.iov_base = (void*)load_base, .iov_len = map_size};
+        if (process_vm_readv(pid, &lb, 1, &rb, 1, 0) != (ssize_t)map_size) {
+            munmap(map, map_size);
+            return NULL;
+        }
+    } else {
+        int fd = open(path, O_RDONLY);
+        if (fd < 0)
+            return NULL;
+
+        struct stat st;
+        if (fstat(fd, &st) < 0 || st.st_size < (off_t)sizeof(Elf64_Ehdr)) {
+            close(fd);
+            return NULL;
+        }
+
+        map_size = (size_t)st.st_size;
+        map      = mmap(NULL, map_size, PROT_READ, MAP_PRIVATE, fd, 0);
+        close(fd);
+        if (map == MAP_FAILED)
+            return NULL;
+    }
 
     // Compute ASLR slide from the first PT_LOAD segment.
     // load_base comes from the first mapping address in /proc/pid/maps, which
@@ -798,7 +832,7 @@ _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
 }
 
 // ---------------------------------------------------------------------------
-// Public API: cfi_step
+// Public API
 // ---------------------------------------------------------------------------
 
 // cfi_step: given the current pc/sp/fp of a ptrace-stopped thread, use
@@ -821,7 +855,7 @@ cfi_step(pid_t pid, vm_range_tree_t* maps_tree, hash_table_t* base_table, uintpt
     if (!load_base)
         return false;
 
-    cfi_cache_entry_t* ce = _cfi_load(range->name, load_base);
+    cfi_cache_entry_t* ce = _cfi_load(range->name, load_base, pid);
     if (!ce)
         return false;
 
