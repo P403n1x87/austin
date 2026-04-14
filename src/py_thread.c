@@ -726,8 +726,15 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
     // grows down).  If fp < sp, the binary was compiled without frame pointers
     // and RBP/X29 is a general-purpose register whose value is unrelated to
     // the call chain.  Zero it out so we take the CFI path from the start.
-    if (fp < sp)
+    // Also reject non-canonical addresses (bits 48-63 set) which are kernel
+    // addresses or garbage values like UINTPTR_MAX.
+    if (fp < sp || fp >> 48)
         fp = 0;
+
+    // Once we start using CFI we must not revert to fp-walk: the fp recovered
+    // by cfi_step is the saved RBP (a callee-saved register), not necessarily
+    // a frame-pointer record.  Mixing modes causes spurious / repeated frames.
+    bool use_cfi = (fp == 0);
 
     lru_cache_t* cache        = self->proc->frame_cache;
     lru_cache_t* string_cache = self->proc->string_cache;
@@ -799,12 +806,12 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
 
         stack_native_push(frame);
 
-        if (fp == 0) {
-            // fp chain is broken — fall back to CFI (.eh_frame) unwinding.
+        if (use_cfi) {
+            // CFI mode: use .eh_frame unwinding.  fp still holds the current
+            // RBP value and is passed to cfi_step for CFA = RBP+N rules.
             if (!cfi_step(self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp))
                 break;
             pc              = _LINUX_STRIP_PAC(pc);
-            // Invalidate the prefetch buffer since we've jumped to a new SP.
             _stack_buf_base = 0;
             continue;
         }
@@ -814,13 +821,14 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         // read exactly 16 bytes — smaller out-of-buffer reads are faster.
         uintptr_t frame_data[2] = {0, 0};
         if (_stack_buf_base != 0 && fp >= _stack_buf_base
-            && fp + sizeof(frame_data) <= _stack_buf_base + _STACK_BUF_SIZE) {
+            && fp - _stack_buf_base + sizeof(frame_data) <= _STACK_BUF_SIZE) {
             memcpy(frame_data, _stack_buf + (fp - _stack_buf_base), sizeof(frame_data));
         } else {
             struct iovec local  = {.iov_base = frame_data, .iov_len = sizeof(frame_data)};
             struct iovec remote = {.iov_base = (void*)fp, .iov_len = sizeof(frame_data)};
             if (process_vm_readv(self->proc->pid, &local, 1, &remote, 1, 0) != (ssize_t)sizeof(frame_data)) {
-                // process_vm_readv failed — fp may be garbage; try CFI.
+                // process_vm_readv failed — fp may be garbage; switch to CFI.
+                use_cfi = true;
                 if (!cfi_step(self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp))
                     break;
                 pc              = _LINUX_STRIP_PAC(pc);
@@ -833,8 +841,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         uintptr_t new_pc = _LINUX_STRIP_PAC(frame_data[1]);
 
         // If fp didn't advance (or went backwards) the chain is corrupt;
-        // fall back to CFI before we loop forever.
+        // switch to CFI before we loop forever.
         if (new_fp != 0 && new_fp <= fp) {
+            use_cfi = true;
             if (!cfi_step(self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp))
                 break;
             pc              = _LINUX_STRIP_PAC(pc);
@@ -1146,7 +1155,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         // a new page (covers frames in deeper stack regions or split across pages).
         uintptr_t frame_data[2] = {0, 0};
         if (_stack_buf_base != 0 && fp >= _stack_buf_base
-            && fp + sizeof(frame_data) <= _stack_buf_base + _STACK_BUF_SIZE) {
+            && fp - _stack_buf_base + sizeof(frame_data) <= _STACK_BUF_SIZE) {
             memcpy(frame_data, _stack_buf + (fp - _stack_buf_base), sizeof(frame_data));
         } else {
             // fp is outside the current buffer: read the page that contains fp.

@@ -4,10 +4,12 @@ from pathlib import Path
 import pytest
 
 
+_uid = getattr(os, "getuid", lambda: 0)()
+
 _MOJO_DIR = (
     Path(os.environ["AUSTIN_MOJO_DIR"])
     if "AUSTIN_MOJO_DIR" in os.environ
-    else Path.cwd()
+    else Path("test-profiles") / str(_uid)
 )
 
 
@@ -34,8 +36,7 @@ def save_mojo(request):
     saved_paths = []
 
     def _save(data: bytes, suffix: str = "") -> Path:
-        if _MOJO_DIR != Path.cwd():
-            _MOJO_DIR.mkdir(parents=True, exist_ok=True)
+        _MOJO_DIR.mkdir(parents=True, exist_ok=True)
         name = request.node.name.replace("/", "_").replace("[", "-").replace("]", "")
         if suffix:
             name = f"{name}-{suffix}"

@@ -182,6 +182,9 @@ jobs:
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           .venv/bin/pytest -vv test/cunit
 
+      - name: Pre-create mojo output directory
+        run: mkdir -p test-profiles && chmod 777 test-profiles
+
       - name: Run functional Austin tests (with sudo)
         run: |
           ulimit -c unlimited

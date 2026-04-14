@@ -287,8 +287,11 @@ _read_encoded_ptr(const uint8_t** p, const uint8_t* end, uint8_t enc, uintptr_t 
 static bool
 _cfi_eval(
     const uint8_t* p, const uint8_t* end, uintptr_t row_pc, uintptr_t target_pc, uint64_t code_align,
-    int64_t data_align, cfi_row_t* row
+    int64_t data_align, cfi_row_t* row, const cfi_row_t* initial_row
 ) {
+    cfi_row_t state_stack[8];
+    int       state_depth = 0;
+
     while (p < end && row_pc <= target_pc) {
         uint8_t op = *p++;
 
@@ -307,8 +310,12 @@ _cfi_eval(
         }
         if ((op & 0xc0) == DW_CFA_restore) {
             uint8_t reg = op & 0x3f;
-            if (reg < _CFI_MAX_REGS)
-                row->regs[reg].kind = REG_UNDEF;
+            if (reg < _CFI_MAX_REGS) {
+                if (initial_row)
+                    row->regs[reg] = initial_row->regs[reg];
+                else
+                    row->regs[reg].kind = REG_UNDEF;
+            }
             continue;
         }
 
@@ -379,8 +386,12 @@ _cfi_eval(
         }
         case DW_CFA_restore_extended: {
             uint64_t reg = _read_uleb128(&p, end);
-            if (reg < _CFI_MAX_REGS)
-                row->regs[reg].kind = REG_UNDEF;
+            if (reg < _CFI_MAX_REGS) {
+                if (initial_row)
+                    row->regs[reg] = initial_row->regs[reg];
+                else
+                    row->regs[reg].kind = REG_UNDEF;
+            }
             break;
         }
         case DW_CFA_register: {
@@ -416,9 +427,13 @@ _cfi_eval(
             break;
         }
 
-        // These require a state stack; just skip the operands.
         case DW_CFA_remember_state:
+            if (state_depth < 8)
+                state_stack[state_depth++] = *row;
+            break;
         case DW_CFA_restore_state:
+            if (state_depth > 0)
+                *row = state_stack[--state_depth];
             break;
 
         // Skip size argument for GNU_args_size.
@@ -502,7 +517,64 @@ _cfi_load(const char* path, uintptr_t load_base) {
         }
     }
 
-    // Walk section headers looking for .eh_frame (SHT_PROGBITS named ".eh_frame").
+    // Try PT_GNU_EH_FRAME program header first — always present in the binary's
+    // program header table, works even for stripped binaries that have no section headers.
+    if (ehdr->e_phoff + (uint64_t)ehdr->e_phnum * sizeof(_Elf_Phdr) <= map_size) {
+        for (uint16_t i = 0; i < ehdr->e_phnum; i++) {
+            if (phdrs[i].p_type != PT_GNU_EH_FRAME)
+                continue;
+            if (phdrs[i].p_filesz < 4)
+                continue;
+            if ((uint64_t)phdrs[i].p_offset + phdrs[i].p_filesz > (uint64_t)map_size)
+                continue;
+
+            const uint8_t* hdr_data = (const uint8_t*)map + phdrs[i].p_offset;
+            const uint8_t* hdr_end  = hdr_data + phdrs[i].p_filesz;
+
+            if (hdr_data[0] != 1)
+                continue; // version must be 1
+            uint8_t eh_frame_ptr_enc = hdr_data[1];
+            if (eh_frame_ptr_enc == DW_EH_PE_omit)
+                continue;
+
+            // pc_base: runtime VA of the eh_frame_ptr field (4 bytes into the header).
+            uintptr_t      pc_base     = (uintptr_t)((intptr_t)phdrs[i].p_vaddr + slide) + 4;
+            const uint8_t* p           = hdr_data + 4;
+            uintptr_t      eh_frame_va = _read_encoded_ptr(&p, hdr_end, eh_frame_ptr_enc, pc_base);
+            if (!eh_frame_va)
+                continue;
+
+            // Convert runtime VA of .eh_frame to a file offset via PT_LOAD segments.
+            uintptr_t eh_frame_static_va = (uintptr_t)((intptr_t)eh_frame_va - slide);
+            uintptr_t file_off           = 0;
+            for (uint16_t j = 0; j < ehdr->e_phnum; j++) {
+                if (phdrs[j].p_type != PT_LOAD)
+                    continue;
+                if (eh_frame_static_va >= (uintptr_t)phdrs[j].p_vaddr
+                    && eh_frame_static_va < (uintptr_t)(phdrs[j].p_vaddr + phdrs[j].p_filesz)) {
+                    file_off = (uintptr_t)phdrs[j].p_offset + (eh_frame_static_va - (uintptr_t)phdrs[j].p_vaddr);
+                    break;
+                }
+            }
+            if (!file_off || file_off >= (uintptr_t)map_size)
+                continue;
+
+            entry->data     = (const uint8_t*)map + file_off;
+            entry->size     = map_size - (size_t)file_off;
+            entry->sec_addr = eh_frame_va;
+            entry->slide    = slide;
+            entry->map      = map;
+            entry->map_size = map_size;
+
+            log_d(
+                "cfi: loaded .eh_frame for %s via PT_GNU_EH_FRAME (%zu bytes, slide=%" PRIdPTR ")", path, entry->size,
+                slide
+            );
+            return entry;
+        }
+    }
+
+    // Fallback: walk section headers looking for .eh_frame (SHT_PROGBITS named ".eh_frame").
     if (ehdr->e_shoff == 0 || ehdr->e_shnum == 0
         || ehdr->e_shoff + (uint64_t)ehdr->e_shnum * sizeof(_Elf_Shdr) > map_size)
         goto done;
@@ -550,8 +622,13 @@ done:
 // Returns true on success and writes the row to *out.
 static bool
 _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
-    const uint8_t* p   = ce->data;
-    const uint8_t* end = ce->data + ce->size;
+    if (target_pc == 0)
+        return false;
+    // Use ip-1 for FDE lookup: return addresses point past the call instruction,
+    // and some FDE ranges end exactly at the last instruction (libunwind convention).
+    uintptr_t      lookup_pc = target_pc - 1;
+    const uint8_t* p         = ce->data;
+    const uint8_t* end       = ce->data + ce->size;
 
     while (p + 4 <= end) {
         // Read length field (4- or 12-byte extended form).
@@ -672,7 +749,7 @@ _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
         uint8_t   range_enc = fde_ptr_enc & 0x0f; // same type, no application
         pc_range            = _read_encoded_ptr(&p, record_end, range_enc, 0);
 
-        if (pc_begin == 0 || pc_begin > target_pc || target_pc >= pc_begin + pc_range) {
+        if (pc_begin == 0 || lookup_pc < pc_begin || lookup_pc >= pc_begin + pc_range) {
             p = record_end;
             continue;
         }
@@ -690,16 +767,18 @@ _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
         for (int i = 0; i < _CFI_MAX_REGS; i++)
             out->regs[i].kind = REG_UNDEF;
 
-        // Apply CIE initial instructions.
-        if (!_cfi_eval(cie_initial_instr, cie_end, pc_begin, target_pc, code_align, data_align, out))
+        // Apply CIE initial instructions to completion (no PC filtering; CIE rules
+        // apply to all PCs, and CIEs rarely have advance_loc opcodes).
+        if (!_cfi_eval(cie_initial_instr, cie_end, 0, UINTPTR_MAX, code_align, data_align, out, NULL))
             return false;
+        cfi_row_t cie_row = *out; // save for DW_CFA_restore in FDE pass
 
         // Skip augmentation data in FDE (zR produces a length-prefixed block).
         if (has_z)
             _read_uleb128(&p, record_end); // augmentation data length
 
-        // Apply FDE instructions up to target_pc.
-        if (!_cfi_eval(p, record_end, pc_begin, target_pc, code_align, data_align, out))
+        // Apply FDE instructions up to lookup_pc (ip-1).
+        if (!_cfi_eval(p, record_end, pc_begin, lookup_pc, code_align, data_align, out, &cie_row))
             return false;
 
         out->regs[_CFI_RA_REG].kind = REG_CFA_OFFSET;
