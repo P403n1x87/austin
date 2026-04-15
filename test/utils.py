@@ -230,9 +230,9 @@ def run(
 def print_logs(logs: List[str]) -> None:
     if logs:
         for log in logs:
-            print(log)
+            print(log, file=sys.stderr)
     else:
-        print("<< no logs available >>")
+        print("<< no logs available >>", file=sys.stderr)
 
 
 (DUMP_PATH := HERE.parent / "dumps").mkdir(exist_ok=True)
