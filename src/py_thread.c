@@ -1225,17 +1225,137 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
 } /* _py_thread__unwind_native_frame_stack */
 
 // ----------------------------------------------------------------------------
-// Windows: frame-pointer walk via Win32 APIs
+// Windows: frame-pointer walk + StackWalk64 fallback
 // ----------------------------------------------------------------------------
 #elif defined(PL_WIN)
 
-// Walk the native call stack of a suspended thread using the frame-pointer
-// chain.  Initial registers are obtained via GetThreadContext(); subsequent
-// frames are read from the remote address space with ReadProcessMemory().
+// Resolve a PC to a native frame (filename + function name) and push it onto
+// the native stack.  Shared by both the frame-pointer walk and the StackWalk64
+// fallback paths.  Returns 0 on success, non-zero on failure.
+static inline int
+_win_push_native_frame(py_thread_t* self, uintptr_t pc) {
+    lru_cache_t* cache        = self->proc->frame_cache;
+    lru_cache_t* string_cache = self->proc->string_cache;
+
+    key_dt   frame_key = (key_dt)pc;
+    frame_t* frame     = lru_cache__maybe_hit(cache, frame_key);
+
+    if (!isvalid(frame)) {
+        key_dt           filename_key = (key_dt)pc;
+        cached_string_t* filename     = lru_cache__maybe_hit(string_cache, filename_key);
+        if (!isvalid(filename)) {
+            const char* mod_path = win_get_module_name(self->proc->ref, pc);
+            if (isvalid(mod_path)) {
+                snprintf(_native_buf, MAXLEN, "%s", mod_path);
+            } else {
+                snprintf(_native_buf, MAXLEN, "native@%" PRIxPTR, pc);
+            }
+            filename = cached_string_new(filename_key, strdup(_native_buf));
+            if (!isvalid(filename))
+                FAIL;
+            lru_cache__store(string_cache, filename_key, (value_t)filename);
+            event_handler__emit_new_string(filename);
+        }
+
+        key_dt           scope_key = frame_key + 1;
+        cached_string_t* scope     = lru_cache__maybe_hit(string_cache, scope_key);
+        if (!isvalid(scope)) {
+            const char* fname = win_get_func_name(self->proc->ref, pc);
+            if (isvalid(fname)) {
+                scope = cached_string_new(scope_key, strdup(fname));
+                if (!isvalid(scope))
+                    FAIL;
+                lru_cache__store(string_cache, scope_key, (value_t)scope);
+                event_handler__emit_new_string(scope);
+            } else {
+                scope = UNKNOWN_SCOPE;
+            }
+        }
+
+        frame = frame_new(frame_key, filename, scope, 0, 0, 0, 0);
+        if (!isvalid(frame))
+            FAIL;
+        lru_cache__store(cache, frame_key, (value_t)frame);
+        event_handler__emit_new_frame(frame);
+    }
+
+    stack_native_push(frame);
+    SUCCESS;
+}
+
+// ---- StackWalk64 fallback ---------------------------------------------------
+// Used when the frame-pointer walk fails to produce a deep stack (typically
+// because the binary was compiled with frame-pointer omission, which is the
+// MSVC x64 default).  StackWalk64 uses the PE .pdata unwind info and is
+// slower but handles all calling conventions correctly.
+static inline int
+_win_unwind_stackwalk64(py_thread_t* self) {
+    stack_native_reset();
+
+    HANDLE hProcess = self->proc->ref;
+    HANDLE hThread  = (HANDLE)hash_table__get(_win_handles, (key_dt)self->tid);
+    if (!isvalid(hThread)) {
+        set_error(OS, "No cached handle for thread");
+        FAIL;
+    }
+
+    win_sym_init(hProcess);
+
+    // Build a fresh CONTEXT for StackWalk64 from the cached registers.
+    win_thread_regs_t* regs = (win_thread_regs_t*)hash_table__get(_win_regs, (key_dt)self->tid);
+    if (!isvalid(regs)) {
+        set_error(OS, "No cached register state for thread");
+        FAIL;
+    }
+
+    CONTEXT ctx;
+    memset(&ctx, 0, sizeof(ctx));
+#if defined(_M_X64)
+    DWORD machine    = IMAGE_FILE_MACHINE_AMD64;
+    ctx.ContextFlags = CONTEXT_FULL;
+    ctx.Rip          = (DWORD64)regs->pc;
+    ctx.Rbp          = (DWORD64)regs->fp;
+    ctx.Rsp          = (DWORD64)regs->sp;
+#elif defined(_M_ARM64)
+    DWORD machine    = IMAGE_FILE_MACHINE_ARM64;
+    ctx.ContextFlags = CONTEXT_FULL;
+    ctx.Pc           = (DWORD64)regs->pc;
+    ctx.Fp           = (DWORD64)regs->fp;
+    ctx.Sp           = (DWORD64)regs->sp;
+#endif
+
+    STACKFRAME64 sf;
+    memset(&sf, 0, sizeof(sf));
+    sf.AddrPC.Offset    = regs->pc;
+    sf.AddrPC.Mode      = AddrModeFlat;
+    sf.AddrFrame.Offset = regs->fp;
+    sf.AddrFrame.Mode   = AddrModeFlat;
+    sf.AddrStack.Offset = regs->sp;
+    sf.AddrStack.Mode   = AddrModeFlat;
+
+    while (!stack_native_full()) {
+        if (!StackWalk64(
+                machine, hProcess, hThread, &sf, &ctx, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL
+            ))
+            break;
+
+        uintptr_t pc = (uintptr_t)sf.AddrPC.Offset;
+        if (pc == 0)
+            break;
+
+        if (fail(_win_push_native_frame(self, pc)))
+            FAIL;
+    }
+
+    SUCCESS;
+}
+
+// Walk the native call stack of a suspended thread.
 //
-// Filename is resolved from the module that owns the PC (via the module
-// table built by win_modules_init()), and scope (function name) is resolved
-// via DbgHelp SymFromAddr().
+// Strategy: try the fast frame-pointer chain first.  If that produces at most
+// one frame (RBP wasn't a real frame pointer — typical for MSVC /Oy binaries),
+// fall back to StackWalk64 which uses PE .pdata unwind info and handles all
+// calling conventions at the cost of extra API calls per frame.
 static inline int
 _py_thread__unwind_native_frame_stack(py_thread_t* self) {
     stack_native_reset();
@@ -1250,102 +1370,68 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
     uintptr_t fp = regs->fp;
     uintptr_t sp = regs->sp;
 
-    lru_cache_t* cache        = self->proc->frame_cache;
-    lru_cache_t* string_cache = self->proc->string_cache;
+    // Quick sanity check: if fp looks like a plausible stack address (between
+    // sp and sp + 1MB) attempt the frame-pointer walk.  Otherwise skip straight
+    // to StackWalk64.
+    bool try_fp_walk = (fp > sp && fp < sp + (1 << 20));
 
-    // ---- Prefetch one page of stack into a local buffer -------------------
+    if (try_fp_walk) {
+        // ---- Prefetch one page of stack into a local buffer ----
 #define _STACK_BUF_SIZE 4096
-    uint8_t   _stack_buf[_STACK_BUF_SIZE];
-    uintptr_t _stack_buf_base = sp & ~((uintptr_t)(_STACK_BUF_SIZE - 1));
-    {
-        SIZE_T _sz = 0;
-        if (!ReadProcessMemory(self->proc->ref, (LPCVOID)_stack_buf_base, _stack_buf, _STACK_BUF_SIZE, &_sz)
-            || _sz != _STACK_BUF_SIZE) {
-            _stack_buf_base = 0; // disable buffer; use per-frame fallback
+        uint8_t   _stack_buf[_STACK_BUF_SIZE];
+        uintptr_t _stack_buf_base = sp & ~((uintptr_t)(_STACK_BUF_SIZE - 1));
+        {
+            SIZE_T _sz = 0;
+            if (!ReadProcessMemory(self->proc->ref, (LPCVOID)_stack_buf_base, _stack_buf, _STACK_BUF_SIZE, &_sz)
+                || _sz != _STACK_BUF_SIZE) {
+                _stack_buf_base = 0;
+            }
         }
-    }
 
-    // ---- Walk frame-pointer chain ----
-    while (!stack_native_full() && pc != 0) {
-        key_dt   frame_key = (key_dt)pc;
-        frame_t* frame     = lru_cache__maybe_hit(cache, frame_key);
-
-        if (!isvalid(frame)) {
-            // Resolve filename from the module that owns this PC.
-            key_dt           filename_key = (key_dt)pc;
-            cached_string_t* filename     = lru_cache__maybe_hit(string_cache, filename_key);
-            if (!isvalid(filename)) {
-                const char* mod_path = win_get_module_name(self->proc->ref, pc);
-                if (isvalid(mod_path)) {
-                    snprintf(_native_buf, MAXLEN, "%s", mod_path);
-                } else {
-                    snprintf(_native_buf, MAXLEN, "native@%" PRIxPTR, pc);
-                }
-                filename = cached_string_new(filename_key, strdup(_native_buf));
-                if (!isvalid(filename))
-                    FAIL;
-                lru_cache__store(string_cache, filename_key, (value_t)filename);
-                event_handler__emit_new_string(filename);
-            }
-
-            // Resolve scope (function name) via DbgHelp.
-            key_dt           scope_key = frame_key + 1;
-            cached_string_t* scope     = lru_cache__maybe_hit(string_cache, scope_key);
-            if (!isvalid(scope)) {
-                const char* fname = win_get_func_name(self->proc->ref, pc);
-                if (isvalid(fname)) {
-                    scope = cached_string_new(scope_key, strdup(fname));
-                    if (!isvalid(scope))
-                        FAIL;
-                    lru_cache__store(string_cache, scope_key, (value_t)scope);
-                    event_handler__emit_new_string(scope);
-                } else {
-                    scope = UNKNOWN_SCOPE;
-                }
-            }
-
-            frame = frame_new(frame_key, filename, scope, 0, 0, 0, 0);
-            if (!isvalid(frame))
+        // ---- Walk frame-pointer chain ----
+        while (!stack_native_full() && pc != 0) {
+            if (fail(_win_push_native_frame(self, pc)))
                 FAIL;
-            lru_cache__store(cache, frame_key, (value_t)frame);
-            event_handler__emit_new_frame(frame);
-        }
 
-        stack_native_push(frame);
+            if (fp == 0)
+                break;
 
-        if (fp == 0)
-            break;
-
-        // Read the next frame record: [fp] = saved_fp, [fp+8] = return address.
-        uintptr_t frame_data[2] = {0, 0};
-        if (_stack_buf_base != 0 && fp >= _stack_buf_base
-            && fp - _stack_buf_base + sizeof(frame_data) <= _STACK_BUF_SIZE) {
-            memcpy(frame_data, _stack_buf + (fp - _stack_buf_base), sizeof(frame_data));
-        } else {
-            // fp is outside the current buffer: read the page that contains fp.
-            uintptr_t new_base = fp & ~((uintptr_t)(_STACK_BUF_SIZE - 1));
-            SIZE_T    _sz      = 0;
-            if (ReadProcessMemory(self->proc->ref, (LPCVOID)new_base, _stack_buf, _STACK_BUF_SIZE, &_sz)
-                && _sz == _STACK_BUF_SIZE) {
-                _stack_buf_base = new_base;
+            uintptr_t frame_data[2] = {0, 0};
+            if (_stack_buf_base != 0 && fp >= _stack_buf_base
+                && fp - _stack_buf_base + sizeof(frame_data) <= _STACK_BUF_SIZE) {
                 memcpy(frame_data, _stack_buf + (fp - _stack_buf_base), sizeof(frame_data));
             } else {
-                // Give up on buffering; single-frame fallback.
-                _stack_buf_base  = 0;
-                SIZE_T read_size = 0;
-                if (!ReadProcessMemory(self->proc->ref, (LPCVOID)fp, frame_data, sizeof(frame_data), &read_size)
-                    || read_size != sizeof(frame_data)) {
-                    break;
+                uintptr_t new_base = fp & ~((uintptr_t)(_STACK_BUF_SIZE - 1));
+                SIZE_T    _sz      = 0;
+                if (ReadProcessMemory(self->proc->ref, (LPCVOID)new_base, _stack_buf, _STACK_BUF_SIZE, &_sz)
+                    && _sz == _STACK_BUF_SIZE) {
+                    _stack_buf_base = new_base;
+                    memcpy(frame_data, _stack_buf + (fp - _stack_buf_base), sizeof(frame_data));
+                } else {
+                    _stack_buf_base  = 0;
+                    SIZE_T read_size = 0;
+                    if (!ReadProcessMemory(self->proc->ref, (LPCVOID)fp, frame_data, sizeof(frame_data), &read_size)
+                        || read_size != sizeof(frame_data)) {
+                        break;
+                    }
                 }
             }
-        }
 
-        fp = frame_data[0];
-        pc = frame_data[1];
-    }
+            fp = frame_data[0];
+            pc = frame_data[1];
+        }
 #undef _STACK_BUF_SIZE
 
-    SUCCESS;
+        // If fp-walk produced a deep stack, we're done.
+        if (_stack->native_pointer > 1)
+            SUCCESS;
+
+        // fp-walk was flat — fall through to StackWalk64.
+        log_d("win: fp-walk produced %zd frame(s), falling back to StackWalk64", _stack->native_pointer);
+    }
+
+    // ---- StackWalk64 fallback ----
+    return _win_unwind_stackwalk64(self);
 } /* _py_thread__unwind_native_frame_stack */
 
 #endif /* PL_LINUX / PL_WIN / PL_MACOS */
