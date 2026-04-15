@@ -771,13 +771,16 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
             // O(log n) tree lookup; result cached in string_cache so paid once per PC.
             vm_range_t* range = vm_range_tree__find(self->proc->maps_tree, pc);
 
+            // If the PC doesn't fall in any mapped region it is a spurious
+            // return address (e.g. the kernel-set return address above _start
+            // or clone).  Stop unwinding instead of emitting a bogus frame.
+            if (!isvalid(range))
+                break;
+
             key_dt           filename_key = (key_dt)pc;
             cached_string_t* filename     = lru_cache__maybe_hit(string_cache, filename_key);
             if (!isvalid(filename)) {
-                if (isvalid(range))
-                    snprintf(_native_buf, MAXLEN, "%s", range->name);
-                else
-                    snprintf(_native_buf, MAXLEN, "native@%" PRIxPTR, pc);
+                snprintf(_native_buf, MAXLEN, "%s", range->name);
                 filename = cached_string_new(filename_key, strdup(_native_buf));
                 if (!isvalid(filename))
                     FAIL;
