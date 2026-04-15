@@ -36,14 +36,12 @@
 // ----------------------------------------------------------------------------
 bool
 py_thread__is_idle(py_thread_t* self) {
-#ifdef NATIVE
     if (pargs_native) {
         size_t index  = self->tid >> 3;
         int    offset = self->tid & 7;
 
         return _tids_idle[index] & (1 << offset);
     }
-#endif
     char file_name[64];
     char buffer[2048] = "";
 

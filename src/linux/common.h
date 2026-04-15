@@ -45,7 +45,6 @@ struct _proc_extra_info {
 #define read_pthread_t(py_proc, addr)                                                                           \
     (copy_memory(py_proc->ref, addr, sizeof(py_proc->extra->_pthread_buffer), py_proc->extra->_pthread_buffer))
 
-#ifdef NATIVE
 #include <sched.h>
 #include <sys/wait.h>
 
@@ -113,8 +112,6 @@ wait_thread_stop(pid_t tid) {
         sched_yield();
     }
 }
-
-#endif
 
 // ----------------------------------------------------------------------------
 static inline FILE*

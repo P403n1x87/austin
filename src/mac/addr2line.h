@@ -31,8 +31,6 @@
 
 #pragma once
 
-#ifdef NATIVE
-
 #include <fcntl.h>
 #include <libproc.h>
 #include <mach-o/fat.h>
@@ -346,5 +344,3 @@ mac_get_func_name(mach_port_t task, pid_t pid, uintptr_t pc, const char* path) {
 
     return _mac_lookup_sym(table, pc);
 }
-
-#endif /* NATIVE */

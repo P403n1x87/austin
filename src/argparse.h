@@ -51,10 +51,8 @@ typedef struct {
     seconds_t      exposure;
     bool           pipe;
     bool           gc;
-#if defined(PL_MACOS) || defined(PL_LINUX)
-    bool native;
-#endif
-#ifdef NATIVE
+    bool           native;
+#ifdef AUSTINP
     bool kernel;
 #endif
 } parsed_args_t;
@@ -63,11 +61,7 @@ typedef struct {
 extern parsed_args_t pargs;
 #endif
 
-#if defined(PL_MACOS) || defined(PL_LINUX)
 #define pargs_native pargs.native
-#else
-#define pargs_native false
-#endif
 
 #define ARG_ARGUMENT 0
 

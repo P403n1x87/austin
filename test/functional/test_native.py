@@ -36,12 +36,8 @@ from time import sleep
 
 import pytest
 
-pytestmark = pytest.mark.skipif(
-    platform.system() not in ("Darwin", "Linux"),
-    reason="Native stack sampling with -n is only supported on Darwin and Linux",
-)
-
 _IS_LINUX = platform.system() == "Linux"
+_IS_WIN = platform.system() == "Windows"
 
 
 def _python_linked_runtime(exe: str) -> list:
@@ -82,7 +78,7 @@ def _python_linked_runtime(exe: str) -> list:
 def _python_has_Py_RunMain_symbol(py: str) -> bool:
     """Return True if Py_RunMain is present in the Python runtime.
 
-    On Linux, Austin's NATIVE mode uses DWARF CFI (.eh_frame) unwinding on
+    On Linux, Austin's native mode uses DWARF CFI (.eh_frame) unwinding on
     x86-64 and frame-pointer walking on aarch64 (where the AAPCS mandates
     frame pointers).  CFI can unwind through binaries compiled without frame
     pointers, so we only need to verify the symbol exists — not that the
@@ -91,12 +87,26 @@ def _python_has_Py_RunMain_symbol(py: str) -> bool:
     On macOS, the ABI mandates frame pointers on both x86-64 and arm64, so
     frame-pointer walking always reaches Py_RunMain if the symbol exists.
 
-    We check both .symtab (nm) and .dynsym (nm -D) to handle stripped
-    binaries where only the dynamic symbol table remains.
+    On Windows, DbgHelp resolves symbols from PE exports and PDBs.  We check
+    for the export via dumpbin when available, otherwise assume the symbol
+    exists (CPython on Windows always exports it).
     """
     exe = shutil.which(f"python{py}")
     if exe is None:
         return False
+
+    if _IS_WIN:
+        # On Windows, Py_RunMain is always exported by the Python DLL.
+        # Try dumpbin if available; otherwise assume True.
+        try:
+            out = subprocess.check_output(
+                ["dumpbin", "/exports", exe],
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+            return "Py_RunMain" in out
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return True
 
     def has_symbol(path: str) -> bool:
         for cmd in [["nm", path], ["nm", "-D", path]]:

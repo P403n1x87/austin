@@ -39,13 +39,12 @@ typedef struct {
     frame_t**   base;
     ssize_t     pointer;
     py_frame_t* py_base;
-#ifdef NATIVE
+
     frame_t** native_base;
     ssize_t   native_pointer;
 
     char**  kernel_base;
     ssize_t kernel_pointer;
-#endif
 } stack_dt;
 
 // Global stack pointer. This is a global variable that points to the allocated
@@ -71,11 +70,7 @@ stack_has_cycle(void) {
     // overhead introduced by looking up from a set-like data structure.
     py_frame_t top = _stack->py_base[_stack->pointer - 1];
     for (ssize_t i = _stack->pointer - 2; i >= 0; i--) {
-#ifdef NATIVE
         if (top.origin == _stack->py_base[i].origin && top.origin != CFRAME_MAGIC)
-#else
-        if (top.origin == _stack->py_base[i].origin)
-#endif
             return true;
     }
     return false;
@@ -101,7 +96,6 @@ stack_py_push(raddr_t origin, raddr_t code, int lasti) {
 #define stack_is_empty() (_stack->pointer == 0)
 #define stack_full()     (_stack->pointer >= _stack->size)
 
-#ifdef NATIVE
 #define stack_py_push_cframe() (stack_py_push(CFRAME_MAGIC, NULL, 0))
 
 #define stack_native_push(frame)                               \
@@ -119,7 +113,6 @@ stack_py_push(raddr_t origin, raddr_t code, int lasti) {
 #define stack_kernel_full()     (_stack->kernel_pointer >= _stack->size)
 #define stack_kernel_reset()        \
     { _stack->kernel_pointer = 0; }
-#endif
 
 // ----------------------------------------------------------------------------
 

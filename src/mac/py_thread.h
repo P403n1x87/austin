@@ -77,16 +77,16 @@ _infer_thread_id_offset(py_thread_t* py_thread) {
 // In non-NATIVE mode, falls back to proc_pidinfo (no port available yet).
 static inline bool
 _mac_thread__is_idle_now(py_thread_t* self) {
-#ifdef NATIVE
-    thread_act_t port = (thread_act_t)(uintptr_t)hash_table__get(_mac_ports, (key_dt)self->tid);
-    if (port) {
-        thread_basic_info_data_t info  = {0};
-        mach_msg_type_number_t   count = THREAD_BASIC_INFO_COUNT;
-        if (thread_info(port, THREAD_BASIC_INFO, (thread_info_t)&info, &count) == KERN_SUCCESS)
-            return info.run_state != TH_STATE_RUNNING;
+    if (pargs_native) {
+        thread_act_t port = (thread_act_t)(uintptr_t)hash_table__get(_mac_ports, (key_dt)self->tid);
+        if (port) {
+            thread_basic_info_data_t info  = {0};
+            mach_msg_type_number_t   count = THREAD_BASIC_INFO_COUNT;
+            if (thread_info(port, THREAD_BASIC_INFO, (thread_info_t)&info, &count) == KERN_SUCCESS)
+                return info.run_state != TH_STATE_RUNNING;
+        }
+        // Port not yet cached (shouldn't happen if seize runs first) — fall through.
     }
-    // Port not yet cached (shouldn't happen if seize runs first) — fall through.
-#endif
     if (unlikely(_silly_offset == 0))
         _infer_thread_id_offset(self);
 
@@ -101,12 +101,10 @@ _mac_thread__is_idle_now(py_thread_t* self) {
 // ----------------------------------------------------------------------------
 bool
 py_thread__is_idle(py_thread_t* self) {
-#ifdef NATIVE
-    // In NATIVE mode the thread has already been suspended by the time this is
+    // In native mode the thread has already been suspended by the time this is
     // called from the sampling loop.  Return the pre-suspension state that was
     // cached by py_thread__set_idle().
-    return isvalid(hash_table__get(_mac_idle, (key_dt)self->tid));
-#else
+    if (pargs_native)
+        return isvalid(hash_table__get(_mac_idle, (key_dt)self->tid));
     return _mac_thread__is_idle_now(self);
-#endif
 }

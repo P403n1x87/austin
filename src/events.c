@@ -89,7 +89,6 @@ mojo_event_handler__handle_new_frame(base_event_handler_t* self, frame_t* frame)
 
 static inline void
 mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
-#ifdef NATIVE
     bool has_cframes = false;
     if (stack_top() == CFRAME_MAGIC) {
         has_cframes = true;
@@ -148,13 +147,6 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
         free(scope);
     }
 
-#else
-    while (!stack_is_empty()) {
-        frame_t* frame = stack_pop();
-        mojo_frame_ref(frame);
-    }
-#endif
-
     if (self->sample_data.gc_state == GC_STATE_COLLECTING) {
         mojo_event(MOJO_GC);
     }
@@ -203,11 +195,9 @@ mojo_event_handler_new(void) {
 // Where event handler
 
 const char* WHERE_SAMPLE_FORMAT = "    " BYEL "%2$s" CRESET " (" BCYN "%1$s" CRESET ":" BGRN "%3$d" CRESET ")\n";
-#ifdef NATIVE
 const char* WHERE_SAMPLE_FORMAT_NATIVE
     = "    " HBLK256 "%2$s" CRESET " (" BBLK256 "%1$s" CRESET ":" HBLK256 "%3$d" CRESET ")\n";
 const char* WHERE_SAMPLE_FORMAT_KERNEL = "    " BHBLU256 "%s" CRESET " 🐧\n";
-#endif
 #if defined PL_WIN
 const char* WHERE_HEAD_FORMAT
     = "\n\n%4$s Process " BMAG "%1$I64d" CRESET " 🧵 Thread " BBLU "%2$I64d:%3$I64d" CRESET "\n\n";
@@ -222,13 +212,11 @@ format_frame_ref(const char* format, frame_t* frame) {
     fprintfp(pargs.output_file, format, frame->filename->value, scope->value, frame->line);
 }
 
-#ifdef NATIVE
 // ----------------------------------------------------------------------------
 static inline void
 format_kernel_frame_ref(const char* format, char* scope) {
     fprintfp(pargs.output_file, format, scope);
 }
-#endif
 
 static inline void
 where_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sample) {
@@ -239,7 +227,6 @@ where_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sa
 
 void
 where_event_handler__handle_stack_end(base_event_handler_t* self) {
-#ifdef NATIVE
     bool has_cframes = false;
     if (stack_top() == CFRAME_MAGIC) {
         has_cframes = true;
@@ -301,13 +288,6 @@ where_event_handler__handle_stack_end(base_event_handler_t* self) {
         format_kernel_frame_ref(WHERE_SAMPLE_FORMAT_KERNEL, scope);
         free(scope);
     }
-
-#else
-    while (!stack_is_empty()) {
-        frame_t* frame = stack_pop();
-        format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
-    }
-#endif
 }
 
 event_handler_t*

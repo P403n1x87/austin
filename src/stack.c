@@ -47,13 +47,11 @@ stack_allocate(size_t size) {
         FAIL;
     } // GCOV_EXCL_STOP
 
-    _stack->size    = size;
-    _stack->base    = (frame_t**)calloc(size, sizeof(frame_t*));
-    _stack->py_base = (py_frame_t*)calloc(size, sizeof(py_frame_t));
-#ifdef NATIVE
+    _stack->size        = size;
+    _stack->base        = (frame_t**)calloc(size, sizeof(frame_t*));
+    _stack->py_base     = (py_frame_t*)calloc(size, sizeof(py_frame_t));
     _stack->native_base = (frame_t**)calloc(size, sizeof(frame_t*));
     _stack->kernel_base = (char**)calloc(size, sizeof(char*));
-#endif
 
     SUCCESS;
 }
@@ -65,10 +63,8 @@ stack_deallocate(void) {
 
     free(_stack->base);
     free(_stack->py_base);
-#ifdef NATIVE
     free(_stack->native_base);
     free(_stack->kernel_base);
-#endif
 
     free(_stack);
 }

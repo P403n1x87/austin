@@ -271,10 +271,10 @@ whereas on macOS it is enough to run
 gcc -O3 -Os -Wall src/*.c -o src/austin
 ~~~
 
-On Windows, the `-lpsapi -lntdll` switches are needed
+On Windows, the `-lpsapi -lntdll -ldbghelp` switches are needed
 
 ~~~ console
-gcc -O3 -Os -Wall -lpsapi -lntdll src/*.c -o src/austin
+gcc -O3 -Os -Wall -lpsapi -lntdll -ldbghelp src/*.c -o src/austin
 ~~~
 
 Add `-DDEBUG` if you need a more verbose log. This is useful if you encounter a

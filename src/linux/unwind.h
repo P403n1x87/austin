@@ -43,7 +43,7 @@
 
 #pragma once
 
-#if defined(NATIVE) && defined(PL_LINUX) && !defined(AUSTINP)
+#if defined(PL_LINUX) && !defined(AUSTINP) && (defined(__x86_64__) || defined(__aarch64__))
 
 #include <elf.h>
 #include <fcntl.h>
@@ -923,4 +923,4 @@ cfi_cache_destroy(void) {
     }
 }
 
-#endif /* NATIVE && PL_LINUX && !AUSTINP */
+#endif /* PL_LINUX && !AUSTINP && (x86_64 || aarch64) */

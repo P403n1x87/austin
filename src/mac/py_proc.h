@@ -598,7 +598,6 @@ _py_proc__init(py_proc_t* self) {
 } // _py_proc__init
 
 // ----------------------------------------------------------------------------
-#ifdef NATIVE
 static int
 _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
     py_thread_t py_thread = py_thread__init(self);
@@ -633,7 +632,5 @@ _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
 
     SUCCESS;
 }
-
-#endif /* NATIVE */
 
 #endif

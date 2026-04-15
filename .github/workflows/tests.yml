@@ -480,7 +480,7 @@ jobs:
       - name: Compile Austin
         run: |
           gcc.exe --version
-          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Werror -DDEBUG
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall -Werror -DDEBUG
           src\austin.exe --help
 
       - uses: actions/upload-artifact@v4
@@ -546,6 +546,13 @@ jobs:
         run: |
           venv\Scripts\Activate.ps1
           python -m pytest --full-trace --pastebin=failed -svr a test\support
+        if: always()
+
+      - name: Collect native profiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-profiles-${{ runner.os }}-${{ matrix.python-version }}
+          path: test-profiles\
         if: always()
 
       - name: Show collected dumps

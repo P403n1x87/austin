@@ -22,8 +22,6 @@
 
 #pragma once
 
-#ifdef NATIVE
-
 #include <mach/mach.h>
 #include <mach/mach_vm.h>
 #include <mach/thread_info.h>
@@ -73,5 +71,3 @@ _mac_find_thread_port(mach_port_t task, uintptr_t pthread_id) {
 
     return result;
 }
-
-#endif /* NATIVE */

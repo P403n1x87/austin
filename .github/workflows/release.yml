@@ -108,7 +108,7 @@ jobs:
           export PATH="/c/Program Files (x86)/`ls /c/Program\ Files\ \(x86\) | grep \"[wW]i[xX] [tT]oolset\"`/bin:$PATH"
           export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
 
-          gcc -static -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll
+          gcc -static -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll -ldbghelp
 
           git checkout "packaging/msi"
           git checkout master
