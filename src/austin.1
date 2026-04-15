@@ -4,7 +4,7 @@
 austin \- Frame stack sampler for CPython
 .SH SYNOPSIS
 .B austin
-[\fI\,-CcfgmP?V\/\fR] [\fI\,-x n_sec\/\fR] [\fI\,-i n_us\/\fR] [\fI\,-o FILE\/\fR] [\fI\,-p PID\/\fR] [\fI\,-t n_ms\/\fR]
+[\fI\,-CcfgmnP?V\/\fR] [\fI\,-x n_sec\/\fR] [\fI\,-i n_us\/\fR] [\fI\,-o FILE\/\fR] [\fI\,-p PID\/\fR] [\fI\,-t n_ms\/\fR]
 .SH DESCRIPTION
 .IP
 [\-w PID] command [ARG...]
@@ -35,6 +35,10 @@ Sampling interval in microseconds (default is
 .TP
 \fB\-m\fR, \fB\-\-memory\fR
 Profile memory usage.
+.TP
+\fB\-n\fR, \fB\-\-native\fR
+Collect native call stacks alongside Python
+stacks.
 .TP
 \fB\-o\fR, \fB\-\-output\fR <FILE>
 Specify an output file for the collected samples.

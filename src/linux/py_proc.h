@@ -66,13 +66,11 @@ union {
 } ehdr_v;
 
 // ----------------------------------------------------------------------------
-#ifndef NATIVE
 static void*
 wait_thread(void* py_proc) {
     waitpid(((py_proc_t*)py_proc)->pid, 0, 0);
     return NULL;
 }
-#endif
 
 // ----------------------------------------------------------------------------
 static ssize_t
@@ -531,7 +529,11 @@ _py_proc__get_vm_maps(py_proc_t* self) {
     hash_table_t*    table = NULL;
     cu_proc_map_t*   maps  = NULL;
 
-    if (pargs.where) {
+    // Build the range tree for --where mode and for fp-walk native mode
+    // (the latter needs it to resolve PC → binary path + load_base at runtime).
+    bool build_tree = pargs.where || pargs_native;
+
+    if (build_tree) {
         tree  = vm_range_tree_new();
         table = hash_table_new(RANGES_MAX);
 
@@ -558,7 +560,7 @@ _py_proc__get_vm_maps(py_proc_t* self) {
         if (!isvalid(m->pathname))
             continue;
 
-        if (pargs.where) {
+        if (build_tree) {
             if (strcmp(m->pathname, prevpathname)) {
                 ranges[nrange++]
                     = vm_range_new((addr_t)m->address, ((addr_t)m->address) + m->size, strdup(m->pathname));
@@ -613,7 +615,8 @@ _py_proc__init(py_proc_t* self) {
     self->last_resident_memory = _py_proc__get_resident_memory(self);
 
 #ifdef NATIVE
-    _py_proc__get_vm_maps(self);
+    if (pargs.where || pargs_native)
+        _py_proc__get_vm_maps(self);
 #endif
 
     SUCCESS;

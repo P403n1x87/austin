@@ -620,12 +620,14 @@ _py_proc__find_interpreter_state(py_proc_t* self) {
         FAIL;
     } // GCOV_EXCL_STOP
 
-    if (fail(_py_proc__init(self)))
+    if (fail(_py_proc__init(self))) {
         FAIL;
+    }
 
     // Determine and set version
-    if (fail(_py_proc__infer_python_version(self)))
+    if (fail(_py_proc__infer_python_version(self))) {
         FAIL;
+    }
 
     if (self->sym_loaded || isvalid(self->map.runtime.base)) {
         // Try to resolve the symbols or the runtime section, if we have them
@@ -731,7 +733,7 @@ py_proc__init(py_proc_t* self) {
 
     self->timestamp = gettime();
 
-#if defined(NATIVE) && defined(PL_LINUX)
+#if defined(NATIVE) && defined(PL_LINUX) && defined(AUSTINP)
     self->unwind.as = unw_create_addr_space(&_UPT_accessors, 0);
 #endif
 
@@ -993,15 +995,15 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
 #if defined PL_LINUX
     self->ref = self->pid;
 
-#ifndef NATIVE
     // On Linux we need to wait for the forked process or otherwise it will
     // become a zombie and we cannot tell with kill if it has terminated.
     // In native mode, py_proc__wait handles this with a ptrace-stop draining
     // loop instead (the process may be in signal-delivery-stop and won't exit
     // until the tracer delivers the signal via ptrace(PTRACE_CONT)).
-    pthread_create(&(self->extra->wait_thread_id), NULL, wait_thread, (void*)self);
-    log_d("Wait thread created with ID %x", self->extra->wait_thread_id);
-#endif
+    if (!pargs_native) {
+        pthread_create(&(self->extra->wait_thread_id), NULL, wait_thread, (void*)self);
+        log_d("Wait thread created with ID %x", self->extra->wait_thread_id);
+    }
 #endif
 
     log_d("New process created with PID %d", self->pid);
@@ -1028,8 +1030,8 @@ void
 py_proc__wait(py_proc_t* self) {
     log_d("Waiting for process %d to terminate", self->pid);
 
-#if defined PL_LINUX && !defined NATIVE
-    if (self->extra->wait_thread_id) {
+#if defined PL_LINUX
+    if (!pargs_native && self->extra->wait_thread_id) {
         pthread_join(self->extra->wait_thread_id, NULL);
     }
 #endif
@@ -1043,13 +1045,13 @@ py_proc__wait(py_proc_t* self) {
     CloseHandle(self->ref);
 #else /* UNIX */
 #if defined(NATIVE) && defined(PL_LINUX)
-    // In native mode, threads are ptrace-seized. A signal sent to the
-    // process (e.g. SIGTERM) is intercepted by ptrace as a
-    // signal-delivery-stop: the signal is NOT delivered until the tracer
-    // calls ptrace(PTRACE_CONT) with the signal number. Loop here draining
-    // ptrace-stops and forwarding signals until the main process exits;
-    // otherwise the process hangs forever.
-    {
+    if (pargs_native) {
+        // In native mode, threads are ptrace-seized. A signal sent to the
+        // process (e.g. SIGTERM) is intercepted by ptrace as a
+        // signal-delivery-stop: the signal is NOT delivered until the tracer
+        // calls ptrace(PTRACE_CONT) with the signal number. Loop here draining
+        // ptrace-stops and forwarding signals until the main process exits;
+        // otherwise the process hangs forever.
         int status;
         for (;;) {
             pid_t r = waitpid(-1, &status, __WALL);
@@ -1070,6 +1072,8 @@ py_proc__wait(py_proc_t* self) {
                 ptrace(PTRACE_CONT, r, 0, (void*)(intptr_t)sig);
             }
         }
+    } else {
+        waitpid(self->pid, 0, 0);
     }
 #else
     waitpid(self->pid, 0, 0);
@@ -1353,7 +1357,7 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
         py_thread__unwind(&py_thread);
 
 #ifdef NATIVE
-        if (V_MIN(3, 11) && V_MAX(3, 12)) {
+        if (pargs_native && V_MIN(3, 11) && V_MAX(3, 12)) {
             // We expect a CFrame to sit at the top of the stack
             if (!stack_is_empty() && stack_top() != CFRAME_MAGIC) { // GCOV_EXCL_START
                 log_e("Invalid resolved Python stack");
@@ -1516,7 +1520,9 @@ py_proc__destroy(py_proc_t* self) {
         return;         // GCOV_EXCL_LINE
 
 #if defined(NATIVE) && defined(PL_LINUX)
+#ifdef AUSTINP
     unw_destroy_addr_space(self->unwind.as);
+#endif
     vm_range_tree__destroy(self->maps_tree);
     hash_table__destroy(self->base_table);
 #endif

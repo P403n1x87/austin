@@ -56,7 +56,7 @@
 
 #define MICROSECONDS_FMT "%" PRIu64
 
-#if defined(NATIVE) && defined(PL_LINUX)
+#if defined(AUSTINP) && defined(PL_LINUX)
 #define log_header()                                                                                         \
     {                                                                                                        \
         log_m(BOLD "              _   _      " CRESET);                                                      \
@@ -116,7 +116,8 @@ void
 log_d(const char*, ...);
 #else
 #define log_d(f, args...) \
-    {}
+    do {                  \
+    } while (0)
 #endif
 
 #ifdef TRACE
@@ -124,7 +125,8 @@ void
 log_t(const char*, ...);
 #else
 #define log_t(f, args...) \
-    {}
+    do {                  \
+    } while (0)
 #endif
 
 /**

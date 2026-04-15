@@ -37,11 +37,13 @@
 bool
 py_thread__is_idle(py_thread_t* self) {
 #ifdef NATIVE
-    size_t index  = self->tid >> 3;
-    int    offset = self->tid & 7;
+    if (pargs_native) {
+        size_t index  = self->tid >> 3;
+        int    offset = self->tid & 7;
 
-    return _tids_idle[index] & (1 << offset);
-#else
+        return _tids_idle[index] & (1 << offset);
+    }
+#endif
     char file_name[64];
     char buffer[2048] = "";
 
@@ -69,5 +71,4 @@ py_thread__is_idle(py_thread_t* self) {
         p++; // GCOV_EXCL_LINE
 
     return (*p != 'R');
-#endif
 }

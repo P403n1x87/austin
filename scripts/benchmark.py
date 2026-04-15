@@ -73,6 +73,14 @@ SCENARIOS: t.List[Scenario] = [
         )
         for i in (1, 10, 100, 1000)
     ],
+    *[
+        Scenario(
+            group="Native wall time",
+            title=f"Native wall time [sampling interval: {i}]",
+            args=["-ni", str(i), sys.executable, target("target34.py")],
+        )
+        for i in (1, 10, 100, 1000)
+    ],
 ]
 
 # Ordered unique groups, derived from SCENARIOS (preserves definition order).
@@ -373,14 +381,13 @@ def benchmark(opts: ArgumentParser) -> None:
                 )
                 continue
 
-            stats = [
-                _
-                for _ in (
-                    get_stats(run.metadata)
-                    for run in (austin(*scenario.args) for _ in range(opts.n))
-                )
-                if _ is not None
-            ]
+            runs = []
+            for _ in range(opts.n):
+                try:
+                    runs.append(austin(*scenario.args))
+                except RuntimeError:
+                    break  # binary doesn't support these args
+            stats = [s for s in (get_stats(r.metadata) for r in runs) if s is not None]
             if not stats:
                 print(
                     f"WARNING: No valid stats for {scenario.variant} {version} "
