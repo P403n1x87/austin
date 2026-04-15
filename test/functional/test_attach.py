@@ -152,7 +152,7 @@ def test_where_multiprocess(py):
 @pytest.mark.xfail(reason="Fails in CI with some Python versions")
 @requires_sudo
 @allpythons()
-def test_where_kernel(py):
+def test_where_kernel_austinp(py):
     with run_python(py, target("sleepy.py"), sleep_after=1) as p:
         result = austinp("-kw", str(p.pid))
         assert result.returncode == 0
