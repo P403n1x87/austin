@@ -626,22 +626,12 @@ jobs:
           {
             echo "## :rotating_light: Austin crashed during CI"
             echo ""
-            echo "Crash artefacts were collected in the following jobs:"
+            echo "Crash artefacts were collected in the following jobs (see the workflow run artifacts for full backtraces):"
             echo ""
             for dir in crash-reports/*/; do
               label="${dir#crash-reports/}"
               label="${label%/}"
-              echo "### \`${label}\`"
-              echo ""
-              for f in "$dir"*; do
-                echo "<details><summary><code>$(basename $f)</code></summary>"
-                echo ""
-                echo '```'
-                cat "$f"
-                echo '```'
-                echo "</details>"
-                echo ""
-              done
+              echo "- \`${label}\`: $(ls "$dir" | tr '\n' ' ')"
             done
           } > crash-comment.md
 

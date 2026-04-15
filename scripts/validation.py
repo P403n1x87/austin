@@ -195,7 +195,7 @@ if __name__ == "__main__":
         "-p",
         "--p-value",
         type=float,
-        default=0.01,
+        default=0.001,
         help="p-value threshold",
     )
 

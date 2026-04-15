@@ -504,10 +504,12 @@ def main():
     if opts.merge:
         parts = [results_from_json(Path(f).read_text()) for f in opts.merge]
         results = merge_results(parts)
+        present = {title for title, _ in results}
+        skipped = [s.title for s in SCENARIOS if s.title not in present]
         if opts.format == "json":
             print(results_to_json(results))
         else:
-            render(results, [], opts)
+            render(results, skipped, opts)
         return
 
     benchmark(opts)
