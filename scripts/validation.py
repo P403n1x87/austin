@@ -104,7 +104,7 @@ SCENARIOS = [
         "austin",
         (
             "-ni",
-            "500",
+            "1ms",
             *PYTHON,
             target("target34.py"),
         ),
@@ -114,7 +114,7 @@ SCENARIOS = [
         "austin",
         (
             "-nci",
-            "500",
+            "1ms",
             *PYTHON,
             target("target34.py"),
         ),
@@ -127,19 +127,16 @@ _NOT_APPLICABLE = object()
 
 def validate(scenario: Scenario, runs: int = 10) -> t.Union[float, object]:
     base_results = scenario.run(common.get_base(variant_name=scenario.variant), runs)
+    dev_results = scenario.run(common.get_dev(variant_name=scenario.variant), runs)
+
     if not base_results:
         # We might be testing a new feature that is not available from the base
-        # version.
+        # version. We still collect dev data above so that the .mojo profiles
+        # are available as artifacts for manual validation.
         return _NOT_APPLICABLE
 
-    return compare(
-        # Base branch version
-        x=base_results,
-        # Development version
-        y=scenario.run(common.get_dev(variant_name=scenario.variant), runs),
-        # Keep only the stacks that are present in all runs
-        threshold=runs,
-    )
+    # threshold=runs keeps only the stacks that are present in all runs
+    return compare(x=base_results, y=dev_results, threshold=runs)
 
 
 def generate_markdown_report(
@@ -160,7 +157,8 @@ def generate_markdown_report(
 
     if skipped:
         output += (
-            "\n\n⚪ The following scenarios were skipped (base produced no data):\n\n"
+            "\n\n⚪ The following scenarios were skipped"
+            " (base produced no data; PR profiles collected for manual validation):\n\n"
         )
         for scenario in skipped:
             output += f"- {scenario.title}\n"
@@ -224,7 +222,10 @@ if __name__ == "__main__":
         p = validate(scenario, runs=opts.n)
         if p is _NOT_APPLICABLE:
             skipped.append(scenario)
-            print("⚪ (not applicable — base produced no data)", file=sys.stderr)
+            print(
+                "⚪ (not applicable — base produced no data; PR profiles collected)",
+                file=sys.stderr,
+            )
             continue
 
         result_icon = "✅"
