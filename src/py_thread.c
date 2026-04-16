@@ -1333,6 +1333,7 @@ _win_unwind_stackwalk64(py_thread_t* self) {
     sf.AddrStack.Offset = regs->sp;
     sf.AddrStack.Mode   = AddrModeFlat;
 
+    uintptr_t prev_pc = 0;
     while (!stack_native_full()) {
         if (!StackWalk64(
                 machine, hProcess, hThread, &sf, &ctx, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL
@@ -1342,6 +1343,12 @@ _win_unwind_stackwalk64(py_thread_t* self) {
         uintptr_t pc = (uintptr_t)sf.AddrPC.Offset;
         if (pc == 0)
             break;
+
+        // Skip duplicate consecutive frames (StackWalk64 can report the
+        // same PC twice for leaf frames or at call boundaries).
+        if (pc == prev_pc)
+            continue;
+        prev_pc = pc;
 
         if (fail(_win_push_native_frame(self, pc)))
             FAIL;
