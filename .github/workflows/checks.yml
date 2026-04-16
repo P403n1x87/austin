@@ -339,7 +339,10 @@ jobs:
   report-coverage:
     runs-on: ubuntu-24.04
     needs: [test-coverage, test-coverage-aarch64]
-    if: always() && needs.test-coverage.result != 'cancelled'
+    if: >-
+      always()
+      && needs.test-coverage.result != 'cancelled'
+      && needs.test-coverage.result != 'skipped'
     name: Code coverage (report)
     steps:
       - uses: actions/checkout@v3
