@@ -170,9 +170,10 @@ def test_native_wall_time(py, save_mojo):
 
 
 @allpythons()
-def test_native_interleaved(py):
+def test_native_interleaved(py, save_mojo):
     """At least one sample must contain both Python and native frames."""
     result = austin("-n", "-i", "1ms", *python(py), target("target34.py"))
+    save_mojo(result.stdout)
     assert result.returncode == 0, result.stderr or result.stdout
 
     found_interleaved = False
