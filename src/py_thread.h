@@ -95,7 +95,6 @@ py_thread_allocate(void);
 void
 py_thread_free(void);
 
-#ifdef NATIVE
 int
 py_thread__set_idle(py_thread_t*);
 
@@ -113,16 +112,22 @@ int
 py_thread__save_kernel_stack(py_thread_t*);
 #endif
 
-#ifdef PL_MACOS
-int
-_mac_thread_seize(py_thread_t*);
-
+#if defined(PL_WIN) || defined(PL_MACOS)
 int
 py_thread__suspend(py_thread_t*);
 
 int
 py_thread__resume(py_thread_t*);
 #endif
+
+#ifdef PL_WIN
+int
+_win_thread_seize(py_thread_t*);
+#endif
+
+#ifdef PL_MACOS
+int
+_mac_thread_seize(py_thread_t*);
 #endif
 
 bool

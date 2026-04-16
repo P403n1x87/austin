@@ -733,7 +733,7 @@ py_proc__init(py_proc_t* self) {
 
     self->timestamp = gettime();
 
-#if defined(NATIVE) && defined(PL_LINUX) && defined(AUSTINP)
+#if defined(PL_LINUX) && defined(AUSTINP)
     self->unwind.as = unw_create_addr_space(&_UPT_accessors, 0);
 #endif
 
@@ -1044,7 +1044,7 @@ py_proc__wait(py_proc_t* self) {
     WaitForSingleObject(self->ref, INFINITE);
     CloseHandle(self->ref);
 #else /* UNIX */
-#if defined(NATIVE) && defined(PL_LINUX)
+#ifdef PL_LINUX
     if (pargs_native) {
         // In native mode, threads are ptrace-seized. A signal sent to the
         // process (e.g. SIGTERM) is intercepted by ptrace as a
@@ -1165,7 +1165,7 @@ py_proc__get_gc_state(py_proc_t* self) {
     return V_FIELD(int, gc_state, py_gc, o_collecting);
 }
 
-#if defined(NATIVE) && defined(PL_LINUX)
+#ifdef PL_LINUX
 // ----------------------------------------------------------------------------
 static int
 _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
@@ -1176,8 +1176,10 @@ _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
     } // GCOV_EXCL_STOP
 
     do {
+#ifdef AUSTINP
         if (pargs.kernel && fail(py_thread__save_kernel_stack(&py_thread))) // GCOV_EXCL_LINE
             FAIL;                                                           // GCOV_EXCL_LINE
+#endif
 
         // !IMPORTANT! We need to retrieve the idle state *before* trying to
         // interrupt the thread, else it will always be idle!
@@ -1215,7 +1217,7 @@ _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
     SUCCESS;
 }
 
-#endif /* defined(NATIVE) && defined(PL_LINUX) */
+#endif /* PL_LINUX */
 
 // ----------------------------------------------------------------------------
 static inline int
@@ -1356,14 +1358,12 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
 
         py_thread__unwind(&py_thread);
 
-#ifdef NATIVE
         if (pargs_native && V_MIN(3, 11) && V_MAX(3, 12)) {
             // We expect a CFrame to sit at the top of the stack
             if (!stack_is_empty() && stack_top() != CFRAME_MAGIC) { // GCOV_EXCL_START
                 log_e("Invalid resolved Python stack");
             } // GCOV_EXCL_STOP
         }
-#endif
 
         event_handler__emit_stack_end();
     } while (success(py_thread__next(&py_thread)));
@@ -1398,7 +1398,6 @@ py_proc__sample(py_proc_t* self) {
             // unless there is a fatal error.
             SUCCESS;
 
-#ifdef NATIVE
         if (pargs_native) {
             if (fail(_py_proc__interrupt_threads(self, tstate_head))) { // GCOV_EXCL_LINE
                 // Interrupt failed partway through: some threads may already be in
@@ -1409,13 +1408,10 @@ py_proc__sample(py_proc_t* self) {
             }
             time_delta = gettime() - self->timestamp;
         }
-#endif
         int result = _py_proc__sample_interpreter(self, current_interp, time_delta);
 
-#ifdef NATIVE
         if (pargs_native)
             py_thread__resume_all_interrupted();
-#endif
 
         if (fail(result))
             continue;
@@ -1519,7 +1515,7 @@ py_proc__destroy(py_proc_t* self) {
     if (!isvalid(self)) // GCOV_EXCL_LINE
         return;         // GCOV_EXCL_LINE
 
-#if defined(NATIVE) && defined(PL_LINUX)
+#ifdef PL_LINUX
 #ifdef AUSTINP
     unw_destroy_addr_space(self->unwind.as);
 #endif

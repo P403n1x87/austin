@@ -79,9 +79,7 @@ frame__destroy(frame_t* self) {
     sfree(self);
 }
 
-#ifdef NATIVE
 #define CFRAME_MAGIC ((void*)0xCF)
-#endif
 
 #include "code.h"
 #include "mojo.h"

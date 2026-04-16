@@ -47,9 +47,9 @@
 
 static size_t max_pid = 0;
 
-// Platform-specific NATIVE thread state storage.
+// Platform-specific native thread state storage.
 // These are declared here so they are visible to the platform headers below.
-#if defined(NATIVE) && defined(PL_LINUX)
+#if defined(PL_LINUX)
 #ifdef AUSTINP
 static void** _tids = NULL; // libunwind-ptrace contexts, indexed by kernel TID
 #else
@@ -59,7 +59,19 @@ static bool* _linux_seized = NULL; // ptrace-seized flag, indexed by kernel TID
 static unsigned char* _tids_idle = NULL; // idle-state bitmap, indexed by kernel TID
 static unsigned char* _tids_int  = NULL; // interrupted-state bitmap, indexed by kernel TID
 static char**         _kstacks   = NULL; // kernel stack strings, indexed by kernel TID
-#elif defined(NATIVE) && defined(PL_MACOS)
+#elif defined(PL_WIN)
+static hash_table_t* _win_handles = NULL; // tid (DWORD) → HANDLE (thread handle)
+static hash_table_t* _win_idle    = NULL; // tid → (void*)1  if thread was idle before suspend
+static hash_table_t* _win_int     = NULL; // tid → (void*)1  if thread was suspended by us
+static hash_table_t* _win_regs    = NULL; // tid → win_thread_regs_t* (PC/FP/SP captured at suspend)
+
+typedef struct {
+    uintptr_t pc;
+    uintptr_t fp;
+    uintptr_t sp;
+} win_thread_regs_t;
+
+#elif defined(PL_MACOS)
 static hash_table_t* _mac_ports = NULL; // pthread_t → thread_act_t (Mach thread port)
 static hash_table_t* _mac_idle  = NULL; // pthread_t → (void*)1  if thread was idle before suspend
 static hash_table_t* _mac_int   = NULL; // pthread_t → (void*)1  if thread was suspended by us
@@ -78,22 +90,19 @@ typedef struct {
 
 #if defined(PL_LINUX)
 
-#include "linux/py_thread.h"
-#ifdef NATIVE
 #include "linux/addr2line.h"
-#endif
+#include "linux/py_thread.h"
 
 #elif defined(PL_WIN)
 
+#include "win/addr2line.h"
 #include "win/py_thread.h"
 
 #elif defined(PL_MACOS)
 
-#include "mac/py_thread.h"
-#ifdef NATIVE
 #include "mac/addr2line.h"
 #include "mac/common.h"
-#endif
+#include "mac/py_thread.h"
 
 #endif
 
@@ -107,12 +116,10 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
     for (int i = 0; i < stack_pointer(); i++) {
         py_frame_t py_frame = stack_py_get(i);
 
-#ifdef NATIVE
         if (py_frame.origin == CFRAME_MAGIC) {
             stack_set(i, CFRAME_MAGIC);
             continue;
         }
-#endif
         int      lasti     = py_frame.lasti;
         key_dt   frame_key = py_frame_key(py_frame.code, lasti);
         frame_t* frame     = lru_cache__maybe_hit(cache, frame_key);
@@ -181,13 +188,11 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
     }
 
     if (V_MIN(3, 12) && V_FIELD_PTR(char, iframe, py_iframe, o_owner) == FRAME_OWNED_BY_CSTACK) {
-// This is a shim frame that we can ignore
-#ifdef NATIVE
+        // This is a shim frame that we can ignore.
         // In native mode we take this as the marker for the beginning of the stack
         // for a call to PyEval_EvalFrameDefault.
         if (pargs_native)
             stack_py_push_cframe();
-#endif
         SUCCESS;
     }
 
@@ -197,12 +202,10 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
             / sizeof(_Py_CODEUNIT)
     );
 
-#ifdef NATIVE
     if (pargs_native && V_EQ(3, 11) && V_FIELD_PTR(int, iframe, py_iframe, o_is_entry)) {
         // This marks the end of a CFrame
         stack_py_push_cframe();
     }
-#endif
 
     SUCCESS;
 }
@@ -307,10 +310,8 @@ _py_thread__unwind_cframe_stack(py_thread_t* self) {
     return fail(_py_thread__unwind_iframe_stack(self, V_FIELD(raddr_t, cframe, py_cframe, o_current_frame)));
 }
 
-#ifdef NATIVE
-
 // ============================================================
-// Shared NATIVE helpers: idle/interrupted state management.
+// Shared native helpers: idle/interrupted state management.
 // Linux uses bitmaps indexed by kernel TID (small integer).
 // macOS uses hash tables keyed by pthread_t (pointer value).
 // ============================================================
@@ -331,6 +332,13 @@ py_thread__set_idle(py_thread_t* self) {
         _tids_idle[index] |= bit;
     } else {
         _tids_idle[index] &= ~bit;
+    }
+#elif defined(PL_WIN)
+    // Query idle state now, before the thread is suspended.
+    if (py_thread__is_idle(self)) {
+        hash_table__set(_win_idle, (key_dt)self->tid, (value_t)1);
+    } else {
+        hash_table__del(_win_idle, (key_dt)self->tid);
     }
 #elif defined(PL_MACOS)
     // Query idle state now, before the thread is suspended.
@@ -355,6 +363,12 @@ py_thread__set_interrupted(py_thread_t* self, bool state) {
     } else {
         _tids_int[index] &= ~bit;
     }
+#elif defined(PL_WIN)
+    if (state) {
+        hash_table__set(_win_int, (key_dt)self->tid, (value_t)1);
+    } else {
+        hash_table__del(_win_int, (key_dt)self->tid);
+    }
 #elif defined(PL_MACOS)
     if (state) {
         hash_table__set(_mac_int, (key_dt)self->tid, (value_t)1);
@@ -370,6 +384,8 @@ bool
 py_thread__is_interrupted(py_thread_t* self) {
 #if defined(PL_LINUX)
     return (_tids_int[self->tid >> 3] & (1 << (self->tid & 7))) != 0;
+#elif defined(PL_WIN)
+    return isvalid(hash_table__get(_win_int, (key_dt)self->tid));
 #elif defined(PL_MACOS)
     return isvalid(hash_table__get(_mac_int, (key_dt)self->tid));
 #endif
@@ -482,7 +498,11 @@ _py_thread__unwind_kernel_frame_stack(py_thread_t* self) {
 // Native stack unwinding — platform-specific implementations
 // ============================================================
 
+// Buffer for formatting native frame filenames.  Only needed on platforms /
+// architectures that actually perform native unwinding.
+#if !defined(PL_LINUX) || defined(AUSTINP) || defined(__x86_64__) || defined(__aarch64__)
 static char _native_buf[MAXLEN];
+#endif
 
 // ----------------------------------------------------------------------------
 // Linux: remote unwinding
@@ -661,7 +681,8 @@ _py_thread__seize(py_thread_t* self) {
     SUCCESS;
 }
 
-#else /* !AUSTINP: frame-pointer walk on x86-64 / aarch64 */
+#elif defined(__x86_64__) || defined(__aarch64__)
+/* !AUSTINP: frame-pointer walk on x86-64 / aarch64 */
 
 #include <elf.h>     // NT_PRSTATUS
 #include <sys/uio.h> // struct iovec, process_vm_readv
@@ -907,7 +928,7 @@ _py_thread__seize(py_thread_t* self) {
     SUCCESS;
 }
 
-#endif /* AUSTINP / fp-walk */
+#endif /* AUSTINP / fp-walk / unsupported arch */
 
 // ----------------------------------------------------------------------------
 // macOS: frame-pointer walk via Mach APIs
@@ -1203,9 +1224,224 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
     SUCCESS;
 } /* _py_thread__unwind_native_frame_stack */
 
-#endif /* PL_LINUX / PL_MACOS */
+// ----------------------------------------------------------------------------
+// Windows: frame-pointer walk + StackWalk64 fallback
+// ----------------------------------------------------------------------------
+#elif defined(PL_WIN)
 
-#endif /* NATIVE */
+// Resolve a PC to a native frame (filename + function name) and push it onto
+// the native stack.  Shared by both the frame-pointer walk and the StackWalk64
+// fallback paths.  Returns 0 on success, non-zero on failure.
+static inline int
+_win_push_native_frame(py_thread_t* self, uintptr_t pc) {
+    lru_cache_t* cache        = self->proc->frame_cache;
+    lru_cache_t* string_cache = self->proc->string_cache;
+
+    key_dt   frame_key = (key_dt)pc;
+    frame_t* frame     = lru_cache__maybe_hit(cache, frame_key);
+
+    if (!isvalid(frame)) {
+        key_dt           filename_key = (key_dt)pc;
+        cached_string_t* filename     = lru_cache__maybe_hit(string_cache, filename_key);
+        if (!isvalid(filename)) {
+            const char* mod_path = win_get_module_name(self->proc->ref, pc);
+            if (isvalid(mod_path)) {
+                snprintf(_native_buf, MAXLEN, "%s", mod_path);
+            } else {
+                snprintf(_native_buf, MAXLEN, "native@%" PRIxPTR, pc);
+            }
+            filename = cached_string_new(filename_key, strdup(_native_buf));
+            if (!isvalid(filename))
+                FAIL;
+            lru_cache__store(string_cache, filename_key, (value_t)filename);
+            event_handler__emit_new_string(filename);
+        }
+
+        key_dt           scope_key = frame_key + 1;
+        cached_string_t* scope     = lru_cache__maybe_hit(string_cache, scope_key);
+        if (!isvalid(scope)) {
+            const char* fname = win_get_func_name(self->proc->ref, pc);
+            if (isvalid(fname)) {
+                scope = cached_string_new(scope_key, strdup(fname));
+                if (!isvalid(scope))
+                    FAIL;
+                lru_cache__store(string_cache, scope_key, (value_t)scope);
+                event_handler__emit_new_string(scope);
+            } else {
+                scope = UNKNOWN_SCOPE;
+            }
+        }
+
+        frame = frame_new(frame_key, filename, scope, 0, 0, 0, 0);
+        if (!isvalid(frame))
+            FAIL;
+        lru_cache__store(cache, frame_key, (value_t)frame);
+        event_handler__emit_new_frame(frame);
+    }
+
+    stack_native_push(frame);
+    SUCCESS;
+}
+
+// ---- StackWalk64 fallback ---------------------------------------------------
+// Used when the frame-pointer walk fails to produce a deep stack (typically
+// because the binary was compiled with frame-pointer omission, which is the
+// MSVC x64 default).  StackWalk64 uses the PE .pdata unwind info and is
+// slower but handles all calling conventions correctly.
+static inline int
+_win_unwind_stackwalk64(py_thread_t* self) {
+    stack_native_reset();
+
+    HANDLE hProcess = self->proc->ref;
+    HANDLE hThread  = (HANDLE)hash_table__get(_win_handles, (key_dt)self->tid);
+    if (!isvalid(hThread)) {
+        set_error(OS, "No cached handle for thread");
+        FAIL;
+    }
+
+    win_sym_init(hProcess);
+
+    // Build a fresh CONTEXT for StackWalk64 from the cached registers.
+    win_thread_regs_t* regs = (win_thread_regs_t*)hash_table__get(_win_regs, (key_dt)self->tid);
+    if (!isvalid(regs)) {
+        set_error(OS, "No cached register state for thread");
+        FAIL;
+    }
+
+    CONTEXT ctx;
+    memset(&ctx, 0, sizeof(ctx));
+#if defined(_M_X64)
+    DWORD machine    = IMAGE_FILE_MACHINE_AMD64;
+    ctx.ContextFlags = CONTEXT_FULL;
+    ctx.Rip          = (DWORD64)regs->pc;
+    ctx.Rbp          = (DWORD64)regs->fp;
+    ctx.Rsp          = (DWORD64)regs->sp;
+#elif defined(_M_ARM64)
+    DWORD machine    = IMAGE_FILE_MACHINE_ARM64;
+    ctx.ContextFlags = CONTEXT_FULL;
+    ctx.Pc           = (DWORD64)regs->pc;
+    ctx.Fp           = (DWORD64)regs->fp;
+    ctx.Sp           = (DWORD64)regs->sp;
+#endif
+
+    STACKFRAME64 sf;
+    memset(&sf, 0, sizeof(sf));
+    sf.AddrPC.Offset    = regs->pc;
+    sf.AddrPC.Mode      = AddrModeFlat;
+    sf.AddrFrame.Offset = regs->fp;
+    sf.AddrFrame.Mode   = AddrModeFlat;
+    sf.AddrStack.Offset = regs->sp;
+    sf.AddrStack.Mode   = AddrModeFlat;
+
+    uintptr_t prev_pc = 0;
+    while (!stack_native_full()) {
+        if (!StackWalk64(
+                machine, hProcess, hThread, &sf, &ctx, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL
+            ))
+            break;
+
+        uintptr_t pc = (uintptr_t)sf.AddrPC.Offset;
+        if (pc == 0)
+            break;
+
+        // Skip duplicate consecutive frames (StackWalk64 can report the
+        // same PC twice for leaf frames or at call boundaries).
+        if (pc == prev_pc)
+            continue;
+        prev_pc = pc;
+
+        if (fail(_win_push_native_frame(self, pc)))
+            FAIL;
+    }
+
+    SUCCESS;
+}
+
+// Walk the native call stack of a suspended thread.
+//
+// Strategy: try the fast frame-pointer chain first.  If that produces at most
+// one frame (RBP wasn't a real frame pointer — typical for MSVC /Oy binaries),
+// fall back to StackWalk64 which uses PE .pdata unwind info and handles all
+// calling conventions at the cost of extra API calls per frame.
+static inline int
+_py_thread__unwind_native_frame_stack(py_thread_t* self) {
+    stack_native_reset();
+
+    // ---- Seed registers from the state captured at suspend time ----
+    win_thread_regs_t* regs = (win_thread_regs_t*)hash_table__get(_win_regs, (key_dt)self->tid);
+    if (!isvalid(regs)) {
+        set_error(OS, "No cached register state for thread");
+        FAIL;
+    }
+    uintptr_t pc = regs->pc;
+    uintptr_t fp = regs->fp;
+    uintptr_t sp = regs->sp;
+
+    // Quick sanity check: if fp looks like a plausible stack address (between
+    // sp and sp + 1MB) attempt the frame-pointer walk.  Otherwise skip straight
+    // to StackWalk64.
+    bool try_fp_walk = (fp > sp && fp < sp + (1 << 20));
+
+    if (try_fp_walk) {
+        // ---- Prefetch one page of stack into a local buffer ----
+#define _STACK_BUF_SIZE 4096
+        uint8_t   _stack_buf[_STACK_BUF_SIZE];
+        uintptr_t _stack_buf_base = sp & ~((uintptr_t)(_STACK_BUF_SIZE - 1));
+        {
+            SIZE_T _sz = 0;
+            if (!ReadProcessMemory(self->proc->ref, (LPCVOID)_stack_buf_base, _stack_buf, _STACK_BUF_SIZE, &_sz)
+                || _sz != _STACK_BUF_SIZE) {
+                _stack_buf_base = 0;
+            }
+        }
+
+        // ---- Walk frame-pointer chain ----
+        while (!stack_native_full() && pc != 0) {
+            if (fail(_win_push_native_frame(self, pc)))
+                FAIL;
+
+            if (fp == 0)
+                break;
+
+            uintptr_t frame_data[2] = {0, 0};
+            if (_stack_buf_base != 0 && fp >= _stack_buf_base
+                && fp - _stack_buf_base + sizeof(frame_data) <= _STACK_BUF_SIZE) {
+                memcpy(frame_data, _stack_buf + (fp - _stack_buf_base), sizeof(frame_data));
+            } else {
+                uintptr_t new_base = fp & ~((uintptr_t)(_STACK_BUF_SIZE - 1));
+                SIZE_T    _sz      = 0;
+                if (ReadProcessMemory(self->proc->ref, (LPCVOID)new_base, _stack_buf, _STACK_BUF_SIZE, &_sz)
+                    && _sz == _STACK_BUF_SIZE) {
+                    _stack_buf_base = new_base;
+                    memcpy(frame_data, _stack_buf + (fp - _stack_buf_base), sizeof(frame_data));
+                } else {
+                    _stack_buf_base  = 0;
+                    SIZE_T read_size = 0;
+                    if (!ReadProcessMemory(self->proc->ref, (LPCVOID)fp, frame_data, sizeof(frame_data), &read_size)
+                        || read_size != sizeof(frame_data)) {
+                        break;
+                    }
+                }
+            }
+
+            fp = frame_data[0];
+            pc = frame_data[1];
+        }
+#undef _STACK_BUF_SIZE
+
+        // If fp-walk produced a deep stack, we're done.
+        if (_stack->native_pointer > 1)
+            SUCCESS;
+
+        // fp-walk was flat — fall through to StackWalk64.
+        log_d("win: fp-walk produced %zd frame(s), falling back to StackWalk64", _stack->native_pointer);
+    }
+
+    // ---- StackWalk64 fallback ----
+    return _win_unwind_stackwalk64(self);
+} /* _py_thread__unwind_native_frame_stack */
+
+#endif /* PL_LINUX / PL_WIN / PL_MACOS */
 
 // ---- PUBLIC ----------------------------------------------------------------
 
@@ -1255,8 +1491,8 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
 #if defined PL_LINUX
     else {
         if (V_MIN(3, 11)) {
-// We already have the native thread id
-#ifdef NATIVE
+            // We already have the native thread id
+#if defined(AUSTINP) || defined(__x86_64__) || defined(__aarch64__)
             if (pargs_native) {
                 // native_thread_id is read directly from CPython's struct; validate
                 // before indexing the bitmap or passing to ptrace.
@@ -1285,7 +1521,7 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
                 self->tid = 0;
                 FAIL;
             }
-#ifdef NATIVE
+#if defined(AUSTINP) || defined(__x86_64__) || defined(__aarch64__)
             if (pargs_native && fail(_py_thread__seize(self))) {
                 FAIL;
             }
@@ -1320,8 +1556,6 @@ void
 py_thread__unwind(py_thread_t* self) {
     bool error = false;
 
-#ifdef NATIVE
-
 #ifdef PL_LINUX
     // Only unwind the native stack if this thread was stopped during the
     // interrupt phase. A thread that appears in the Python linked list but
@@ -1333,16 +1567,18 @@ py_thread__unwind(py_thread_t* self) {
         // otherwise we would see the ptrace syscall call stack, which is not
         // very interesting. The downside is that the kernel stack might not be
         // in sync with the other ones.
+#ifdef AUSTINP
         if (pargs.kernel) {
             _py_thread__unwind_kernel_frame_stack(self);
         }
+#endif
 #ifdef AUSTINP
         // AUSTINP: native sampling is always active (controlled by pargs_native
         // in _py_proc__interrupt_threads — if we reach here, it was requested).
         if (fail(_py_thread__unwind_native_frame_stack(self))) {
             error = true;
         }
-#else
+#elif defined(__x86_64__) || defined(__aarch64__)
         // fp-walk: only unwind when native mode is explicitly enabled.
         if (pargs_native && fail(_py_thread__unwind_native_frame_stack(self))) {
             error = true;
@@ -1350,6 +1586,14 @@ py_thread__unwind(py_thread_t* self) {
 #endif
     }
 #endif /* PL_LINUX */
+
+#ifdef PL_WIN
+    if (pargs_native && py_thread__is_interrupted(self)) {
+        if (fail(_py_thread__unwind_native_frame_stack(self))) {
+            error = true;
+        }
+    }
+#endif /* PL_WIN */
 
 #ifdef PL_MACOS
     if (pargs_native && fail(_py_thread__unwind_native_frame_stack(self))) {
@@ -1359,7 +1603,6 @@ py_thread__unwind(py_thread_t* self) {
     // state cannot change between _py_proc__interrupt_threads and now.
 #endif /* PL_MACOS */
 
-#endif /* NATIVE */
     V_DESC(self->proc->py_v);
 
     if (isvalid(self->top_frame)) {
@@ -1413,7 +1656,7 @@ py_thread_allocate(void) {
 
     max_pid = pid_max() + 1;
 
-#if defined(NATIVE) && defined(PL_LINUX)
+#ifdef PL_LINUX
 #ifdef AUSTINP
     _tids = (void**)calloc(max_pid, sizeof(void*));
     if (!isvalid(_tids)) { // GCOV_EXCL_START
@@ -1442,6 +1685,7 @@ py_thread_allocate(void) {
         goto failed;
     } // GCOV_EXCL_STOP
 
+#ifdef AUSTINP
     if (pargs.kernel) {
         _kstacks = (char**)calloc(max_pid, sizeof(char*));
         if (!isvalid(_kstacks)) { // GCOV_EXCL_START
@@ -1449,6 +1693,7 @@ py_thread_allocate(void) {
             goto failed;
         } // GCOV_EXCL_STOP
     }
+#endif /* AUSTINP */
     goto ok;
 
 failed: // GCOV_EXCL_START
@@ -1464,9 +1709,27 @@ failed: // GCOV_EXCL_START
     FAIL;
 
 ok:    // GCOV_EXCL_STOP
-#endif /* defined(NATIVE) && defined(PL_LINUX) */
+#endif /* PL_LINUX */
 
-#if defined(NATIVE) && defined(PL_MACOS)
+#ifdef PL_WIN
+#define WIN_THREAD_TABLE_SIZE 256
+    _win_handles = hash_table_new(WIN_THREAD_TABLE_SIZE);
+    _win_idle    = hash_table_new(WIN_THREAD_TABLE_SIZE);
+    _win_int     = hash_table_new(WIN_THREAD_TABLE_SIZE);
+    _win_regs    = hash_table_new(WIN_THREAD_TABLE_SIZE);
+
+    if (!isvalid(_win_handles) || !isvalid(_win_idle) || !isvalid(_win_int) || !isvalid(_win_regs)) {
+        set_error(MALLOC, "Failed to allocate Windows thread state tables");
+        hash_table__destroy(_win_handles);
+        hash_table__destroy(_win_idle);
+        hash_table__destroy(_win_int);
+        hash_table__destroy(_win_regs);
+        _win_handles = _win_idle = _win_int = _win_regs = NULL;
+        FAIL;
+    }
+#endif /* PL_WIN */
+
+#ifdef PL_MACOS
 #define MAC_THREAD_TABLE_SIZE 256
     _mac_ports = hash_table_new(MAC_THREAD_TABLE_SIZE);
     _mac_idle  = hash_table_new(MAC_THREAD_TABLE_SIZE);
@@ -1482,7 +1745,7 @@ ok:    // GCOV_EXCL_STOP
         _mac_ports = _mac_idle = _mac_int = _mac_regs = NULL;
         FAIL;
     } // GCOV_EXCL_STOP
-#endif /* defined(NATIVE) && defined(PL_MACOS) */
+#endif /* PL_MACOS */
 
     SUCCESS;
 }
@@ -1505,7 +1768,7 @@ py_thread_free(void) {
 
     stack_deallocate();
 
-#if defined(NATIVE) && defined(PL_LINUX)
+#ifdef PL_LINUX
     for (pid_t tid = 0; tid < (pid_t)max_pid; tid++) {
 #ifdef AUSTINP
         if (isvalid(_tids[tid])) {
@@ -1530,14 +1793,34 @@ py_thread_free(void) {
     sfree(_tids);
 #else
     sfree(_linux_seized);
+#if defined(__x86_64__) || defined(__aarch64__)
     cfi_cache_destroy();
+#endif
 #endif
     sfree(_tids_idle);
     sfree(_tids_int);
     sfree(_kstacks);
-#endif /* defined(NATIVE) && defined(PL_LINUX) */
+#endif /* PL_LINUX */
 
-#if defined(NATIVE) && defined(PL_MACOS)
+#ifdef PL_WIN
+    // Close all cached thread handles before destroying the table.
+    if (isvalid(_win_handles)) {
+        hash_table__iter_start(_win_handles, void*, raw_handle) { CloseHandle((HANDLE)raw_handle); }
+        hash_table__iter_stop(_win_handles);
+    }
+    hash_table__destroy(_win_handles);
+    hash_table__destroy(_win_idle);
+    hash_table__destroy(_win_int);
+    if (isvalid(_win_regs)) {
+        hash_table__iter_start(_win_regs, win_thread_regs_t*, regs) { free(regs); }
+        hash_table__iter_stop(_win_regs);
+    }
+    hash_table__destroy(_win_regs);
+    _win_handles = _win_idle = _win_int = _win_regs = NULL;
+    win_sym_cleanup();
+#endif /* PL_WIN */
+
+#ifdef PL_MACOS
     // Release all cached Mach thread ports before destroying the table.
     if (isvalid(_mac_ports)) {
         hash_table__iter_start(_mac_ports, void*, raw_port) {
@@ -1554,5 +1837,5 @@ py_thread_free(void) {
     }
     hash_table__destroy(_mac_regs);
     _mac_ports = _mac_idle = _mac_int = _mac_regs = NULL;
-#endif /* defined(NATIVE) && defined(PL_MACOS) */
+#endif /* PL_MACOS */
 }

@@ -43,10 +43,8 @@
 #include "proc/exe.h"
 #include "proc/maps.h"
 
-#ifdef NATIVE
 #include "../argparse.h"
 #include "../cache.h"
-#endif
 #include "../hints.h"
 #include "../py_proc.h"
 #include "../py_string.h"
@@ -515,7 +513,6 @@ _py_proc__get_resident_memory(py_proc_t* self) {
     return resident * self->extra->page_size; // cppcheck-suppress [resourceLeak]
 } /* _py_proc__get_resident_memory */
 
-#ifdef NATIVE
 // ----------------------------------------------------------------------------
 #define RANGES_MAX 256
 
@@ -584,7 +581,6 @@ _py_proc__get_vm_maps(py_proc_t* self) {
 
     SUCCESS;
 } /* _py_proc__get_vm_maps */
-#endif
 
 // ----------------------------------------------------------------------------
 static int
@@ -614,10 +610,8 @@ _py_proc__init(py_proc_t* self) {
 
     self->last_resident_memory = _py_proc__get_resident_memory(self);
 
-#ifdef NATIVE
     if (pargs.where || pargs_native)
         _py_proc__get_vm_maps(self);
-#endif
 
     SUCCESS;
 } /* _py_proc__init */

@@ -25,7 +25,6 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#ifdef NATIVE
 #include "cache.h"
 #ifdef PL_LINUX
 #include "linux/vm-range-tree.h"
@@ -33,9 +32,6 @@
 #include <libunwind-ptrace.h>
 #endif
 #endif
-#endif
-
-#include "cache.h"
 #include "platform.h"
 #include "python/symbols.h"
 #include "stats.h"
@@ -95,7 +91,7 @@ typedef struct {
     // Offset of the tstate_current field within the _PyRuntimeState structure
     unsigned int tstate_current_offset;
 
-#if defined(NATIVE) && defined(PL_LINUX)
+#ifdef PL_LINUX
 #ifdef AUSTINP
     struct _puw {
         unw_addr_space_t as;

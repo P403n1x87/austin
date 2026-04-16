@@ -78,7 +78,7 @@ jobs:
           export VERSION=$(echo $PREV_VERSION | sed -r -n "s/([0-9]+\.[0-9]+\.[0-9]+).*/\1/p")
           sed -i "s/$PREV_VERSION/$VERSION/g" src/austin.h
 
-          gcc -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll
+          gcc -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll -ldbghelp
 
           git checkout HEAD -- src/austin.h 
 

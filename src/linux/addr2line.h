@@ -22,8 +22,6 @@
 
 #pragma once
 
-#ifdef NATIVE
-
 #ifdef HAVE_BFD
 
 // ---- austinp: BFD-based symbol resolution -----------------------------------
@@ -171,9 +169,11 @@ get_native_frame(const char* file_name, bfd_vma addr, key_dt frame_key) {
 
 #endif /* HAVE_BFD */
 
+#if defined(AUSTINP) || defined(__x86_64__) || defined(__aarch64__)
+
 // ELF native symbol resolution for Linux (x86-64 / aarch64).
-// Always compiled on Linux+NATIVE; used as the primary resolver for austin -n
-// and as a fallback for austinp when unw_get_proc_name cannot name a frame.
+// Used as the primary resolver for austin -n and as a fallback for austinp
+// when unw_get_proc_name cannot name a frame.
 //
 // Builds a sorted symbol table from the on-disk ELF .symtab (preferred) or
 // .dynsym, applies the ASLR slide computed from the first executable PT_LOAD
@@ -436,4 +436,4 @@ linux_get_func_name(uintptr_t pc, const char* path, uintptr_t load_base) {
     return _linux_lookup_sym(table, pc);
 }
 
-#endif /* NATIVE */
+#endif /* AUSTINP || x86_64 || aarch64 */

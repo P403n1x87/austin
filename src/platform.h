@@ -50,18 +50,6 @@ typedef HANDLE proc_ref_t;
 
 // ----------------------------------------------------------------------------
 
-// Native stack sampling is always compiled in on macOS (uses Mach APIs, no
-// extra dependencies).  On Linux it is available either via libunwind-ptrace
-// (austinp, any arch) or via CFI/frame-pointer unwinding (plain austin,
-// x86-64 and aarch64, including musl).  On all other platforms NATIVE is
-// not defined.
-#if defined(PL_MACOS) || (defined(PL_LINUX) && defined(AUSTINP))            \
-    || (defined(PL_LINUX) && (defined(__x86_64__) || defined(__aarch64__)))
-#define NATIVE
-#endif
-
-// ----------------------------------------------------------------------------
-
 #if defined(PL_LINUX) || defined(PL_MACOS)
 #define PL_UNIX
 
