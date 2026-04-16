@@ -47,6 +47,9 @@ def save_mojo(request):
     yield _save
 
     # Clean up on pass; keep on failure so CI can upload the files.
+    # In CI (GITHUB_ACTIONS), always keep profiles for artifact collection.
+    if os.environ.get("CI"):
+        return
     failed = getattr(getattr(request.node, "rep_call", None), "failed", True)
     if not failed:
         for p in saved_paths:

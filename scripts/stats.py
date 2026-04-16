@@ -128,6 +128,18 @@ def compare(
             c.update(_.supp())
         domain = sorted([k for k, v in c.items() if v >= threshold])
 
+    # The Hotelling T² test requires nx + ny - p - 1 > 0, i.e. the number
+    # of dimensions (unique stacks) must be less than nx + ny - 1.  When
+    # native frames are included the stack diversity can exceed this limit.
+    # Cap the domain to the most common stacks to keep the test valid.
+    max_p = len(x) + len(y) - 2
+    if len(domain) > max_p:
+        c = c if threshold is not None else Counter()
+        if not c:
+            for _ in chain(x, y):
+                c.update(_.supp())
+        domain = [k for k, _ in c.most_common(max_p)]
+
     X = np.array([f.to_list(domain) for f in x], dtype=np.int32)
     Y = np.array([f.to_list(domain) for f in y], dtype=np.int32)
 
