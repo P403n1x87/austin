@@ -69,6 +69,21 @@ win_sym_cleanup(void) {
 // handle, but Austin's sampling loop is single-threaded so this is fine.
 static char _sym_buf[sizeof(SYMBOL_INFO) + MAX_SYM_NAME * sizeof(TCHAR)];
 
+// Check whether the module containing `pc` has full (PDB) symbols loaded
+// or only export symbols.  Returns true if PDB/DIA symbols are available.
+static inline bool
+_win_has_pdb_symbols(HANDLE hProcess, uintptr_t pc) {
+    IMAGEHLP_MODULE64 mod_info;
+    memset(&mod_info, 0, sizeof(mod_info));
+    mod_info.SizeOfStruct = sizeof(mod_info);
+
+    if (!SymGetModuleInfo64(hProcess, (DWORD64)pc, &mod_info))
+        return false;
+
+    // SymPdb (7) and SymDia (8) indicate full symbol info from PDB files.
+    return mod_info.SymType == SymPdb || mod_info.SymType == SymDia;
+}
+
 static inline const char*
 win_get_func_name(HANDLE hProcess, uintptr_t pc) {
     win_sym_init(hProcess);
@@ -81,6 +96,20 @@ win_get_func_name(HANDLE hProcess, uintptr_t pc) {
     if (!SymFromAddr(hProcess, (DWORD64)pc, &displacement, sym)) {
         return NULL;
     }
+
+    // With full PDB symbols the resolution is exact — trust it.
+    // Without PDBs (export-only), SymFromAddr maps the PC to the nearest
+    // preceding export which can be wildly wrong.  Validate that the PC
+    // actually falls within the reported symbol's bounds.
+    if (!_win_has_pdb_symbols(hProcess, pc)) {
+        if (sym->Size > 0) {
+            if (displacement >= sym->Size)
+                return NULL;
+        } else if (displacement > 0x10000) {
+            return NULL;
+        }
+    }
+
     return sym->Name;
 }
 
