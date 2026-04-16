@@ -1139,7 +1139,19 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
             key_dt           filename_key = (key_dt)pc;
             cached_string_t* filename     = lru_cache__maybe_hit(string_cache, filename_key);
             if (!isvalid(filename)) {
-                path_len = proc_regionfilename(self->proc->pid, pc, region_path, MAXPATHLEN);
+                // Fast path: if the PC is in the dyld shared cache range,
+                // resolve the path directly from the cache — proc_regionfilename
+                // always fails for shared-cache addresses and is a wasted Mach trap.
+                if (_dsc_pc_in_cache(self->proc->ref, pc)) {
+                    const char* cache_path = _dsc_path_for_pc(self->proc->ref, pc, NULL);
+                    if (cache_path) {
+                        strncpy(region_path, cache_path, MAXPATHLEN);
+                        region_path[MAXPATHLEN] = '\0';
+                        path_len                = (int)strlen(cache_path);
+                    }
+                } else {
+                    path_len = proc_regionfilename(self->proc->pid, pc, region_path, MAXPATHLEN);
+                }
                 if (path_len > 0) {
                     snprintf(_native_buf, MAXLEN, "%s", region_path);
                 } else {
@@ -1157,8 +1169,18 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
             cached_string_t* scope     = lru_cache__maybe_hit(string_cache, scope_key);
             if (!isvalid(scope)) {
                 // path_len is -1 when filename was already cached; re-resolve.
-                if (path_len < 0)
-                    path_len = proc_regionfilename(self->proc->pid, pc, region_path, MAXPATHLEN);
+                if (path_len < 0) {
+                    if (_dsc_pc_in_cache(self->proc->ref, pc)) {
+                        const char* cache_path = _dsc_path_for_pc(self->proc->ref, pc, NULL);
+                        if (cache_path) {
+                            strncpy(region_path, cache_path, MAXPATHLEN);
+                            region_path[MAXPATHLEN] = '\0';
+                            path_len                = (int)strlen(cache_path);
+                        }
+                    } else {
+                        path_len = proc_regionfilename(self->proc->pid, pc, region_path, MAXPATHLEN);
+                    }
+                }
                 const char* fname = NULL;
                 if (path_len > 0)
                     fname = mac_get_func_name(self->proc->ref, self->proc->pid, pc, region_path);

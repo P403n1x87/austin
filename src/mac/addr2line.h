@@ -20,14 +20,19 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-// Mach-O native symbol resolution for austinp on macOS.
+// Mach-O native symbol resolution for austin on macOS.
 //
 // Provides mac_get_func_name() which maps a program counter to the enclosing
-// function name by reading the binary's Mach-O LC_SYMTAB on disk, computing
-// the ASLR slide, and doing a binary search in the sorted symbol table.
+// function name by reading the binary's Mach-O LC_SYMTAB, computing the ASLR
+// slide, and doing a binary search in the sorted symbol table.
 //
-// Results are cached per binary path so the expensive file-IO and region
-// scans happen at most once per unique loaded binary.
+// For binaries that exist on disk (Python itself, user code) the Mach-O file
+// is opened directly.  For system frameworks that live exclusively inside the
+// dyld shared cache (CoreFoundation, Security, libSystem, etc.) we fall back
+// to parsing the cache — see dyld_cache.h.
+//
+// Results are cached per binary path so the expensive IO and region scans
+// happen at most once per unique loaded binary.
 
 #pragma once
 
@@ -46,6 +51,8 @@
 #include "../logging.h"
 #include "../py_string.h"
 #include "../resources.h"
+
+#include "dyld_cache.h"
 
 // One entry in a sorted symbol table.
 typedef struct {
@@ -76,11 +83,28 @@ _mac_sym_cmp(const void* a, const void* b) {
 }
 
 // ---- Find the runtime load base for a binary --------------------------------
-// Scans the target task's vm regions from address 1 forward and returns the
-// start of the first executable region backed by target_path.  This is the
-// runtime base of the binary's __TEXT segment.
+// Returns the runtime load address of the binary's __TEXT segment.
+// For shared-cache images the load base is computed directly from the cache
+// metadata, avoiding the expensive VM-region scan entirely.
 static uintptr_t
 _mac_find_load_base(mach_port_t task, pid_t pid, const char* target_path) {
+    // Fast path: check the dyld shared cache first.  System frameworks only
+    // exist inside the cache on modern macOS, so the VM-region scan below
+    // would iterate every region (hundreds of Mach traps) and still fail.
+    _dsc_t* dsc = _dsc_get();
+    if (dsc) {
+        uint64_t image_va = _dsc_find_image(dsc, target_path);
+        if (image_va != 0) {
+            uintptr_t slide = _dsc_get_slide(task);
+            uintptr_t base  = (uintptr_t)(image_va + slide);
+            log_d(
+                "mac_addr2line: load base for %s from cache: %p (slide=0x%" PRIxPTR ")", target_path, (void*)base, slide
+            );
+            return base;
+        }
+    }
+
+    // Slow path: scan VM regions (for binaries that exist on disk).
     mach_vm_address_t              addr  = 1;
     mach_vm_size_t                 size  = 0;
     mach_msg_type_number_t         count = sizeof(vm_region_basic_info_data_64_t);
@@ -104,58 +128,13 @@ _mac_find_load_base(mach_port_t task, pid_t pid, const char* target_path) {
     return 0;
 }
 
-// ---- Parse a Mach-O 64-bit image --------------------------------------------
-// map      – pointer to the start of the Mach-O image (mmapped file or slice)
-// load_base – runtime load address of the binary's __TEXT segment
+// ---- Common: filter, sort and package nlist entries -------------------------
+// Takes raw pointers to a Mach-O nlist table and its string table, applies
+// the ASLR slide, and returns a freshly allocated mac_sym_table_t.
 static mac_sym_table_t*
-_mac_build_table64(void* map, uintptr_t load_base) {
-    struct mach_header_64* hdr = (struct mach_header_64*)map;
-
-    // Reject unknown file types (only executables and dylibs carry symbols).
-    if (hdr->filetype != MH_EXECUTE && hdr->filetype != MH_DYLIB)
-        return NULL;
-
-    int64_t  slide     = 0;
-    uint32_t symoff    = 0;
-    uint32_t nsyms     = 0;
-    uint32_t stroff    = 0;
-    uint32_t strsize   = 0;
-    bool     has_slide = false;
-
-    uint32_t ncmds = hdr->ncmds;
-    void*    lc    = (char*)map + sizeof(struct mach_header_64);
-
-    for (uint32_t i = 0; i < ncmds; i++) {
-        struct load_command* cmd = (struct load_command*)lc;
-
-        switch (cmd->cmd) {
-        case LC_SEGMENT_64: {
-            struct segment_command_64* seg = (struct segment_command_64*)lc;
-            if (strcmp(seg->segname, "__TEXT") == 0) {
-                slide     = (int64_t)load_base - (int64_t)seg->vmaddr;
-                has_slide = true;
-            }
-            break;
-        }
-        case LC_SYMTAB: {
-            struct symtab_command* sc = (struct symtab_command*)lc;
-            symoff                    = sc->symoff;
-            nsyms                     = sc->nsyms;
-            stroff                    = sc->stroff;
-            strsize                   = sc->strsize;
-            break;
-        }
-        }
-
-        lc = (char*)lc + cmd->cmdsize;
-    }
-
-    if (!has_slide || nsyms == 0 || strsize == 0)
-        return NULL;
-
-    struct nlist_64* sym_tab = (struct nlist_64*)((char*)map + symoff);
-    char*            str_raw = (char*)map + stroff;
-
+_mac_build_sym_table(
+    const struct nlist_64* sym_tab, uint32_t nsyms, const char* str_raw, uint32_t strsize, int64_t slide
+) {
     // Count qualifying symbols: non-stab, defined in a section, non-empty name.
     size_t count = 0;
     for (uint32_t i = 0; i < nsyms; i++) {
@@ -215,8 +194,144 @@ _mac_build_table64(void* map, uintptr_t load_base) {
     table->entries = entries;
     table->count   = count;
     table->strtab  = strtab;
+    return table;
+}
 
-    log_d("mac_addr2line: loaded %zu symbols from binary (slide=%" PRIdPTR ")", count, (intptr_t)slide);
+// ---- Parse a Mach-O 64-bit image from a flat file ---------------------------
+// map      – pointer to the start of the Mach-O image (mmapped file or slice)
+// load_base – runtime load address of the binary's __TEXT segment
+static mac_sym_table_t*
+_mac_build_table64(void* map, uintptr_t load_base) {
+    struct mach_header_64* hdr = (struct mach_header_64*)map;
+
+    if (hdr->filetype != MH_EXECUTE && hdr->filetype != MH_DYLIB)
+        return NULL;
+
+    int64_t  slide     = 0;
+    uint32_t symoff    = 0;
+    uint32_t nsyms     = 0;
+    uint32_t stroff    = 0;
+    uint32_t strsize   = 0;
+    bool     has_slide = false;
+
+    uint32_t ncmds = hdr->ncmds;
+    void*    lc    = (char*)map + sizeof(struct mach_header_64);
+
+    for (uint32_t i = 0; i < ncmds; i++) {
+        struct load_command* cmd = (struct load_command*)lc;
+
+        switch (cmd->cmd) {
+        case LC_SEGMENT_64: {
+            struct segment_command_64* seg = (struct segment_command_64*)lc;
+            if (strcmp(seg->segname, "__TEXT") == 0) {
+                slide     = (int64_t)load_base - (int64_t)seg->vmaddr;
+                has_slide = true;
+            }
+            break;
+        }
+        case LC_SYMTAB: {
+            struct symtab_command* sc = (struct symtab_command*)lc;
+            symoff                    = sc->symoff;
+            nsyms                     = sc->nsyms;
+            stroff                    = sc->stroff;
+            strsize                   = sc->strsize;
+            break;
+        }
+        }
+
+        lc = (char*)lc + cmd->cmdsize;
+    }
+
+    if (!has_slide || nsyms == 0 || strsize == 0)
+        return NULL;
+
+    const struct nlist_64* sym_tab = (const struct nlist_64*)((char*)map + symoff);
+    const char*            str_raw = (const char*)map + stroff;
+
+    mac_sym_table_t* table = _mac_build_sym_table(sym_tab, nsyms, str_raw, strsize, slide);
+    if (table)
+        log_d("mac_addr2line: loaded %zu symbols from file (slide=%" PRIdPTR ")", table->count, (intptr_t)slide);
+    return table;
+}
+
+// ---- Parse a Mach-O 64-bit image from the dyld shared cache -----------------
+// dsc       – loaded shared cache
+// image_va  – un-slid VM address of the image's Mach-O header in the cache
+// load_base – runtime load address of the binary's __TEXT segment in the target
+static mac_sym_table_t*
+_mac_build_table64_from_cache(const _dsc_t* dsc, uint64_t image_va, uintptr_t load_base) {
+    void* hdr_raw = _dsc_translate(dsc, image_va);
+    if (!hdr_raw)
+        return NULL;
+
+    struct mach_header_64* hdr = (struct mach_header_64*)hdr_raw;
+    if (hdr->magic != MH_MAGIC_64)
+        return NULL;
+    if (hdr->filetype != MH_EXECUTE && hdr->filetype != MH_DYLIB)
+        return NULL;
+
+    int64_t  slide            = 0;
+    uint32_t symoff           = 0;
+    uint32_t nsyms            = 0;
+    uint32_t stroff           = 0;
+    uint32_t strsize          = 0;
+    uint64_t linkedit_vmaddr  = 0;
+    uint64_t linkedit_fileoff = 0;
+    bool     has_slide        = false;
+    bool     has_linkedit     = false;
+
+    uint32_t ncmds = hdr->ncmds;
+    void*    lc    = (char*)hdr_raw + sizeof(struct mach_header_64);
+
+    for (uint32_t i = 0; i < ncmds; i++) {
+        struct load_command* cmd = (struct load_command*)lc;
+
+        switch (cmd->cmd) {
+        case LC_SEGMENT_64: {
+            struct segment_command_64* seg = (struct segment_command_64*)lc;
+            if (strcmp(seg->segname, "__TEXT") == 0) {
+                slide     = (int64_t)load_base - (int64_t)seg->vmaddr;
+                has_slide = true;
+            } else if (strcmp(seg->segname, "__LINKEDIT") == 0) {
+                linkedit_vmaddr  = seg->vmaddr;
+                linkedit_fileoff = seg->fileoff;
+                has_linkedit     = true;
+            }
+            break;
+        }
+        case LC_SYMTAB: {
+            struct symtab_command* sc = (struct symtab_command*)lc;
+            symoff                    = sc->symoff;
+            nsyms                     = sc->nsyms;
+            stroff                    = sc->stroff;
+            strsize                   = sc->strsize;
+            break;
+        }
+        }
+
+        lc = (char*)lc + cmd->cmdsize;
+    }
+
+    if (!has_slide || !has_linkedit || nsyms == 0 || strsize == 0)
+        return NULL;
+
+    // In the cache, symoff/stroff are file offsets relative to the original
+    // binary layout.  Translate them to VM addresses via the __LINKEDIT
+    // segment, then resolve through the cache mapping table.
+    uint64_t nlist_va  = linkedit_vmaddr + (symoff - linkedit_fileoff);
+    uint64_t strtab_va = linkedit_vmaddr + (stroff - linkedit_fileoff);
+
+    const struct nlist_64* sym_tab = (const struct nlist_64*)_dsc_translate(dsc, nlist_va);
+    const char*            str_raw = (const char*)_dsc_translate(dsc, strtab_va);
+
+    if (!sym_tab || !str_raw) {
+        log_d("mac_addr2line: cache LINKEDIT translation failed");
+        return NULL;
+    }
+
+    mac_sym_table_t* table = _mac_build_sym_table(sym_tab, nsyms, str_raw, strsize, slide);
+    if (table)
+        log_d("mac_addr2line: loaded %zu symbols from dyld cache (slide=%" PRIdPTR ")", table->count, (intptr_t)slide);
     return table;
 }
 
@@ -249,12 +364,31 @@ _mac_build_table_fat(void* map, uintptr_t load_base) {
     return NULL;
 }
 
+// ---- Try the dyld shared cache as a fallback --------------------------------
+static mac_sym_table_t*
+_mac_load_sym_table_from_cache(const char* path, uintptr_t load_base) {
+    _dsc_t* dsc = _dsc_get();
+    if (!dsc)
+        return NULL;
+
+    uint64_t image_va = _dsc_find_image(dsc, path);
+    if (image_va == 0) {
+        log_d("mac_addr2line: %s not found in dyld cache", path);
+        return NULL;
+    }
+
+    log_d("mac_addr2line: resolving %s from dyld cache (image VA %p)", path, (void*)image_va);
+    return _mac_build_table64_from_cache(dsc, image_va, load_base);
+}
+
 // ---- Open binary file and dispatch to parser --------------------------------
 static mac_sym_table_t*
 _mac_load_sym_table(const char* path, uintptr_t load_base) {
     cu_fd fd = open(path, O_RDONLY);
     if (fd < 0)
-        return NULL;
+        // File not on disk — try the dyld shared cache (system frameworks on
+        // modern macOS only exist inside the cache).
+        return _mac_load_sym_table_from_cache(path, load_base);
 
     struct stat st;
     if (fstat(fd, &st) < 0)
