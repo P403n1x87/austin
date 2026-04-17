@@ -283,13 +283,12 @@ _py_thread__unwind_cframe_stack(py_thread_t* self) {
 // ---- PUBLIC ----------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-int
-py_thread__read_remote(py_thread_t* self, raddr_t addr) {
-    if (!isvalid(self)) { // GCOV_EXCL_START
-        set_error(NULL, "Invalid thread pointer");
-        FAIL;
-    } // GCOV_EXCL_STOP
-
+// Core thread-state read: copies the remote thread state and extracts all
+// fields except the datastack chunk.  Declared static inline so that both
+// py_thread__read_remote and py_thread__read_with_stack_remote can call it
+// without function-call overhead.
+static inline int
+_py_thread__read_remote(py_thread_t* self, raddr_t addr) {
     py_proc_t* proc = self->proc;
 
     V_DESC(proc->py_v);
@@ -300,11 +299,10 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
         FAIL;
     }
 
-    self->stack = NULL;
+    self->stack       = NULL;
+    self->stack_raddr = NULL;
     if (V_MIN(3, 11)) {
-        // This is destroyed in py_thread__next, so it is important that all threads
-        // are traversed to avoid a memory leak!
-        self->stack = stack_chunk_new(proc->ref, V_FIELD(raddr_t, ts, py_thread, o_stack));
+        self->stack_raddr = V_FIELD(raddr_t, ts, py_thread, o_stack);
     }
 
     self->addr      = addr;
@@ -355,7 +353,36 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
 #endif
 
     SUCCESS;
-} /* py_thread__read_remote */
+}
+
+// ----------------------------------------------------------------------------
+int
+py_thread__read_remote(py_thread_t* self, raddr_t addr) {
+    if (!isvalid(self)) { // GCOV_EXCL_START
+        set_error(NULL, "Invalid thread pointer");
+        FAIL;
+    } // GCOV_EXCL_STOP
+
+    return _py_thread__read_remote(self, addr);
+}
+
+// ----------------------------------------------------------------------------
+int
+py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr) {
+    if (!isvalid(self)) { // GCOV_EXCL_START
+        set_error(NULL, "Invalid thread pointer");
+        FAIL;
+    } // GCOV_EXCL_STOP
+
+    if (fail(_py_thread__read_remote(self, addr)))
+        FAIL;
+
+    if (isvalid(self->stack_raddr)) {
+        self->stack = stack_chunk_new(self->proc->ref, self->stack_raddr);
+    }
+
+    SUCCESS;
+}
 
 // ----------------------------------------------------------------------------
 int
@@ -372,7 +399,8 @@ py_thread__next(py_thread_t* self) {
 
     log_t("Found next thread");
 
-    return py_thread__read_remote(self, self->next);
+    return isvalid(self->stack_raddr) ? py_thread__read_with_stack_remote(self, self->next)
+                                      : py_thread__read_remote(self, self->next);
 }
 
 // ----------------------------------------------------------------------------
@@ -386,6 +414,14 @@ py_thread__unwind(py_thread_t* self) {
     _py_thread__unwind_native(self, &error);
 
     V_DESC(self->proc->py_v);
+
+    // Fetch the datastack chunk if it wasn't read upfront (e.g. thread was
+    // read with py_thread__read_remote during the interrupt loop).
+    // However, in this case it might be better to re-read the whole thread
+    // state.
+    if (!isvalid(self->stack) && isvalid(self->stack_raddr)) {
+        self->stack = stack_chunk_new(self->proc->ref, self->stack_raddr);
+    }
 
     if (isvalid(self->top_frame)) {
         if (V_MIN(3, 13)) {

@@ -1196,7 +1196,7 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
 
     py_thread_t py_thread = py_thread__init(self);
 
-    if (fail(py_thread__read_remote(&py_thread, tstate_head))) {
+    if (fail(py_thread__read_with_stack_remote(&py_thread, tstate_head))) {
         if (is_fatal(austin_errno)) {
             FAIL;
         }
