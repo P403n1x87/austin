@@ -57,28 +57,28 @@
 // One entry in a sorted symbol table.
 typedef struct {
     uintptr_t addr;     // runtime address
-    uint32_t  name_off; // byte offset into mac_sym_table_t.strtab
-} _mac_sym_t;
+    uint32_t  name_off; // byte offset into sym_table_t.strtab
+} _sym_t;
 
 // Symbol table for one binary, sorted by runtime address.
 typedef struct {
-    _mac_sym_t* entries;
-    size_t      count;
-    char*       strtab; // owned copy of the Mach-O string table
-} mac_sym_table_t;
+    _sym_t* entries;
+    size_t  count;
+    char*   strtab; // owned copy of the Mach-O string table
+} sym_table_t;
 
-// File-scope cache: string hash of binary path → mac_sym_table_t*
-// _MAC_NO_SYMS is stored when a binary was opened but yielded no symbols
+// File-scope cache: string hash of binary path → sym_table_t*
+// _NO_SYMS is stored when a binary was opened but yielded no symbols
 // (e.g. stripped, shared-cache stub, unsupported format).
-static hash_table_t*   _mac_sym_cache = NULL;
-static mac_sym_table_t _mac_no_syms_sentinel;
-#define _MAC_NO_SYMS (&_mac_no_syms_sentinel)
+static hash_table_t* _sym_cache = NULL;
+static sym_table_t   _no_syms_sentinel;
+#define _NO_SYMS (&_no_syms_sentinel)
 
 // ---- qsort comparator -------------------------------------------------------
 static int
-_mac_sym_cmp(const void* a, const void* b) {
-    const _mac_sym_t* sa = (const _mac_sym_t*)a;
-    const _mac_sym_t* sb = (const _mac_sym_t*)b;
+_sym_cmp(const void* a, const void* b) {
+    const _sym_t* sa = (const _sym_t*)a;
+    const _sym_t* sb = (const _sym_t*)b;
     return (sa->addr > sb->addr) - (sa->addr < sb->addr);
 }
 
@@ -87,7 +87,7 @@ _mac_sym_cmp(const void* a, const void* b) {
 // For shared-cache images the load base is computed directly from the cache
 // metadata, avoiding the expensive VM-region scan entirely.
 static uintptr_t
-_mac_find_load_base(mach_port_t task, pid_t pid, const char* target_path) {
+_find_load_base(mach_port_t task, pid_t pid, const char* target_path) {
     // Fast path: check the dyld shared cache first.  System frameworks only
     // exist inside the cache on modern macOS, so the VM-region scan below
     // would iterate every region (hundreds of Mach traps) and still fail.
@@ -97,9 +97,7 @@ _mac_find_load_base(mach_port_t task, pid_t pid, const char* target_path) {
         if (image_va != 0) {
             uintptr_t slide = _dsc_get_slide(task);
             uintptr_t base  = (uintptr_t)(image_va + slide);
-            log_d(
-                "mac_addr2line: load base for %s from cache: %p (slide=0x%" PRIxPTR ")", target_path, (void*)base, slide
-            );
+            log_d("addr2line: load base for %s from cache: %p (slide=0x%" PRIxPTR ")", target_path, (void*)base, slide);
             return base;
         }
     }
@@ -117,24 +115,22 @@ _mac_find_load_base(mach_port_t task, pid_t pid, const char* target_path) {
         if (info.protection & VM_PROT_EXECUTE) {
             int len = proc_regionfilename(pid, addr, path, MAXPATHLEN);
             if (len > 0 && strcmp(path, target_path) == 0) {
-                log_d("mac_addr2line: load base for %s is %p", target_path, (void*)addr);
+                log_d("addr2line: load base for %s is %p", target_path, (void*)addr);
                 return (uintptr_t)addr;
             }
         }
         addr += size;
     }
 
-    log_d("mac_addr2line: could not find load base for %s", target_path);
+    log_d("addr2line: could not find load base for %s", target_path);
     return 0;
 }
 
 // ---- Common: filter, sort and package nlist entries -------------------------
 // Takes raw pointers to a Mach-O nlist table and its string table, applies
-// the ASLR slide, and returns a freshly allocated mac_sym_table_t.
-static mac_sym_table_t*
-_mac_build_sym_table(
-    const struct nlist_64* sym_tab, uint32_t nsyms, const char* str_raw, uint32_t strsize, int64_t slide
-) {
+// the ASLR slide, and returns a freshly allocated sym_table_t.
+static sym_table_t*
+_build_sym_table(const struct nlist_64* sym_tab, uint32_t nsyms, const char* str_raw, uint32_t strsize, int64_t slide) {
     // Count qualifying symbols: non-stab, defined in a section, non-empty name.
     size_t count = 0;
     for (uint32_t i = 0; i < nsyms; i++) {
@@ -154,8 +150,8 @@ _mac_build_sym_table(
     if (count == 0)
         return NULL;
 
-    _mac_sym_t* entries = (_mac_sym_t*)malloc(count * sizeof(_mac_sym_t));
-    char*       strtab  = (char*)malloc(strsize);
+    _sym_t* entries = (_sym_t*)malloc(count * sizeof(_sym_t));
+    char*   strtab  = (char*)malloc(strsize);
     if (!entries || !strtab) {
         free(entries);
         free(strtab);
@@ -182,9 +178,9 @@ _mac_build_sym_table(
         idx++;
     }
 
-    qsort(entries, count, sizeof(_mac_sym_t), _mac_sym_cmp);
+    qsort(entries, count, sizeof(_sym_t), _sym_cmp);
 
-    mac_sym_table_t* table = (mac_sym_table_t*)malloc(sizeof(mac_sym_table_t));
+    sym_table_t* table = (sym_table_t*)malloc(sizeof(sym_table_t));
     if (!table) {
         free(entries);
         free(strtab);
@@ -200,8 +196,8 @@ _mac_build_sym_table(
 // ---- Parse a Mach-O 64-bit image from a flat file ---------------------------
 // map      – pointer to the start of the Mach-O image (mmapped file or slice)
 // load_base – runtime load address of the binary's __TEXT segment
-static mac_sym_table_t*
-_mac_build_table64(void* map, uintptr_t load_base) {
+static sym_table_t*
+_build_table64(void* map, uintptr_t load_base) {
     struct mach_header_64* hdr = (struct mach_header_64*)map;
 
     if (hdr->filetype != MH_EXECUTE && hdr->filetype != MH_DYLIB)
@@ -248,9 +244,9 @@ _mac_build_table64(void* map, uintptr_t load_base) {
     const struct nlist_64* sym_tab = (const struct nlist_64*)((char*)map + symoff);
     const char*            str_raw = (const char*)map + stroff;
 
-    mac_sym_table_t* table = _mac_build_sym_table(sym_tab, nsyms, str_raw, strsize, slide);
+    sym_table_t* table = _build_sym_table(sym_tab, nsyms, str_raw, strsize, slide);
     if (table)
-        log_d("mac_addr2line: loaded %zu symbols from file (slide=%" PRIdPTR ")", table->count, (intptr_t)slide);
+        log_d("addr2line: loaded %zu symbols from file (slide=%" PRIdPTR ")", table->count, (intptr_t)slide);
     return table;
 }
 
@@ -258,8 +254,8 @@ _mac_build_table64(void* map, uintptr_t load_base) {
 // dsc       – loaded shared cache
 // image_va  – un-slid VM address of the image's Mach-O header in the cache
 // load_base – runtime load address of the binary's __TEXT segment in the target
-static mac_sym_table_t*
-_mac_build_table64_from_cache(const _dsc_t* dsc, uint64_t image_va, uintptr_t load_base) {
+static sym_table_t*
+_build_table64_from_cache(const _dsc_t* dsc, uint64_t image_va, uintptr_t load_base) {
     void* hdr_raw = _dsc_translate(dsc, image_va);
     if (!hdr_raw)
         return NULL;
@@ -325,19 +321,19 @@ _mac_build_table64_from_cache(const _dsc_t* dsc, uint64_t image_va, uintptr_t lo
     const char*            str_raw = (const char*)_dsc_translate(dsc, strtab_va);
 
     if (!sym_tab || !str_raw) {
-        log_d("mac_addr2line: cache LINKEDIT translation failed");
+        log_d("addr2line: cache LINKEDIT translation failed");
         return NULL;
     }
 
-    mac_sym_table_t* table = _mac_build_sym_table(sym_tab, nsyms, str_raw, strsize, slide);
+    sym_table_t* table = _build_sym_table(sym_tab, nsyms, str_raw, strsize, slide);
     if (table)
-        log_d("mac_addr2line: loaded %zu symbols from dyld cache (slide=%" PRIdPTR ")", table->count, (intptr_t)slide);
+        log_d("addr2line: loaded %zu symbols from dyld cache (slide=%" PRIdPTR ")", table->count, (intptr_t)slide);
     return table;
 }
 
 // ---- Fat binary dispatcher --------------------------------------------------
-static mac_sym_table_t*
-_mac_build_table_fat(void* map, uintptr_t load_base) {
+static sym_table_t*
+_build_table_fat(void* map, uintptr_t load_base) {
     cpu_type_t cpu;
     int        is_abi64;
     size_t     cpu_sz   = sizeof(cpu);
@@ -356,7 +352,7 @@ _mac_build_table_fat(void* map, uintptr_t load_base) {
             void*                  slice = (char*)map + OSSwapBigToHostInt32(archs[i].offset);
             struct mach_header_64* hdr   = (struct mach_header_64*)slice;
             if (hdr->magic == MH_MAGIC_64 || hdr->magic == MH_CIGAM_64)
-                return _mac_build_table64(slice, load_base);
+                return _build_table64(slice, load_base);
             return NULL; // 32-bit or unknown – not supported
         }
     }
@@ -365,30 +361,30 @@ _mac_build_table_fat(void* map, uintptr_t load_base) {
 }
 
 // ---- Try the dyld shared cache as a fallback --------------------------------
-static mac_sym_table_t*
-_mac_load_sym_table_from_cache(const char* path, uintptr_t load_base) {
+static sym_table_t*
+_load_sym_table_from_cache(const char* path, uintptr_t load_base) {
     _dsc_t* dsc = _dsc_get();
     if (!dsc)
         return NULL;
 
     uint64_t image_va = _dsc_find_image(dsc, path);
     if (image_va == 0) {
-        log_d("mac_addr2line: %s not found in dyld cache", path);
+        log_d("addr2line: %s not found in dyld cache", path);
         return NULL;
     }
 
-    log_d("mac_addr2line: resolving %s from dyld cache (image VA %p)", path, (void*)image_va);
-    return _mac_build_table64_from_cache(dsc, image_va, load_base);
+    log_d("addr2line: resolving %s from dyld cache (image VA %p)", path, (void*)image_va);
+    return _build_table64_from_cache(dsc, image_va, load_base);
 }
 
 // ---- Open binary file and dispatch to parser --------------------------------
-static mac_sym_table_t*
-_mac_load_sym_table(const char* path, uintptr_t load_base) {
+static sym_table_t*
+_load_sym_table(const char* path, uintptr_t load_base) {
     cu_fd fd = open(path, O_RDONLY);
     if (fd < 0)
         // File not on disk — try the dyld shared cache (system frameworks on
         // modern macOS only exist inside the cache).
-        return _mac_load_sym_table_from_cache(path, load_base);
+        return _load_sym_table_from_cache(path, load_base);
 
     struct stat st;
     if (fstat(fd, &st) < 0)
@@ -407,10 +403,10 @@ _mac_load_sym_table(const char* path, uintptr_t load_base) {
     switch (hdr->magic) {
     case MH_MAGIC_64:
     case MH_CIGAM_64:
-        return _mac_build_table64(map, load_base);
+        return _build_table64(map, load_base);
     case FAT_MAGIC:
     case FAT_CIGAM:
-        return _mac_build_table_fat(map, load_base);
+        return _build_table_fat(map, load_base);
     default:
         return NULL;
     }
@@ -418,7 +414,7 @@ _mac_load_sym_table(const char* path, uintptr_t load_base) {
 
 // ---- Binary search ----------------------------------------------------------
 static const char*
-_mac_lookup_sym(mac_sym_table_t* table, uintptr_t pc) {
+_lookup_sym(sym_table_t* table, uintptr_t pc) {
     if (table->count == 0)
         return NULL;
 
@@ -449,32 +445,32 @@ _mac_lookup_sym(mac_sym_table_t* table, uintptr_t pc) {
 // Returns a pointer to a string owned by the cached symbol table, or NULL.
 static const char*
 get_func_name(mach_port_t task, pid_t pid, uintptr_t pc, const char* path) {
-    if (!isvalid(_mac_sym_cache)) {
-        _mac_sym_cache = hash_table_new(256);
-        if (!isvalid(_mac_sym_cache))
+    if (!isvalid(_sym_cache)) {
+        _sym_cache = hash_table_new(256);
+        if (!isvalid(_sym_cache))
             return NULL;
     }
 
-    key_dt           key   = (key_dt)string__hash((char*)path);
-    mac_sym_table_t* table = (mac_sym_table_t*)hash_table__get(_mac_sym_cache, key);
+    key_dt       key   = (key_dt)string__hash((char*)path);
+    sym_table_t* table = (sym_table_t*)hash_table__get(_sym_cache, key);
 
     if (!isvalid(table)) {
         // Not yet cached: locate load base and build the symbol table.
-        uintptr_t load_base = _mac_find_load_base(task, pid, path);
+        uintptr_t load_base = _find_load_base(task, pid, path);
         if (load_base == 0) {
-            hash_table__set(_mac_sym_cache, key, (value_t)_MAC_NO_SYMS);
+            hash_table__set(_sym_cache, key, (value_t)_NO_SYMS);
             return NULL;
         }
 
-        table = _mac_load_sym_table(path, load_base);
-        hash_table__set(_mac_sym_cache, key, (value_t)(table ? table : _MAC_NO_SYMS));
+        table = _load_sym_table(path, load_base);
+        hash_table__set(_sym_cache, key, (value_t)(table ? table : _NO_SYMS));
 
         if (!isvalid(table))
             return NULL;
     }
 
-    if (table == _MAC_NO_SYMS)
+    if (table == _NO_SYMS)
         return NULL;
 
-    return _mac_lookup_sym(table, pc);
+    return _lookup_sym(table, pc);
 }

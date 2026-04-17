@@ -214,23 +214,23 @@ typedef Elf32_Sym  _Elf_Sym;
 
 typedef struct {
     uintptr_t addr;     // runtime address (on-disk value + ASLR slide)
-    uint32_t  name_off; // byte offset into linux_sym_table_t.strtab
-} _linux_sym_t;
+    uint32_t  name_off; // byte offset into sym_table_t.strtab
+} _sym_t;
 
 typedef struct {
-    _linux_sym_t* entries;
-    size_t        count;
-    char*         strtab; // owned copy of the ELF string table
-} linux_sym_table_t;
+    _sym_t* entries;
+    size_t  count;
+    char*   strtab; // owned copy of the ELF string table
+} sym_table_t;
 
-static hash_table_t*     _sym_cache = NULL;
-static linux_sym_table_t _linux_no_syms_sentinel;
-#define _LINUX_NO_SYMS (&_linux_no_syms_sentinel)
+static hash_table_t* _sym_cache = NULL;
+static sym_table_t   _no_syms_sentinel;
+#define _NO_SYMS (&_no_syms_sentinel)
 
 static int
-_linux_sym_cmp(const void* a, const void* b) {
-    const _linux_sym_t* sa = (const _linux_sym_t*)a;
-    const _linux_sym_t* sb = (const _linux_sym_t*)b;
+_sym_cmp(const void* a, const void* b) {
+    const _sym_t* sa = (const _sym_t*)a;
+    const _sym_t* sb = (const _sym_t*)b;
     return (sa->addr > sb->addr) - (sa->addr < sb->addr);
 }
 
@@ -241,7 +241,7 @@ _linux_sym_cmp(const void* a, const void* b) {
 // its p_vaddr > 0, producing a slide offset by -p_vaddr and breaking all
 // symbol address comparisons.
 static intptr_t
-_linux_compute_slide(const void* map, size_t map_size, uintptr_t load_base) {
+_compute_slide(const void* map, size_t map_size, uintptr_t load_base) {
     const _Elf_Ehdr* ehdr  = (const _Elf_Ehdr*)map;
     const _Elf_Phdr* phdrs = (const _Elf_Phdr*)((const char*)map + ehdr->e_phoff);
 
@@ -256,8 +256,8 @@ _linux_compute_slide(const void* map, size_t map_size, uintptr_t load_base) {
 }
 
 // Build a sorted symbol table from a mapped ELF image.
-static linux_sym_table_t*
-_linux_build_sym_table(const void* map, size_t map_size, intptr_t slide) {
+static sym_table_t*
+_build_sym_table(const void* map, size_t map_size, intptr_t slide) {
     const _Elf_Ehdr* ehdr = (const _Elf_Ehdr*)map;
 
     if (map_size < sizeof(_Elf_Ehdr))
@@ -326,8 +326,8 @@ _linux_build_sym_table(const void* map, size_t map_size, intptr_t slide) {
     if (count == 0)
         return NULL;
 
-    _linux_sym_t* entries      = (_linux_sym_t*)malloc(count * sizeof(_linux_sym_t));
-    char*         owned_strtab = (char*)malloc(strsize);
+    _sym_t* entries      = (_sym_t*)malloc(count * sizeof(_sym_t));
+    char*   owned_strtab = (char*)malloc(strsize);
     if (!entries || !owned_strtab) { // GCOV_EXCL_START
         free(entries);
         free(owned_strtab);
@@ -352,9 +352,9 @@ _linux_build_sym_table(const void* map, size_t map_size, intptr_t slide) {
         idx++;
     }
 
-    qsort(entries, count, sizeof(_linux_sym_t), _linux_sym_cmp);
+    qsort(entries, count, sizeof(_sym_t), _sym_cmp);
 
-    linux_sym_table_t* table = (linux_sym_table_t*)malloc(sizeof(linux_sym_table_t));
+    sym_table_t* table = (sym_table_t*)malloc(sizeof(sym_table_t));
     if (!table) { // GCOV_EXCL_START
         free(entries);
         free(owned_strtab);
@@ -365,12 +365,12 @@ _linux_build_sym_table(const void* map, size_t map_size, intptr_t slide) {
     table->count   = count;
     table->strtab  = owned_strtab;
 
-    log_d("linux_addr2line: loaded %zu symbols (slide=%" PRIdPTR ")", count, slide);
+    log_d("addr2line: loaded %zu symbols (slide=%" PRIdPTR ")", count, slide);
     return table;
 }
 
-static linux_sym_table_t*
-_linux_load_sym_table(const char* path, uintptr_t load_base) {
+static sym_table_t*
+_load_sym_table(const char* path, uintptr_t load_base) {
     cu_fd fd = open(path, O_RDONLY);
     if (fd < 0)
         return NULL;
@@ -385,12 +385,12 @@ _linux_load_sym_table(const char* path, uintptr_t load_base) {
     if (!isvalid(mapping))
         return NULL; // GCOV_EXCL_LINE
 
-    intptr_t slide = _linux_compute_slide(mapping->addr, (size_t)st.st_size, load_base);
-    return _linux_build_sym_table(mapping->addr, (size_t)st.st_size, slide);
+    intptr_t slide = _compute_slide(mapping->addr, (size_t)st.st_size, load_base);
+    return _build_sym_table(mapping->addr, (size_t)st.st_size, slide);
 }
 
 static const char*
-_linux_lookup_sym(linux_sym_table_t* table, uintptr_t pc) {
+_lookup_sym(sym_table_t* table, uintptr_t pc) {
     if (table->count == 0)
         return NULL;
 
@@ -420,20 +420,20 @@ get_func_name(uintptr_t pc, const char* path, uintptr_t load_base) {
             return NULL;
     }
 
-    key_dt             key   = (key_dt)string__hash((char*)path);
-    linux_sym_table_t* table = (linux_sym_table_t*)hash_table__get(_sym_cache, key);
+    key_dt       key   = (key_dt)string__hash((char*)path);
+    sym_table_t* table = (sym_table_t*)hash_table__get(_sym_cache, key);
 
     if (!isvalid(table)) {
-        table = _linux_load_sym_table(path, load_base);
-        hash_table__set(_sym_cache, key, (value_t)(table ? table : _LINUX_NO_SYMS));
+        table = _load_sym_table(path, load_base);
+        hash_table__set(_sym_cache, key, (value_t)(table ? table : _NO_SYMS));
         if (!isvalid(table))
             return NULL;
     }
 
-    if (table == _LINUX_NO_SYMS)
+    if (table == _NO_SYMS)
         return NULL;
 
-    return _linux_lookup_sym(table, pc);
+    return _lookup_sym(table, pc);
 }
 
 #endif /* AUSTINP || x86_64 || aarch64 */
