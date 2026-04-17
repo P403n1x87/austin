@@ -46,6 +46,7 @@ typedef struct thread {
     raddr_t top_frame;
 
     /* The per-thread datastack was introduced in Python 3.11 */
+    raddr_t        stack_raddr;
     stack_chunk_t* stack;
 
     tstate_status_t status;
@@ -62,6 +63,16 @@ typedef struct thread {
  */
 int
 py_thread__read_remote(py_thread_t*, raddr_t);
+
+/**
+ * Read the thread state and its datastack chunk from remote memory.
+ *
+ * Use this when the stack chunk is needed immediately (e.g. the sampling loop).
+ * For the interrupt loop where only tid/next are needed, use
+ * py_thread__read_remote instead.
+ */
+int
+py_thread__read_with_stack_remote(py_thread_t*, raddr_t);
 
 /**
  * Get the next thread, if any.
