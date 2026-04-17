@@ -1165,76 +1165,34 @@ py_proc__get_gc_state(py_proc_t* self) {
     return V_FIELD(int, gc_state, py_gc, o_collecting);
 }
 
-#ifdef PL_LINUX
 // ----------------------------------------------------------------------------
 static int
 _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
     py_thread_t py_thread = py_thread__init(self);
 
-    if (fail(py_thread__read_remote(&py_thread, tstate_head))) { // GCOV_EXCL_START
+    if (fail(py_thread__read_remote(&py_thread, tstate_head)))
         FAIL;
-    } // GCOV_EXCL_STOP
 
     do {
-#ifdef AUSTINP
-        if (pargs.kernel && fail(py_thread__save_kernel_stack(&py_thread))) // GCOV_EXCL_LINE
-            FAIL;                                                           // GCOV_EXCL_LINE
-#endif
-
-        // !IMPORTANT! We need to retrieve the idle state *before* trying to
-        // interrupt the thread, else it will always be idle!
-        if (fail(py_thread__set_idle(&py_thread))) // GCOV_EXCL_LINE
-            FAIL;                                  // GCOV_EXCL_LINE
-
-        if (fail(wait_ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0))) // GCOV_EXCL_LINE
-            FAIL;                                                     // GCOV_EXCL_LINE
-
-        // Consume the ptrace-stop notification so that the thread is fully
-        // stopped before libunwind tries to read its registers. Without this
-        // waitpid the thread may still be running when unw_init_remote is
-        // called, causing UNW_EBADREG failures and inconsistent stack data.
-        if (fail(wait_thread_stop(py_thread.tid))) { // GCOV_EXCL_START
-            log_d("ptrace: thread %d did not stop in time, resuming", py_thread.tid);
-            if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
-                log_d("ptrace: failed to resume thread %d (errno: %d)", py_thread.tid, errno);
-            }
+        if (fail(py_thread__interrupt(&py_thread)))
             FAIL;
-        } // GCOV_EXCL_STOP
-
-        if (fail(py_thread__set_interrupted(&py_thread, true))) { // GCOV_EXCL_START
-            if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
-                log_d("ptrace: failed to resume interrupted thread %d (errno: %d)", py_thread.tid, errno);
-            }
-            FAIL;
-        } // GCOV_EXCL_STOP
-
-        log_t("ptrace: thread %d interrupted", py_thread.tid);
     } while (success(py_thread__next(&py_thread)));
 
-    if (!error_is(ITEREND)) // GCOV_EXCL_LINE
-        FAIL;               // GCOV_EXCL_LINE
+    if (!error_is(ITEREND))
+        FAIL;
 
     SUCCESS;
 }
 
-#endif /* PL_LINUX */
-
 // ----------------------------------------------------------------------------
+// Walk the thread linked list starting from tstate_head, emitting a sample
+// for each thread.  All threads must already be suspended if in native mode.
 static inline int
-_py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t time_delta) {
+_py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, microseconds_t time_delta) {
     ssize_t mem_delta      = 0;
     raddr_t current_thread = NULL;
 
     V_DESC(self->py_v);
-
-    raddr_t tstate_head = NULL;
-    if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, tstate_head))) // GCOV_EXCL_LINE
-        FAIL;                                                                                // GCOV_EXCL_LINE
-
-    if (!isvalid(tstate_head)) { // GCOV_EXCL_START
-        set_error(PYOBJECT, "Invalid thread state head address");
-        FAIL;
-    } // GCOV_EXCL_STOP
 
     py_thread_t py_thread = py_thread__init(self);
 
@@ -1373,12 +1331,58 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
     } // GCOV_EXCL_STOP
 
     SUCCESS;
+} /* _py_proc__sample_threads */
+
+// ----------------------------------------------------------------------------
+// Orchestrate a single interpreter sample: read the thread state head,
+// interrupt all threads (native mode), sample, then resume.
+//
+// time_delta semantics:
+//   non-native — gettime() - self->timestamp, measured before any work
+//   native     — gettime() - self->timestamp, measured AFTER the interrupt
+//                so that suspension overhead is excluded from the sample
+//
+// The computed time_delta is written back through *time_delta_out so that
+// the caller can update self->timestamp consistently.
+static inline int
+_py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t* time_delta_out) {
+    V_DESC(self->py_v);
+
+    raddr_t tstate_head = NULL;
+    if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, tstate_head))) // GCOV_EXCL_LINE
+        FAIL;                                                                                // GCOV_EXCL_LINE
+
+    if (!isvalid(tstate_head))
+        // Interpreter state is in an invalid state.  The caller will retry
+        // on the next sample unless there is a fatal error.
+        SUCCESS;
+
+    // In native mode, interrupt (seize + suspend) every thread before
+    // sampling so we get a consistent snapshot of the whole process.
+    if (pargs_native) {
+        if (fail(_py_proc__interrupt_threads(self, tstate_head))) { // GCOV_EXCL_LINE
+            py_thread__resume_all_interrupted();                    // GCOV_EXCL_LINE
+            FAIL;                                                   // GCOV_EXCL_LINE
+        }
+    }
+
+    // Compute the time delta AFTER the interrupt so that the suspension
+    // overhead is not attributed to the profiled code.
+    microseconds_t time_delta = gettime() - self->timestamp;
+    *time_delta_out           = time_delta;
+
+    int result = _py_proc__sample_threads(self, interp, tstate_head, time_delta);
+
+    if (pargs_native)
+        py_thread__resume_all_interrupted();
+
+    return result;
 } /* _py_proc__sample_interpreter */
 
 // ----------------------------------------------------------------------------
 int
 py_proc__sample(py_proc_t* self) {
-    microseconds_t time_delta     = gettime() - self->timestamp; // Time delta since last sample.
+    microseconds_t time_delta     = 0;
     raddr_t        current_interp = self->istate_raddr;
 
     V_DESC(self->py_v);
@@ -1387,31 +1391,7 @@ py_proc__sample(py_proc_t* self) {
         if (fail(_py_proc__prefetch_interpreter_state(self, current_interp))) // GCOV_EXCL_LINE
             FAIL;                                                             // GCOV_EXCL_LINE
 
-        raddr_t tstate_head = NULL;
-        if (fail( // GCOV_EXCL_LINE
-                _py_proc__get_interpreter_state_field(self, current_interp, tstate_head, tstate_head)
-            ))
-            FAIL; // GCOV_EXCL_LINE
-
-        if (!isvalid(tstate_head))
-            // Maybe the interpreter state is in an invalid state. We'll try again
-            // unless there is a fatal error.
-            SUCCESS;
-
-        if (pargs_native) {
-            if (fail(_py_proc__interrupt_threads(self, tstate_head))) { // GCOV_EXCL_LINE
-                // Interrupt failed partway through: some threads may already be in
-                // ptrace-stop/thread_suspend. Resume them to avoid leaving the
-                // target application hanging, then bail out of this sample.
-                py_thread__resume_all_interrupted(); // GCOV_EXCL_LINE
-                FAIL;                                // GCOV_EXCL_LINE
-            }
-            time_delta = gettime() - self->timestamp;
-        }
-        int result = _py_proc__sample_interpreter(self, current_interp, time_delta);
-
-        if (pargs_native)
-            py_thread__resume_all_interrupted();
+        int result = _py_proc__sample_interpreter(self, current_interp, &time_delta);
 
         if (fail(result))
             continue;

@@ -37,7 +37,7 @@
 // ports obtained from task_threads() are released here.
 // Returns MACH_PORT_NULL on failure.
 static inline thread_act_t
-_mac_find_thread_port(mach_port_t task, uintptr_t pthread_id) {
+_find_thread_port(mach_port_t task, uintptr_t pthread_id) {
     thread_act_array_t     threads;
     mach_msg_type_number_t thread_count;
 

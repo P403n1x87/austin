@@ -95,40 +95,11 @@ py_thread_allocate(void);
 void
 py_thread_free(void);
 
-int
-py_thread__set_idle(py_thread_t*);
-
-int
-py_thread__set_interrupted(py_thread_t*, bool);
-
-bool
-py_thread__is_interrupted(py_thread_t* self);
-
 void
 py_thread__resume_all_interrupted(void);
 
-#ifdef PL_LINUX
-int
-py_thread__save_kernel_stack(py_thread_t*);
-#endif
-
-#if defined(PL_WIN) || defined(PL_MACOS)
-int
-py_thread__suspend(py_thread_t*);
-
-int
-py_thread__resume(py_thread_t*);
-#endif
-
-#ifdef PL_WIN
-int
-_win_thread_seize(py_thread_t*);
-#endif
-
-#ifdef PL_MACOS
-int
-_mac_thread_seize(py_thread_t*);
-#endif
-
 bool
 py_thread__is_idle(py_thread_t*);
+
+int
+py_thread__interrupt(py_thread_t*);
