@@ -1485,11 +1485,10 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
         FAIL;
     }
 
-    self->stack = NULL;
+    self->stack       = NULL;
+    self->stack_raddr = NULL;
     if (V_MIN(3, 11)) {
-        // This is destroyed in py_thread__next, so it is important that all threads
-        // are traversed to avoid a memory leak!
-        self->stack = stack_chunk_new(proc->ref, V_FIELD(raddr_t, ts, py_thread, o_stack));
+        self->stack_raddr = V_FIELD(raddr_t, ts, py_thread, o_stack);
     }
 
     self->addr      = addr;
@@ -1626,6 +1625,11 @@ py_thread__unwind(py_thread_t* self) {
 #endif /* PL_MACOS */
 
     V_DESC(self->proc->py_v);
+
+    // Lazily fetch the datastack chunk if available.
+    if (isvalid(self->stack_raddr) && !isvalid(self->stack)) {
+        self->stack = stack_chunk_new(self->proc->ref, self->stack_raddr);
+    }
 
     if (isvalid(self->top_frame)) {
         if (V_MIN(3, 13)) {

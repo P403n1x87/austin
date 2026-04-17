@@ -45,7 +45,7 @@ typedef struct thread {
 
     raddr_t top_frame;
 
-    /* The per-thread datastack was introduced in Python 3.11 */
+    raddr_t        stack_raddr;
     stack_chunk_t* stack;
 
     tstate_status_t status;
