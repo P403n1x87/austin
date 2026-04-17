@@ -149,6 +149,15 @@ typedef struct {
     cfi_reg_t regs[_CFI_MAX_REGS];
 } cfi_row_t;
 
+// Pre-parsed FDE descriptor for the sorted index.
+typedef struct {
+    uintptr_t      pc_begin;
+    uintptr_t      pc_end;
+    const uint8_t* cie_ptr;    // pointer to the CIE record in the mmap'd data
+    const uint8_t* fde_instrs; // start of FDE instructions (after header)
+    const uint8_t* fde_end;    // end of FDE record
+} cfi_fde_t;
+
 // Per-binary .eh_frame cache entry.
 typedef struct _cfi_cache_entry {
     uint64_t                 key;      // string hash of the binary path
@@ -158,6 +167,8 @@ typedef struct _cfi_cache_entry {
     intptr_t                 slide;    // ASLR slide applied to FDE pc values
     void*                    map;      // mmap base (kept alive)
     size_t                   map_size;
+    cfi_fde_t*               fde_index; // sorted array of FDE descriptors
+    size_t                   fde_count; // number of entries in fde_index
     struct _cfi_cache_entry* next;
 } cfi_cache_entry_t;
 
@@ -650,186 +661,331 @@ done:
 }
 
 // ---------------------------------------------------------------------------
-// FDE scanner
+// FDE index builder — parse all FDE records once, sort by pc_begin
 // ---------------------------------------------------------------------------
 
-// Evaluate the FDE that covers `target_pc` to obtain the CFI row.
-// Returns true on success and writes the row to *out.
-static bool
-_cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
-    if (target_pc == 0)
-        return false;
-    // Use ip-1 for FDE lookup: return addresses point past the call instruction,
-    // and some FDE ranges end exactly at the last instruction (libunwind convention).
-    uintptr_t      lookup_pc = target_pc - 1;
-    const uint8_t* p         = ce->data;
-    const uint8_t* end       = ce->data + ce->size;
+static int
+_cfi_fde_cmp(const void* a, const void* b) {
+    uintptr_t ka = ((const cfi_fde_t*)a)->pc_begin;
+    uintptr_t kb = ((const cfi_fde_t*)b)->pc_begin;
+    return (ka > kb) - (ka < kb);
+}
 
-    while (p + 4 <= end) {
-        // Read length field (4- or 12-byte extended form).
+// Parse the CIE referenced by an FDE to extract the FDE pointer encoding.
+// Returns true on success, writing fde_ptr_enc and has_z.
+static bool
+_cfi_parse_cie(const uint8_t* cie_ptr, const uint8_t* data_end, uint8_t* fde_ptr_enc_out, bool* has_z_out) {
+    const uint8_t* cp = cie_ptr;
+
+    uint32_t cie_len32 = _read_u32(&cp);
+    uint64_t cie_length;
+    if (cie_len32 == 0xffffffff) {
+        if (cp + 8 > data_end)
+            return false;
+        cie_length = _read_u64(&cp);
+    } else {
+        cie_length = cie_len32;
+    }
+    const uint8_t* cie_end = cp + cie_length;
+    if (cie_end > data_end)
+        return false;
+
+    _read_u32(&cp); // CIE id (0)
+    uint8_t version = *cp++;
+
+    const char* aug = (const char*)cp;
+    while (cp < cie_end && *cp)
+        cp++;
+    if (cp >= cie_end)
+        return false;
+    cp++;
+
+    if (version >= 4) {
+        cp++; // address_size
+        cp++; // segment_selector_size
+    }
+
+    _read_uleb128(&cp, cie_end); // code_align
+    _read_sleb128(&cp, cie_end); // data_align
+    if (version == 1)
+        cp++; // ra_col
+    else
+        _read_uleb128(&cp, cie_end);
+
+    *fde_ptr_enc_out = DW_EH_PE_absptr;
+    *has_z_out       = false;
+
+    if (aug[0] == 'z') {
+        *has_z_out = true;
+        _read_uleb128(&cp, cie_end); // augmentation data length
+        for (const char* a = aug + 1; *a && cp < cie_end; a++) {
+            switch (*a) {
+            case 'L':
+                cp++;
+                break;
+            case 'R':
+                *fde_ptr_enc_out = *cp++;
+                break;
+            case 'P': {
+                uint8_t enc = *cp++;
+                _read_encoded_ptr(&cp, cie_end, enc, 0);
+                break;
+            }
+            case 'S':
+                break;
+            default:
+                cp++;
+            }
+        }
+    }
+    return true;
+}
+
+// Build the sorted FDE index for a cache entry.  Called once after _cfi_load.
+static void
+_cfi_build_index(cfi_cache_entry_t* ce) {
+    const uint8_t* p   = ce->data;
+    const uint8_t* end = ce->data + ce->size;
+
+    // First pass: count FDEs.
+    size_t count = 0;
+    {
+        const uint8_t* q = p;
+        while (q + 4 <= end) {
+            uint32_t len32 = _read_u32(&q);
+            uint64_t length;
+            if (len32 == 0xffffffff) {
+                if (q + 8 > end)
+                    break;
+                length = _read_u64(&q);
+            } else {
+                length = len32;
+            }
+            if (length == 0)
+                break;
+            const uint8_t* record_end = q + length;
+            if (record_end > end)
+                break;
+            uint32_t cie_id = _read_u32(&q);
+            if (cie_id != 0)
+                count++;
+            q = record_end;
+        }
+    }
+
+    if (count == 0)
+        return;
+
+    cfi_fde_t* index = (cfi_fde_t*)malloc(count * sizeof(cfi_fde_t));
+    if (!index)
+        return;
+
+    // Second pass: populate entries.
+    size_t idx = 0;
+    while (p + 4 <= end && idx < count) {
         uint32_t len32 = _read_u32(&p);
         uint64_t length;
-        if (len32 == 0xffffffff) { // GCOV_EXCL_START
+        if (len32 == 0xffffffff) {
             if (p + 8 > end)
-                return false;
+                break;
             length = _read_u64(&p);
-        } else { // GCOV_EXCL_STOP
+        } else {
             length = len32;
         }
         if (length == 0)
-            break; // terminator
-
+            break;
         const uint8_t* record_end = p + length;
         if (record_end > end)
             break;
 
-        // CIE/FDE discriminator: CIE_id == 0 for CIE, else offset to CIE.
         uint32_t cie_id = _read_u32(&p);
-
         if (cie_id == 0) {
-            // ----- CIE ----- skip it; we re-read when we find an FDE.
             p = record_end;
             continue;
         }
 
-        // ----- FDE -----
-        // The CIE pointer is a relative offset back from the current position.
         const uint8_t* cie_ptr = (p - 4) - cie_id;
         if (cie_ptr < ce->data || cie_ptr + 4 > end) {
             p = record_end;
             continue;
         }
 
-        // Re-parse the CIE to get code_align, data_align, ra_col, and the
-        // augmentation string / initial instructions.
-        const uint8_t* cp = cie_ptr;
-
-        uint32_t cie_len32 = _read_u32(&cp);
-        uint64_t cie_length;
-        if (cie_len32 == 0xffffffff) { // GCOV_EXCL_START
-            if (cp + 8 > end) {
-                p = record_end;
-                continue;
-            }
-            cie_length = _read_u64(&cp);
-        } else { // GCOV_EXCL_STOP
-            cie_length = cie_len32;
-        }
-        const uint8_t* cie_end = cp + cie_length;
-
-        /* uint32_t cie_id_check = */ _read_u32(&cp); // should be 0
-        uint8_t version = *cp++;
-
-        // Augmentation string (NUL-terminated).
-        const char* aug = (const char*)cp;
-        while (cp < cie_end && *cp)
-            cp++;
-        if (cp >= cie_end) {
+        uint8_t fde_ptr_enc;
+        bool    has_z;
+        if (!_cfi_parse_cie(cie_ptr, end, &fde_ptr_enc, &has_z)) {
             p = record_end;
             continue;
         }
-        cp++; // skip NUL
 
-        // EH data pointer size (only in version 4+).
-        if (version >= 4) { // GCOV_EXCL_START
-            cp++;           // address_size
-            cp++;           // segment_selector_size
-        } // GCOV_EXCL_STOP
-
-        uint64_t code_align = _read_uleb128(&cp, cie_end);
-        int64_t  data_align = _read_sleb128(&cp, cie_end);
-
-        // Return address register column.
-        uint64_t ra_col;
-        if (version == 1)
-            ra_col = *cp++;
-        else
-            ra_col = _read_uleb128(&cp, cie_end);
-
-        // Parse 'z' augmentation to get FDE pointer encoding.
-        uint8_t fde_ptr_enc = DW_EH_PE_absptr;
-        bool    has_z       = false;
-        if (aug[0] == 'z') {
-            has_z = true;
-            /* uint64_t aug_len = */ _read_uleb128(&cp, cie_end);
-            for (const char* a = aug + 1; *a && cp < cie_end; a++) {
-                switch (*a) {
-                case 'L':
-                    cp++;
-                    break; // LSDA encoding
-                case 'R':
-                    fde_ptr_enc = *cp++;
-                    break;  // FDE pointer encoding
-                case 'P': { // personality
-                    uint8_t enc = *cp++;
-                    _read_encoded_ptr(&cp, cie_end, enc, 0);
-                    break;
-                }
-                case 'S':
-                    break; // signal frame flag
-                default:
-                    cp++;
-                }
-            }
-        }
-
-        const uint8_t* cie_initial_instr = cp;
-
-        // Now parse the FDE header (pc_begin, pc_range).
         uintptr_t pc_offset_in_sec = (uintptr_t)(p - ce->data);
         uintptr_t pc_base          = ce->sec_addr + pc_offset_in_sec;
 
-        uintptr_t pc_begin = _read_encoded_ptr(&p, record_end, fde_ptr_enc, pc_base);
-        uintptr_t pc_range;
-        uint8_t   range_enc = fde_ptr_enc & 0x0f; // same type, no application
-        pc_range            = _read_encoded_ptr(&p, record_end, range_enc, 0);
+        uintptr_t pc_begin  = _read_encoded_ptr(&p, record_end, fde_ptr_enc, pc_base);
+        uint8_t   range_enc = fde_ptr_enc & 0x0f;
+        uintptr_t pc_range  = _read_encoded_ptr(&p, record_end, range_enc, 0);
 
-        if (pc_begin == 0 || lookup_pc < pc_begin || lookup_pc >= pc_begin + pc_range) {
+        if (pc_begin == 0 || pc_range == 0) {
             p = record_end;
             continue;
         }
 
-        // Found the FDE for target_pc.
-        // Initialise row from the CIE initial instructions.
-        memset(out, 0, sizeof(*out));
-#if defined(__x86_64__)
-        out->cfa_reg = _CFI_SP_REG;
-        out->cfa_off = 8; // at function entry, CFA = RSP + 8
-#elif defined(__aarch64__)
-        out->cfa_reg = _CFI_SP_REG;
-        out->cfa_off = 0;
-#endif
-        for (int i = 0; i < _CFI_MAX_REGS; i++)
-            out->regs[i].kind = REG_UNDEF;
-
-        // Apply CIE initial instructions to completion (no PC filtering; CIE rules
-        // apply to all PCs, and CIEs rarely have advance_loc opcodes).
-        if (!_cfi_eval(cie_initial_instr, cie_end, 0, UINTPTR_MAX, code_align, data_align, out, NULL))
-            return false;
-        cfi_row_t cie_row = *out; // save for DW_CFA_restore in FDE pass
-
-        // Skip augmentation data in FDE (zR produces a length-prefixed block).
+        // Skip augmentation data in FDE.
         if (has_z)
-            _read_uleb128(&p, record_end); // augmentation data length
+            _read_uleb128(&p, record_end);
 
-        // Apply FDE instructions up to lookup_pc (ip-1).
-        if (!_cfi_eval(p, record_end, pc_begin, lookup_pc, code_align, data_align, out, &cie_row))
-            return false;
+        index[idx].pc_begin   = pc_begin;
+        index[idx].pc_end     = pc_begin + pc_range;
+        index[idx].cie_ptr    = cie_ptr;
+        index[idx].fde_instrs = p;
+        index[idx].fde_end    = record_end;
+        idx++;
 
-        // If the CIE/FDE instructions never set the RA column (still REG_UNDEF
-        // from the initial memset), apply the platform default.  On x86-64 the
-        // return address lives at CFA-8 (pushed by CALL).  Do NOT override when
-        // the CIE/FDE explicitly set a rule (even REG_SAME or an expression).
-        if (out->regs[_CFI_RA_REG].kind == REG_UNDEF) {
-            out->regs[_CFI_RA_REG].kind = REG_CFA_OFFSET;
-#if defined(__x86_64__)
-            out->regs[_CFI_RA_REG].offset = -8;
-#endif
-        }
-        (void)ra_col;
-        return true;
+        p = record_end;
     }
-    return false;
+
+    qsort(index, idx, sizeof(cfi_fde_t), _cfi_fde_cmp);
+
+    ce->fde_index = index;
+    ce->fde_count = idx;
+
+    log_d("cfi: built FDE index with %zu entries", idx);
+}
+
+// ---------------------------------------------------------------------------
+// FDE lookup and evaluation
+// ---------------------------------------------------------------------------
+
+// Parse the CIE fully (code_align, data_align, initial instructions) for eval.
+static bool
+_cfi_parse_cie_full(
+    const uint8_t* cie_ptr, const uint8_t* data_end, uint64_t* code_align_out, int64_t* data_align_out,
+    const uint8_t** initial_instr_out, const uint8_t** cie_end_out
+) {
+    const uint8_t* cp = cie_ptr;
+
+    uint32_t cie_len32 = _read_u32(&cp);
+    uint64_t cie_length;
+    if (cie_len32 == 0xffffffff) {
+        if (cp + 8 > data_end)
+            return false;
+        cie_length = _read_u64(&cp);
+    } else {
+        cie_length = cie_len32;
+    }
+    const uint8_t* cie_end = cp + cie_length;
+    if (cie_end > data_end)
+        return false;
+
+    _read_u32(&cp); // CIE id (0)
+    uint8_t version = *cp++;
+
+    const char* aug = (const char*)cp;
+    while (cp < cie_end && *cp)
+        cp++;
+    if (cp >= cie_end)
+        return false;
+    cp++;
+
+    if (version >= 4) {
+        cp++;
+        cp++;
+    }
+
+    *code_align_out = _read_uleb128(&cp, cie_end);
+    *data_align_out = _read_sleb128(&cp, cie_end);
+
+    if (version == 1)
+        cp++; // ra_col
+    else
+        _read_uleb128(&cp, cie_end);
+
+    if (aug[0] == 'z') {
+        _read_uleb128(&cp, cie_end);
+        for (const char* a = aug + 1; *a && cp < cie_end; a++) {
+            switch (*a) {
+            case 'L':
+                cp++;
+                break;
+            case 'R':
+                cp++;
+                break;
+            case 'P': {
+                uint8_t enc = *cp++;
+                _read_encoded_ptr(&cp, cie_end, enc, 0);
+                break;
+            }
+            case 'S':
+                break;
+            default:
+                cp++;
+            }
+        }
+    }
+
+    *initial_instr_out = cp;
+    *cie_end_out       = cie_end;
+    return true;
+}
+
+// Binary-search the FDE index for the entry covering target_pc, then evaluate.
+// Returns true on success and writes the CFI row to *out.
+static bool
+_cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
+    if (target_pc == 0 || ce->fde_count == 0)
+        return false;
+
+    uintptr_t lookup_pc = target_pc - 1;
+
+    // Binary search: find the last FDE with pc_begin <= lookup_pc.
+    size_t lo = 0, hi = ce->fde_count;
+    while (lo + 1 < hi) {
+        size_t mid = lo + (hi - lo) / 2;
+        if (ce->fde_index[mid].pc_begin <= lookup_pc)
+            lo = mid;
+        else
+            hi = mid;
+    }
+
+    cfi_fde_t* fde = &ce->fde_index[lo];
+    if (fde->pc_begin > lookup_pc || lookup_pc >= fde->pc_end)
+        return false;
+
+    // Parse the CIE for code_align, data_align, and initial instructions.
+    uint64_t       code_align;
+    int64_t        data_align;
+    const uint8_t* cie_initial_instr;
+    const uint8_t* cie_end;
+    if (!_cfi_parse_cie_full(fde->cie_ptr, ce->data + ce->size, &code_align, &data_align, &cie_initial_instr, &cie_end))
+        return false;
+
+    // Initialise row from platform defaults.
+    memset(out, 0, sizeof(*out));
+#if defined(__x86_64__)
+    out->cfa_reg = _CFI_SP_REG;
+    out->cfa_off = 8;
+#elif defined(__aarch64__)
+    out->cfa_reg = _CFI_SP_REG;
+    out->cfa_off = 0;
+#endif
+    for (int i = 0; i < _CFI_MAX_REGS; i++)
+        out->regs[i].kind = REG_UNDEF;
+
+    // Apply CIE initial instructions.
+    if (!_cfi_eval(cie_initial_instr, cie_end, 0, UINTPTR_MAX, code_align, data_align, out, NULL))
+        return false;
+    cfi_row_t cie_row = *out;
+
+    // Apply FDE instructions up to lookup_pc.
+    if (!_cfi_eval(fde->fde_instrs, fde->fde_end, fde->pc_begin, lookup_pc, code_align, data_align, out, &cie_row))
+        return false;
+
+    if (out->regs[_CFI_RA_REG].kind == REG_UNDEF) {
+        out->regs[_CFI_RA_REG].kind = REG_CFA_OFFSET;
+#if defined(__x86_64__)
+        out->regs[_CFI_RA_REG].offset = -8;
+#endif
+    }
+    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -860,6 +1016,10 @@ cfi_step(pid_t pid, vm_range_tree_t* maps_tree, hash_table_t* base_table, uintpt
     if (!ce)
         return false;
 
+    // Build the sorted FDE index on first use.
+    if (ce->fde_index == NULL && ce->fde_count == 0)
+        _cfi_build_index(ce);
+
     cfi_row_t row;
     if (!_cfi_find_and_eval(ce, *pc, &row))
         return false;
@@ -879,23 +1039,31 @@ cfi_step(pid_t pid, vm_range_tree_t* maps_tree, hash_table_t* base_table, uintpt
     if (row.regs[_CFI_RA_REG].kind != REG_CFA_OFFSET)
         return false;
 
-    uintptr_t    ra_addr = (uintptr_t)((intptr_t)cfa + row.regs[_CFI_RA_REG].offset);
-    uintptr_t    new_pc  = 0;
-    struct iovec local   = {.iov_base = &new_pc, .iov_len = sizeof(new_pc)};
-    struct iovec remote  = {.iov_base = (void*)ra_addr, .iov_len = sizeof(new_pc)};
-    if (process_vm_readv(pid, &local, 1, &remote, 1, 0) != (ssize_t)sizeof(new_pc))
-        return false;
+    uintptr_t ra_addr = (uintptr_t)((intptr_t)cfa + row.regs[_CFI_RA_REG].offset);
+    uintptr_t new_pc  = 0;
+    uintptr_t new_fp  = 0;
 
-    if (new_pc == 0)
-        return false;
-
-    // Optionally recover saved FP (best-effort; not fatal if absent).
-    uintptr_t new_fp = 0;
+    // Batch RA and FP reads into a single process_vm_readv syscall when both
+    // are needed — halves the number of kernel transitions per unwind step.
     if (row.regs[_CFI_FP_REG].kind == REG_CFA_OFFSET) {
-        uintptr_t    fp_addr = (uintptr_t)((intptr_t)cfa + row.regs[_CFI_FP_REG].offset);
-        struct iovec lf      = {.iov_base = &new_fp, .iov_len = sizeof(new_fp)};
-        struct iovec rf      = {.iov_base = (void*)fp_addr, .iov_len = sizeof(new_fp)};
-        process_vm_readv(pid, &lf, 1, &rf, 1, 0); // ignore failure
+        uintptr_t    fp_addr  = (uintptr_t)((intptr_t)cfa + row.regs[_CFI_FP_REG].offset);
+        struct iovec local[2] = {
+            {.iov_base = &new_pc, .iov_len = sizeof(new_pc)},
+            {.iov_base = &new_fp, .iov_len = sizeof(new_fp)}
+        };
+        struct iovec remote[2] = {
+            {.iov_base = (void*)ra_addr, .iov_len = sizeof(new_pc)},
+            {.iov_base = (void*)fp_addr, .iov_len = sizeof(new_fp)}
+        };
+        ssize_t n = process_vm_readv(pid, local, 2, remote, 2, 0);
+        // At minimum the RA must be read; FP failure is tolerable.
+        if (n < (ssize_t)sizeof(new_pc))
+            return false;
+    } else {
+        struct iovec local  = {.iov_base = &new_pc, .iov_len = sizeof(new_pc)};
+        struct iovec remote = {.iov_base = (void*)ra_addr, .iov_len = sizeof(new_pc)};
+        if (process_vm_readv(pid, &local, 1, &remote, 1, 0) != (ssize_t)sizeof(new_pc))
+            return false;
     }
 
     *pc = new_pc;
@@ -916,6 +1084,7 @@ cfi_cache_destroy(void) {
             cfi_cache_entry_t* next = e->next;
             if (e->map)
                 munmap(e->map, e->map_size);
+            free(e->fde_index);
             free(e);
             e = next;
         }
