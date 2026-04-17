@@ -223,7 +223,7 @@ typedef struct {
     char*         strtab; // owned copy of the ELF string table
 } linux_sym_table_t;
 
-static hash_table_t*     _linux_sym_cache = NULL;
+static hash_table_t*     _sym_cache = NULL;
 static linux_sym_table_t _linux_no_syms_sentinel;
 #define _LINUX_NO_SYMS (&_linux_no_syms_sentinel)
 
@@ -413,19 +413,19 @@ _linux_lookup_sym(linux_sym_table_t* table, uintptr_t pc) {
 // load_base is the runtime base address of the binary's first executable
 // segment, obtained from the vm_range_tree built from /proc/<pid>/maps.
 static const char*
-linux_get_func_name(uintptr_t pc, const char* path, uintptr_t load_base) {
-    if (!isvalid(_linux_sym_cache)) {
-        _linux_sym_cache = hash_table_new(256);
-        if (!isvalid(_linux_sym_cache))
+get_func_name(uintptr_t pc, const char* path, uintptr_t load_base) {
+    if (!isvalid(_sym_cache)) {
+        _sym_cache = hash_table_new(256);
+        if (!isvalid(_sym_cache))
             return NULL;
     }
 
     key_dt             key   = (key_dt)string__hash((char*)path);
-    linux_sym_table_t* table = (linux_sym_table_t*)hash_table__get(_linux_sym_cache, key);
+    linux_sym_table_t* table = (linux_sym_table_t*)hash_table__get(_sym_cache, key);
 
     if (!isvalid(table)) {
         table = _linux_load_sym_table(path, load_base);
-        hash_table__set(_linux_sym_cache, key, (value_t)(table ? table : _LINUX_NO_SYMS));
+        hash_table__set(_sym_cache, key, (value_t)(table ? table : _LINUX_NO_SYMS));
         if (!isvalid(table))
             return NULL;
     }

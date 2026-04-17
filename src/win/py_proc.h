@@ -374,36 +374,4 @@ reader_thread(LPVOID lpParam) {
     return 0;
 }
 
-// ----------------------------------------------------------------------------
-static int
-_py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
-    py_thread_t py_thread = py_thread__init(self);
-
-    if (fail(py_thread__read_remote(&py_thread, tstate_head)))
-        FAIL;
-
-    do {
-        if (fail(_win_thread_seize(&py_thread)))
-            FAIL;
-
-        if (fail(py_thread__set_idle(&py_thread)))
-            FAIL;
-
-        if (fail(py_thread__suspend(&py_thread)))
-            FAIL;
-
-        if (fail(py_thread__set_interrupted(&py_thread, true))) {
-            py_thread__resume(&py_thread);
-            FAIL;
-        }
-
-        log_t("win: thread %lu suspended", (unsigned long)py_thread.tid);
-    } while (success(py_thread__next(&py_thread)));
-
-    if (!error_is(ITEREND))
-        FAIL;
-
-    SUCCESS;
-}
-
 #endif

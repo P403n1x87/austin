@@ -22,8 +22,8 @@
 
 // Win32 native symbol resolution for austin on Windows.
 //
-// Provides win_get_func_name() which maps a program counter to the enclosing
-// function name via DbgHelp (SymFromAddr), and win_get_module_name() which
+// Provides get_func_name() which maps a program counter to the enclosing
+// function name via DbgHelp (SymFromAddr), and get_module_name() which
 // maps a PC to the owning module path using a cached, sorted module table
 // built from EnumProcessModulesEx.
 //
@@ -43,7 +43,7 @@
 static HANDLE _dbghelp_proc = NULL;
 
 static inline void
-win_sym_init(HANDLE hProcess) {
+sym_init(HANDLE hProcess) {
     if (_dbghelp_proc == hProcess)
         return; // already initialised for this process
 
@@ -56,7 +56,7 @@ win_sym_init(HANDLE hProcess) {
 }
 
 static inline void
-win_sym_cleanup(void) {
+sym_cleanup(void) {
     if (_dbghelp_proc != NULL) {
         SymCleanup(_dbghelp_proc);
         _dbghelp_proc = NULL;
@@ -85,8 +85,8 @@ _win_has_pdb_symbols(HANDLE hProcess, uintptr_t pc) {
 }
 
 static inline const char*
-win_get_func_name(HANDLE hProcess, uintptr_t pc) {
-    win_sym_init(hProcess);
+get_func_name(HANDLE hProcess, uintptr_t pc) {
+    sym_init(hProcess);
 
     SYMBOL_INFO* sym  = (SYMBOL_INFO*)_sym_buf;
     sym->SizeOfStruct = sizeof(SYMBOL_INFO);
@@ -196,7 +196,7 @@ _win_mod_lookup(uintptr_t pc) {
 // table is rebuilt once (a new module may have been loaded lazily) and the
 // lookup is retried.
 static inline const char*
-win_get_module_name(HANDLE hProcess, uintptr_t pc) {
+get_module_name(HANDLE hProcess, uintptr_t pc) {
     if (_win_mod_proc != hProcess || _win_mod_count == 0)
         win_modules_refresh(hProcess);
 

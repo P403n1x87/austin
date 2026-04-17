@@ -22,7 +22,7 @@
 
 // Mach-O native symbol resolution for austin on macOS.
 //
-// Provides mac_get_func_name() which maps a program counter to the enclosing
+// Provides get_func_name() which maps a program counter to the enclosing
 // function name by reading the binary's Mach-O LC_SYMTAB, computing the ASLR
 // slide, and doing a binary search in the sorted symbol table.
 //
@@ -448,7 +448,7 @@ _mac_lookup_sym(mac_sym_table_t* table, uintptr_t pc) {
 // task and pid are from the target process (proc->ref and proc->pid).
 // Returns a pointer to a string owned by the cached symbol table, or NULL.
 static const char*
-mac_get_func_name(mach_port_t task, pid_t pid, uintptr_t pc, const char* path) {
+get_func_name(mach_port_t task, pid_t pid, uintptr_t pc, const char* path) {
     if (!isvalid(_mac_sym_cache)) {
         _mac_sym_cache = hash_table_new(256);
         if (!isvalid(_mac_sym_cache))

@@ -92,6 +92,25 @@ _py_proc__check_sym(py_proc_t*, char*, void*);
 
 // ----------------------------------------------------------------------------
 static int
+_py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
+    py_thread_t py_thread = py_thread__init(self);
+
+    if (fail(py_thread__read_remote(&py_thread, tstate_head)))
+        FAIL;
+
+    do {
+        if (fail(py_thread__interrupt(&py_thread)))
+            FAIL;
+    } while (success(py_thread__next(&py_thread)));
+
+    if (!error_is(ITEREND))
+        FAIL;
+
+    SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+static int
 _py_proc__check_sym(py_proc_t* self, char* name, void* value) {
     if (!(isvalid(self) && isvalid(name) && isvalid(value)))
         return 0;
@@ -1164,60 +1183,6 @@ py_proc__get_gc_state(py_proc_t* self) {
 
     return V_FIELD(int, gc_state, py_gc, o_collecting);
 }
-
-#ifdef PL_LINUX
-// ----------------------------------------------------------------------------
-static int
-_py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
-    py_thread_t py_thread = py_thread__init(self);
-
-    if (fail(py_thread__read_remote(&py_thread, tstate_head))) { // GCOV_EXCL_START
-        FAIL;
-    } // GCOV_EXCL_STOP
-
-    do {
-#ifdef AUSTINP
-        if (pargs.kernel && fail(py_thread__save_kernel_stack(&py_thread))) // GCOV_EXCL_LINE
-            FAIL;                                                           // GCOV_EXCL_LINE
-#endif
-
-        // !IMPORTANT! We need to retrieve the idle state *before* trying to
-        // interrupt the thread, else it will always be idle!
-        if (fail(py_thread__set_idle(&py_thread))) // GCOV_EXCL_LINE
-            FAIL;                                  // GCOV_EXCL_LINE
-
-        if (fail(wait_ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0))) // GCOV_EXCL_LINE
-            FAIL;                                                     // GCOV_EXCL_LINE
-
-        // Consume the ptrace-stop notification so that the thread is fully
-        // stopped before libunwind tries to read its registers. Without this
-        // waitpid the thread may still be running when unw_init_remote is
-        // called, causing UNW_EBADREG failures and inconsistent stack data.
-        if (fail(wait_thread_stop(py_thread.tid))) { // GCOV_EXCL_START
-            log_d("ptrace: thread %d did not stop in time, resuming", py_thread.tid);
-            if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
-                log_d("ptrace: failed to resume thread %d (errno: %d)", py_thread.tid, errno);
-            }
-            FAIL;
-        } // GCOV_EXCL_STOP
-
-        if (fail(py_thread__set_interrupted(&py_thread, true))) { // GCOV_EXCL_START
-            if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
-                log_d("ptrace: failed to resume interrupted thread %d (errno: %d)", py_thread.tid, errno);
-            }
-            FAIL;
-        } // GCOV_EXCL_STOP
-
-        log_t("ptrace: thread %d interrupted", py_thread.tid);
-    } while (success(py_thread__next(&py_thread)));
-
-    if (!error_is(ITEREND)) // GCOV_EXCL_LINE
-        FAIL;               // GCOV_EXCL_LINE
-
-    SUCCESS;
-}
-
-#endif /* PL_LINUX */
 
 // ----------------------------------------------------------------------------
 static inline int
