@@ -96,9 +96,12 @@ do_single_process(py_proc_t* py_proc) {
 
     py_proc__log_version(py_proc, /*is_parent*/ true);
 
+    pacer_t pacer;
+    pacer_init(&pacer);
+
     if (pargs.exposure == 0) {
         while (interrupt_signal == 0) {
-            stopwatch_start();
+            sample_timer_start();
 
             if (fail(result = py_proc__sample(py_proc))) {
                 // Try to re-initialise
@@ -106,7 +109,8 @@ do_single_process(py_proc_t* py_proc) {
                     FAIL_BREAK;
             }
 
-            stopwatch_pause(pargs_native ? 0 : stopwatch_duration());
+            stats_check_duration(sample_timer_elapsed());
+            pacer_next(&pacer);
         }
     } else {
         if (!pargs.where) {
@@ -115,7 +119,7 @@ do_single_process(py_proc_t* py_proc) {
         }
         microseconds_t end_time = gettime() + pargs.exposure * 1000000;
         while (interrupt_signal == 0) {
-            stopwatch_start();
+            sample_timer_start();
 
             if (fail(result = py_proc__sample(py_proc))) {
                 // Try to re-initialise
@@ -123,7 +127,8 @@ do_single_process(py_proc_t* py_proc) {
                     FAIL_BREAK;
             }
 
-            stopwatch_pause(pargs_native ? 0 : stopwatch_duration());
+            stats_check_duration(sample_timer_elapsed());
+            pacer_next(&pacer);
             if (pargs.where)
                 break;
 
@@ -192,12 +197,16 @@ do_child_processes(py_proc_t* py_proc) {
 
     log_meta_header();
 
+    pacer_t pacer;
+    pacer_init(&pacer);
+
     if (pargs.exposure == 0) {
         while (!py_proc_list__is_empty(list) && interrupt_signal == 0) {
-            microseconds_t start_time = pargs_native ? 0 : gettime();
+            sample_timer_start();
             py_proc_list__update(list);
             py_proc_list__sample(list);
-            stopwatch_pause(pargs_native ? 0 : gettime() - start_time);
+            stats_check_duration(sample_timer_elapsed());
+            pacer_next(&pacer);
         }
     } else {
         if (!pargs.pipe && !pargs.where) {
@@ -206,10 +215,11 @@ do_child_processes(py_proc_t* py_proc) {
         }
         microseconds_t end_time = gettime() + pargs.exposure * 1000000;
         while (!py_proc_list__is_empty(list) && interrupt_signal == 0) {
-            microseconds_t start_time = pargs_native ? 0 : gettime();
+            sample_timer_start();
             py_proc_list__update(list);
             py_proc_list__sample(list);
-            stopwatch_pause(pargs_native ? 0 : gettime() - start_time);
+            stats_check_duration(sample_timer_elapsed());
+            pacer_next(&pacer);
 
             if (pargs.where)
                 break;

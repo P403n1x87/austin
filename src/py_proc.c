@@ -1337,15 +1337,8 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
 // Orchestrate a single interpreter sample: read the thread state head,
 // interrupt all threads (native mode), sample, then resume.
 //
-// time_delta semantics:
-//   non-native — gettime() - self->timestamp, measured before any work
-//   native     — gettime() - self->timestamp, measured AFTER the interrupt
-//                so that suspension overhead is excluded from the sample
-//
-// The computed time_delta is written back through *time_delta_out so that
-// the caller can update self->timestamp consistently.
 static inline int
-_py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t* time_delta_out) {
+_py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t time_delta) {
     V_DESC(self->py_v);
 
     raddr_t tstate_head = NULL;
@@ -1366,11 +1359,6 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t* ti
         }
     }
 
-    // Compute the time delta AFTER the interrupt so that the suspension
-    // overhead is not attributed to the profiled code.
-    microseconds_t time_delta = gettime() - self->timestamp;
-    *time_delta_out           = time_delta;
-
     int result = _py_proc__sample_threads(self, interp, tstate_head, time_delta);
 
     if (pargs_native)
@@ -1382,16 +1370,25 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t* ti
 // ----------------------------------------------------------------------------
 int
 py_proc__sample(py_proc_t* self) {
-    microseconds_t time_delta     = 0;
-    raddr_t        current_interp = self->istate_raddr;
+    raddr_t current_interp = self->istate_raddr;
 
     V_DESC(self->py_v);
+
+    // Compute the time delta once for all interpreters. In native mode this is
+    // done BEFORE the interrupt so we capture the wall time the threads were
+    // actually running (the suspension time will be excluded via the timestamp
+    // update after resume below).
+    // In non-native mode threads are still running while they are being
+    // sampled, so this is computing the difference between now and the
+    // beginning of the last sample. So the time delta includes both the
+    // sampling time and the eventual sleep time from the pacer.
+    microseconds_t time_delta = gettime() - self->timestamp;
 
     do {
         if (fail(_py_proc__prefetch_interpreter_state(self, current_interp))) // GCOV_EXCL_LINE
             FAIL;                                                             // GCOV_EXCL_LINE
 
-        int result = _py_proc__sample_interpreter(self, current_interp, &time_delta);
+        int result = _py_proc__sample_interpreter(self, current_interp, time_delta);
 
         if (fail(result))
             continue;
@@ -1400,10 +1397,14 @@ py_proc__sample(py_proc_t* self) {
             FAIL;                                                                                    // GCOV_EXCL_LINE
     } while (isvalid(current_interp));
 
+    // In non-native mode, advance the timestamp by the measured delta so that
+    // the next time_delta captures the full interval (sample work + sleep).
+    // In native mode, reset to now (after resume) so that suspension time is
+    // excluded from the next delta.
     if (pargs_native)
         self->timestamp = gettime();
     else
-        self->timestamp += time_delta;
+        self->timestamp += time_delta; // This is now the timestamp at the start of this sample
 
     SUCCESS;
 } /* py_proc__sample */

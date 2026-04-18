@@ -31,21 +31,58 @@
 #ifndef AUSTIN_C
 extern
 #endif
-    microseconds_t _sample_timestamp;
+    microseconds_t _sample_timer_start;
 
 static inline void
-stopwatch_start(void) {
-    _sample_timestamp = gettime();
-} /* timer_start */
+sample_timer_start(void) {
+    _sample_timer_start = gettime();
+}
 
 static inline microseconds_t
-stopwatch_duration(void) {
-    return gettime() - _sample_timestamp;
-} /* timer_stop */
+sample_timer_elapsed(void) {
+    return gettime() - _sample_timer_start;
+}
+
+// ----------------------------------------------------------------------------
+// Pacer — controls the sleep between sampling ticks.
+//
+// Non-native mode (deadline-based): threads run during sampling, so the
+// sampling work counts towards the interval. A deadline is advanced by the
+// interval each tick; we sleep only the remaining time. This is
+// self-correcting: if one tick overruns, subsequent sleeps shorten to
+// compensate.
+//
+// Native mode (fixed-sleep): threads are suspended during sampling, so the
+// sampling duration is dead time for the target. After resuming we sleep
+// the full interval to give threads the requested running time.
+
+typedef struct {
+    microseconds_t deadline;
+} pacer_t;
 
 static inline void
-stopwatch_pause(microseconds_t delta) {
-    // Pause if sampling took less than the sampling interval.
-    if (delta < pargs.t_sampling_interval)
-        usleep(pargs.t_sampling_interval - delta);
+pacer_init(pacer_t* p) {
+    p->deadline = gettime() + pargs.t_sampling_interval;
+}
+
+// Sleep until the next sample is due.  Returns the actual sleep duration in
+// microseconds, or 0 when the sampler is saturated (behind schedule).
+static inline microseconds_t
+pacer_next(pacer_t* p) {
+    if (pargs_native) {
+        // Sleep the full interval — sampling time was dead time for the target.
+        usleep((useconds_t)pargs.t_sampling_interval);
+        return pargs.t_sampling_interval;
+    }
+
+    microseconds_t now = gettime();
+
+    if (p->deadline > now) {
+        microseconds_t delay = p->deadline - now;
+        usleep((useconds_t)delay);
+        p->deadline += pargs.t_sampling_interval;
+        return delay;
+    }
+    p->deadline += pargs.t_sampling_interval;
+    return 0;
 }
