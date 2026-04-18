@@ -58,6 +58,7 @@ microseconds_t _avg_sampling_time;
 microseconds_t _start_time;
 
 ustat_t _sample_cnt;
+ustat_t _tick_cnt;
 ustat_t _error_cnt;
 ustat_t _long_cnt;
 
@@ -94,6 +95,7 @@ gettime() {
 void
 stats_reset() {
     _sample_cnt = 0;
+    _tick_cnt   = 0;
     _error_cnt  = 0;
 
     _min_sampling_time = MICROSECONDS_MAX;
@@ -123,7 +125,7 @@ stats_get_min_sampling_time() {
 
 microseconds_t
 stats_get_avg_sampling_time() {
-    return _avg_sampling_time / _sample_cnt;
+    return _avg_sampling_time / _tick_cnt;
 }
 
 void
@@ -150,7 +152,7 @@ stats_log_metrics() {
             "sampling", MICROSECONDS_FMT "," MICROSECONDS_FMT "," MICROSECONDS_FMT, stats_get_min_sampling_time(),
             stats_get_avg_sampling_time(), stats_get_max_sampling_time()
         );
-        event_handler__emit_metadata("saturation", "%ld/%ld", _long_cnt, _sample_cnt);
+        event_handler__emit_metadata("saturation", "%ld/%ld", _long_cnt, _tick_cnt);
         event_handler__emit_metadata("errors", "%ld/%ld", _error_cnt, _sample_cnt);
         if (pargs.gc)
             event_handler__emit_metadata("gc", MICROSECONDS_FMT, _gc_time);
