@@ -5,7 +5,7 @@
 //
 // Austin is a Python frame stack sampler for CPython.
 //
-// Copyright (c) 2018 Gabriele N. Tornetta <phoenix1987@gmail.com>.
+// Copyright (c) 2018-2026 Gabriele N. Tornetta <phoenix1987@gmail.com>.
 // All rights reserved.
 //
 // This program is free software: you can redistribute it and/or modify
@@ -33,6 +33,8 @@
 #include "../py_thread.h"
 #include "../stack.h"
 
+#include "unwind.h"
+
 // ---- Platform-specific static variables ------------------------------------
 
 static PVOID _pi_buffer      = NULL;
@@ -41,12 +43,15 @@ static ULONG _pi_buffer_size = 0;
 static hash_table_t* _handles = NULL; // tid (DWORD) -> HANDLE (thread handle)
 static hash_table_t* _idle    = NULL; // tid -> (void*)1  if thread was idle before suspend
 static hash_table_t* _int     = NULL; // tid -> (void*)1  if thread was suspended by us
-static hash_table_t* _regs    = NULL; // tid -> thread_regs_t* (PC/FP/SP captured at suspend)
+static hash_table_t* _regs    = NULL; // tid -> thread_regs_t* (register snapshot)
 
 typedef struct {
     uintptr_t pc;
     uintptr_t fp;
     uintptr_t sp;
+#if defined(_M_ARM64)
+    uintptr_t lr; // link register (x30)
+#endif
 } thread_regs_t;
 
 // ---- Hot-path inline helpers: idle/interrupted state -----------------------
@@ -169,11 +174,16 @@ _py_thread__suspend(py_thread_t* self) {
     }
 
     // Capture registers while the thread is freshly suspended.
-    thread_regs_t* regs = (thread_regs_t*)malloc(sizeof(thread_regs_t));
+    // Reuse the existing entry if available to avoid malloc/free per sample.
+    thread_regs_t* regs = (thread_regs_t*)hash_table__get(_regs, (key_dt)self->tid);
     if (!isvalid(regs)) {
-        ResumeThread(h);
-        set_error(MALLOC, "Cannot allocate thread register cache");
-        FAIL;
+        regs = (thread_regs_t*)malloc(sizeof(thread_regs_t));
+        if (!isvalid(regs)) {
+            ResumeThread(h);
+            set_error(MALLOC, "Cannot allocate thread register cache");
+            FAIL;
+        }
+        hash_table__set(_regs, (key_dt)self->tid, (value_t)regs);
     }
 
     CONTEXT ctx;
@@ -182,7 +192,6 @@ _py_thread__suspend(py_thread_t* self) {
 #if defined(_M_X64)
     ctx.ContextFlags = CONTEXT_CONTROL;
     if (!GetThreadContext(h, &ctx)) {
-        free(regs);
         ResumeThread(h);
         set_error(OS, "GetThreadContext failed during suspend");
         FAIL;
@@ -193,7 +202,6 @@ _py_thread__suspend(py_thread_t* self) {
 #elif defined(_M_ARM64)
     ctx.ContextFlags = CONTEXT_CONTROL;
     if (!GetThreadContext(h, &ctx)) {
-        free(regs);
         ResumeThread(h);
         set_error(OS, "GetThreadContext failed during suspend");
         FAIL;
@@ -201,14 +209,10 @@ _py_thread__suspend(py_thread_t* self) {
     regs->pc = (uintptr_t)ctx.Pc;
     regs->fp = (uintptr_t)ctx.Fp;
     regs->sp = (uintptr_t)ctx.Sp;
+    regs->lr = (uintptr_t)ctx.Lr;
 #else
 #error "Unsupported architecture for native mode on Windows"
 #endif
-
-    // Free any stale entry from a prior sample.
-    thread_regs_t* prev = (thread_regs_t*)hash_table__get(_regs, (key_dt)self->tid);
-    sfree(prev);
-    hash_table__set(_regs, (key_dt)self->tid, (value_t)regs);
 
     SUCCESS;
 }
@@ -220,9 +224,7 @@ _py_thread__resume(py_thread_t* self) {
     if (!isvalid(h))
         SUCCESS;
 
-    thread_regs_t* regs = (thread_regs_t*)hash_table__get(_regs, (key_dt)self->tid);
-    sfree(regs);
-    hash_table__del(_regs, (key_dt)self->tid);
+    // Keep the regs entry allocated for reuse in the next sample.
 
     if (ResumeThread(h) == (DWORD)-1) {
         set_error(OS, "ResumeThread failed");
@@ -254,9 +256,6 @@ py_thread__resume_all_interrupted(void) {
                 log_t("win: thread %lu resumed", (unsigned long)rtid);
             }
         }
-        thread_regs_t* regs = (thread_regs_t*)hash_table__get(_regs, rtid);
-        sfree(regs);
-        hash_table__del(_regs, rtid);
         hash_table__del(_int, rtid);
     }
 }
@@ -286,8 +285,8 @@ py_thread__interrupt(py_thread_t* self) {
 // ---- Native stack unwinding ------------------------------------------------
 
 // Resolve a PC to a native frame (filename + function name) and push it onto
-// the native stack.  Shared by both the frame-pointer walk and the StackWalk64
-// fallback paths.  Returns 0 on success, non-zero on failure.
+// the native stack.  Shared by both the frame-pointer walk and the .pdata
+// unwind fallback paths.  Returns 0 on success, non-zero on failure.
 static inline int
 _push_native_frame(py_thread_t* self, uintptr_t pc) {
     lru_cache_t* cache        = self->proc->frame_cache;
@@ -339,162 +338,69 @@ _push_native_frame(py_thread_t* self, uintptr_t pc) {
     SUCCESS;
 }
 
-// ---- StackWalk64 fallback ---------------------------------------------------
-// Used when the frame-pointer walk fails to produce a deep stack (typically
-// because the binary was compiled with frame-pointer omission, which is the
-// MSVC x64 default).  StackWalk64 uses the PE .pdata unwind info and is
-// slower but handles all calling conventions correctly.
+// ---- Userspace .pdata unwind fallback ----------------------------------------
+// Delegates to unwind.h which does a binary search over cached .pdata and
+// interprets PE unwind codes in userspace, avoiding the heavyweight
+// StackWalk64/dbghelp per-frame OS API calls.
 static inline int
-_unwind_stackwalk64(py_thread_t* self) {
+_unwind_pdata(py_thread_t* self) {
     stack_native_reset();
 
     HANDLE hProcess = self->proc->ref;
-    HANDLE hThread  = (HANDLE)hash_table__get(_handles, (key_dt)self->tid);
-    if (!isvalid(hThread)) {
-        set_error(OS, "No cached handle for thread");
-        FAIL;
-    }
 
-    sym_init(hProcess);
-
-    // Build a fresh CONTEXT for StackWalk64 from the cached registers.
     thread_regs_t* regs = (thread_regs_t*)hash_table__get(_regs, (key_dt)self->tid);
     if (!isvalid(regs)) {
         set_error(OS, "No cached register state for thread");
         FAIL;
     }
 
-    CONTEXT ctx;
-    memset(&ctx, 0, sizeof(ctx));
-#if defined(_M_X64)
-    DWORD machine    = IMAGE_FILE_MACHINE_AMD64;
-    ctx.ContextFlags = CONTEXT_FULL;
-    ctx.Rip          = (DWORD64)regs->pc;
-    ctx.Rbp          = (DWORD64)regs->fp;
-    ctx.Rsp          = (DWORD64)regs->sp;
-#elif defined(_M_ARM64)
-    DWORD machine    = IMAGE_FILE_MACHINE_ARM64;
-    ctx.ContextFlags = CONTEXT_FULL;
-    ctx.Pc           = (DWORD64)regs->pc;
-    ctx.Fp           = (DWORD64)regs->fp;
-    ctx.Sp           = (DWORD64)regs->sp;
+    uintptr_t pc = regs->pc;
+    uintptr_t sp = regs->sp;
+    uintptr_t fp = regs->fp;
+#if defined(_M_ARM64)
+    uintptr_t lr = regs->lr;
 #endif
 
-    STACKFRAME64 sf;
-    memset(&sf, 0, sizeof(sf));
-    sf.AddrPC.Offset    = regs->pc;
-    sf.AddrPC.Mode      = AddrModeFlat;
-    sf.AddrFrame.Offset = regs->fp;
-    sf.AddrFrame.Mode   = AddrModeFlat;
-    sf.AddrStack.Offset = regs->sp;
-    sf.AddrStack.Mode   = AddrModeFlat;
+    // Ensure the module table is populated.
+    if (_mod_proc != hProcess || _mod_count == 0)
+        modules_refresh(hProcess);
 
     uintptr_t prev_pc = 0;
+    uintptr_t prev_sp = 0;
     while (!stack_native_full()) {
-        if (!StackWalk64(
-                machine, hProcess, hThread, &sf, &ctx, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL
-            ))
+        if (pc == 0 || pc == prev_pc)
             break;
-
-        uintptr_t pc = (uintptr_t)sf.AddrPC.Offset;
-        if (pc == 0)
-            break;
-
-        // Skip duplicate consecutive frames (StackWalk64 can report the
-        // same PC twice for leaf frames or at call boundaries).
-        if (pc == prev_pc)
-            continue;
         prev_pc = pc;
 
         if (fail(_push_native_frame(self, pc)))
             FAIL;
+
+        if (!pdata_step(
+                hProcess, &pc, &sp, &fp,
+#if defined(_M_ARM64)
+                &lr,
+#endif
+                _mod_table, _mod_count
+            ))
+            break;
+
+        // SP must advance (grow upward) on each frame; if it doesn't, the
+        // unwind produced garbage and we should stop.
+        if (sp != 0 && prev_sp != 0 && sp <= prev_sp)
+            break;
+        prev_sp = sp;
     }
 
     SUCCESS;
 }
 
-// Walk the native call stack of a suspended thread.
-//
-// Strategy: try the fast frame-pointer chain first.  If that produces at most
-// one frame (RBP wasn't a real frame pointer — typical for MSVC /Oy binaries),
-// fall back to StackWalk64 which uses PE .pdata unwind info and handles all
-// calling conventions at the cost of extra API calls per frame.
+// Walk the native call stack of a suspended thread using the userspace
+// .pdata unwinder.  For each frame we look up the PE exception directory
+// entry and interpret unwind codes directly from cached module data,
+// without any per-frame OS API calls (no StackWalk64, no RtlVirtualUnwind).
 static inline int
 _py_thread__unwind_native_frame_stack(py_thread_t* self) {
-    stack_native_reset();
-
-    // ---- Seed registers from the state captured at suspend time ----
-    thread_regs_t* regs = (thread_regs_t*)hash_table__get(_regs, (key_dt)self->tid);
-    if (!isvalid(regs)) {
-        set_error(OS, "No cached register state for thread");
-        FAIL;
-    }
-    uintptr_t pc = regs->pc;
-    uintptr_t fp = regs->fp;
-    uintptr_t sp = regs->sp;
-
-    // Quick sanity check: if fp looks like a plausible stack address (between
-    // sp and sp + 1MB) attempt the frame-pointer walk.  Otherwise skip straight
-    // to StackWalk64.
-    bool try_fp_walk = (fp > sp && fp < sp + (1 << 20));
-
-    if (try_fp_walk) {
-        // ---- Prefetch one page of stack into a local buffer ----
-#define _STACK_BUF_SIZE 4096
-        uint8_t   _stack_buf[_STACK_BUF_SIZE];
-        uintptr_t _stack_buf_base = sp & ~((uintptr_t)(_STACK_BUF_SIZE - 1));
-        {
-            SIZE_T _sz = 0;
-            if (!ReadProcessMemory(self->proc->ref, (LPCVOID)_stack_buf_base, _stack_buf, _STACK_BUF_SIZE, &_sz)
-                || _sz != _STACK_BUF_SIZE) {
-                _stack_buf_base = 0;
-            }
-        }
-
-        // ---- Walk frame-pointer chain ----
-        while (!stack_native_full() && pc != 0) {
-            if (fail(_push_native_frame(self, pc)))
-                FAIL;
-
-            if (fp == 0)
-                break;
-
-            uintptr_t frame_data[2] = {0, 0};
-            if (_stack_buf_base != 0 && fp >= _stack_buf_base
-                && fp - _stack_buf_base + sizeof(frame_data) <= _STACK_BUF_SIZE) {
-                memcpy(frame_data, _stack_buf + (fp - _stack_buf_base), sizeof(frame_data));
-            } else {
-                uintptr_t new_base = fp & ~((uintptr_t)(_STACK_BUF_SIZE - 1));
-                SIZE_T    _sz      = 0;
-                if (ReadProcessMemory(self->proc->ref, (LPCVOID)new_base, _stack_buf, _STACK_BUF_SIZE, &_sz)
-                    && _sz == _STACK_BUF_SIZE) {
-                    _stack_buf_base = new_base;
-                    memcpy(frame_data, _stack_buf + (fp - _stack_buf_base), sizeof(frame_data));
-                } else {
-                    _stack_buf_base  = 0;
-                    SIZE_T read_size = 0;
-                    if (!ReadProcessMemory(self->proc->ref, (LPCVOID)fp, frame_data, sizeof(frame_data), &read_size)
-                        || read_size != sizeof(frame_data)) {
-                        break;
-                    }
-                }
-            }
-
-            fp = frame_data[0];
-            pc = frame_data[1];
-        }
-#undef _STACK_BUF_SIZE
-
-        // If fp-walk produced a deep stack, we're done.
-        if (_stack->native_pointer > 1)
-            SUCCESS;
-
-        // fp-walk was flat — fall through to StackWalk64.
-        log_d("win: fp-walk produced %zd frame(s), falling back to StackWalk64", _stack->native_pointer);
-    }
-
-    // ---- StackWalk64 fallback ----
-    return _unwind_stackwalk64(self);
+    return _unwind_pdata(self);
 } /* _py_thread__unwind_native_frame_stack */
 
 // ---- Native unwind dispatch ------------------------------------------------
@@ -559,5 +465,6 @@ _py_thread_free_native(void) {
     }
     hash_table__destroy(_regs);
     _handles = _idle = _int = _regs = NULL;
+    _pdata_cache_destroy();
     sym_cleanup();
 }

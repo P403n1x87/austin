@@ -423,6 +423,8 @@ py_thread__unwind(py_thread_t* self) {
         self->stack = stack_chunk_new(self->proc->ref, self->stack_raddr);
     }
 
+    stack_reset();
+
     if (isvalid(self->top_frame)) {
         if (V_MIN(3, 13)) {
             if (fail(_py_thread__unwind_iframe_stack(self, self->top_frame))) {
