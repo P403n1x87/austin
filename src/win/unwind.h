@@ -41,6 +41,30 @@
 #include "../logging.h"
 
 // ---------------------------------------------------------------------------
+// x64 GP register indices (PE unwind encoding)
+// ---------------------------------------------------------------------------
+
+#if defined(_M_X64)
+#define REG_RAX      0
+#define REG_RCX      1
+#define REG_RDX      2
+#define REG_RBX      3
+#define REG_RSP      4
+#define REG_RBP      5
+#define REG_RSI      6
+#define REG_RDI      7
+#define REG_R8       8
+#define REG_R9       9
+#define REG_R10      10
+#define REG_R11      11
+#define REG_R12      12
+#define REG_R13      13
+#define REG_R14      14
+#define REG_R15      15
+#define GP_REG_COUNT 16
+#endif
+
+// ---------------------------------------------------------------------------
 // PE UNWIND_INFO structures
 // ---------------------------------------------------------------------------
 
@@ -162,24 +186,40 @@ _pdata_cache_load(HANDLE hProcess, uintptr_t image_base) {
                     hProcess, (LPCVOID)sec_hdr_addr, sections, num_sections * sizeof(IMAGE_SECTION_HEADER), &n
                 )
                 && n == num_sections * sizeof(IMAGE_SECTION_HEADER)) {
-                DWORD target_rva = funcs[0].UnwindData;
+                // Find the range of all sections that contain unwind data by
+                // checking the first and last RUNTIME_FUNCTION entries (the
+                // array is sorted by BeginAddress, and UnwindData RVAs
+                // generally span the same range).
+                DWORD rva_first = funcs[0].UnwindData;
+                DWORD rva_last  = funcs[count - 1].UnwindData;
+                DWORD range_lo  = (DWORD)-1;
+                DWORD range_hi  = 0;
+
                 for (DWORD i = 0; i < num_sections; i++) {
-                    DWORD sec_start = sections[i].VirtualAddress;
-                    DWORD sec_end   = sec_start + sections[i].Misc.VirtualSize;
-                    if (target_rva >= sec_start && target_rva < sec_end) {
-                        xdata_rva  = sec_start;
-                        xdata_size = sections[i].Misc.VirtualSize;
-                        xdata      = (uint8_t*)malloc(xdata_size);
-                        if (xdata) {
-                            if (!ReadProcessMemory(hProcess, (LPCVOID)(image_base + sec_start), xdata, xdata_size, &n)
-                                || n != xdata_size) {
-                                free(xdata);
-                                xdata      = NULL;
-                                xdata_size = 0;
-                                xdata_rva  = 0;
-                            }
+                    DWORD sec_start      = sections[i].VirtualAddress;
+                    DWORD sec_end        = sec_start + sections[i].Misc.VirtualSize;
+                    bool  contains_first = (rva_first >= sec_start && rva_first < sec_end);
+                    bool  contains_last  = (rva_last >= sec_start && rva_last < sec_end);
+                    if (contains_first || contains_last) {
+                        if (sec_start < range_lo)
+                            range_lo = sec_start;
+                        if (sec_end > range_hi)
+                            range_hi = sec_end;
+                    }
+                }
+
+                if (range_lo < range_hi) {
+                    xdata_rva  = range_lo;
+                    xdata_size = range_hi - range_lo;
+                    xdata      = (uint8_t*)malloc(xdata_size);
+                    if (xdata) {
+                        if (!ReadProcessMemory(hProcess, (LPCVOID)(image_base + range_lo), xdata, xdata_size, &n)
+                            || n != xdata_size) {
+                            free(xdata);
+                            xdata      = NULL;
+                            xdata_size = 0;
+                            xdata_rva  = 0;
                         }
-                        break;
                     }
                 }
             }
@@ -270,11 +310,11 @@ _pdata_cache_destroy(void) {
 #if defined(_M_X64)
 
 // Try to detect and simulate a function epilog at the current PC.
-// Returns true if an epilog was detected and simulated (rsp/rip/rbp updated).
+// Returns true if an epilog was detected and simulated (registers updated).
 // Returns false if not in an epilog (caller should use unwind codes).
 static inline bool
 _pe_try_epilog(
-    HANDLE hProcess, uintptr_t pc, uintptr_t func_end, uint8_t frame_reg, uintptr_t* rsp, uintptr_t* rip, uintptr_t* rbp
+    HANDLE hProcess, uintptr_t pc, uintptr_t func_end, uint8_t frame_reg, uintptr_t* rip, uintptr_t gp[GP_REG_COUNT]
 ) {
     // Read up to 128 bytes of instructions from pc to func_end.
     size_t  remaining = (size_t)(func_end - pc);
@@ -288,8 +328,8 @@ _pe_try_epilog(
 
     const uint8_t* p   = ibuf;
     const uint8_t* end = ibuf + remaining;
-    uintptr_t      sp  = *rsp;
-    uintptr_t      bp  = *rbp;
+    uintptr_t      sp  = gp[REG_RSP];
+    uintptr_t      bp  = gp[REG_RBP];
 
     // First instruction may be: add rsp,imm8/imm32  OR  lea rsp,[fp+disp8/disp32]
     if (p < end) {
@@ -323,12 +363,12 @@ _pe_try_epilog(
                 if (dst_reg == 4 /* RSP */ && src_reg == frame_reg) {
                     if (mod_ == 0x01 && q + 3 <= end) {
                         int8_t disp8 = (int8_t)q[2];
-                        sp           = (frame_reg == 5) ? bp + disp8 : sp;
+                        sp           = gp[frame_reg] + disp8;
                         p            = q + 3;
                     } else if (mod_ == 0x02 && q + 6 <= end) {
                         int32_t disp32;
                         memcpy(&disp32, q + 2, 4);
-                        sp = (frame_reg == 5) ? bp + disp32 : sp;
+                        sp = gp[frame_reg] + disp32;
                         p  = q + 6;
                     }
                 }
@@ -350,7 +390,8 @@ _pe_try_epilog(
             uintptr_t val     = 0;
             SIZE_T    read_sz = 0;
             ReadProcessMemory(hProcess, (LPCVOID)sp, &val, sizeof(val), &read_sz);
-            if (reg == 5) // RBP
+            gp[reg] = val;
+            if (reg == REG_RBP)
                 bp = val;
             sp += 8;
             p   = q + 1;
@@ -369,9 +410,9 @@ _pe_try_epilog(
         if (!ReadProcessMemory(hProcess, (LPCVOID)sp, &ret_addr, sizeof(ret_addr), &read_sz)
             || read_sz != sizeof(ret_addr))
             return false;
-        *rip = ret_addr;
-        *rsp = sp + 8;
-        *rbp = bp;
+        *rip        = ret_addr;
+        gp[REG_RSP] = sp + 8;
+        gp[REG_RBP] = bp;
         return true;
     }
     if (*p == 0xeb || *p == 0xe9) {
@@ -382,9 +423,9 @@ _pe_try_epilog(
         if (!ReadProcessMemory(hProcess, (LPCVOID)sp, &ret_addr, sizeof(ret_addr), &read_sz)
             || read_sz != sizeof(ret_addr))
             return false;
-        *rip = ret_addr;
-        *rsp = sp + 8;
-        *rbp = bp;
+        *rip        = ret_addr;
+        gp[REG_RSP] = sp + 8;
+        gp[REG_RBP] = bp;
         return true;
     }
     if (*p == 0xff && p + 1 < end) {
@@ -397,9 +438,9 @@ _pe_try_epilog(
             if (!ReadProcessMemory(hProcess, (LPCVOID)sp, &ret_addr, sizeof(ret_addr), &read_sz)
                 || read_sz != sizeof(ret_addr))
                 return false;
-            *rip = ret_addr;
-            *rsp = sp + 8;
-            *rbp = bp;
+            *rip        = ret_addr;
+            gp[REG_RSP] = sp + 8;
+            gp[REG_RBP] = bp;
             return true;
         }
     }
@@ -409,8 +450,8 @@ _pe_try_epilog(
 
 static inline bool
 _pe_unwind_step(
-    pdata_cache_entry_t* ce, RUNTIME_FUNCTION* rf, uintptr_t pc, HANDLE hProcess, uintptr_t* rsp, uintptr_t* rip,
-    uintptr_t* rbp
+    pdata_cache_entry_t* ce, RUNTIME_FUNCTION* rf, uintptr_t pc, HANDLE hProcess, uintptr_t* rip,
+    uintptr_t gp[GP_REG_COUNT]
 ) {
     pe_unwind_info_t* ui = _pdata_get_unwind_info(ce, rf);
     if (!ui)
@@ -418,7 +459,7 @@ _pe_unwind_step(
 
     pe_unwind_info_t* current_ui = ui;
     RUNTIME_FUNCTION* current_rf = rf;
-    uintptr_t         sp         = *rsp;
+    uintptr_t         sp         = gp[REG_RSP];
 
     // Check for epilog before processing unwind codes.  If the PC is past the
     // prologue and we're in a valid epilog sequence, simulate the remaining
@@ -429,26 +470,25 @@ _pe_unwind_step(
         DWORD     func_end   = rf->EndAddress;
         uintptr_t pc_in_func = pc - ce->image_base;
         if (pc_in_func >= func_start + ui->SizeOfProlog && pc_in_func < func_end) {
-            if (_pe_try_epilog(hProcess, pc, ce->image_base + func_end, ui->FrameRegister, rsp, rip, rbp))
+            if (_pe_try_epilog(hProcess, pc, ce->image_base + func_end, ui->FrameRegister, rip, gp))
                 return true;
         }
     }
 
+    bool is_chained = false;
     for (;;) {
         pe_unwind_code_t* codes      = (pe_unwind_code_t*)(current_ui + 1);
         int               code_count = current_ui->CountOfCodes;
 
-        // Determine if we're in the prologue.
+        // Determine if we're in the prologue.  For chained unwind info, all
+        // codes must be processed unconditionally (pe-unwind-info skips the
+        // offset check with !is_chained).
         DWORD func_start = current_rf->BeginAddress;
         DWORD pc_offset  = (DWORD)(pc - (ce->image_base + func_start));
-        bool  in_prolog  = (pc_offset < current_ui->SizeOfProlog);
+        bool  in_prolog  = !is_chained && (pc_offset < current_ui->SizeOfProlog);
 
-        // If the function uses a frame pointer, recover RSP from it.
-        if (current_ui->FrameRegister != 0) {
-            if (current_ui->FrameRegister == 5 /* RBP */) {
-                sp = *rbp - (uintptr_t)current_ui->FrameOffset * 16;
-            }
-        }
+        uint8_t frame_reg    = current_ui->FrameRegister;
+        uint8_t frame_offset = current_ui->FrameOffset;
 
         for (int i = 0; i < code_count; /* advanced in body */) {
             pe_unwind_code_t* op = &codes[i];
@@ -461,6 +501,7 @@ _pe_unwind_step(
                     break;
                 case UWOP_SAVE_NONVOL:
                 case UWOP_SAVE_XMM128:
+                case 6: // UWOP_EPILOG
                     i += 2;
                     break;
                 case UWOP_SAVE_NONVOL_FAR:
@@ -478,10 +519,9 @@ _pe_unwind_step(
                 uintptr_t val     = 0;
                 SIZE_T    read_sz = 0;
                 ReadProcessMemory(hProcess, (LPCVOID)sp, &val, sizeof(val), &read_sz);
-                if (op->OpInfo == 5 /* RBP */)
-                    *rbp = val;
-                sp += 8;
-                i  += 1;
+                gp[op->OpInfo]  = val;
+                sp             += 8;
+                i              += 1;
                 break;
             }
             case UWOP_ALLOC_LARGE: {
@@ -501,39 +541,51 @@ _pe_unwind_step(
                 break;
             }
             case UWOP_SET_FPREG: {
+                // Restore RSP from the frame register, matching pe-unwind-info's
+                // RestoreSPFromFP: sp = gp[frame_reg] - frame_offset * 16.
+                if (frame_reg != 0)
+                    sp = gp[frame_reg] - (uintptr_t)frame_offset * 16;
                 i += 1;
                 break;
             }
             case UWOP_SAVE_NONVOL: {
-                if (op->OpInfo == 5 /* RBP */) {
-                    // When a frame register is set, saved register offsets are
-                    // relative to the established frame pointer value (FP - scaled
-                    // FrameOffset).  Otherwise they are relative to RSP.
-                    uintptr_t save_offset = (uintptr_t)codes[i + 1].FrameOffset * 8;
-                    uintptr_t base
-                        = (current_ui->FrameRegister != 0) ? (*rbp - (uintptr_t)current_ui->FrameOffset * 16) : sp;
-                    SIZE_T read_sz = 0;
-                    ReadProcessMemory(hProcess, (LPCVOID)(base + save_offset), rbp, sizeof(*rbp), &read_sz);
-                }
-                i += 2;
+                // resolve_offset: if frame register is set, base from it;
+                // otherwise base from current RSP.
+                uintptr_t offset = (uintptr_t)codes[i + 1].FrameOffset * 8;
+                uintptr_t addr;
+                if (frame_reg != 0)
+                    addr = gp[frame_reg] - (uintptr_t)frame_offset * 16 + offset;
+                else
+                    addr = sp + offset;
+                uintptr_t val     = 0;
+                SIZE_T    read_sz = 0;
+                ReadProcessMemory(hProcess, (LPCVOID)addr, &val, sizeof(val), &read_sz);
+                gp[op->OpInfo]  = val;
+                i              += 2;
                 break;
             }
             case UWOP_SAVE_NONVOL_FAR: {
-                if (op->OpInfo == 5 /* RBP */) {
-                    uint32_t  save_offset = *(uint32_t*)&codes[i + 1];
-                    uintptr_t base
-                        = (current_ui->FrameRegister != 0) ? (*rbp - (uintptr_t)current_ui->FrameOffset * 16) : sp;
-                    SIZE_T read_sz = 0;
-                    ReadProcessMemory(hProcess, (LPCVOID)(base + save_offset), rbp, sizeof(*rbp), &read_sz);
-                }
-                i += 3;
+                uint32_t  offset = *(uint32_t*)&codes[i + 1];
+                uintptr_t addr;
+                if (frame_reg != 0)
+                    addr = gp[frame_reg] - (uintptr_t)frame_offset * 16 + offset;
+                else
+                    addr = sp + offset;
+                uintptr_t val     = 0;
+                SIZE_T    read_sz = 0;
+                ReadProcessMemory(hProcess, (LPCVOID)addr, &val, sizeof(val), &read_sz);
+                gp[op->OpInfo]  = val;
+                i              += 3;
                 break;
             }
+            case 6: // UWOP_EPILOG (v2) — epilog scope information; skip.
+                i += 2;
+                break;
             case UWOP_PUSH_MACHFRAME: {
                 uintptr_t base    = sp + (op->OpInfo ? 8 : 0);
                 SIZE_T    read_sz = 0;
                 ReadProcessMemory(hProcess, (LPCVOID)base, rip, sizeof(*rip), &read_sz);
-                ReadProcessMemory(hProcess, (LPCVOID)(base + 24), rsp, sizeof(*rsp), &read_sz);
+                ReadProcessMemory(hProcess, (LPCVOID)(base + 24), &gp[REG_RSP], sizeof(gp[REG_RSP]), &read_sz);
                 return true;
             }
             case UWOP_SAVE_XMM128:
@@ -555,6 +607,7 @@ _pe_unwind_step(
             current_ui                      = _pdata_get_unwind_info(ce, chained_rf);
             if (!current_ui)
                 return false;
+            is_chained = true;
             continue;
         }
 
@@ -567,8 +620,8 @@ _pe_unwind_step(
     if (!ReadProcessMemory(hProcess, (LPCVOID)sp, &ret_addr, sizeof(ret_addr), &read_sz) || read_sz != sizeof(ret_addr))
         return false;
 
-    *rip = ret_addr;
-    *rsp = sp + 8; // pop the return address
+    *rip        = ret_addr;
+    gp[REG_RSP] = sp + 8; // pop the return address
     return true;
 }
 #endif // _M_X64
@@ -674,13 +727,9 @@ _pe_unwind_step_arm64(
             p  += 1;
         } else if ((b & 0xE0) == 0x20) {
             // save_r19r20_x: 001zzzzz — pre-indexed save <x19,x20>
-            // Not needed for stack walking (we only care about fp/lr/sp).
-            // Advance sp by the pre-index amount: (z+1)*8 for the pair.
-            // Actually this is stp x19,x20,[sp,#-(z+1)*8]! so it decrements sp.
-            // During unwind we reverse it: sp += (z+1)*8.  But we already
-            // account for the allocation separately; the save just stores regs.
-            // Skip — we don't track x19/x20.
-            p += 1;
+            // stp x19,x20,[sp,#-Z*8]!  — reverse the pre-indexed SP decrement.
+            sp += (uintptr_t)(b & 0x1F) * 8;
+            p  += 1;
         } else if ((b & 0xC0) == 0x40) {
             // save_fplr: 01zzzzzz — save <x29,lr> at [sp + z*8]
             // Read lr from the saved location.
@@ -719,26 +768,35 @@ _pe_unwind_step_arm64(
             sp             += alloc;
             p              += 2;
         } else if ((b & 0xFC) == 0xC8) {
-            // save_regp: 110010xx xxxxxxxx — save pair x(19+i) (2 bytes)
-            // Skip — we don't track general-purpose registers other than fp/lr.
+            // save_regp: 110010xx xxxxxxxx — save pair x(19+i) at [sp+#Z*8] (2 bytes)
+            // No stack adjustment — skip (we don't track x19-x28).
             p += 2;
         } else if ((b & 0xFC) == 0xCC) {
             // save_regp_x: 110011xx xxxxxxxx — pre-indexed save pair (2 bytes)
-            p += 2;
+            // stp x(19+#X),...,[sp-(#Z+1)*8]! — reverse the pre-indexed SP decrement.
+            if (p + 1 >= codes_end)
+                break;
+            uint8_t z  = p[1] & 0x3F;
+            sp        += (uintptr_t)(z + 1) * 8;
+            p         += 2;
         } else if ((b & 0xFC) == 0xD0) {
-            // save_reg: 110100xx xxxxxxxx — save single register (2 bytes)
+            // save_reg: 110100xx xxxxxxxx — save single register at [sp+#Z*8] (2 bytes)
+            // No stack adjustment — skip.
             p += 2;
         } else if ((b & 0xFE) == 0xD4) {
             // save_reg_x: 1101010x xxxxxxxx — pre-indexed save single (2 bytes)
-            p += 2;
-        } else if ((b & 0xFE) == 0xD6) {
-            // save_lrpair: 1101011x xxxxxxxx — save <r, lr> pair (2 bytes)
-            // This saves lr — read it.
+            // str x(19+#X),[sp-(#Z+1)*8]! — reverse the pre-indexed SP decrement.
             if (p + 1 >= codes_end)
                 break;
-            uint8_t   reg    = (uint8_t)(2 * ((b & 0x01) << 3 | (p[1] >> 5)));
-            uintptr_t offset = (uintptr_t)(p[1] & 0x1F) * 8;
-            (void)reg;
+            uint8_t z  = p[1] & 0x1F;
+            sp        += (uintptr_t)(z + 1) * 8;
+            p         += 2;
+        } else if ((b & 0xFE) == 0xD6) {
+            // save_lrpair: 1101011x'xxzzzzzz — save <x(19+2*#X), lr> pair (2 bytes)
+            // X = 3-bit field, Z = 6-bit field.  Read lr from the saved pair.
+            if (p + 1 >= codes_end)
+                break;
+            uintptr_t offset  = (uintptr_t)(p[1] & 0x3F) * 8;
             SIZE_T    read_sz = 0;
             uintptr_t pair[2] = {0, 0};
             ReadProcessMemory(hProcess, (LPCVOID)(sp + offset), pair, sizeof(pair), &read_sz);
@@ -746,17 +804,29 @@ _pe_unwind_step_arm64(
             lr  = pair[1];
             p  += 2;
         } else if ((b & 0xFE) == 0xD8) {
-            // save_fregp: 1101100x xxxxxxxx — save FP pair d(8+i) (2 bytes)
+            // save_fregp: 1101100x xxxxxxxx — save FP pair d(8+i) at [sp+#Z*8] (2 bytes)
+            // No stack adjustment — skip (FP SIMD registers).
             p += 2;
         } else if ((b & 0xFE) == 0xDA) {
             // save_fregp_x: 1101101x xxxxxxxx — pre-indexed save FP pair (2 bytes)
-            p += 2;
+            // stp d(8+#X),...,[sp-(#Z+1)*8]! — reverse the pre-indexed SP decrement.
+            if (p + 1 >= codes_end)
+                break;
+            uint8_t z  = p[1] & 0x3F;
+            sp        += (uintptr_t)(z + 1) * 8;
+            p         += 2;
         } else if ((b & 0xFE) == 0xDC) {
-            // save_freg: 1101110x xxxxxxxx — save single FP register (2 bytes)
+            // save_freg: 1101110x xxxxxxxx — save single FP register at [sp+#Z*8] (2 bytes)
+            // No stack adjustment — skip.
             p += 2;
         } else if (b == 0xDE) {
             // save_freg_x: 11011110 xxxxxxxx — pre-indexed save single FP (2 bytes)
-            p += 2;
+            // str d(8+#X),[sp-(#Z+1)*8]! — reverse the pre-indexed SP decrement.
+            if (p + 1 >= codes_end)
+                break;
+            uint8_t z  = p[1] & 0x1F;
+            sp        += (uintptr_t)(z + 1) * 8;
+            p         += 2;
         } else if (b == 0xE0) {
             // alloc_l: 11100000 + 3 bytes — large allocation
             if (p + 3 >= codes_end)
@@ -765,10 +835,14 @@ _pe_unwind_step_arm64(
             sp             += (uintptr_t)alloc * 16;
             p              += 4;
         } else if (b == 0xE2) {
-            // context save/restore — skip.
-            p += 1;
+            // add_fp: 11100010 xxxxxxxx — reverse of: add x29, sp, #x*8
+            // During unwind: sp = fp - x*8.
+            if (p + 1 >= codes_end)
+                break;
+            sp  = fp - (uintptr_t)p[1] * 8;
+            p  += 2;
         } else if (b == 0xE3) {
-            // context save/restore — skip.
+            // nop: no unwind operation required — skip.
             p += 1;
         } else if (b == 0xFC) {
             // pac_sign_lr — pointer authentication (ignore for unwinding).
@@ -794,13 +868,15 @@ _pe_unwind_step_arm64(
 
 // Step one native frame.  Looks up the module for `pc`, loads/caches its
 // .pdata, finds the RUNTIME_FUNCTION, and interprets the unwind codes.
-// On success, updates *pc, *sp, *fp (and *lr on ARM64) to the caller's values.
+// On success, updates *pc and register state to the caller's values.
 // Returns true on success.
 static inline bool
 pdata_step(
-    HANDLE hProcess, uintptr_t* pc, uintptr_t* sp, uintptr_t* fp,
-#if defined(_M_ARM64)
-    uintptr_t* lr,
+    HANDLE hProcess, uintptr_t* pc,
+#if defined(_M_X64)
+    uintptr_t gp[GP_REG_COUNT],
+#elif defined(_M_ARM64)
+    uintptr_t* sp, uintptr_t* fp, uintptr_t* lr,
 #endif
     _mod_entry_t* mod_table, DWORD mod_count
 ) {
@@ -815,24 +891,10 @@ pdata_step(
     }
     bool in_module = (mlo > 0 && *pc >= mod_table[mlo - 1].base && *pc < mod_table[mlo - 1].end);
     if (!in_module) {
-        // PC is outside any known module (e.g. syscall return stub, JIT code,
-        // or trampoline).  Treat as a leaf function: read the return address
-        // from [RSP] (x64) or use LR (ARM64).
-#if defined(_M_X64)
-        uintptr_t ret_addr  = 0;
-        SIZE_T    read_size = 0;
-        if (!ReadProcessMemory(hProcess, (LPCVOID)*sp, &ret_addr, sizeof(ret_addr), &read_size)
-            || read_size != sizeof(ret_addr) || ret_addr == 0)
-            return false;
-        *pc  = ret_addr;
-        *sp += sizeof(uintptr_t);
-#elif defined(_M_ARM64)
-        if (*lr == 0)
-            return false;
-        *pc = *lr;
-        *lr = 0;
-#endif
-        return true;
+        // PC is outside any known module.  We can't reliably unwind from here
+        // (no .pdata to consult), so return false and let the StackWalk64
+        // fallback handle it.
+        return false;
     }
     _mod_entry_t* mod = &mod_table[mlo - 1];
 
@@ -851,11 +913,11 @@ pdata_step(
 #if defined(_M_X64)
         uintptr_t ret_addr  = 0;
         SIZE_T    read_size = 0;
-        if (!ReadProcessMemory(hProcess, (LPCVOID)*sp, &ret_addr, sizeof(ret_addr), &read_size)
+        if (!ReadProcessMemory(hProcess, (LPCVOID)gp[REG_RSP], &ret_addr, sizeof(ret_addr), &read_size)
             || read_size != sizeof(ret_addr))
             return false;
-        *pc  = ret_addr;
-        *sp += sizeof(uintptr_t);
+        *pc          = ret_addr;
+        gp[REG_RSP] += sizeof(uintptr_t);
 #elif defined(_M_ARM64)
         if (*lr == 0)
             return false;
@@ -866,7 +928,7 @@ pdata_step(
     }
 
 #if defined(_M_X64)
-    return _pe_unwind_step(ce, rt_func, *pc, hProcess, sp, pc, fp);
+    return _pe_unwind_step(ce, rt_func, *pc, hProcess, pc, gp);
 #elif defined(_M_ARM64)
     return _pe_unwind_step_arm64(ce, rt_func, *pc, hProcess, sp, pc, fp, lr);
 #else

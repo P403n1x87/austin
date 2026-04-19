@@ -47,9 +47,11 @@ static hash_table_t* _regs    = NULL; // tid -> thread_regs_t* (register snapsho
 
 typedef struct {
     uintptr_t pc;
+#if defined(_M_X64)
+    uintptr_t gp[GP_REG_COUNT]; // all 16 GP registers; gp[REG_RSP]=RSP, gp[REG_RBP]=RBP, etc.
+#elif defined(_M_ARM64)
     uintptr_t fp;
     uintptr_t sp;
-#if defined(_M_ARM64)
     uintptr_t lr; // link register (x30)
 #endif
 } thread_regs_t;
@@ -190,15 +192,29 @@ _py_thread__suspend(py_thread_t* self) {
     memset(&ctx, 0, sizeof(ctx));
 
 #if defined(_M_X64)
-    ctx.ContextFlags = CONTEXT_CONTROL;
+    ctx.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
     if (!GetThreadContext(h, &ctx)) {
         ResumeThread(h);
         set_error(OS, "GetThreadContext failed during suspend");
         FAIL;
     }
-    regs->pc = (uintptr_t)ctx.Rip;
-    regs->fp = (uintptr_t)ctx.Rbp;
-    regs->sp = (uintptr_t)ctx.Rsp;
+    regs->pc          = (uintptr_t)ctx.Rip;
+    regs->gp[REG_RAX] = (uintptr_t)ctx.Rax;
+    regs->gp[REG_RCX] = (uintptr_t)ctx.Rcx;
+    regs->gp[REG_RDX] = (uintptr_t)ctx.Rdx;
+    regs->gp[REG_RBX] = (uintptr_t)ctx.Rbx;
+    regs->gp[REG_RSP] = (uintptr_t)ctx.Rsp;
+    regs->gp[REG_RBP] = (uintptr_t)ctx.Rbp;
+    regs->gp[REG_RSI] = (uintptr_t)ctx.Rsi;
+    regs->gp[REG_RDI] = (uintptr_t)ctx.Rdi;
+    regs->gp[REG_R8]  = (uintptr_t)ctx.R8;
+    regs->gp[REG_R9]  = (uintptr_t)ctx.R9;
+    regs->gp[REG_R10] = (uintptr_t)ctx.R10;
+    regs->gp[REG_R11] = (uintptr_t)ctx.R11;
+    regs->gp[REG_R12] = (uintptr_t)ctx.R12;
+    regs->gp[REG_R13] = (uintptr_t)ctx.R13;
+    regs->gp[REG_R14] = (uintptr_t)ctx.R14;
+    regs->gp[REG_R15] = (uintptr_t)ctx.R15;
 #elif defined(_M_ARM64)
     ctx.ContextFlags = CONTEXT_CONTROL;
     if (!GetThreadContext(h, &ctx)) {
@@ -344,10 +360,11 @@ _push_native_frame(py_thread_t* self, uintptr_t pc) {
 // past the problematic frame, then returns control to the fast .pdata loop.
 static inline bool
 _stackwalk64_step(
-    HANDLE hProcess, HANDLE hThread, uintptr_t* pc, uintptr_t* sp, uintptr_t* fp
-#if defined(_M_ARM64)
-    ,
-    uintptr_t* lr
+    HANDLE hProcess, HANDLE hThread, uintptr_t* pc,
+#if defined(_M_X64)
+    uintptr_t gp[GP_REG_COUNT]
+#elif defined(_M_ARM64)
+    uintptr_t* sp, uintptr_t* fp, uintptr_t* lr
 #endif
 ) {
     sym_init(hProcess);
@@ -361,8 +378,29 @@ _stackwalk64_step(
     DWORD machine    = IMAGE_FILE_MACHINE_AMD64;
     ctx.ContextFlags = CONTEXT_FULL;
     ctx.Rip          = (DWORD64)*pc;
-    ctx.Rbp          = (DWORD64)*fp;
-    ctx.Rsp          = (DWORD64)*sp;
+    ctx.Rax          = (DWORD64)gp[REG_RAX];
+    ctx.Rcx          = (DWORD64)gp[REG_RCX];
+    ctx.Rdx          = (DWORD64)gp[REG_RDX];
+    ctx.Rbx          = (DWORD64)gp[REG_RBX];
+    ctx.Rsp          = (DWORD64)gp[REG_RSP];
+    ctx.Rbp          = (DWORD64)gp[REG_RBP];
+    ctx.Rsi          = (DWORD64)gp[REG_RSI];
+    ctx.Rdi          = (DWORD64)gp[REG_RDI];
+    ctx.R8           = (DWORD64)gp[REG_R8];
+    ctx.R9           = (DWORD64)gp[REG_R9];
+    ctx.R10          = (DWORD64)gp[REG_R10];
+    ctx.R11          = (DWORD64)gp[REG_R11];
+    ctx.R12          = (DWORD64)gp[REG_R12];
+    ctx.R13          = (DWORD64)gp[REG_R13];
+    ctx.R14          = (DWORD64)gp[REG_R14];
+    ctx.R15          = (DWORD64)gp[REG_R15];
+
+    sf.AddrPC.Offset    = *pc;
+    sf.AddrPC.Mode      = AddrModeFlat;
+    sf.AddrFrame.Offset = gp[REG_RBP];
+    sf.AddrFrame.Mode   = AddrModeFlat;
+    sf.AddrStack.Offset = gp[REG_RSP];
+    sf.AddrStack.Mode   = AddrModeFlat;
 #elif defined(_M_ARM64)
     DWORD machine    = IMAGE_FILE_MACHINE_ARM64;
     ctx.ContextFlags = CONTEXT_FULL;
@@ -370,7 +408,6 @@ _stackwalk64_step(
     ctx.Fp           = (DWORD64)*fp;
     ctx.Sp           = (DWORD64)*sp;
     ctx.Lr           = (DWORD64)*lr;
-#endif
 
     sf.AddrPC.Offset    = *pc;
     sf.AddrPC.Mode      = AddrModeFlat;
@@ -378,6 +415,7 @@ _stackwalk64_step(
     sf.AddrFrame.Mode   = AddrModeFlat;
     sf.AddrStack.Offset = *sp;
     sf.AddrStack.Mode   = AddrModeFlat;
+#endif
 
     // StackWalk64's first call may return the current frame (same PC) rather
     // than stepping to the caller.  Call up to twice to ensure we advance.
@@ -392,9 +430,27 @@ _stackwalk64_step(
             return false;
         if (new_pc != *pc) {
             *pc = new_pc;
+#if defined(_M_X64)
+            gp[REG_RSP] = (uintptr_t)sf.AddrStack.Offset;
+            gp[REG_RBP] = (uintptr_t)sf.AddrFrame.Offset;
+            // Sync remaining registers from context updated by StackWalk64.
+            gp[REG_RAX] = (uintptr_t)ctx.Rax;
+            gp[REG_RCX] = (uintptr_t)ctx.Rcx;
+            gp[REG_RDX] = (uintptr_t)ctx.Rdx;
+            gp[REG_RBX] = (uintptr_t)ctx.Rbx;
+            gp[REG_RSI] = (uintptr_t)ctx.Rsi;
+            gp[REG_RDI] = (uintptr_t)ctx.Rdi;
+            gp[REG_R8]  = (uintptr_t)ctx.R8;
+            gp[REG_R9]  = (uintptr_t)ctx.R9;
+            gp[REG_R10] = (uintptr_t)ctx.R10;
+            gp[REG_R11] = (uintptr_t)ctx.R11;
+            gp[REG_R12] = (uintptr_t)ctx.R12;
+            gp[REG_R13] = (uintptr_t)ctx.R13;
+            gp[REG_R14] = (uintptr_t)ctx.R14;
+            gp[REG_R15] = (uintptr_t)ctx.R15;
+#elif defined(_M_ARM64)
             *sp = (uintptr_t)sf.AddrStack.Offset;
             *fp = (uintptr_t)sf.AddrFrame.Offset;
-#if defined(_M_ARM64)
             *lr = (uintptr_t)ctx.Lr;
 #endif
             return true;
@@ -424,9 +480,12 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
     }
 
     uintptr_t pc = regs->pc;
+#if defined(_M_X64)
+    uintptr_t gp[GP_REG_COUNT];
+    memcpy(gp, regs->gp, sizeof(gp));
+#elif defined(_M_ARM64)
     uintptr_t sp = regs->sp;
     uintptr_t fp = regs->fp;
-#if defined(_M_ARM64)
     uintptr_t lr = regs->lr;
 #endif
 
@@ -437,29 +496,57 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
     uintptr_t prev_pc = 0;
     uintptr_t prev_sp = 0;
     while (!stack_native_full()) {
-        if (pc == 0 || pc == prev_pc)
+        if (pc == 0 || pc < 0x10000 || pc == prev_pc)
             break;
         prev_pc = pc;
 
         if (fail(_push_native_frame(self, pc)))
             FAIL;
 
+        // Save pre-step state so we can fall back to StackWalk64 if the
+        // pdata unwinder produces a PC outside any known module.
+        uintptr_t saved_pc = pc;
+#if defined(_M_X64)
+        uintptr_t saved_gp[GP_REG_COUNT];
+        memcpy(saved_gp, gp, sizeof(saved_gp));
+#elif defined(_M_ARM64)
+        uintptr_t saved_sp = sp, saved_fp = fp, saved_lr = lr;
+#endif
+
         bool stepped = pdata_step(
-            hProcess, &pc, &sp, &fp,
-#if defined(_M_ARM64)
-            &lr,
+            hProcess, &pc,
+#if defined(_M_X64)
+            gp,
+#elif defined(_M_ARM64)
+            &sp, &fp, &lr,
 #endif
             _mod_table, _mod_count
         );
+
+        // If pdata stepped but landed outside any known module, the unwind
+        // likely produced wrong state.  Restore and let StackWalk64 try from
+        // the original state instead.
+        if (stepped && !_pc_in_module(pc, _mod_table, _mod_count)) {
+            pc = saved_pc;
+#if defined(_M_X64)
+            memcpy(gp, saved_gp, sizeof(gp));
+#elif defined(_M_ARM64)
+            sp = saved_sp;
+            fp = saved_fp;
+            lr = saved_lr;
+#endif
+            stepped = false;
+        }
 
         // If the fast .pdata unwinder couldn't step, fall back to StackWalk64
         // for this one frame.
         if (!stepped && isvalid(hThread)) {
             stepped = _stackwalk64_step(
-                hProcess, hThread, &pc, &sp, &fp
-#if defined(_M_ARM64)
-                ,
-                &lr
+                hProcess, hThread, &pc,
+#if defined(_M_X64)
+                gp
+#elif defined(_M_ARM64)
+                &sp, &fp, &lr
 #endif
             );
         }
@@ -469,6 +556,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
 
         // SP must advance (grow upward) on each frame; if it doesn't, the
         // unwind produced garbage and we should stop.
+#if defined(_M_X64)
+        uintptr_t sp = gp[REG_RSP];
+#endif
         if (sp != 0 && prev_sp != 0 && sp <= prev_sp)
             break;
         prev_sp = sp;

@@ -127,6 +127,20 @@ static _mod_entry_t _mod_table[_MAX_MODULES];
 static DWORD        _mod_count = 0;
 static HANDLE       _mod_proc  = NULL;
 
+// Check if a PC falls within any known module (binary search).
+static inline bool
+_pc_in_module(uintptr_t pc, _mod_entry_t* mod_table, DWORD mod_count) {
+    DWORD lo = 0, hi = mod_count;
+    while (lo < hi) {
+        DWORD mid = lo + (hi - lo) / 2;
+        if (mod_table[mid].base <= pc)
+            lo = mid + 1;
+        else
+            hi = mid;
+    }
+    return (lo > 0 && pc >= mod_table[lo - 1].base && pc < mod_table[lo - 1].end);
+}
+
 // Comparison function for qsort/bsearch: sort by base address.
 static int
 _mod_cmp(const void* a, const void* b) {
