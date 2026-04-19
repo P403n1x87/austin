@@ -439,9 +439,9 @@ _pe_unwind_step(
         int               code_count = current_ui->CountOfCodes;
 
         // Determine if we're in the prologue.
-        DWORD   func_start = current_rf->BeginAddress;
-        uint8_t pc_offset  = (uint8_t)(pc - (ce->image_base + func_start));
-        bool    in_prolog  = (pc_offset < current_ui->SizeOfProlog);
+        DWORD func_start = current_rf->BeginAddress;
+        DWORD pc_offset  = (DWORD)(pc - (ce->image_base + func_start));
+        bool  in_prolog  = (pc_offset < current_ui->SizeOfProlog);
 
         // If the function uses a frame pointer, recover RSP from it.
         if (current_ui->FrameRegister != 0) {
