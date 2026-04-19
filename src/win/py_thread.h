@@ -338,15 +338,84 @@ _push_native_frame(py_thread_t* self, uintptr_t pc) {
     SUCCESS;
 }
 
-// ---- Userspace .pdata unwind fallback ----------------------------------------
-// Delegates to unwind.h which does a binary search over cached .pdata and
-// interprets PE unwind codes in userspace, avoiding the heavyweight
-// StackWalk64/dbghelp per-frame OS API calls.
+// ---- StackWalk64 single-step fallback ----------------------------------------
+// Used when pdata_step cannot advance (e.g. PC outside any known module, or
+// no .pdata entry for a system stub).  Performs ONE StackWalk64 step to get
+// past the problematic frame, then returns control to the fast .pdata loop.
+static inline bool
+_stackwalk64_step(
+    HANDLE hProcess, HANDLE hThread, uintptr_t* pc, uintptr_t* sp, uintptr_t* fp
+#if defined(_M_ARM64)
+    ,
+    uintptr_t* lr
+#endif
+) {
+    sym_init(hProcess);
+
+    CONTEXT ctx;
+    memset(&ctx, 0, sizeof(ctx));
+    STACKFRAME64 sf;
+    memset(&sf, 0, sizeof(sf));
+
+#if defined(_M_X64)
+    DWORD machine    = IMAGE_FILE_MACHINE_AMD64;
+    ctx.ContextFlags = CONTEXT_FULL;
+    ctx.Rip          = (DWORD64)*pc;
+    ctx.Rbp          = (DWORD64)*fp;
+    ctx.Rsp          = (DWORD64)*sp;
+#elif defined(_M_ARM64)
+    DWORD machine    = IMAGE_FILE_MACHINE_ARM64;
+    ctx.ContextFlags = CONTEXT_FULL;
+    ctx.Pc           = (DWORD64)*pc;
+    ctx.Fp           = (DWORD64)*fp;
+    ctx.Sp           = (DWORD64)*sp;
+    ctx.Lr           = (DWORD64)*lr;
+#endif
+
+    sf.AddrPC.Offset    = *pc;
+    sf.AddrPC.Mode      = AddrModeFlat;
+    sf.AddrFrame.Offset = *fp;
+    sf.AddrFrame.Mode   = AddrModeFlat;
+    sf.AddrStack.Offset = *sp;
+    sf.AddrStack.Mode   = AddrModeFlat;
+
+    // StackWalk64's first call may return the current frame (same PC) rather
+    // than stepping to the caller.  Call up to twice to ensure we advance.
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (!StackWalk64(
+                machine, hProcess, hThread, &sf, &ctx, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL
+            ))
+            return false;
+
+        uintptr_t new_pc = (uintptr_t)sf.AddrPC.Offset;
+        if (new_pc == 0)
+            return false;
+        if (new_pc != *pc) {
+            *pc = new_pc;
+            *sp = (uintptr_t)sf.AddrStack.Offset;
+            *fp = (uintptr_t)sf.AddrFrame.Offset;
+#if defined(_M_ARM64)
+            *lr = (uintptr_t)ctx.Lr;
+#endif
+            return true;
+        }
+    }
+    return false;
+}
+
+// ---- Native stack unwinding -------------------------------------------------
+// Walk the native call stack using the fast userspace .pdata unwinder as the
+// primary mechanism.  When pdata_step cannot advance (unknown module, missing
+// .pdata entry, etc.), fall back to a single StackWalk64 step to get past the
+// problematic frame, then resume the .pdata walk.  This gives us the speed of
+// direct .pdata parsing for the majority of frames while preserving the data
+// quality of StackWalk64 for edge cases (syscall stubs, JIT code, etc.).
 static inline int
-_unwind_pdata(py_thread_t* self) {
+_py_thread__unwind_native_frame_stack(py_thread_t* self) {
     stack_native_reset();
 
     HANDLE hProcess = self->proc->ref;
+    HANDLE hThread  = (HANDLE)hash_table__get(_handles, (key_dt)self->tid);
 
     thread_regs_t* regs = (thread_regs_t*)hash_table__get(_regs, (key_dt)self->tid);
     if (!isvalid(regs)) {
@@ -375,13 +444,27 @@ _unwind_pdata(py_thread_t* self) {
         if (fail(_push_native_frame(self, pc)))
             FAIL;
 
-        if (!pdata_step(
-                hProcess, &pc, &sp, &fp,
+        bool stepped = pdata_step(
+            hProcess, &pc, &sp, &fp,
 #if defined(_M_ARM64)
-                &lr,
+            &lr,
 #endif
-                _mod_table, _mod_count
-            ))
+            _mod_table, _mod_count
+        );
+
+        // If the fast .pdata unwinder couldn't step, fall back to StackWalk64
+        // for this one frame.
+        if (!stepped && isvalid(hThread)) {
+            stepped = _stackwalk64_step(
+                hProcess, hThread, &pc, &sp, &fp
+#if defined(_M_ARM64)
+                ,
+                &lr
+#endif
+            );
+        }
+
+        if (!stepped)
             break;
 
         // SP must advance (grow upward) on each frame; if it doesn't, the
@@ -392,15 +475,6 @@ _unwind_pdata(py_thread_t* self) {
     }
 
     SUCCESS;
-}
-
-// Walk the native call stack of a suspended thread using the userspace
-// .pdata unwinder.  For each frame we look up the PE exception directory
-// entry and interpret unwind codes directly from cached module data,
-// without any per-frame OS API calls (no StackWalk64, no RtlVirtualUnwind).
-static inline int
-_py_thread__unwind_native_frame_stack(py_thread_t* self) {
-    return _unwind_pdata(self);
 } /* _py_thread__unwind_native_frame_stack */
 
 // ---- Native unwind dispatch ------------------------------------------------
