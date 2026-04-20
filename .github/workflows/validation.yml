@@ -123,10 +123,105 @@ jobs:
           overwrite: true
         if: always()
 
+  validation-win:
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    env:
+      AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
+
+    name: Data validation on Windows with Python ${{ matrix.python-version }}
+    steps:
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}-dev
+
+      - name: Install Python 3.12
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Check out the base branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.base_ref }}
+          path: austin-base
+
+      - name: Check out the PR branch
+        uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - name: Compile Austin on the base branch
+        shell: bash
+        run: |
+          cd austin-base
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall -Werror
+          cd -
+
+      - name: Compile Austin on the PR branch
+        shell: bash
+        run: |
+          cd austin
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall -Werror
+          cd -
+
+      - name: Install binaries
+        shell: bash
+        run: cp austin-base/src/austin.exe austin/src/austin-base.exe
+
+      - name: Install runtime dependencies
+        shell: bash
+        run: |
+          python -m venv .venv
+          source .venv/Scripts/activate
+          python -m pip install --upgrade pip
+          pip install -r austin/scripts/requirements-val.txt
+
+      - name: Run data validation
+        shell: bash
+        env:
+          PYTHONPATH: austin
+          PYTHONIOENCODING: utf-8
+        run: |
+          source .venv/Scripts/activate
+          cd austin
+          python scripts/validation.py \
+            --ignore-errors \
+            -k "Native" \
+            --report results-win-${{ matrix.python-version }}.txt
+          cd -
+
+      - name: List collected samples
+        shell: bash
+        run: ls austin/*.mojo
+        if: always()
+
+      - name: Upload profiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-validation-profiles-win-${{ matrix.python-version }}
+          path: "austin/*.mojo"
+          overwrite: true
+        if: always()
+
+      - name: Upload data validation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-validation-results-win-${{ matrix.python-version }}
+          path: "austin/results*.txt"
+          overwrite: true
+        if: always()
+
   validation-report:
     runs-on: ubuntu-24.04
 
-    needs: validation
+    needs: [validation, validation-win]
     if: always()
 
     name: Data validation report

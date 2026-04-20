@@ -10,6 +10,10 @@ from argparse import ArgumentParser
 from dataclasses import dataclass
 from pathlib import Path
 
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8")
+
 import common
 from stats import AustinFlameGraph, compare
 
@@ -163,7 +167,7 @@ def generate_markdown_report(
         for scenario in skipped:
             output += f"- {scenario.title}\n"
 
-    path.write_text(output)
+    path.write_text(output, encoding="utf-8")
 
 
 if __name__ == "__main__":
