@@ -10,6 +10,7 @@ from argparse import ArgumentParser
 from dataclasses import dataclass
 from math import floor, log
 from pathlib import Path
+from subprocess import TimeoutExpired
 from textwrap import wrap
 
 from common import download_release
@@ -385,8 +386,8 @@ def benchmark(opts: ArgumentParser) -> None:
             for _ in range(opts.n):
                 try:
                     runs.append(austin(*scenario.args))
-                except RuntimeError:
-                    break  # binary doesn't support these args
+                except (RuntimeError, TimeoutExpired):
+                    break  # binary doesn't support these args or timed out
             stats = [s for s in (get_stats(r.metadata) for r in runs) if s is not None]
             if not stats:
                 print(
