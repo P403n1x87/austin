@@ -475,12 +475,54 @@ _pe_unwind_step(
         DWORD     func_end   = rf->EndAddress;
         uintptr_t pc_in_func = pc - ce->image_base;
         if (pc_in_func >= func_start + ui->SizeOfProlog && pc_in_func < func_end) {
+            // Save state before epilog attempt so we can roll back on
+            // false positives.
+            uintptr_t saved_rip = *rip;
+            uintptr_t saved_gp[GP_REG_COUNT];
+            memcpy(saved_gp, gp, sizeof(saved_gp));
+
             if (_pe_try_epilog(hProcess, pc, ce->image_base + func_end, ui->FrameRegister, rip, gp)) {
+                // Validate: a real epilog produces a return address that
+                // points to executable code.  Check that the address is in
+                // a known module AND within the code range covered by that
+                // module's .pdata entries (to reject data-section addresses).
+                bool epilog_valid = false;
+                if (*rip != 0 && _pc_in_module(*rip, _mod_table, _mod_count)) {
+                    epilog_valid = true;
+                    // Further check: if we have pdata for the target module,
+                    // verify the rva is within the code range.
+                    DWORD elo = 0, ehi = _mod_count;
+                    while (elo < ehi) {
+                        DWORD emid = elo + (ehi - elo) / 2;
+                        if (_mod_table[emid].base <= *rip)
+                            elo = emid + 1;
+                        else
+                            ehi = emid;
+                    }
+                    if (elo > 0) {
+                        pdata_cache_entry_t* tgt_ce = _pdata_cache_lookup(_mod_table[elo - 1].base);
+                        if (tgt_ce && tgt_ce->count > 0) {
+                            DWORD ret_rva      = (DWORD)(*rip - tgt_ce->image_base);
+                            DWORD max_code_rva = tgt_ce->funcs[tgt_ce->count - 1].EndAddress;
+                            if (ret_rva > max_code_rva)
+                                epilog_valid = false;
+                        }
+                    }
+                }
+                if (epilog_valid) {
+                    log_d(
+                        "win: epilog detected at rva %x (func %x-%x), ret=%" PRIxPTR, (DWORD)pc_in_func, func_start,
+                        func_end, *rip
+                    );
+                    return true;
+                }
+                // Roll back — false positive epilog detection.
                 log_d(
-                    "win: epilog detected at rva %x (func %x-%x), ret=%" PRIxPTR, (DWORD)pc_in_func, func_start,
-                    func_end, *rip
+                    "win: epilog FALSE POSITIVE at rva %x (func %x-%x), bad ret=%" PRIxPTR, (DWORD)pc_in_func,
+                    func_start, func_end, *rip
                 );
-                return true;
+                *rip = saved_rip;
+                memcpy(gp, saved_gp, sizeof(saved_gp));
             }
         }
     }
