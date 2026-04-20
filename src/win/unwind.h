@@ -454,8 +454,13 @@ _pe_unwind_step(
     uintptr_t gp[GP_REG_COUNT]
 ) {
     pe_unwind_info_t* ui = _pdata_get_unwind_info(ce, rf);
-    if (!ui)
+    if (!ui) {
+        log_d(
+            "win: _pe_unwind_step: no unwind info for rva %x-%x (UnwindData=%x, xdata_rva=%" PRIxPTR " xdata_size=%zu)",
+            rf->BeginAddress, rf->EndAddress, rf->UnwindData, ce->xdata_rva, ce->xdata_size
+        );
         return false;
+    }
 
     pe_unwind_info_t* current_ui = ui;
     RUNTIME_FUNCTION* current_rf = rf;
@@ -470,8 +475,13 @@ _pe_unwind_step(
         DWORD     func_end   = rf->EndAddress;
         uintptr_t pc_in_func = pc - ce->image_base;
         if (pc_in_func >= func_start + ui->SizeOfProlog && pc_in_func < func_end) {
-            if (_pe_try_epilog(hProcess, pc, ce->image_base + func_end, ui->FrameRegister, rip, gp))
+            if (_pe_try_epilog(hProcess, pc, ce->image_base + func_end, ui->FrameRegister, rip, gp)) {
+                log_d(
+                    "win: epilog detected at rva %x (func %x-%x), ret=%" PRIxPTR, (DWORD)pc_in_func, func_start,
+                    func_end, *rip
+                );
                 return true;
+            }
         }
     }
 
@@ -622,6 +632,10 @@ _pe_unwind_step(
 
     *rip        = ret_addr;
     gp[REG_RSP] = sp + 8; // pop the return address
+    log_d(
+        "win: _pe_unwind_step: rva %x-%x -> ret=%" PRIxPTR " sp=%" PRIxPTR, rf->BeginAddress, rf->EndAddress, ret_addr,
+        sp + 8
+    );
     return true;
 }
 #endif // _M_X64
@@ -902,13 +916,16 @@ pdata_step(
     pdata_cache_entry_t* ce         = _pdata_cache_lookup(image_base);
     if (!ce)
         ce = _pdata_cache_load(hProcess, image_base);
-    if (!ce)
+    if (!ce) {
+        log_d("win: pdata_step: no pdata cache for module at %" PRIxPTR " (%s)", image_base, mod->path);
         return false;
+    }
 
     DWORD             rva     = (DWORD)(*pc - image_base);
     RUNTIME_FUNCTION* rt_func = _pdata_find(ce, rva);
 
     if (rt_func == NULL) {
+        log_d("win: pdata_step: no RUNTIME_FUNCTION for rva %x in %s (leaf)", rva, mod->path);
         // Leaf function: no unwind info.
 #if defined(_M_X64)
         uintptr_t ret_addr  = 0;

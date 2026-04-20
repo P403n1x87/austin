@@ -527,6 +527,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         // likely produced wrong state.  Restore and let StackWalk64 try from
         // the original state instead.
         if (stepped && !_pc_in_module(pc, _mod_table, _mod_count)) {
+            log_d("win: pdata produced out-of-module pc=%" PRIxPTR " from saved_pc=%" PRIxPTR, pc, saved_pc);
             pc = saved_pc;
 #if defined(_M_X64)
             memcpy(gp, saved_gp, sizeof(gp));
@@ -551,8 +552,17 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
             );
         }
 
-        if (!stepped)
+        if (!stepped) {
+            log_d(
+                "win: unwind stopped at pc=%" PRIxPTR " sp=%" PRIxPTR " (pdata and stackwalk64 both failed)", saved_pc,
+#if defined(_M_X64)
+                saved_gp[REG_RSP]
+#elif defined(_M_ARM64)
+                saved_sp
+#endif
+            );
             break;
+        }
 
         // SP must advance (grow upward) on each frame; if it doesn't, the
         // unwind produced garbage and we should stop.
