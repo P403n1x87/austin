@@ -125,7 +125,7 @@ class Outcome:
         self.mean = sum(data) / len(data)
         self.stdev = (
             sum(((v - self.mean) ** 2 for v in data)) / (len(data) - 1)
-        ) ** 0.5
+        ) ** 0.5 if len(data) > 1 else 0.0
 
     def __repr__(self):
         n = -floor(log(self.stdev, 10)) if self.stdev else 0
