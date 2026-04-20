@@ -99,12 +99,9 @@ METRICS = [
 
 def get_stats(meta: dict[str, str]) -> t.Optional[dict]:
     try:
-        raw_saturation = meta["saturation"]
-        _, _, raw_samples = raw_saturation.partition("/")
-
         duration = float(meta["duration"]) / 1e6
-        samples = int(raw_samples)
-        saturation = eval(raw_saturation)
+        samples = int(meta["count"])
+        saturation = eval(meta["saturation"])
         error_rate = eval(meta["errors"])
         sampling = int(meta["sampling"].split(",")[1])
 

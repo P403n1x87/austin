@@ -38,7 +38,6 @@
 #include "mem.h"
 #include "platform.h"
 #include "stack.h"
-#include "timing.h"
 #include "version.h"
 
 #include "py_thread.h"
@@ -449,7 +448,6 @@ py_thread__unwind(py_thread_t* self) {
     stats_count_sample();
     if (error)
         stats_count_error();
-    stats_check_duration(stopwatch_duration());
 }
 
 // ----------------------------------------------------------------------------

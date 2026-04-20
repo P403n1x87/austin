@@ -30,6 +30,7 @@ typedef unsigned long ustat_t; /* non-negative statistics metric */
 
 #ifndef STATS_C
 extern unsigned long _sample_cnt;
+extern unsigned long _tick_cnt;
 
 extern microseconds_t _min_sampling_time;
 extern microseconds_t _max_sampling_time;
@@ -99,6 +100,7 @@ stats_get_avg_sampling_time();
  */
 #define stats_check_duration(delta)            \
     {                                          \
+        _tick_cnt++;                           \
         if (delta > pargs.t_sampling_interval) \
             _long_cnt++;                       \
         if (_min_sampling_time > delta)        \

@@ -41,7 +41,6 @@
 #include "hints.h"
 #include "logging.h"
 #include "resources.h"
-#include "timing.h"
 
 #include "py_proc_list.h"
 
@@ -175,7 +174,6 @@ py_proc_list__sample(py_proc_list_t* self) {
     py_proc_item_t* next = item->next;
     for (; isvalid(item); item = next, next = isvalid(item) ? item->next : NULL) {
         log_t("Sampling process with PID %d", item->py_proc->pid);
-        stopwatch_start();
         if (!py_proc__is_python(item->py_proc))
             // Not a Python process that we can sample, but we need to keep it
             // to continue traversing the process tree.
@@ -190,7 +188,6 @@ py_proc_list__sample(py_proc_list_t* self) {
                 _py_proc_list__remove(self, item);
             }
         }
-        stopwatch_duration();
     }
 } /* py_proc_list__sample */
 
