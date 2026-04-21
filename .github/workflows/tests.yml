@@ -471,9 +471,17 @@ jobs:
           deactivate
 
   build-win:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runs-on: windows-latest
+          - arch: arm64
+            runs-on: windows-11-arm
+    runs-on: ${{ matrix.runs-on }}
 
-    name: Build Austin on Windows
+    name: Build Austin on Windows (${{ matrix.arch }})
     steps:
       - uses: actions/checkout@v3
 
@@ -485,32 +493,46 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: austin-binary-${{ runner.os }}
+          name: austin-binary-${{ runner.os }}-${{ matrix.arch }}
           overwrite: true
           path: |
             src/austin.exe
 
   tests-win:
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        exclude:
+          # Pre-3.12 Python lacks native Windows ARM64 builds in the
+          # setup-python manifest.
+          - arch: arm64
+            python-version: "3.9"
+          - arch: arm64
+            python-version: "3.10"
+          - arch: arm64
+            python-version: "3.11"
+        include:
+          - arch: x64
+            runs-on: windows-latest
+          - arch: arm64
+            runs-on: windows-11-arm
+    runs-on: ${{ matrix.runs-on }}
     if: needs.changes.outputs.src == 'true' || needs.changes.outputs.tests == 'true' || needs.changes.result == 'skipped'
 
     needs: [changes, build-win]
 
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
-
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
-    
-    name: Tests on Windows with Python ${{ matrix.python-version }}
+
+    name: Tests on Windows (${{ matrix.arch }}) with Python ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binary-${{ runner.os }}
+          name: austin-binary-${{ runner.os }}-${{ matrix.arch }}
           path: src
 
       - name: Install Python
@@ -519,13 +541,13 @@ jobs:
           python-version: ${{ matrix.python-version }}-dev
 
       - uses: actions/setup-python@v4
-        name: Install Python 3.10
+        name: Install Python 3.12
         with:
-          python-version: '3.10'
+          python-version: "3.12"
 
       - name: Install test dependencies
         run: |
-          py -3.10 -m venv venv
+          py -3.12 -m venv venv
           venv\Scripts\Activate.ps1
           python -m pip install --upgrade pip
           python -m pip install -r test/requirements.txt
@@ -551,7 +573,7 @@ jobs:
       - name: Collect native profiles
         uses: actions/upload-artifact@v4
         with:
-          name: native-profiles-${{ runner.os }}-${{ matrix.python-version }}
+          name: native-profiles-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.python-version }}
           path: test-profiles\
         if: always()
 
@@ -563,7 +585,7 @@ jobs:
       - name: Store dumps
         uses: actions/upload-artifact@v4
         with:
-          name: dumps-${{ runner.os }}-${{ matrix.python-version }}
+          name: dumps-${{ runner.os }}-${{ matrix.arch }}-${{ matrix.python-version }}
           path: ${{ github.workspace }}\dumps
         if: failure()
 
@@ -579,7 +601,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binary-${{ runner.os }}
+          name: austin-binary-${{ runner.os }}-x64
           path: src
 
       - uses: actions/setup-python@v4
