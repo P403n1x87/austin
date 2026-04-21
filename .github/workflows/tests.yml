@@ -485,11 +485,34 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Compile Austin
+      - name: Compile Austin (x64, gcc)
+        if: matrix.arch == 'x64'
         run: |
           gcc.exe --version
           gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall -Werror -DDEBUG
           src\austin.exe --help
+
+      # On windows-11-arm the default gcc is an x86_64 MinGW cross that would
+      # produce x64 binaries (running under Prism emulation).  To get a genuine
+      # ARM64 austin we install llvm-mingw — a self-contained LLVM/Clang
+      # distribution with MinGW-style POSIX headers — so the same command line
+      # as the x64 gcc build works unchanged.
+      - name: Install llvm-mingw (ARM64)
+        if: matrix.arch == 'arm64'
+        shell: bash
+        run: |
+          release="llvm-mingw-20260407-ucrt-aarch64"
+          curl -fsSL "https://github.com/mstorsjo/llvm-mingw/releases/download/20260407/${release}.zip" -o /tmp/llvm-mingw.zip
+          7z x -bd /tmp/llvm-mingw.zip -o"/c/" > /dev/null
+          echo "C:/${release}/bin" >> "$GITHUB_PATH"
+
+      - name: Compile Austin (ARM64, llvm-mingw)
+        if: matrix.arch == 'arm64'
+        shell: bash
+        run: |
+          clang --version
+          clang -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall -Werror -DDEBUG
+          ./src/austin.exe --help
 
       - uses: actions/upload-artifact@v4
         with:

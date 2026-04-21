@@ -47,6 +47,10 @@ typedef struct {
     uintptr_t pc;
     uintptr_t fp;
     uintptr_t sp;
+#if defined(_M_ARM64)
+    uintptr_t lr;    // x30 — holds the return address for leaf functions
+    CONTEXT   saved; // full CONTEXT — StackWalk64 needs X19..X28 to replay pdata unwind ops
+#endif
 } thread_regs_t;
 
 // ---- Hot-path inline helpers: idle/interrupted state -----------------------
@@ -191,16 +195,18 @@ _py_thread__suspend(py_thread_t* self) {
     regs->fp = (uintptr_t)ctx.Rbp;
     regs->sp = (uintptr_t)ctx.Rsp;
 #elif defined(_M_ARM64)
-    ctx.ContextFlags = CONTEXT_CONTROL;
+    ctx.ContextFlags = CONTEXT_FULL; // need X19..X28 for StackWalk64 unwind-op replay
     if (!GetThreadContext(h, &ctx)) {
         free(regs);
         ResumeThread(h);
         set_error(OS, "GetThreadContext failed during suspend");
         FAIL;
     }
-    regs->pc = (uintptr_t)ctx.Pc;
-    regs->fp = (uintptr_t)ctx.Fp;
-    regs->sp = (uintptr_t)ctx.Sp;
+    regs->pc    = (uintptr_t)ctx.Pc;
+    regs->fp    = (uintptr_t)ctx.Fp;
+    regs->sp    = (uintptr_t)ctx.Sp;
+    regs->lr    = (uintptr_t)ctx.Lr;
+    regs->saved = ctx;
 #else
 #error "Unsupported architecture for native mode on Windows"
 #endif
@@ -356,6 +362,10 @@ _unwind_stackwalk64(py_thread_t* self) {
     }
 
     sym_init(hProcess);
+    // Ensure the module table is populated before the walk — we use it below
+    // to validate return addresses emitted by StackWalk64.
+    if (_mod_proc != hProcess || _mod_count == 0)
+        modules_refresh(hProcess);
 
     // Build a fresh CONTEXT for StackWalk64 from the cached registers.
     thread_regs_t* regs = (thread_regs_t*)hash_table__get(_regs, (key_dt)self->tid);
@@ -373,11 +383,11 @@ _unwind_stackwalk64(py_thread_t* self) {
     ctx.Rbp          = (DWORD64)regs->fp;
     ctx.Rsp          = (DWORD64)regs->sp;
 #elif defined(_M_ARM64)
-    DWORD machine    = IMAGE_FILE_MACHINE_ARM64;
-    ctx.ContextFlags = CONTEXT_FULL;
-    ctx.Pc           = (DWORD64)regs->pc;
-    ctx.Fp           = (DWORD64)regs->fp;
-    ctx.Sp           = (DWORD64)regs->sp;
+    DWORD machine = IMAGE_FILE_MACHINE_ARM64;
+    // Reuse the full CONTEXT captured at suspend time.  StackWalk64 on ARM64
+    // relies on X19..X28 to replay pdata unwind ops; rebuilding the CONTEXT
+    // from scratch would zero those and yield garbage return addresses.
+    ctx           = regs->saved;
 #endif
 
     STACKFRAME64 sf;
@@ -390,6 +400,7 @@ _unwind_stackwalk64(py_thread_t* self) {
     sf.AddrStack.Mode   = AddrModeFlat;
 
     uintptr_t prev_pc = 0;
+    uintptr_t prev_sp = 0;
     while (!stack_native_full()) {
         if (!StackWalk64(
                 machine, hProcess, hThread, &sf, &ctx, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL
@@ -400,11 +411,26 @@ _unwind_stackwalk64(py_thread_t* self) {
         if (pc == 0)
             break;
 
-        // Skip duplicate consecutive frames (StackWalk64 can report the
-        // same PC twice for leaf frames or at call boundaries).
+        // Cycle-guard: StackWalk64 on ARM64 can stall on a bogus return address
+        // and keep re-emitting it (or walk a garbage loop of ascending PCs).
+        // Break if the PC repeats or SP fails to strictly advance — both are
+        // unambiguous signals that the unwind is no longer making progress.
         if (pc == prev_pc)
-            continue;
+            break;
+        uintptr_t sp = (uintptr_t)sf.AddrStack.Offset;
+        if (prev_sp != 0 && sp != 0 && sp <= prev_sp)
+            break;
         prev_pc = pc;
+        prev_sp = sp;
+
+        // Bogus-PC guard: StackWalk64 on ARM64 frequently emits a garbage
+        // return address as its final frame (a non-canonical address outside
+        // any loaded module).  Reject those instead of pushing them as
+        // native@... frames that pollute the output — the walk is done.
+        // Use get_module_name (not plain _mod_lookup) so a miss triggers a
+        // module-table refresh, covering DLLs loaded after the initial enum.
+        if (get_module_name(hProcess, pc) == NULL)
+            break;
 
         if (fail(_push_native_frame(self, pc)))
             FAIL;
@@ -435,8 +461,14 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
 
     // Quick sanity check: if fp looks like a plausible stack address (between
     // sp and sp + 1MB) attempt the frame-pointer walk.  Otherwise skip straight
-    // to StackWalk64.
+    // to StackWalk64.  On ARM64 the compiler routinely omits x29 (frame
+    // pointer) saves, so the fp-walk almost never produces useful stacks —
+    // skip it entirely and rely on StackWalk64's PE .pdata unwinder.
+#if defined(_M_ARM64)
+    bool try_fp_walk = false;
+#else
     bool try_fp_walk = (fp > sp && fp < sp + (1 << 20));
+#endif
 
     if (try_fp_walk) {
         // ---- Prefetch one page of stack into a local buffer ----
