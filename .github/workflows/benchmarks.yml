@@ -86,6 +86,47 @@ jobs:
           path: dist/
           retention-days: 1
 
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: austin-base
+
+      - name: Compile Austin from the base branch
+        shell: bash
+        run: |
+          cd austin-base
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall
+          cd -
+
+      - name: Compile Austin from the PR
+        shell: bash
+        run: |
+          cd austin
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall -Werror
+          cd -
+
+      - name: Package binaries
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp austin/src/austin.exe dist/austin.exe
+          if [ -f austin-base/src/austin.exe ]; then
+            cp austin-base/src/austin.exe dist/austin-base.exe
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: austin-binaries-win
+          path: dist/
+          retention-days: 1
+
   benchmark:
     needs: [setup, build]
     runs-on: ubuntu-24.04
@@ -145,8 +186,65 @@ jobs:
           path: results-${{ matrix.name }}.json
           retention-days: 1
 
+  benchmark-win:
+    needs: [build-win]
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: austin-binaries-win
+          path: dist/
+
+      - name: Install binaries
+        shell: bash
+        run: |
+          cp dist/austin.exe austin/src/austin.exe
+          if [ -f dist/austin-base.exe ]; then
+            cp dist/austin-base.exe austin/src/austin-base.exe
+          fi
+
+      - name: Install runtime dependencies
+        shell: bash
+        run: |
+          python -m venv .venv
+          source .venv/Scripts/activate
+          pip install --upgrade pip
+          cd austin
+          pip install -r scripts/requirements-bm.txt
+          cd -
+
+      - name: Run native benchmark
+        shell: bash
+        env:
+          PYTHONPATH: austin
+        run: |
+          source .venv/Scripts/activate
+          cd austin
+          python scripts/benchmark.py \
+            -k "Native wall time" \
+            --format json \
+            > ../results-native-wall-time-win.json
+          cd -
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-native-wall-time-win
+          path: results-native-wall-time-win.json
+          retention-days: 1
+
   report:
-    needs: benchmark
+    needs: [benchmark, benchmark-win]
+    if: always() && needs.benchmark.result != 'cancelled'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v3
@@ -180,10 +278,17 @@ jobs:
         run: |
           source .venv/bin/activate
           cd austin
-          python scripts/benchmark.py \
-            --merge ../results/*.json \
-            --format markdown \
-            > ${{ github.workspace }}/comment.txt
+
+          files=$(ls ../results/*.json 2>/dev/null || true)
+          if [ -n "$files" ]; then
+            python scripts/benchmark.py \
+              --merge $files \
+              --format markdown \
+              > ${{ github.workspace }}/comment.txt
+          else
+            echo "No benchmark results." > ${{ github.workspace }}/comment.txt
+          fi
+
           cd -
 
       - name: Post results on PR
