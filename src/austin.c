@@ -414,6 +414,8 @@ main(int argc, char** argv) {
         log_d("Output file closed.");
     }
 
+    pacer_free();
+
     logger_close();
 
     if (interrupt_signal)
