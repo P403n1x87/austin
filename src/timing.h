@@ -22,7 +22,13 @@
 
 #pragma once
 
+#include "platform.h"
+
+#if defined(PL_WIN)
+#include <windows.h>
+#else
 #include <unistd.h>
+#endif
 
 #include "argparse.h"
 #include "error.h"
@@ -44,6 +50,55 @@ sample_timer_elapsed(void) {
 }
 
 // ----------------------------------------------------------------------------
+// Precise sleep — sub-ms on Windows via high-resolution waitable timer, falling
+// back to usleep elsewhere.  The Windows default timer tick (~15.6ms) otherwise
+// causes usleep(1000) to routinely take ~15ms, inflating the sampling period
+// by an order of magnitude.
+
+#if defined(PL_WIN)
+// Per-process high-resolution timer (Win10 1803+).  The flag may be absent in
+// older mingw headers, so we redefine it defensively.
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
+
+// Undocumented NTDLL entry point (already linked via -lntdll).  Drops the
+// system timer tick from ~15.6ms to 0.5ms so the Sleep() fallback path has
+// usable precision on systems where the waitable timer cannot be created.
+__declspec(dllimport) LONG __stdcall
+NtSetTimerResolution(ULONG DesiredResolution, BOOLEAN SetResolution, PULONG CurrentResolution);
+
+#ifndef AUSTIN_C
+extern
+#endif
+    HANDLE _pacer_timer;
+#ifndef AUSTIN_C
+extern
+#endif
+    int _pacer_resolution_raised;
+#endif
+
+static inline void
+_precise_sleep(microseconds_t us) {
+#if defined(PL_WIN)
+    if (_pacer_timer != NULL) {
+        LARGE_INTEGER due;
+        // Negative = relative time in 100-ns units.
+        due.QuadPart = -(LONGLONG)(us * 10);
+        if (SetWaitableTimer(_pacer_timer, &due, 0, NULL, NULL, FALSE)) {
+            WaitForSingleObject(_pacer_timer, INFINITE);
+            return;
+        }
+    }
+    // Last-resort fallback (pre-Win10-1803 or handle creation failure).
+    // Without a high-resolution source, Sleep is bound by the ~15.6ms tick.
+    Sleep((DWORD)((us + 999) / 1000));
+#else
+    usleep((useconds_t)us);
+#endif
+}
+
+// ----------------------------------------------------------------------------
 // Pacer — controls the sleep between sampling ticks.
 //
 // Non-native mode (deadline-based): threads run during sampling, so the
@@ -62,6 +117,18 @@ typedef struct {
 
 static inline void
 pacer_init(pacer_t* p) {
+#if defined(PL_WIN)
+    if (_pacer_timer == NULL) {
+        _pacer_timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+        if (_pacer_timer == NULL) {
+            // Best-effort: ask the kernel for the finest tick available (0.5ms)
+            // so that the Sleep() fallback is not bound by the 15.6ms default.
+            ULONG current = 0;
+            if (NtSetTimerResolution(5000, TRUE, &current) == 0)
+                _pacer_resolution_raised = 1;
+        }
+    }
+#endif
     p->deadline = gettime() + pargs.t_sampling_interval;
 }
 
@@ -71,7 +138,7 @@ static inline microseconds_t
 pacer_next(pacer_t* p) {
     if (pargs_native) {
         // Sleep the full interval — sampling time was dead time for the target.
-        usleep((useconds_t)pargs.t_sampling_interval);
+        _precise_sleep(pargs.t_sampling_interval);
         return pargs.t_sampling_interval;
     }
 
@@ -79,10 +146,25 @@ pacer_next(pacer_t* p) {
 
     if (p->deadline > now) {
         microseconds_t delay = p->deadline - now;
-        usleep((useconds_t)delay);
+        _precise_sleep(delay);
         p->deadline += pargs.t_sampling_interval;
         return delay;
     }
     p->deadline += pargs.t_sampling_interval;
     return 0;
+}
+
+static inline void
+pacer_free(void) {
+#if defined(PL_WIN)
+    if (_pacer_timer != NULL) {
+        CloseHandle(_pacer_timer);
+        _pacer_timer = NULL;
+    }
+    if (_pacer_resolution_raised) {
+        ULONG current = 0;
+        (void)NtSetTimerResolution(0, FALSE, &current);
+        _pacer_resolution_raised = 0;
+    }
+#endif
 }
