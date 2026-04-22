@@ -127,6 +127,44 @@ jobs:
           path: dist/
           retention-days: 1
 
+  build-mac:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: austin-base
+
+      - name: Compile Austin from the base branch
+        run: |
+          cd austin-base
+          gcc-15 -Wall -O3 -g src/*.c -o src/austin
+          cd -
+
+      - name: Compile Austin from the PR
+        run: |
+          cd austin
+          gcc-15 -Wall -Werror -O3 -g src/*.c -o src/austin
+          cd -
+
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          cp austin/src/austin dist/austin
+          if [ -f austin-base/src/austin ]; then
+            cp austin-base/src/austin dist/austin-base
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: austin-binaries-mac
+          path: dist/
+          retention-days: 1
+
   benchmark:
     needs: [setup, build]
     runs-on: ubuntu-24.04
@@ -242,8 +280,68 @@ jobs:
           path: results-native-wall-time-win.json
           retention-days: 1
 
+  benchmark-mac:
+    needs: [build-mac]
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.13"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: austin-binaries-mac
+          path: dist/
+
+      - name: Install binaries
+        run: |
+          chmod +x dist/austin
+          cp dist/austin austin/src/austin
+          if [ -f dist/austin-base ]; then
+            chmod +x dist/austin-base
+            cp dist/austin-base austin/src/austin-base
+          fi
+
+      - name: Remove signature from the Python binary
+        run: |
+          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 || true
+          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python || true
+
+      - name: Install runtime dependencies
+        run: |
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          cd austin
+          pip install -r scripts/requirements-bm.txt
+          cd -
+
+      - name: Run native benchmark
+        env:
+          PYTHONPATH: austin
+        run: |
+          source .venv/bin/activate
+          cd austin
+          sudo -E python scripts/benchmark.py \
+            -k "Native wall time" \
+            --format json \
+            > ../results-native-wall-time-mac.json
+          cd -
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-native-wall-time-mac
+          path: results-native-wall-time-mac.json
+          retention-days: 1
+
   report:
-    needs: [benchmark, benchmark-win]
+    needs: [benchmark, benchmark-win, benchmark-mac]
     if: always() && needs.benchmark.result != 'cancelled'
     runs-on: ubuntu-24.04
     steps:
