@@ -555,6 +555,20 @@ jobs:
           path: test-profiles\
         if: always()
 
+      - name: Collect debug log
+        shell: cmd
+        run: |
+          copy "%TEMP%\austin.log" "%GITHUB_WORKSPACE%\austin.log" 2>nul || echo No log file found
+        if: always()
+
+      - name: Upload debug log
+        uses: actions/upload-artifact@v4
+        with:
+          name: austin-log-${{ runner.os }}-${{ matrix.python-version }}
+          path: austin.log
+          if-no-files-found: ignore
+        if: always()
+
       - name: Show collected dumps
         run: |
           ls -R ${{ github.workspace }}\dumps || echo "No dumps collected"
