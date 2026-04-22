@@ -271,7 +271,7 @@ jobs:
           pip install -r scripts/requirements-bm.txt
           cd -
 
-      - name: Merge Linux results and render report
+      - name: Merge results and render report
         shell: bash
         env:
           PYTHONPATH: austin

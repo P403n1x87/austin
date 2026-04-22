@@ -24,11 +24,13 @@ jobs:
       fail-fast: false
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
-    
+
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
+      PLATFORM: linux
+      ARCH: x86_64
 
-    name: Data validation with Python ${{ matrix.python-version }}
+    name: Data validation on Linux (x86_64) with Python ${{ matrix.python-version }}
     steps:
       - name: Install Python
         uses: actions/setup-python@v4
@@ -92,7 +94,9 @@ jobs:
 
           source .venv/bin/activate
           cd austin
-          python scripts/validation.py --ignore-errors --report results-${{ matrix.python-version }}.txt
+          python scripts/validation.py \
+            --ignore-errors \
+            --report results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}.txt
           cd -
           deactivate
 
@@ -101,7 +105,7 @@ jobs:
         if: always()
         with:
           austin-bin: austin/src/austin
-          label: validation-py${{ matrix.python-version }}
+          label: validation-${{ env.PLATFORM }}-${{ env.ARCH }}-py${{ matrix.python-version }}
 
       - name: List collected samples
         run: ls austin/*.mojo
@@ -110,7 +114,7 @@ jobs:
       - name: Upload profiles
         uses: actions/upload-artifact@v4
         with:
-          name: data-validation-profiles-${{ matrix.python-version }}
+          name: data-validation-profiles-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
           path: "austin/*.mojo"
           overwrite: true
         if: always()
@@ -118,7 +122,7 @@ jobs:
       - name: Upload data validation results
         uses: actions/upload-artifact@v4
         with:
-          name: data-validation-results-${{ matrix.python-version }}
+          name: data-validation-results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
           path: "austin/results*.txt"
           overwrite: true
         if: always()
@@ -133,8 +137,10 @@ jobs:
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
+      PLATFORM: windows
+      ARCH: x86_64
 
-    name: Data validation on Windows with Python ${{ matrix.python-version }}
+    name: Data validation on Windows (x86_64) with Python ${{ matrix.python-version }}
     steps:
       - name: Install Python
         uses: actions/setup-python@v4
@@ -194,7 +200,7 @@ jobs:
           python scripts/validation.py \
             --ignore-errors \
             -k "Native" \
-            --report results-win-${{ matrix.python-version }}.txt
+            --report results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}.txt
           cd -
 
       - name: List collected samples
@@ -205,7 +211,7 @@ jobs:
       - name: Upload profiles
         uses: actions/upload-artifact@v4
         with:
-          name: data-validation-profiles-win-${{ matrix.python-version }}
+          name: data-validation-profiles-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
           path: "austin/*.mojo"
           overwrite: true
         if: always()
@@ -213,7 +219,7 @@ jobs:
       - name: Upload data validation results
         uses: actions/upload-artifact@v4
         with:
-          name: data-validation-results-win-${{ matrix.python-version }}
+          name: data-validation-results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
           path: "austin/results*.txt"
           overwrite: true
         if: always()
@@ -237,14 +243,7 @@ jobs:
           path: .
 
       - name: Generate validation report
-        run: |
-          # Concatenate all the results*.txt files with the header
-          echo "## Austin Data Validation" > validation.txt
-          echo "" >> validation.txt
-          for file in $(ls results*.txt | sort -V); do
-            cat $file >> validation.txt
-            echo "" >> validation.txt
-          done
+        run: python3 scripts/validation.py --merge results-*.txt --output validation.txt
 
       - name: Post results on PR
         uses: marocchino/sticky-pull-request-comment@v2
