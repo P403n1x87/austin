@@ -190,17 +190,6 @@ _py_thread__suspend(py_thread_t* self) {
     regs->pc = (uintptr_t)ctx.Rip;
     regs->fp = (uintptr_t)ctx.Rbp;
     regs->sp = (uintptr_t)ctx.Rsp;
-#elif defined(_M_ARM64)
-    ctx.ContextFlags = CONTEXT_CONTROL;
-    if (!GetThreadContext(h, &ctx)) {
-        free(regs);
-        ResumeThread(h);
-        set_error(OS, "GetThreadContext failed during suspend");
-        FAIL;
-    }
-    regs->pc = (uintptr_t)ctx.Pc;
-    regs->fp = (uintptr_t)ctx.Fp;
-    regs->sp = (uintptr_t)ctx.Sp;
 #else
 #error "Unsupported architecture for native mode on Windows"
 #endif
@@ -366,19 +355,11 @@ _unwind_stackwalk64(py_thread_t* self) {
 
     CONTEXT ctx;
     memset(&ctx, 0, sizeof(ctx));
-#if defined(_M_X64)
     DWORD machine    = IMAGE_FILE_MACHINE_AMD64;
     ctx.ContextFlags = CONTEXT_FULL;
     ctx.Rip          = (DWORD64)regs->pc;
     ctx.Rbp          = (DWORD64)regs->fp;
     ctx.Rsp          = (DWORD64)regs->sp;
-#elif defined(_M_ARM64)
-    DWORD machine    = IMAGE_FILE_MACHINE_ARM64;
-    ctx.ContextFlags = CONTEXT_FULL;
-    ctx.Pc           = (DWORD64)regs->pc;
-    ctx.Fp           = (DWORD64)regs->fp;
-    ctx.Sp           = (DWORD64)regs->sp;
-#endif
 
     STACKFRAME64 sf;
     memset(&sf, 0, sizeof(sf));
