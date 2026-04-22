@@ -224,10 +224,107 @@ jobs:
           overwrite: true
         if: always()
 
+  validation-mac:
+    runs-on: macos-15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    env:
+      AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
+      PLATFORM: macos
+      ARCH: arm64
+
+    name: Data validation on macOS (arm64) with Python ${{ matrix.python-version }}
+    steps:
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}-dev
+
+      - name: Install Python 3.12
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Check out the base branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.base_ref }}
+          path: austin-base
+
+      - name: Check out the PR branch
+        uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - name: Compile Austin on the base branch
+        run: |
+          cd austin-base
+          gcc-15 -Wall -Werror -O3 -g src/*.c -o src/austin
+          cd -
+
+      - name: Compile Austin on the PR branch
+        run: |
+          cd austin
+          gcc-15 -Wall -Werror -O3 -g src/*.c -o src/austin
+          cd -
+
+      - name: Install binaries
+        run: cp austin-base/src/austin austin/src/austin-base
+
+      - name: Remove signature from the Python binary
+        run: |
+          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/bin/python3 || true
+          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/Resources/Python.app/Contents/MacOS/Python || true
+
+      - name: Install runtime dependencies
+        run: |
+          python3.12 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r austin/scripts/requirements-val.txt
+          deactivate
+
+      - name: Run data validation
+        env:
+          PYTHONPATH: austin
+        run: |
+          source .venv/bin/activate
+          cd austin
+          sudo -E python scripts/validation.py \
+            --ignore-errors \
+            -k "Native" \
+            --report results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}.txt
+          cd -
+          deactivate
+
+      - name: List collected samples
+        run: ls austin/*.mojo
+        if: always()
+
+      - name: Upload profiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-validation-profiles-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
+          path: "austin/*.mojo"
+          overwrite: true
+        if: always()
+
+      - name: Upload data validation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-validation-results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
+          path: "austin/results*.txt"
+          overwrite: true
+        if: always()
+
   validation-report:
     runs-on: ubuntu-24.04
 
-    needs: [validation, validation-win]
+    needs: [validation, validation-win, validation-mac]
     if: always()
 
     name: Data validation report
