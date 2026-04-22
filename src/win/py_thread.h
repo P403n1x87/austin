@@ -47,13 +47,7 @@ static hash_table_t* _regs    = NULL; // tid -> thread_regs_t* (register snapsho
 
 typedef struct {
     uintptr_t pc;
-#if defined(_M_X64)
     uintptr_t gp[GP_REG_COUNT]; // all 16 GP registers; gp[REG_RSP]=RSP, gp[REG_RBP]=RBP, etc.
-#elif defined(_M_ARM64)
-    uintptr_t fp;
-    uintptr_t sp;
-    uintptr_t lr; // link register (x30)
-#endif
 } thread_regs_t;
 
 // ---- Hot-path inline helpers: idle/interrupted state -----------------------
@@ -215,17 +209,6 @@ _py_thread__suspend(py_thread_t* self) {
     regs->gp[REG_R13] = (uintptr_t)ctx.R13;
     regs->gp[REG_R14] = (uintptr_t)ctx.R14;
     regs->gp[REG_R15] = (uintptr_t)ctx.R15;
-#elif defined(_M_ARM64)
-    ctx.ContextFlags = CONTEXT_CONTROL;
-    if (!GetThreadContext(h, &ctx)) {
-        ResumeThread(h);
-        set_error(OS, "GetThreadContext failed during suspend");
-        FAIL;
-    }
-    regs->pc = (uintptr_t)ctx.Pc;
-    regs->fp = (uintptr_t)ctx.Fp;
-    regs->sp = (uintptr_t)ctx.Sp;
-    regs->lr = (uintptr_t)ctx.Lr;
 #else
 #error "Unsupported architecture for native mode on Windows"
 #endif
@@ -359,14 +342,7 @@ _push_native_frame(py_thread_t* self, uintptr_t pc) {
 // no .pdata entry for a system stub).  Performs ONE StackWalk64 step to get
 // past the problematic frame, then returns control to the fast .pdata loop.
 static inline bool
-_stackwalk64_step(
-    HANDLE hProcess, HANDLE hThread, uintptr_t* pc,
-#if defined(_M_X64)
-    uintptr_t gp[GP_REG_COUNT]
-#elif defined(_M_ARM64)
-    uintptr_t* sp, uintptr_t* fp, uintptr_t* lr
-#endif
-) {
+_stackwalk64_step(HANDLE hProcess, HANDLE hThread, uintptr_t* pc, uintptr_t gp[GP_REG_COUNT]) {
     sym_init(hProcess);
 
     CONTEXT ctx;
@@ -374,7 +350,6 @@ _stackwalk64_step(
     STACKFRAME64 sf;
     memset(&sf, 0, sizeof(sf));
 
-#if defined(_M_X64)
     DWORD machine    = IMAGE_FILE_MACHINE_AMD64;
     ctx.ContextFlags = CONTEXT_FULL;
     ctx.Rip          = (DWORD64)*pc;
@@ -401,21 +376,6 @@ _stackwalk64_step(
     sf.AddrFrame.Mode   = AddrModeFlat;
     sf.AddrStack.Offset = gp[REG_RSP];
     sf.AddrStack.Mode   = AddrModeFlat;
-#elif defined(_M_ARM64)
-    DWORD machine    = IMAGE_FILE_MACHINE_ARM64;
-    ctx.ContextFlags = CONTEXT_FULL;
-    ctx.Pc           = (DWORD64)*pc;
-    ctx.Fp           = (DWORD64)*fp;
-    ctx.Sp           = (DWORD64)*sp;
-    ctx.Lr           = (DWORD64)*lr;
-
-    sf.AddrPC.Offset    = *pc;
-    sf.AddrPC.Mode      = AddrModeFlat;
-    sf.AddrFrame.Offset = *fp;
-    sf.AddrFrame.Mode   = AddrModeFlat;
-    sf.AddrStack.Offset = *sp;
-    sf.AddrStack.Mode   = AddrModeFlat;
-#endif
 
     // StackWalk64's first call may return the current frame (same PC) rather
     // than stepping to the caller.  Call up to twice to ensure we advance.
@@ -429,8 +389,7 @@ _stackwalk64_step(
         if (new_pc == 0)
             return false;
         if (new_pc != *pc) {
-            *pc = new_pc;
-#if defined(_M_X64)
+            *pc         = new_pc;
             gp[REG_RSP] = (uintptr_t)sf.AddrStack.Offset;
             gp[REG_RBP] = (uintptr_t)sf.AddrFrame.Offset;
             // Sync remaining registers from context updated by StackWalk64.
@@ -448,11 +407,6 @@ _stackwalk64_step(
             gp[REG_R13] = (uintptr_t)ctx.R13;
             gp[REG_R14] = (uintptr_t)ctx.R14;
             gp[REG_R15] = (uintptr_t)ctx.R15;
-#elif defined(_M_ARM64)
-            *sp = (uintptr_t)sf.AddrStack.Offset;
-            *fp = (uintptr_t)sf.AddrFrame.Offset;
-            *lr = (uintptr_t)ctx.Lr;
-#endif
             return true;
         }
     }
@@ -480,14 +434,8 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
     }
 
     uintptr_t pc = regs->pc;
-#if defined(_M_X64)
     uintptr_t gp[GP_REG_COUNT];
     memcpy(gp, regs->gp, sizeof(gp));
-#elif defined(_M_ARM64)
-    uintptr_t sp = regs->sp;
-    uintptr_t fp = regs->fp;
-    uintptr_t lr = regs->lr;
-#endif
 
     // Ensure the module table is populated.
     if (_mod_proc != hProcess || _mod_count == 0)
@@ -506,22 +454,10 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         // Save pre-step state so we can fall back to StackWalk64 if the
         // pdata unwinder produces a PC outside any known module.
         uintptr_t saved_pc = pc;
-#if defined(_M_X64)
         uintptr_t saved_gp[GP_REG_COUNT];
         memcpy(saved_gp, gp, sizeof(saved_gp));
-#elif defined(_M_ARM64)
-        uintptr_t saved_sp = sp, saved_fp = fp, saved_lr = lr;
-#endif
 
-        bool stepped = pdata_step(
-            hProcess, &pc,
-#if defined(_M_X64)
-            gp,
-#elif defined(_M_ARM64)
-            &sp, &fp, &lr,
-#endif
-            _mod_table, _mod_count
-        );
+        bool stepped = pdata_step(hProcess, &pc, gp, _mod_table, _mod_count);
 
         // If pdata stepped but landed outside any known module, the unwind
         // likely produced wrong state.  Restore and let StackWalk64 try from
@@ -529,46 +465,27 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         if (stepped && !_pc_in_module(pc, _mod_table, _mod_count)) {
             log_d("win: pdata produced out-of-module pc=%" PRIxPTR " from saved_pc=%" PRIxPTR, pc, saved_pc);
             pc = saved_pc;
-#if defined(_M_X64)
             memcpy(gp, saved_gp, sizeof(gp));
-#elif defined(_M_ARM64)
-            sp = saved_sp;
-            fp = saved_fp;
-            lr = saved_lr;
-#endif
             stepped = false;
         }
 
         // If the fast .pdata unwinder couldn't step, fall back to StackWalk64
         // for this one frame.
         if (!stepped && isvalid(hThread)) {
-            stepped = _stackwalk64_step(
-                hProcess, hThread, &pc,
-#if defined(_M_X64)
-                gp
-#elif defined(_M_ARM64)
-                &sp, &fp, &lr
-#endif
-            );
+            stepped = _stackwalk64_step(hProcess, hThread, &pc, gp);
         }
 
         if (!stepped) {
             log_d(
                 "win: unwind stopped at pc=%" PRIxPTR " sp=%" PRIxPTR " (pdata and stackwalk64 both failed)", saved_pc,
-#if defined(_M_X64)
                 saved_gp[REG_RSP]
-#elif defined(_M_ARM64)
-                saved_sp
-#endif
             );
             break;
         }
 
         // SP must advance (grow upward) on each frame; if it doesn't, the
         // unwind produced garbage and we should stop.
-#if defined(_M_X64)
         uintptr_t sp = gp[REG_RSP];
-#endif
         if (sp != 0 && prev_sp != 0 && sp <= prev_sp)
             break;
         prev_sp = sp;

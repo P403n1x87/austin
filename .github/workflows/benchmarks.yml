@@ -279,27 +279,14 @@ jobs:
           source .venv/bin/activate
           cd austin
 
-          # Merge Linux results
-          linux_files=$(ls ../results/*.json 2>/dev/null | grep -v '\-win\.json$' || true)
-          if [ -n "$linux_files" ]; then
+          files=$(ls ../results/*.json 2>/dev/null || true)
+          if [ -n "$files" ]; then
             python scripts/benchmark.py \
-              --merge $linux_files \
+              --merge $files \
               --format markdown \
               > ${{ github.workspace }}/comment.txt
           else
-            echo "No Linux benchmark results." > ${{ github.workspace }}/comment.txt
-          fi
-
-          # Append Windows results if available
-          win_files=$(ls ../results/*-win.json 2>/dev/null || true)
-          if [ -n "$win_files" ]; then
-            echo "" >> ${{ github.workspace }}/comment.txt
-            echo "---" >> ${{ github.workspace }}/comment.txt
-            echo "" >> ${{ github.workspace }}/comment.txt
-            python scripts/benchmark.py \
-              --merge $win_files \
-              --format markdown \
-              >> ${{ github.workspace }}/comment.txt
+            echo "No benchmark results." > ${{ github.workspace }}/comment.txt
           fi
 
           cd -

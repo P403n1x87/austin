@@ -655,7 +655,7 @@ cb(const int opt, const char* arg, const int index, char** argv) {
             stderr, PROGRAM_NAME ": warning: native mode is not supported on this architecture "
                                  "and will be ignored (consider using austinp instead)\n"
         );
-#elif defined(PL_WIN) && !defined(_M_X64) && !defined(_M_ARM64)
+#elif defined(PL_WIN) && !defined(_M_X64)
         fprintf(
             stderr, PROGRAM_NAME ": warning: native mode is not supported on this architecture "
                                  "and will be ignored\n"

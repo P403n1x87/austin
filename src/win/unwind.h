@@ -32,7 +32,7 @@
 //   - the sorted RUNTIME_FUNCTION array (.pdata) for binary search
 //   - the raw unwind data section (.xdata) for opcode interpretation
 //
-// Supports x64 and ARM64 unwind codes.
+// Supports x64 unwind codes.
 
 #pragma once
 
@@ -683,242 +683,6 @@ _pe_unwind_step(
 #endif // _M_X64
 
 // ---------------------------------------------------------------------------
-// Userspace PE unwind — ARM64
-// ---------------------------------------------------------------------------
-//
-// ARM64 PE unwind data uses a packed variable-length header followed by
-// byte-coded unwind opcodes.  The key difference from x64: the return
-// address lives in the Link Register (LR / x30), not on the stack.
-//
-// We need to recover: SP, PC (from LR), and optionally FP (x29).
-
-#if defined(_M_ARM64)
-
-// ARM64 unwind header (first 32-bit word of .xdata record).
-typedef struct {
-    uint32_t FunctionLength : 18;
-    uint32_t Version : 2;
-    uint32_t X : 1; // exception handler present
-    uint32_t E : 1; // single packed epilog
-    uint32_t EpilogCount : 5;
-    uint32_t CodeWords : 5;
-} arm64_unwind_header_t;
-
-static inline bool
-_pe_unwind_step_arm64(
-    pdata_cache_entry_t* ce, RUNTIME_FUNCTION* rf, uintptr_t pc, HANDLE hProcess, uintptr_t* sp_out, uintptr_t* pc_out,
-    uintptr_t* fp_out, uintptr_t* lr_out
-) {
-    // ARM64 .xdata is at the UnwindData RVA.
-    uint8_t* xdata = (uint8_t*)_pdata_get_xdata(ce, rf->UnwindData, sizeof(arm64_unwind_header_t));
-    if (!xdata)
-        return false;
-
-    arm64_unwind_header_t hdr;
-    memcpy(&hdr, xdata, sizeof(hdr));
-
-    // Skip the header word(s) and epilog scopes to reach the unwind codes.
-    const uint8_t* codes;
-    uint32_t       code_words   = hdr.CodeWords;
-    uint32_t       epilog_count = hdr.EpilogCount;
-
-    // Check for extended header (EpilogCount==0 && CodeWords==0).
-    size_t header_words = 1;
-    if (epilog_count == 0 && code_words == 0) {
-        // Extended header: second word has extended counts.
-        uint8_t* ext = (uint8_t*)_pdata_get_xdata(ce, rf->UnwindData, 8);
-        if (!ext)
-            return false;
-        uint32_t word2;
-        memcpy(&word2, ext + 4, sizeof(word2));
-        epilog_count = word2 & 0xFFFF;
-        code_words   = (word2 >> 16) & 0xFF;
-        header_words = 2;
-    }
-
-    // Epilog scopes follow the header (each is 1 word), except when E==1
-    // (single packed epilog — no separate scope records).
-    size_t epilog_scope_words = hdr.E ? 0 : epilog_count;
-    size_t codes_offset       = (header_words + epilog_scope_words) * 4;
-
-    codes = (uint8_t*)_pdata_get_xdata(ce, rf->UnwindData, codes_offset + code_words * 4);
-    if (!codes)
-        return false;
-    codes += codes_offset;
-
-    const uint8_t* codes_end = codes + code_words * 4;
-
-    uintptr_t sp = *sp_out;
-    uintptr_t fp = *fp_out;
-    uintptr_t lr = *lr_out;
-
-    // Determine if we are in the prologue.
-    DWORD    func_start = rf->BeginAddress;
-    uint32_t func_len   = hdr.FunctionLength * 4;
-    uint32_t pc_offset  = (uint32_t)(pc - (ce->image_base + func_start));
-    (void)func_len;
-    // We don't do fine-grained prologue offset tracking for ARM64 — we assume
-    // the full prologue has executed unless pc == func_start.  This is safe
-    // because the ARM64 ABI guarantees atomic prologue/epilogue sequences.
-    bool fully_in_body = (pc_offset > 0);
-    (void)fully_in_body;
-
-    // Interpret unwind codes.
-    const uint8_t* p = codes;
-    while (p < codes_end) {
-        uint8_t b = *p;
-
-        if (b == 0xE4) {
-            // end — stop processing.
-            break;
-        }
-        if (b == 0xE5) {
-            // end_c — end of chained scope.
-            break;
-        }
-
-        if ((b & 0xE0) == 0x00) {
-            // alloc_s: 000xxxxx — allocate (x * 16) bytes
-            sp += (uintptr_t)(b & 0x1F) * 16;
-            p  += 1;
-        } else if ((b & 0xE0) == 0x20) {
-            // save_r19r20_x: 001zzzzz — pre-indexed save <x19,x20>
-            // stp x19,x20,[sp,#-Z*8]!  — reverse the pre-indexed SP decrement.
-            sp += (uintptr_t)(b & 0x1F) * 8;
-            p  += 1;
-        } else if ((b & 0xC0) == 0x40) {
-            // save_fplr: 01zzzzzz — save <x29,lr> at [sp + z*8]
-            // Read lr from the saved location.
-            uintptr_t offset  = (uintptr_t)(b & 0x3F) * 8;
-            SIZE_T    read_sz = 0;
-            uintptr_t pair[2] = {0, 0};
-            ReadProcessMemory(hProcess, (LPCVOID)(sp + offset), pair, sizeof(pair), &read_sz);
-            fp  = pair[0]; // x29
-            lr  = pair[1]; // x30/lr
-            p  += 1;
-        } else if ((b & 0xC0) == 0x80) {
-            // save_fplr_x: 10zzzzzz — pre-indexed save <x29,lr>
-            // stp x29,lr,[sp,#-(z+1)*8]!
-            // Reverse: sp += (z+1)*8, then read pair from [sp - (z+1)*8] = old sp.
-            uintptr_t alloc   = (uintptr_t)((b & 0x3F) + 1) * 8;
-            SIZE_T    read_sz = 0;
-            uintptr_t pair[2] = {0, 0};
-            ReadProcessMemory(hProcess, (LPCVOID)sp, pair, sizeof(pair), &read_sz);
-            fp  = pair[0];
-            lr  = pair[1];
-            sp += alloc;
-            p  += 1;
-        } else if (b == 0xE1) {
-            // set_fp: mov x29, sp — frame pointer was set.
-            // During unwind: sp = fp.
-            sp  = fp;
-            p  += 1;
-        } else if (b == 0xE6) {
-            // save_next — save next register pair (skip, not needed).
-            p += 1;
-        } else if ((b & 0xF8) == 0xC0) {
-            // alloc_m: 11000xxx xxxxxxxx — allocate x * 16 bytes (2 bytes)
-            if (p + 1 >= codes_end)
-                break;
-            uint32_t alloc  = (((uint32_t)(b & 0x07) << 8) | (uint32_t)p[1]) * 16;
-            sp             += alloc;
-            p              += 2;
-        } else if ((b & 0xFC) == 0xC8) {
-            // save_regp: 110010xx xxxxxxxx — save pair x(19+i) at [sp+#Z*8] (2 bytes)
-            // No stack adjustment — skip (we don't track x19-x28).
-            p += 2;
-        } else if ((b & 0xFC) == 0xCC) {
-            // save_regp_x: 110011xx xxxxxxxx — pre-indexed save pair (2 bytes)
-            // stp x(19+#X),...,[sp-(#Z+1)*8]! — reverse the pre-indexed SP decrement.
-            if (p + 1 >= codes_end)
-                break;
-            uint8_t z  = p[1] & 0x3F;
-            sp        += (uintptr_t)(z + 1) * 8;
-            p         += 2;
-        } else if ((b & 0xFC) == 0xD0) {
-            // save_reg: 110100xx xxxxxxxx — save single register at [sp+#Z*8] (2 bytes)
-            // No stack adjustment — skip.
-            p += 2;
-        } else if ((b & 0xFE) == 0xD4) {
-            // save_reg_x: 1101010x xxxxxxxx — pre-indexed save single (2 bytes)
-            // str x(19+#X),[sp-(#Z+1)*8]! — reverse the pre-indexed SP decrement.
-            if (p + 1 >= codes_end)
-                break;
-            uint8_t z  = p[1] & 0x1F;
-            sp        += (uintptr_t)(z + 1) * 8;
-            p         += 2;
-        } else if ((b & 0xFE) == 0xD6) {
-            // save_lrpair: 1101011x'xxzzzzzz — save <x(19+2*#X), lr> pair (2 bytes)
-            // X = 3-bit field, Z = 6-bit field.  Read lr from the saved pair.
-            if (p + 1 >= codes_end)
-                break;
-            uintptr_t offset  = (uintptr_t)(p[1] & 0x3F) * 8;
-            SIZE_T    read_sz = 0;
-            uintptr_t pair[2] = {0, 0};
-            ReadProcessMemory(hProcess, (LPCVOID)(sp + offset), pair, sizeof(pair), &read_sz);
-            // pair[1] is lr
-            lr  = pair[1];
-            p  += 2;
-        } else if ((b & 0xFE) == 0xD8) {
-            // save_fregp: 1101100x xxxxxxxx — save FP pair d(8+i) at [sp+#Z*8] (2 bytes)
-            // No stack adjustment — skip (FP SIMD registers).
-            p += 2;
-        } else if ((b & 0xFE) == 0xDA) {
-            // save_fregp_x: 1101101x xxxxxxxx — pre-indexed save FP pair (2 bytes)
-            // stp d(8+#X),...,[sp-(#Z+1)*8]! — reverse the pre-indexed SP decrement.
-            if (p + 1 >= codes_end)
-                break;
-            uint8_t z  = p[1] & 0x3F;
-            sp        += (uintptr_t)(z + 1) * 8;
-            p         += 2;
-        } else if ((b & 0xFE) == 0xDC) {
-            // save_freg: 1101110x xxxxxxxx — save single FP register at [sp+#Z*8] (2 bytes)
-            // No stack adjustment — skip.
-            p += 2;
-        } else if (b == 0xDE) {
-            // save_freg_x: 11011110 xxxxxxxx — pre-indexed save single FP (2 bytes)
-            // str d(8+#X),[sp-(#Z+1)*8]! — reverse the pre-indexed SP decrement.
-            if (p + 1 >= codes_end)
-                break;
-            uint8_t z  = p[1] & 0x1F;
-            sp        += (uintptr_t)(z + 1) * 8;
-            p         += 2;
-        } else if (b == 0xE0) {
-            // alloc_l: 11100000 + 3 bytes — large allocation
-            if (p + 3 >= codes_end)
-                break;
-            uint32_t alloc  = ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | (uint32_t)p[3];
-            sp             += (uintptr_t)alloc * 16;
-            p              += 4;
-        } else if (b == 0xE2) {
-            // add_fp: 11100010 xxxxxxxx — reverse of: add x29, sp, #x*8
-            // During unwind: sp = fp - x*8.
-            if (p + 1 >= codes_end)
-                break;
-            sp  = fp - (uintptr_t)p[1] * 8;
-            p  += 2;
-        } else if (b == 0xE3) {
-            // nop: no unwind operation required — skip.
-            p += 1;
-        } else if (b == 0xFC) {
-            // pac_sign_lr — pointer authentication (ignore for unwinding).
-            p += 1;
-        } else {
-            // Unknown opcode — skip one byte and hope for the best.
-            log_d("win: unknown ARM64 unwind opcode 0x%02x", b);
-            p += 1;
-        }
-    }
-
-    *sp_out = sp;
-    *fp_out = fp;
-    *lr_out = lr;
-    *pc_out = lr; // return address is in LR
-    return true;
-}
-#endif // _M_ARM64
-
-// ---------------------------------------------------------------------------
 // Public interface: step one frame using cached .pdata
 // ---------------------------------------------------------------------------
 
@@ -927,15 +691,7 @@ _pe_unwind_step_arm64(
 // On success, updates *pc and register state to the caller's values.
 // Returns true on success.
 static inline bool
-pdata_step(
-    HANDLE hProcess, uintptr_t* pc,
-#if defined(_M_X64)
-    uintptr_t gp[GP_REG_COUNT],
-#elif defined(_M_ARM64)
-    uintptr_t* sp, uintptr_t* fp, uintptr_t* lr,
-#endif
-    _mod_entry_t* mod_table, DWORD mod_count
-) {
+pdata_step(HANDLE hProcess, uintptr_t* pc, uintptr_t gp[GP_REG_COUNT], _mod_entry_t* mod_table, DWORD mod_count) {
     // Find the module containing this PC (binary search).
     DWORD mlo = 0, mhi = mod_count;
     while (mlo < mhi) {
@@ -969,7 +725,6 @@ pdata_step(
     if (rt_func == NULL) {
         log_d("win: pdata_step: no RUNTIME_FUNCTION for rva %x in %s (leaf)", rva, mod->path);
         // Leaf function: no unwind info.
-#if defined(_M_X64)
         uintptr_t ret_addr  = 0;
         SIZE_T    read_size = 0;
         if (!ReadProcessMemory(hProcess, (LPCVOID)gp[REG_RSP], &ret_addr, sizeof(ret_addr), &read_size)
@@ -977,20 +732,8 @@ pdata_step(
             return false;
         *pc          = ret_addr;
         gp[REG_RSP] += sizeof(uintptr_t);
-#elif defined(_M_ARM64)
-        if (*lr == 0)
-            return false;
-        *pc = *lr;
-        *lr = 0;
-#endif
         return true;
     }
 
-#if defined(_M_X64)
     return _pe_unwind_step(ce, rt_func, *pc, hProcess, pc, gp);
-#elif defined(_M_ARM64)
-    return _pe_unwind_step_arm64(ce, rt_func, *pc, hProcess, sp, pc, fp, lr);
-#else
-    return false;
-#endif
 }
