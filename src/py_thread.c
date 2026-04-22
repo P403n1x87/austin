@@ -217,8 +217,6 @@ _py_thread__push_iframe(py_thread_t* self, raddr_t* prev) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_frame_stack(py_thread_t* self) {
-    stack_reset();
-
     raddr_t prev = self->top_frame;
 
     while (isvalid(prev)) {
@@ -268,8 +266,6 @@ _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
 static inline int
 _py_thread__unwind_cframe_stack(py_thread_t* self) {
     PyCFrame cframe;
-
-    stack_reset();
 
     V_DESC(self->proc->py_v);
 
@@ -421,6 +417,9 @@ py_thread__unwind(py_thread_t* self) {
     if (!isvalid(self->stack) && isvalid(self->stack_raddr)) {
         self->stack = stack_chunk_new(self->proc->ref, self->stack_raddr);
     }
+
+    // Clear the Python stack state before any Python stack unwinding.
+    stack_reset();
 
     if (isvalid(self->top_frame)) {
         if (V_MIN(3, 13)) {
