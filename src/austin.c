@@ -137,6 +137,11 @@ do_single_process(py_proc_t* py_proc) {
         }
     }
 
+    // Freeze the duration clock at the end of the sampling loop so that the
+    // signal/terminate/wait/destroy sequence below is not counted against the
+    // reported sampling duration.
+    stats_end();
+
     if (pargs.attach_pid == 0) {
         if (interrupt_signal) {
             // Propagate the signal to the parent if we spawned it.
@@ -228,6 +233,11 @@ do_child_processes(py_proc_t* py_proc) {
                 interrupt_signal = SIGINT; // Emulate Ctrl-C
         }
     }
+
+    // Freeze the duration clock at the end of the sampling loop so that the
+    // signal/terminate/wait sequence below is not counted against the
+    // reported sampling duration.
+    stats_end();
 
     if (pargs.attach_pid == 0) {
         if (interrupt_signal) {

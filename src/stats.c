@@ -56,6 +56,7 @@ microseconds_t _max_sampling_time;
 microseconds_t _avg_sampling_time;
 
 microseconds_t _start_time;
+microseconds_t _end_time;
 
 ustat_t _sample_cnt;
 ustat_t _tick_cnt;
@@ -131,11 +132,17 @@ stats_get_avg_sampling_time() {
 void
 stats_start() {
     _start_time = gettime();
+    _end_time   = 0;
+}
+
+void
+stats_end() {
+    _end_time = gettime();
 }
 
 microseconds_t
 stats_duration() {
-    return gettime() - _start_time;
+    return (_end_time ? _end_time : gettime()) - _start_time;
 }
 
 #define STAT_INDENT "      "
