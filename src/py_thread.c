@@ -384,6 +384,9 @@ int
 py_thread__next(py_thread_t* self) {
     V_DESC(self->proc->py_v);
 
+    // Determine if we want to read the stack chunk as well.
+    bool has_stack = isvalid(self->stack);
+
     if (V_MIN(3, 11)) {
         stack_chunk__destroy(self->stack);
         self->stack = NULL;
@@ -394,8 +397,7 @@ py_thread__next(py_thread_t* self) {
 
     log_t("Found next thread");
 
-    return isvalid(self->stack_raddr) ? py_thread__read_with_stack_remote(self, self->next)
-                                      : py_thread__read_remote(self, self->next);
+    return has_stack ? py_thread__read_with_stack_remote(self, self->next) : py_thread__read_remote(self, self->next);
 }
 
 // ----------------------------------------------------------------------------
