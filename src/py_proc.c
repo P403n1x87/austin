@@ -1120,16 +1120,7 @@ _py_proc__find_current_thread_offset(py_proc_t* self, raddr_t thread_raddr) {
 // ----------------------------------------------------------------------------
 bool
 py_proc__is_running(py_proc_t* self) {
-#if defined PL_WIN /* WIN */
-    DWORD ec = 0;
-    return GetExitCodeProcess(self->ref, &ec) ? ec == STILL_ACTIVE : 0;
-
-#elif defined PL_MACOS /* MACOS */
-    return success(check_pid(self->pid));
-
-#else /* LINUX */
-    return !(kill(self->pid, 0) == -1 && errno == ESRCH);
-#endif
+    return _py_proc__is_running(self);
 }
 
 // ----------------------------------------------------------------------------

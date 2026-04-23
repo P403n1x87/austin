@@ -346,6 +346,13 @@ _py_proc__get_resident_memory(py_proc_t* self) {
 }
 
 // ----------------------------------------------------------------------------
+static inline bool
+_py_proc__is_running(py_proc_t* self) {
+    DWORD ec = 0;
+    return GetExitCodeProcess(self->ref, &ec) ? ec == STILL_ACTIVE : false;
+}
+
+// ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t* self) {
     if (!isvalid(self)) {
