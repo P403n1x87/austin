@@ -123,7 +123,16 @@ void
 stats_start();
 
 /**
- * Return the current sampling duration.
+ * Freeze the duration clock at the current time.  Call when the sampling loop
+ * exits, so that subsequent teardown work (signalling / reaping / cleanup) is
+ * not counted against the reported duration.
+ */
+void
+stats_end();
+
+/**
+ * Return the current sampling duration.  If stats_end() has been called, the
+ * duration is frozen at that point; otherwise it is gettime() - start.
  */
 microseconds_t
 stats_duration();
