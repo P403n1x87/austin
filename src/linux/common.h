@@ -92,24 +92,24 @@ wait_ptrace_seize(pid_t pid) {
 // enters ptrace-stop at the next safe point. The kernel delivers this as a
 // waitpid notification, which must be consumed before any ptrace register-read
 // (e.g. via libunwind _UPT_accessors) will succeed on the thread.
+//
+// Blocking waitpid: PTRACE_INTERRUPT is documented to interrupt blocking
+// syscalls, so the stop arrives in microseconds on any working kernel and the
+// kernel wakes us directly rather than us spinning on WNOHANG+sched_yield.
+// The 100 ms deadline only bounds the EINTR-retry path (signal storm); with
+// the default SA_RESTART behaviour of signal() it is effectively dead code.
 static inline int
 wait_thread_stop(pid_t tid) {
     int            status;
-    microseconds_t end = gettime() + 100000; // 100ms timeout, same as wait_ptrace
-
+    microseconds_t end = gettime() + 100000;
     for (;;) {
-        pid_t r = waitpid(tid, &status, __WALL | WNOHANG);
-        if (r == tid) {
-            if (WIFSTOPPED(status))
-                return 0;
-            // Thread exited or was killed while we were waiting
-            return -1;
-        }
+        pid_t r = waitpid(tid, &status, __WALL);
+        if (r == tid)
+            return WIFSTOPPED(status) ? 0 : -1;
         if (r == -1 && errno != EINTR)
             return -1;
         if (gettime() >= end)
             return -1;
-        sched_yield();
     }
 }
 
