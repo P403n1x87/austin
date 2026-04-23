@@ -30,16 +30,22 @@
 
 #include "../error.h"
 #include "../hints.h"
+#include "../resources.h"
 #include "../stats.h"
 
 #define PTHREAD_BUFFER_ITEMS 200
 
 struct _proc_extra_info {
-    unsigned int page_size;
-    char         statm_file[24];
-    pthread_t    wait_thread_id;
-    unsigned int pthread_tid_offset;
-    uintptr_t    _pthread_buffer[PTHREAD_BUFFER_ITEMS];
+    unsigned int       page_size;
+    char               statm_file[24];
+    pthread_t          wait_thread_id;
+    unsigned int       pthread_tid_offset;
+    // Process creation time in clock ticks since boot (field 22 of
+    // /proc/<pid>/stat).  Captured on the first liveness check and
+    // compared on subsequent ones to detect PID reuse; a different value
+    // means a new process now owns the PID and our target is gone.
+    unsigned long long starttime;
+    uintptr_t          _pthread_buffer[PTHREAD_BUFFER_ITEMS];
 };
 
 #define read_pthread_t(py_proc, addr)                                                                           \
@@ -111,6 +117,56 @@ wait_thread_stop(pid_t tid) {
         if (gettime() >= end)
             return -1;
     }
+}
+
+// ----------------------------------------------------------------------------
+// Side-effect-free /proc/<pid>/stat reader.  Returns false if the file cannot
+// be opened (process gone) or the content is malformed.  On success, fills any
+// non-NULL out parameter.  Callers care about two fields: the state code (for
+// zombie/dead detection) and the starttime (a lifetime-unique value used to
+// detect PID reuse).
+//
+// /proc/<pid>/stat format: "PID (comm) state ppid ..." with starttime at
+// field 22 (1-indexed).  comm (field 2) may contain spaces and parens, so we
+// scan to the last ')' to reliably locate the state field.
+static inline bool
+proc_stat_read(pid_t pid, char* state_out, unsigned long long* starttime_out) {
+    char buffer[32];
+    sprintf(buffer, "/proc/%d/stat", pid);
+
+    cu_FILE* fp = fopen(buffer, "rb");
+    if (!isvalid(fp))
+        return false;
+
+    char   line[512];
+    size_t n = fread(line, 1, sizeof(line) - 1, fp);
+    if (n == 0)
+        return false; // cppcheck-suppress [resourceLeak]
+    line[n] = '\0';
+
+    char* p = strrchr(line, ')');
+    if (!isvalid(p) || p[1] != ' ')
+        return false; // cppcheck-suppress [resourceLeak]
+    p += 2;           // state char
+
+    if (state_out)
+        *state_out = *p;
+
+    if (starttime_out) {
+        // p is at the state char (field 3); starttime is field 22.  Advance
+        // across 18 inter-field spaces so that p + 1 lands at field 22.
+        if (p[1] != ' ')
+            return false; // cppcheck-suppress [resourceLeak]
+        p++;              // space between field 3 and field 4
+        for (int i = 0; i < 18; i++) {
+            p = strchr(p + 1, ' ');
+            if (!isvalid(p))
+                return false; // cppcheck-suppress [resourceLeak]
+        }
+        *starttime_out = strtoull(p + 1, NULL, 10);
+    }
+
+    return true; // cppcheck-suppress [resourceLeak]
 }
 
 // ----------------------------------------------------------------------------

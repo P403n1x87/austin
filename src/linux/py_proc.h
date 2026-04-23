@@ -617,6 +617,32 @@ _py_proc__init(py_proc_t* self) {
 } /* _py_proc__init */
 
 // ----------------------------------------------------------------------------
+// Liveness check with zombie and PID-reuse detection.  kill(pid, 0) alone
+// returns success for zombies and for any process that happens to reuse the
+// PID after the target has been reaped; both cases would keep the py_proc__init
+// retry loop spinning for its full timeout on target exit.  /proc/<pid>/stat
+// yields both the state code (to reject Zombie/Dead) and starttime (to detect
+// PID reuse across reaping).  starttime is captured on the first successful
+// call and compared on subsequent ones.
+static inline bool
+_py_proc__is_running(py_proc_t* self) {
+    char               state;
+    unsigned long long starttime;
+    if (!proc_stat_read(self->pid, &state, &starttime))
+        return false;
+
+    if (state == 'Z' || state == 'X')
+        return false;
+
+    if (self->extra->starttime == 0)
+        self->extra->starttime = starttime;
+    else if (self->extra->starttime != starttime)
+        return false; // PID has been reused by a different process
+
+    return true;
+}
+
+// ----------------------------------------------------------------------------
 pid_t
 _get_nspid(pid_t pid) {
     cu_char* line  = NULL;

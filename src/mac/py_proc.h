@@ -57,7 +57,11 @@
 #define sw32(f, v) (f ? bswap_32(v) : v)
 
 struct _proc_extra_info {
-    // void
+    // Process start time, derived from pbi_start_tvsec/pbi_start_tvusec in
+    // proc_bsdinfo.  Captured on the first liveness check and compared on
+    // subsequent ones to detect PID reuse; a different value means a new
+    // process now owns the PID and our target is gone.
+    uint64_t starttime;
 };
 
 // ----------------------------------------------------------------------------
@@ -368,6 +372,32 @@ check_pid(pid_t pid) {
     }
 
     SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+// Liveness check with zombie and PID-reuse detection.  check_pid() accepts
+// SZOMB (zombie) as alive, which would otherwise keep the py_proc__init retry
+// loop spinning for its full timeout after the target exits.  proc_pidinfo
+// also gives us pbi_start_tvsec/pbi_start_tvusec, which uniquely identify the
+// process across its lifetime; capturing and comparing these detects the case
+// where the original target was reaped and a new process reused the PID.
+static inline bool
+_py_proc__is_running(py_proc_t* self) {
+    struct proc_bsdinfo info;
+    if (proc_pidinfo(self->pid, PROC_PIDTBSDINFO, 0, &info, PROC_PIDTBSDINFO_SIZE) != PROC_PIDTBSDINFO_SIZE)
+        return false;
+
+    // SIDL: process is being created; SZOMB: exited, awaiting reap.
+    if (info.pbi_status == SIDL || info.pbi_status == SZOMB || info.pbi_status == 32767)
+        return false;
+
+    uint64_t start = ((uint64_t)info.pbi_start_tvsec * 1000000ull) + info.pbi_start_tvusec;
+    if (self->extra->starttime == 0)
+        self->extra->starttime = start;
+    else if (self->extra->starttime != start)
+        return false; // PID has been reused by a different process
+
+    return true;
 }
 
 // ----------------------------------------------------------------------------
