@@ -52,6 +52,12 @@ static bool* _seized = NULL; // ptrace-seized flag, indexed by kernel TID
 #endif
 static unsigned char* _tids_idle = NULL; // idle-state bitmap, indexed by kernel TID
 static unsigned char* _tids_int  = NULL; // interrupted-state bitmap, indexed by kernel TID
+// Compact list of TIDs whose _tids_int bit is currently set.  The bitmap alone
+// gives O(1) is_interrupted queries, but resuming every interrupted thread would
+// otherwise require scanning the full (~max_pid/8 byte) bitmap each sample.
+static pid_t*         _int_list  = NULL;
+static size_t         _int_n     = 0;    // number of valid entries in _int_list
+static size_t         _int_cap   = 0;    // allocated capacity of _int_list
 static char**         _kstacks   = NULL; // kernel stack strings, indexed by kernel TID
 
 // ---- Hot-path inline helpers: idle/interrupted state -----------------------
@@ -84,8 +90,27 @@ _py_thread__set_interrupted(py_thread_t* self, bool state) {
     size_t        index = self->tid >> 3;
 
     if (state) {
-        _tids_int[index] |= bit;
+        // Idempotent: already interrupted means the TID is already in the list.
+        if (_tids_int[index] & bit)
+            SUCCESS;
+
+        // Grow the list first.  Setting the bitmap bit before the TID is in
+        // the list would leave the bit set but the resume path unable to
+        // find it, stranding the thread in ptrace-stop.
+        if (_int_n >= _int_cap) {
+            size_t new_cap  = _int_cap ? _int_cap * 2 : 16;
+            pid_t* new_list = (pid_t*)realloc(_int_list, new_cap * sizeof(pid_t));
+            if (!isvalid(new_list)) { // GCOV_EXCL_START
+                set_error(MALLOC, "Failed to grow interrupted TID list");
+                FAIL;
+            } // GCOV_EXCL_STOP
+            _int_list = new_list;
+            _int_cap  = new_cap;
+        }
+        _int_list[_int_n++]  = (pid_t)self->tid;
+        _tids_int[index]    |= bit;
     } else {
+        // Clearing leaves the TID in _int_list; the resume path filters by bit.
         _tids_int[index] &= ~bit;
     }
     SUCCESS;
@@ -166,31 +191,28 @@ _py_thread__resume(py_thread_t* self) {
     SUCCESS;
 }
 
-// Resume every thread whose interrupted bit is set by scanning the bitmap
-// directly rather than re-traversing the Python linked list. This correctly
-// handles threads that were removed from the list between the interrupt and
-// resume phases (e.g. a thread that exited mid-sample), which a linked-list
-// walk would silently miss, leaving those threads stuck in ptrace-stop.
+// Resume every thread whose interrupted bit is set by iterating the compact
+// list of TIDs populated during the interrupt phase, rather than scanning the
+// full (~max_pid/8 byte) bitmap.  Entries whose bit has already been cleared
+// (e.g. by the TID-reuse path in _py_thread__seize) are filtered out here.
 void
 py_thread__resume_all_interrupted(void) {
-    size_t bmsize = (max_pid >> 3) + 1;
+    for (size_t i = 0; i < _int_n; i++) {
+        pid_t         tid   = _int_list[i];
+        unsigned char bit   = (unsigned char)(1 << (tid & 7));
+        size_t        index = (size_t)tid >> 3;
 
-    for (size_t i = 0; i < bmsize; i++) {
-        if (!_tids_int[i])
-            continue;
-        for (int b = 0; b < 8; b++) {
-            unsigned char bit = (unsigned char)(1 << b);
-            if (!(_tids_int[i] & bit))
-                continue;
-            pid_t tid = (pid_t)((i << 3) | b);
-            if (ptrace(PTRACE_CONT, tid, 0, 0)) {
-                log_d("ptrace: failed to resume thread %d (errno: %d)", tid, errno);
-            } else {
-                log_t("ptrace: thread %d resumed", tid);
-            }
-            _tids_int[i] &= ~bit; // always clear so the thread isn't stuck
+        if (!(_tids_int[index] & bit))
+            continue; // bit cleared elsewhere; nothing to resume
+
+        if (ptrace(PTRACE_CONT, tid, 0, 0)) {
+            log_d("ptrace: failed to resume thread %d (errno: %d)", tid, errno);
+        } else {
+            log_t("ptrace: thread %d resumed", tid);
         }
+        _tids_int[index] &= ~bit; // always clear so the thread isn't stuck
     }
+    _int_n = 0;
 }
 
 // ---- Kernel stack capture (Linux only) -------------------------------------
@@ -840,5 +862,7 @@ _py_thread_free_native(void) {
 #endif
     sfree(_tids_idle);
     sfree(_tids_int);
+    sfree(_int_list);
+    _int_n = _int_cap = 0;
     sfree(_kstacks);
 }
