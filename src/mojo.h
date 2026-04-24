@@ -23,6 +23,7 @@
 #pragma once
 
 #include <stdio.h>
+#include <string.h>
 
 #include "argparse.h"
 #include "cache.h"
@@ -62,12 +63,46 @@ typedef unsigned long long mojo_int_t;
 // Bitmask to ensure that we encode at most 4 bytes for an integer.
 #define MOJO_INT32 ((mojo_int_t)(1 << (6 + 7 * 3)) - 1)
 
+// Output buffer: accumulate a full sample before flushing to avoid many small
+// fwrite/fputc calls. 4 KiB covers the worst-case sample (hundreds of frames).
+#define MOJO_BUF_SIZE 4096
+static char   _mojo_buf[MOJO_BUF_SIZE];
+static size_t _mojo_buf_len = 0;
+
+static inline void
+_mojo_flush(void) {
+    if (_mojo_buf_len > 0) {
+        fwrite(_mojo_buf, _mojo_buf_len, 1, pargs.output_file);
+        _mojo_buf_len = 0;
+    }
+}
+
+static inline void
+_mojo_write(const void* data, size_t len) {
+    if (len > MOJO_BUF_SIZE - _mojo_buf_len) {
+        _mojo_flush();
+        if (len >= MOJO_BUF_SIZE) {
+            fwrite(data, len, 1, pargs.output_file);
+            return;
+        }
+    }
+    memcpy(_mojo_buf + _mojo_buf_len, data, len);
+    _mojo_buf_len += len;
+}
+
 // Primitives
 
-#define mojo_event(event)                \
-    { fputc(event, pargs.output_file); }
+#define mojo_event(event)        \
+    do {                         \
+        char _e = (char)(event); \
+        _mojo_write(&_e, 1);     \
+    } while (0)
 
-#define mojo_string(string) fwrite(string, strlen(string) + 1, 1, pargs.output_file);
+#define mojo_string(string)              \
+    do {                                 \
+        const char* _s = (string);       \
+        _mojo_write(_s, strlen(_s) + 1); \
+    } while (0)
 
 static inline void
 mojo_integer(mojo_int_t integer, int sign) {
@@ -95,7 +130,7 @@ mojo_integer(mojo_int_t integer, int sign) {
         *ptr++ = byte;
     }
 
-    fwrite(buffer, ptr - buffer, 1, pargs.output_file);
+    _mojo_write(buffer, ptr - buffer);
 }
 
 // We expect the least significant bits to be varied enough to provide a valid
@@ -108,6 +143,7 @@ mojo_integer(mojo_int_t integer, int sign) {
     {                                    \
         fputs("MOJ", pargs.output_file); \
         mojo_integer(MOJO_VERSION, 0);   \
+        _mojo_flush();                   \
         fflush(pargs.output_file);       \
     }
 
