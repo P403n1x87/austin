@@ -158,6 +158,17 @@ typedef struct {
     const uint8_t* fde_end;    // end of FDE record
 } cfi_fde_t;
 
+// Cached result of parsing one CIE and evaluating its initial instructions.
+// Most binaries have 1–3 CIEs, so a small flat array is sufficient.
+#define _CFI_CIE_CACHE_SIZE 4
+
+typedef struct {
+    const uint8_t* cie_ptr; // key: pointer into the mmap'd .eh_frame data
+    uint64_t       code_align;
+    int64_t        data_align;
+    cfi_row_t      initial_row; // CFI row after applying the CIE initial instructions
+} cfi_cie_cached_t;
+
 // Per-binary .eh_frame cache entry.
 typedef struct _cfi_cache_entry {
     uint64_t                 key;      // string hash of the binary path
@@ -169,6 +180,8 @@ typedef struct _cfi_cache_entry {
     size_t                   map_size;
     cfi_fde_t*               fde_index; // sorted array of FDE descriptors
     size_t                   fde_count; // number of entries in fde_index
+    cfi_cie_cached_t         cie_cache[_CFI_CIE_CACHE_SIZE];
+    size_t                   cie_cache_count;
     struct _cfi_cache_entry* next;
 } cfi_cache_entry_t;
 
@@ -950,32 +963,62 @@ _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
     if (fde->pc_begin > lookup_pc || lookup_pc >= fde->pc_end)
         return false;
 
-    // Parse the CIE for code_align, data_align, and initial instructions.
-    uint64_t       code_align;
-    int64_t        data_align;
-    const uint8_t* cie_initial_instr;
-    const uint8_t* cie_end;
-    if (!_cfi_parse_cie_full(fde->cie_ptr, ce->data + ce->size, &code_align, &data_align, &cie_initial_instr, &cie_end))
-        return false;
+    // Look up the CIE in the per-binary cache.  Most binaries have 1–3 CIEs
+    // shared across all FDEs; caching avoids re-parsing and re-evaluating the
+    // CIE initial instructions on every cfi_step call.
+    uint64_t  code_align = 0;
+    int64_t   data_align = 0;
+    cfi_row_t cie_row;
 
-    // Initialise row from platform defaults.
-    memset(out, 0, sizeof(*out));
+    cfi_cie_cached_t* hit = NULL;
+    for (size_t i = 0; i < ce->cie_cache_count; i++) {
+        if (ce->cie_cache[i].cie_ptr == fde->cie_ptr) {
+            hit = &ce->cie_cache[i];
+            break;
+        }
+    }
+
+    if (hit) {
+        code_align = hit->code_align;
+        data_align = hit->data_align;
+        cie_row    = hit->initial_row;
+    } else {
+        // Cache miss: parse the CIE and evaluate its initial instructions.
+        const uint8_t* cie_initial_instr;
+        const uint8_t* cie_end;
+        if (!_cfi_parse_cie_full(
+                fde->cie_ptr, ce->data + ce->size, &code_align, &data_align, &cie_initial_instr, &cie_end
+            ))
+            return false;
+
+        // Initialise row from platform defaults.
+        memset(&cie_row, 0, sizeof(cie_row));
 #if defined(__x86_64__)
-    out->cfa_reg = _CFI_SP_REG;
-    out->cfa_off = 8;
+        cie_row.cfa_reg = _CFI_SP_REG;
+        cie_row.cfa_off = 8;
 #elif defined(__aarch64__)
-    out->cfa_reg = _CFI_SP_REG;
-    out->cfa_off = 0;
+        cie_row.cfa_reg = _CFI_SP_REG;
+        cie_row.cfa_off = 0;
 #endif
-    for (int i = 0; i < _CFI_MAX_REGS; i++)
-        out->regs[i].kind = REG_UNDEF;
+        for (int i = 0; i < _CFI_MAX_REGS; i++)
+            cie_row.regs[i].kind = REG_UNDEF;
 
-    // Apply CIE initial instructions.
-    if (!_cfi_eval(cie_initial_instr, cie_end, 0, UINTPTR_MAX, code_align, data_align, out, NULL))
-        return false;
-    cfi_row_t cie_row = *out;
+        if (!_cfi_eval(cie_initial_instr, cie_end, 0, UINTPTR_MAX, code_align, data_align, &cie_row, NULL))
+            return false;
 
-    // Apply FDE instructions up to lookup_pc.
+        // Store in the cache for future calls (drop silently if full — rare
+        // for binaries with more than _CFI_CIE_CACHE_SIZE distinct CIEs).
+        if (ce->cie_cache_count < _CFI_CIE_CACHE_SIZE) {
+            cfi_cie_cached_t* slot = &ce->cie_cache[ce->cie_cache_count++];
+            slot->cie_ptr          = fde->cie_ptr;
+            slot->code_align       = code_align;
+            slot->data_align       = data_align;
+            slot->initial_row      = cie_row;
+        }
+    }
+
+    // Apply FDE instructions on top of the cached CIE initial row.
+    *out = cie_row;
     if (!_cfi_eval(fde->fde_instrs, fde->fde_end, fde->pc_begin, lookup_pc, code_align, data_align, out, &cie_row))
         return false;
 
