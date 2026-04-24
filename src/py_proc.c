@@ -1492,7 +1492,6 @@ py_proc__destroy(py_proc_t* self) {
     unw_destroy_addr_space(self->unwind.as);
 #endif
     vm_range_tree__destroy(self->maps_tree);
-    hash_table__destroy(self->base_table);
 #endif
 
 #if defined PL_MACOS

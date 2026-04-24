@@ -98,7 +98,6 @@ typedef struct {
     } unwind;
 #endif
     vm_range_tree_t* maps_tree;
-    hash_table_t*    base_table;
 #endif
 
     com_t interpreter_state_com;

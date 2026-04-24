@@ -158,6 +158,17 @@ typedef struct {
     const uint8_t* fde_end;    // end of FDE record
 } cfi_fde_t;
 
+// Cached result of parsing one CIE and evaluating its initial instructions.
+// Most binaries have 1–3 CIEs, so a small flat array is sufficient.
+#define _CFI_CIE_CACHE_SIZE 4
+
+typedef struct {
+    const uint8_t* cie_ptr; // key: pointer into the mmap'd .eh_frame data
+    uint64_t       code_align;
+    int64_t        data_align;
+    cfi_row_t      initial_row; // CFI row after applying the CIE initial instructions
+} cfi_cie_cached_t;
+
 // Per-binary .eh_frame cache entry.
 typedef struct _cfi_cache_entry {
     uint64_t                 key;      // string hash of the binary path
@@ -169,6 +180,8 @@ typedef struct _cfi_cache_entry {
     size_t                   map_size;
     cfi_fde_t*               fde_index; // sorted array of FDE descriptors
     size_t                   fde_count; // number of entries in fde_index
+    cfi_cie_cached_t         cie_cache[_CFI_CIE_CACHE_SIZE];
+    size_t                   cie_cache_count;
     struct _cfi_cache_entry* next;
 } cfi_cache_entry_t;
 
@@ -950,32 +963,62 @@ _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
     if (fde->pc_begin > lookup_pc || lookup_pc >= fde->pc_end)
         return false;
 
-    // Parse the CIE for code_align, data_align, and initial instructions.
-    uint64_t       code_align;
-    int64_t        data_align;
-    const uint8_t* cie_initial_instr;
-    const uint8_t* cie_end;
-    if (!_cfi_parse_cie_full(fde->cie_ptr, ce->data + ce->size, &code_align, &data_align, &cie_initial_instr, &cie_end))
-        return false;
+    // Look up the CIE in the per-binary cache.  Most binaries have 1–3 CIEs
+    // shared across all FDEs; caching avoids re-parsing and re-evaluating the
+    // CIE initial instructions on every cfi_step call.
+    uint64_t  code_align = 0;
+    int64_t   data_align = 0;
+    cfi_row_t cie_row;
 
-    // Initialise row from platform defaults.
-    memset(out, 0, sizeof(*out));
+    cfi_cie_cached_t* hit = NULL;
+    for (size_t i = 0; i < ce->cie_cache_count; i++) {
+        if (ce->cie_cache[i].cie_ptr == fde->cie_ptr) {
+            hit = &ce->cie_cache[i];
+            break;
+        }
+    }
+
+    if (hit) {
+        code_align = hit->code_align;
+        data_align = hit->data_align;
+        cie_row    = hit->initial_row;
+    } else {
+        // Cache miss: parse the CIE and evaluate its initial instructions.
+        const uint8_t* cie_initial_instr;
+        const uint8_t* cie_end;
+        if (!_cfi_parse_cie_full(
+                fde->cie_ptr, ce->data + ce->size, &code_align, &data_align, &cie_initial_instr, &cie_end
+            ))
+            return false;
+
+        // Initialise row from platform defaults.
+        memset(&cie_row, 0, sizeof(cie_row));
 #if defined(__x86_64__)
-    out->cfa_reg = _CFI_SP_REG;
-    out->cfa_off = 8;
+        cie_row.cfa_reg = _CFI_SP_REG;
+        cie_row.cfa_off = 8;
 #elif defined(__aarch64__)
-    out->cfa_reg = _CFI_SP_REG;
-    out->cfa_off = 0;
+        cie_row.cfa_reg = _CFI_SP_REG;
+        cie_row.cfa_off = 0;
 #endif
-    for (int i = 0; i < _CFI_MAX_REGS; i++)
-        out->regs[i].kind = REG_UNDEF;
+        for (int i = 0; i < _CFI_MAX_REGS; i++)
+            cie_row.regs[i].kind = REG_UNDEF;
 
-    // Apply CIE initial instructions.
-    if (!_cfi_eval(cie_initial_instr, cie_end, 0, UINTPTR_MAX, code_align, data_align, out, NULL))
-        return false;
-    cfi_row_t cie_row = *out;
+        if (!_cfi_eval(cie_initial_instr, cie_end, 0, UINTPTR_MAX, code_align, data_align, &cie_row, NULL))
+            return false;
 
-    // Apply FDE instructions up to lookup_pc.
+        // Store in the cache for future calls (drop silently if full — rare
+        // for binaries with more than _CFI_CIE_CACHE_SIZE distinct CIEs).
+        if (ce->cie_cache_count < _CFI_CIE_CACHE_SIZE) {
+            cfi_cie_cached_t* slot = &ce->cie_cache[ce->cie_cache_count++];
+            slot->cie_ptr          = fde->cie_ptr;
+            slot->code_align       = code_align;
+            slot->data_align       = data_align;
+            slot->initial_row      = cie_row;
+        }
+    }
+
+    // Apply FDE instructions on top of the cached CIE initial row.
+    *out = cie_row;
     if (!_cfi_eval(fde->fde_instrs, fde->fde_end, fde->pc_begin, lookup_pc, code_align, data_align, out, &cie_row))
         return false;
 
@@ -996,19 +1039,29 @@ _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
 // .eh_frame CFI to find the caller's pc and sp.
 //
 // Arguments:
-//   pid        — the target process
-//   maps_tree  — vm_range_tree built from /proc/<pid>/maps
-//   base_table — hash table mapping path hash -> runtime load_base
-//   pc, sp, fp — current register values (IN), updated to caller's (OUT)
+//   pid                       — the target process
+//   maps_tree                 — vm_range_tree built from /proc/<pid>/maps
+//   pc, sp, fp                — current register values (IN), updated to caller's (OUT)
+//   stack_buf, stack_buf_base — optional prefetched stack page (NULL to disable);
+//                               CFA reads that fall within this window skip the
+//                               process_vm_readv syscall entirely, turning the
+//                               per-step cost from ~1 µs to a cache-hot memcpy.
 //
 // Returns true if a step was successfully taken.
 static bool
-cfi_step(pid_t pid, vm_range_tree_t* maps_tree, hash_table_t* base_table, uintptr_t* pc, uintptr_t* sp, uintptr_t* fp) {
+cfi_step(
+    pid_t pid, vm_range_tree_t* maps_tree, uintptr_t* pc, uintptr_t* sp, uintptr_t* fp, const uint8_t* stack_buf,
+    uintptr_t stack_buf_base, size_t stack_buf_size
+) {
     vm_range_t* range = vm_range_tree__find(maps_tree, *pc);
     if (!range)
         return false;
 
-    uintptr_t load_base = (uintptr_t)hash_table__get(base_table, string__hash(range->name));
+    // range->lo is the load base for this binary: _py_proc__get_vm_maps creates
+    // each range starting at the first (lowest) mapping address for its pathname,
+    // which is the same value that base_table stores.  Using it directly avoids
+    // a string hash + hash-table lookup on every unwind step.
+    uintptr_t load_base = range->lo;
     if (!load_base)
         return false;
 
@@ -1043,10 +1096,32 @@ cfi_step(pid_t pid, vm_range_tree_t* maps_tree, hash_table_t* base_table, uintpt
     uintptr_t new_pc  = 0;
     uintptr_t new_fp  = 0;
 
-    // Batch RA and FP reads into a single process_vm_readv syscall when both
-    // are needed — halves the number of kernel transitions per unwind step.
-    if (row.regs[_CFI_FP_REG].kind == REG_CFA_OFFSET) {
-        uintptr_t    fp_addr  = (uintptr_t)((intptr_t)cfa + row.regs[_CFI_FP_REG].offset);
+    bool      fp_saved = row.regs[_CFI_FP_REG].kind == REG_CFA_OFFSET;
+    uintptr_t fp_addr  = fp_saved ? (uintptr_t)((intptr_t)cfa + row.regs[_CFI_FP_REG].offset) : 0;
+
+// Check whether a remote address falls entirely within the prefetched buffer.
+#define _IN_SBUF(addr)                                                                                               \
+    (stack_buf != NULL && (addr) >= stack_buf_base && (addr) + sizeof(uintptr_t) <= stack_buf_base + stack_buf_size)
+#define _SBUF_READ(addr, dst) memcpy((dst), stack_buf + ((addr) - stack_buf_base), sizeof(uintptr_t))
+
+    bool ra_in_buf = _IN_SBUF(ra_addr);
+    bool fp_in_buf = fp_saved && _IN_SBUF(fp_addr);
+
+    if (ra_in_buf) {
+        // Fast path: RA (and possibly FP) served from the prefetched stack page —
+        // no syscall needed for the common case of a shallow native stack.
+        _SBUF_READ(ra_addr, &new_pc);
+        if (fp_saved) {
+            if (fp_in_buf)
+                _SBUF_READ(fp_addr, &new_fp);
+            else {
+                struct iovec l = {.iov_base = &new_fp, .iov_len = sizeof(new_fp)};
+                struct iovec r = {.iov_base = (void*)fp_addr, .iov_len = sizeof(new_fp)};
+                process_vm_readv(pid, &l, 1, &r, 1, 0); // best effort; FP failure is tolerable
+            }
+        }
+    } else if (fp_saved) {
+        // Fallback: batch RA + FP into a single syscall (original behaviour).
         struct iovec local[2] = {
             {.iov_base = &new_pc, .iov_len = sizeof(new_pc)},
             {.iov_base = &new_fp, .iov_len = sizeof(new_fp)}
@@ -1056,15 +1131,18 @@ cfi_step(pid_t pid, vm_range_tree_t* maps_tree, hash_table_t* base_table, uintpt
             {.iov_base = (void*)fp_addr, .iov_len = sizeof(new_fp)}
         };
         ssize_t n = process_vm_readv(pid, local, 2, remote, 2, 0);
-        // At minimum the RA must be read; FP failure is tolerable.
         if (n < (ssize_t)sizeof(new_pc))
             return false;
     } else {
+        // Fallback: RA only.
         struct iovec local  = {.iov_base = &new_pc, .iov_len = sizeof(new_pc)};
         struct iovec remote = {.iov_base = (void*)ra_addr, .iov_len = sizeof(new_pc)};
         if (process_vm_readv(pid, &local, 1, &remote, 1, 0) != (ssize_t)sizeof(new_pc))
             return false;
     }
+
+#undef _IN_SBUF
+#undef _SBUF_READ
 
     *pc = new_pc;
     *sp = cfa;
