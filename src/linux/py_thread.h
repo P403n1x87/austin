@@ -341,9 +341,8 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
 
 #ifdef HAVE_BFD
             if (pargs.where && isvalid(range)) {
-                unw_word_t base = (unw_word_t)hash_table__get(self->proc->base_table, string__hash(range->name));
-                if (base > 0)
-                    frame = get_native_frame(range->name, pc - base, frame_key);
+                if (range->lo > 0)
+                    frame = get_native_frame(range->name, pc - range->lo, frame_key);
             }
 #endif
             if (!isvalid(frame)) {
@@ -367,10 +366,8 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
                     // Fallback: resolve via ELF .dynsym/.symtab when libunwind
                     // cannot name the frame (e.g. stripped but exported symbols).
                     if (!isvalid(scope) && isvalid(range)) {
-                        uintptr_t load_base
-                            = (uintptr_t)hash_table__get(self->proc->base_table, string__hash(range->name));
-                        if (load_base > 0) {
-                            const char* fname = get_func_name(pc, range->name, load_base);
+                        if (range->lo > 0) {
+                            const char* fname = get_func_name(pc, range->name, range->lo);
                             if (isvalid(fname)) {
                                 scope = cached_string_new(scope_key, strdup(fname));
                                 if (!isvalid(scope))
@@ -591,9 +588,8 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
             if (!isvalid(scope)) {
                 const char* fname = NULL;
                 if (isvalid(range)) {
-                    uintptr_t load_base = (uintptr_t)hash_table__get(self->proc->base_table, string__hash(range->name));
-                    if (load_base > 0)
-                        fname = get_func_name(pc, range->name, load_base);
+                    if (range->lo > 0)
+                        fname = get_func_name(pc, range->name, range->lo);
                 }
                 if (isvalid(fname)) {
                     scope = cached_string_new(scope_key, strdup(fname));
@@ -622,8 +618,8 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
             // directly from it, skipping the process_vm_readv syscall when the
             // return address falls within the prefetched page.
             if (!cfi_step(
-                    self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp,
-                    _stack_buf_base ? _stack_buf : NULL, _stack_buf_base, _STACK_BUF_SIZE
+                    self->proc->pid, self->proc->maps_tree, &pc, &sp, &fp, _stack_buf_base ? _stack_buf : NULL,
+                    _stack_buf_base, _STACK_BUF_SIZE
                 ))
                 break;
             pc = _STRIP_PAC(pc);
@@ -646,8 +642,8 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
                 // process_vm_readv failed — fp may be garbage; switch to CFI.
                 use_cfi = true;
                 if (!cfi_step(
-                        self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp,
-                        _stack_buf_base ? _stack_buf : NULL, _stack_buf_base, _STACK_BUF_SIZE
+                        self->proc->pid, self->proc->maps_tree, &pc, &sp, &fp, _stack_buf_base ? _stack_buf : NULL,
+                        _stack_buf_base, _STACK_BUF_SIZE
                     ))
                     break;
                 pc              = _STRIP_PAC(pc);
@@ -664,8 +660,8 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         if (new_fp != 0 && new_fp <= fp) {
             use_cfi = true;
             if (!cfi_step(
-                    self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp,
-                    _stack_buf_base ? _stack_buf : NULL, _stack_buf_base, _STACK_BUF_SIZE
+                    self->proc->pid, self->proc->maps_tree, &pc, &sp, &fp, _stack_buf_base ? _stack_buf : NULL,
+                    _stack_buf_base, _STACK_BUF_SIZE
                 ))
                 break;
             pc              = _STRIP_PAC(pc);

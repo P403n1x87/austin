@@ -998,7 +998,6 @@ _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
 // Arguments:
 //   pid                       — the target process
 //   maps_tree                 — vm_range_tree built from /proc/<pid>/maps
-//   base_table                — hash table mapping path hash -> runtime load_base
 //   pc, sp, fp                — current register values (IN), updated to caller's (OUT)
 //   stack_buf, stack_buf_base — optional prefetched stack page (NULL to disable);
 //                               CFA reads that fall within this window skip the
@@ -1008,14 +1007,18 @@ _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
 // Returns true if a step was successfully taken.
 static bool
 cfi_step(
-    pid_t pid, vm_range_tree_t* maps_tree, hash_table_t* base_table, uintptr_t* pc, uintptr_t* sp, uintptr_t* fp,
-    const uint8_t* stack_buf, uintptr_t stack_buf_base, size_t stack_buf_size
+    pid_t pid, vm_range_tree_t* maps_tree, uintptr_t* pc, uintptr_t* sp, uintptr_t* fp, const uint8_t* stack_buf,
+    uintptr_t stack_buf_base, size_t stack_buf_size
 ) {
     vm_range_t* range = vm_range_tree__find(maps_tree, *pc);
     if (!range)
         return false;
 
-    uintptr_t load_base = (uintptr_t)hash_table__get(base_table, string__hash(range->name));
+    // range->lo is the load base for this binary: _py_proc__get_vm_maps creates
+    // each range starting at the first (lowest) mapping address for its pathname,
+    // which is the same value that base_table stores.  Using it directly avoids
+    // a string hash + hash-table lookup on every unwind step.
+    uintptr_t load_base = range->lo;
     if (!load_base)
         return false;
 

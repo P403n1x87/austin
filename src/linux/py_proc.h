@@ -522,23 +522,22 @@ vm_range_t* ranges[RANGES_MAX];
 
 static int
 _py_proc__get_vm_maps(py_proc_t* self) {
-    vm_range_tree_t* tree  = NULL;
-    hash_table_t*    table = NULL;
-    cu_proc_map_t*   maps  = NULL;
+    vm_range_tree_t* tree = NULL;
+    cu_proc_map_t*   maps = NULL;
 
-    // Build the range tree for --where mode and for fp-walk native mode
-    // (the latter needs it to resolve PC → binary path + load_base at runtime).
-    bool build_tree = pargs.where || pargs_native;
-
-    if (build_tree) {
-        tree  = vm_range_tree_new();
-        table = hash_table_new(RANGES_MAX);
-
+    // Build the range tree when native mode is active; it is needed to resolve
+    // PC → binary path + load base at runtime.  pargs.where is covered by
+    // pargs_native: on austinp native mode is always on, and on plain austin
+    // --where without -n produces no native frames to resolve.
+    //
+    // The tree is rebuilt on every call because the target may have dlopen'd
+    // new libraries since the last time we scanned the maps. The old tree is
+    // destroyed first to avoid leaking memory.
+    if (pargs_native) {
+        // Recreate dance.
+        tree = vm_range_tree_new();
         vm_range_tree__destroy(self->maps_tree);
-        hash_table__destroy(self->base_table);
-
-        self->maps_tree  = tree;
-        self->base_table = table;
+        self->maps_tree = tree;
     }
 
     maps = proc_map_new(self->pid);
@@ -557,13 +556,10 @@ _py_proc__get_vm_maps(py_proc_t* self) {
         if (!isvalid(m->pathname))
             continue;
 
-        if (build_tree) {
+        if (pargs_native) {
             if (strcmp(m->pathname, prevpathname)) {
                 ranges[nrange++]
                     = vm_range_new((addr_t)m->address, ((addr_t)m->address) + m->size, strdup(m->pathname));
-                key_dt key = string__hash(m->pathname);
-                if (!isvalid(hash_table__get(table, key)))
-                    hash_table__set(table, key, (value_t)m->address);
                 strcpy(prevpathname, m->pathname);
             } else
                 ranges[nrange - 1]->hi = ((addr_t)m->address) + m->size;
@@ -610,7 +606,7 @@ _py_proc__init(py_proc_t* self) {
 
     self->last_resident_memory = _py_proc__get_resident_memory(self);
 
-    if (pargs.where || pargs_native)
+    if (pargs_native)
         _py_proc__get_vm_maps(self);
 
     SUCCESS;
