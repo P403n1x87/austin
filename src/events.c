@@ -58,8 +58,10 @@ mojo_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sam
 
 static inline void
 mojo_event_handler__handle_metadata(base_event_handler_t* self, char* key, char* value, va_list args) {
+    _mojo_flush();
     mojo_event(MOJO_METADATA);
     mojo_string(key);
+    _mojo_flush();
     vfprintf(pargs.output_file, value, args);
     fputc('\0', pargs.output_file);
 
@@ -166,6 +168,8 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
             mojo_metric_time(sample->time);
         }
     }
+
+    _mojo_flush();
 
     // In pipe mode we do Austin event buffering.
     if (pargs.pipe)
