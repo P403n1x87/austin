@@ -618,10 +618,17 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         if (use_cfi) {
             // CFI mode: use .eh_frame unwinding.  fp still holds the current
             // RBP value and is passed to cfi_step for CFA = RBP+N rules.
-            if (!cfi_step(self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp))
+            // Pass the prefetched stack buffer so cfi_step can serve CFA reads
+            // directly from it, skipping the process_vm_readv syscall when the
+            // return address falls within the prefetched page.
+            if (!cfi_step(
+                    self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp,
+                    _stack_buf_base ? _stack_buf : NULL, _stack_buf_base, _STACK_BUF_SIZE
+                ))
                 break;
-            pc              = _STRIP_PAC(pc);
-            _stack_buf_base = 0;
+            pc = _STRIP_PAC(pc);
+            // Do NOT clear _stack_buf_base here: CFA grows monotonically up the
+            // stack so subsequent steps are likely to land in the same page.
             continue;
         }
 
@@ -638,10 +645,13 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
             if (process_vm_readv(self->proc->pid, &local, 1, &remote, 1, 0) != (ssize_t)sizeof(frame_data)) {
                 // process_vm_readv failed — fp may be garbage; switch to CFI.
                 use_cfi = true;
-                if (!cfi_step(self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp))
+                if (!cfi_step(
+                        self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp,
+                        _stack_buf_base ? _stack_buf : NULL, _stack_buf_base, _STACK_BUF_SIZE
+                    ))
                     break;
                 pc              = _STRIP_PAC(pc);
-                _stack_buf_base = 0;
+                _stack_buf_base = 0; // fp-walk state was invalid; buffer may not be trustworthy
                 continue;
             }
         }
@@ -653,10 +663,13 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         // switch to CFI before we loop forever.
         if (new_fp != 0 && new_fp <= fp) {
             use_cfi = true;
-            if (!cfi_step(self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp))
+            if (!cfi_step(
+                    self->proc->pid, self->proc->maps_tree, self->proc->base_table, &pc, &sp, &fp,
+                    _stack_buf_base ? _stack_buf : NULL, _stack_buf_base, _STACK_BUF_SIZE
+                ))
                 break;
             pc              = _STRIP_PAC(pc);
-            _stack_buf_base = 0;
+            _stack_buf_base = 0; // fp-walk state was invalid; buffer may not be trustworthy
             continue;
         }
 

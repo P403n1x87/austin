@@ -996,14 +996,21 @@ _cfi_find_and_eval(cfi_cache_entry_t* ce, uintptr_t target_pc, cfi_row_t* out) {
 // .eh_frame CFI to find the caller's pc and sp.
 //
 // Arguments:
-//   pid        — the target process
-//   maps_tree  — vm_range_tree built from /proc/<pid>/maps
-//   base_table — hash table mapping path hash -> runtime load_base
-//   pc, sp, fp — current register values (IN), updated to caller's (OUT)
+//   pid                       — the target process
+//   maps_tree                 — vm_range_tree built from /proc/<pid>/maps
+//   base_table                — hash table mapping path hash -> runtime load_base
+//   pc, sp, fp                — current register values (IN), updated to caller's (OUT)
+//   stack_buf, stack_buf_base — optional prefetched stack page (NULL to disable);
+//                               CFA reads that fall within this window skip the
+//                               process_vm_readv syscall entirely, turning the
+//                               per-step cost from ~1 µs to a cache-hot memcpy.
 //
 // Returns true if a step was successfully taken.
 static bool
-cfi_step(pid_t pid, vm_range_tree_t* maps_tree, hash_table_t* base_table, uintptr_t* pc, uintptr_t* sp, uintptr_t* fp) {
+cfi_step(
+    pid_t pid, vm_range_tree_t* maps_tree, hash_table_t* base_table, uintptr_t* pc, uintptr_t* sp, uintptr_t* fp,
+    const uint8_t* stack_buf, uintptr_t stack_buf_base, size_t stack_buf_size
+) {
     vm_range_t* range = vm_range_tree__find(maps_tree, *pc);
     if (!range)
         return false;
@@ -1043,10 +1050,32 @@ cfi_step(pid_t pid, vm_range_tree_t* maps_tree, hash_table_t* base_table, uintpt
     uintptr_t new_pc  = 0;
     uintptr_t new_fp  = 0;
 
-    // Batch RA and FP reads into a single process_vm_readv syscall when both
-    // are needed — halves the number of kernel transitions per unwind step.
-    if (row.regs[_CFI_FP_REG].kind == REG_CFA_OFFSET) {
-        uintptr_t    fp_addr  = (uintptr_t)((intptr_t)cfa + row.regs[_CFI_FP_REG].offset);
+    bool      fp_saved = row.regs[_CFI_FP_REG].kind == REG_CFA_OFFSET;
+    uintptr_t fp_addr  = fp_saved ? (uintptr_t)((intptr_t)cfa + row.regs[_CFI_FP_REG].offset) : 0;
+
+// Check whether a remote address falls entirely within the prefetched buffer.
+#define _IN_SBUF(addr)                                                                                               \
+    (stack_buf != NULL && (addr) >= stack_buf_base && (addr) + sizeof(uintptr_t) <= stack_buf_base + stack_buf_size)
+#define _SBUF_READ(addr, dst) memcpy((dst), stack_buf + ((addr) - stack_buf_base), sizeof(uintptr_t))
+
+    bool ra_in_buf = _IN_SBUF(ra_addr);
+    bool fp_in_buf = fp_saved && _IN_SBUF(fp_addr);
+
+    if (ra_in_buf) {
+        // Fast path: RA (and possibly FP) served from the prefetched stack page —
+        // no syscall needed for the common case of a shallow native stack.
+        _SBUF_READ(ra_addr, &new_pc);
+        if (fp_saved) {
+            if (fp_in_buf)
+                _SBUF_READ(fp_addr, &new_fp);
+            else {
+                struct iovec l = {.iov_base = &new_fp, .iov_len = sizeof(new_fp)};
+                struct iovec r = {.iov_base = (void*)fp_addr, .iov_len = sizeof(new_fp)};
+                process_vm_readv(pid, &l, 1, &r, 1, 0); // best effort; FP failure is tolerable
+            }
+        }
+    } else if (fp_saved) {
+        // Fallback: batch RA + FP into a single syscall (original behaviour).
         struct iovec local[2] = {
             {.iov_base = &new_pc, .iov_len = sizeof(new_pc)},
             {.iov_base = &new_fp, .iov_len = sizeof(new_fp)}
@@ -1056,15 +1085,18 @@ cfi_step(pid_t pid, vm_range_tree_t* maps_tree, hash_table_t* base_table, uintpt
             {.iov_base = (void*)fp_addr, .iov_len = sizeof(new_fp)}
         };
         ssize_t n = process_vm_readv(pid, local, 2, remote, 2, 0);
-        // At minimum the RA must be read; FP failure is tolerable.
         if (n < (ssize_t)sizeof(new_pc))
             return false;
     } else {
+        // Fallback: RA only.
         struct iovec local  = {.iov_base = &new_pc, .iov_len = sizeof(new_pc)};
         struct iovec remote = {.iov_base = (void*)ra_addr, .iov_len = sizeof(new_pc)};
         if (process_vm_readv(pid, &local, 1, &remote, 1, 0) != (ssize_t)sizeof(new_pc))
             return false;
     }
+
+#undef _IN_SBUF
+#undef _SBUF_READ
 
     *pc = new_pc;
     *sp = cfa;
