@@ -85,10 +85,18 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
     for (int i = 0; i < stack_pointer(); i++) {
         py_frame_t py_frame = stack_py_get(i);
 
+        // TODO: we can avoid this branching by checking the top of the stack
+        // beforehand.
+        if (py_frame.origin == PYSTACK_REPEAT_MAGIC) {
+            stack_set(i, PYSTACK_REPEAT_MAGIC);
+            break;
+        }
+
         if (py_frame.origin == CFRAME_MAGIC) {
             stack_set(i, CFRAME_MAGIC);
             continue;
         }
+
         int      lasti     = py_frame.lasti;
         key_dt   frame_key = py_frame_key(py_frame.code, lasti);
         frame_t* frame     = lru_cache__maybe_hit(cache, frame_key);
@@ -232,6 +240,13 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
             log_d("Circular frame reference detected");
             FAIL;
         }
+
+        // Up-stack optimisation: repeat the previous stack if a frame matches
+        // the previous sample's top frame. Only for non-native samples.
+        if (!pargs_native && isvalid(prev) && prev == self->prev_top_frame) {
+            stack_py_push_repeat();
+            SUCCESS;
+        }
     }
 
     SUCCESS;
@@ -257,6 +272,13 @@ _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
             log_d("Circular frame reference detected");
             FAIL;
         }
+
+        // Up-stack optimisation: repeat the previous stack if a frame matches
+        // the previous sample's top frame. Only for non-native samples.
+        if (!pargs_native && isvalid(curr) && curr == self->prev_top_frame) {
+            stack_py_push_repeat();
+            SUCCESS;
+        }
     }
 
     SUCCESS;
@@ -278,24 +300,23 @@ _py_thread__unwind_cframe_stack(py_thread_t* self) {
 // ---- PUBLIC ----------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-// Read the code object pointer from the top frame without copying the full
-// frame struct. For < 3.11 reads PyFrameObject.f_code; for >= 3.11 reads
+// Read the code object pointer from a frame without copying the full struct.
+// For < 3.11 reads PyFrameObject.f_code; for >= 3.11 reads
 // _PyInterpreterFrame.f_code. Returns NULL on failure (treated as unknown).
 static inline void*
-_py_thread__read_top_code(py_thread_t* self) {
+_py_thread__read_frame_code(py_thread_t* self, raddr_t frame) {
     V_DESC(self->proc->py_v);
 
-    raddr_t code = NULL;
-    int     offset;
+    raddr_t code   = NULL;
+    int     offset = V_MIN(3, 11) ? py_v->py_iframe.o_code : py_v->py_frame.o_code;
 
-    if (V_MIN(3, 11)) {
-        offset = py_v->py_iframe.o_code;
-    } else {
-        offset = py_v->py_frame.o_code;
-    }
-
-    copy_memory(self->proc->ref, (char*)self->top_frame + offset, sizeof(raddr_t), &code);
+    copy_memory(self->proc->ref, (char*)frame + offset, sizeof(raddr_t), &code);
     return code;
+}
+
+static inline void*
+_py_thread__read_top_code(py_thread_t* self) {
+    return _py_thread__read_frame_code(self, self->top_frame);
 }
 
 // ----------------------------------------------------------------------------
@@ -416,22 +437,26 @@ py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr, thread_tracke
     entry->last_gen = tracker->sample_gen;
 
     V_DESC(self->proc->py_v);
+
     // For Python < 3.11 heap-allocated frame objects can be freed and
     // reallocated at the same address; verify the code object too.
     // For >= 3.11 frames live in a stack chunk with variable sizing, so
     // address collisions are rare enough that the frame check alone suffices.
     void* top_code = (isvalid(self->top_frame) && V_MAX(3, 10)) ? _py_thread__read_top_code(self) : NULL;
 
-    if (entry->top_frame == self->top_frame) {
+    if (isvalid(self->top_frame) && entry->top_frame == self->top_frame) {
         if (V_MIN(3, 11) || top_code == entry->top_code) {
             self->is_repeat = true;
             SUCCESS;
         }
     }
 
+    // Expose the previous top for partial-repeat detection during unwinding.
+    self->prev_top_frame = entry->top_frame;
+    self->prev_top_code  = entry->top_code;
+
     _py_thread__load_stack(self);
 
-    // Track the last seen top frame information.
     entry->top_frame = self->top_frame;
     entry->top_code  = top_code;
 
@@ -465,7 +490,23 @@ py_thread__unwind(py_thread_t* self) {
     // Platform-specific native stack unwinding dispatch.
     // Each platform header defines _py_thread__unwind_native which handles
     // the is_interrupted check, kernel stack, and native frame unwinding.
-    _py_thread__unwind_native(self, &error);
+    if (pargs_native) {
+        _py_thread__unwind_native(self, &error);
+
+        // If the Python stack was marked as a repeat but
+        // _PyEval_EvalFrameDefault was not found on the native stack, the
+        // thread is momentarily outside the eval loop (GIL handoff, C-extension
+        // call chain that doesn't pass through the eval frame at this instant).
+        // Treat this as a non-repeat: emit the collected native frames only,
+        // and force a full Python unwind next time so we don't emit cascading
+        // empty stacks via MOJO_STACK_REPEAT.
+        if (self->is_repeat && stack_native_top() != (frame_t*)EVAL_FRAME_MAGIC) {
+            self->is_repeat               = false;
+            thread_tracker_entry_t* entry = thread_tracker__get_or_create(self->proc->thread_tracker, self->tid);
+            if (isvalid(entry))
+                entry->top_frame = NULL;
+        }
+    }
 
     V_DESC(self->proc->py_v);
 
@@ -473,7 +514,9 @@ py_thread__unwind(py_thread_t* self) {
     stack_reset();
 
     if (self->is_repeat) {
-        stack_push_py_repeat();
+        // The top frame is the same as the previous sample, so we can skip
+        // unwinding and just push a repeat marker.
+        stack_py_push_repeat();
     } else if (isvalid(self->top_frame)) {
         // Ensure the stack chunk is loaded before unwinding
         _py_thread__load_stack(self);
@@ -491,10 +534,10 @@ py_thread__unwind(py_thread_t* self) {
                 error = true;
             }
         }
+    }
 
-        if (fail(_py_thread__resolve_py_stack(self))) {
-            error = true;
-        }
+    if (fail(_py_thread__resolve_py_stack(self))) {
+        error = true;
     }
 
     if (error)

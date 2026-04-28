@@ -52,22 +52,12 @@ typedef struct thread {
 
     tstate_status_t status;
 
-    bool is_repeat; // set by py_thread__next: true when top_frame matches cache
+    bool    is_repeat;      // true when top_frame+code matches the previous sample
+    raddr_t prev_top_frame; // previous sample's top frame (for partial repeat detection)
+    void*   prev_top_code;  // code at prev_top_frame (< 3.11 only)
 } py_thread_t;
 
 #define py_thread__init(_proc) {.proc = _proc}
-
-static inline bool
-_py_thread__is_pyeval_frame(py_thread_t* self, cached_string_t* scope) {
-    if (scope == self->proc->pyeval_scope)
-        return true;
-    if (!self->proc->pyeval_scope && scope != UNKNOWN_SCOPE
-        && isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"))) {
-        self->proc->pyeval_scope = scope;
-        return true;
-    }
-    return false;
-}
 
 /**
  * Fill the thread structure from the given remote address.

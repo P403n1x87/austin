@@ -97,12 +97,12 @@ stack_py_push(raddr_t origin, raddr_t code, int lasti) {
 #define stack_full()     (_stack->pointer >= _stack->size)
 
 #define stack_py_push_cframe() (stack_py_push(CFRAME_MAGIC, NULL, 0))
-#define stack_push_py_repeat()                                  \
-    { _stack->base[_stack->pointer++] = PYSTACK_REPEAT_MAGIC; }
+#define stack_py_push_repeat() (stack_py_push(PYSTACK_REPEAT_MAGIC, NULL, 0))
 
 #define stack_native_push(frame)                               \
     { _stack->native_base[_stack->native_pointer++] = frame; }
 #define stack_native_pop()      (_stack->native_base[--_stack->native_pointer])
+#define stack_native_top()      (_stack->native_pointer ? _stack->native_base[_stack->native_pointer - 1] : NULL)
 #define stack_native_is_empty() (_stack->native_pointer == 0)
 #define stack_native_full()     (_stack->native_pointer >= _stack->size)
 #define stack_native_reset()        \

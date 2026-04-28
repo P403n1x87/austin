@@ -83,10 +83,8 @@ typedef struct {
     lru_cache_t*      code_cache;
     lru_cache_t*      interpreter_state_cache;
     thread_tracker_t* thread_tracker;
-    cached_string_t*  pyeval_scope;
-
     // Temporal profiling support
-    microseconds_t timestamp;
+    microseconds_t    timestamp;
 
     // Memory profiling support
     ssize_t last_resident_memory;

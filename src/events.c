@@ -91,67 +91,87 @@ mojo_event_handler__handle_new_frame(base_event_handler_t* self, frame_t* frame)
 
 static inline void
 mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
+    bool py_repeat = stack_top() == PYSTACK_REPEAT_MAGIC;
+    if (py_repeat)
+        (void)stack_pop();
+
     bool has_cframes = false;
     if (stack_top() == CFRAME_MAGIC) {
         has_cframes = true;
         (void)stack_pop();
     }
 
-    while (!stack_native_is_empty()) {
-        frame_t* native_frame = stack_native_pop();
-        if (!isvalid(native_frame)) {
-            log_e("Invalid native frame"); // GCOV_EXCL_START
-            break;                         // GCOV_EXCL_STOP
-        }
-        cached_string_t* scope = native_frame->scope;
-        bool             is_frame_eval
-            = (scope == UNKNOWN_SCOPE) ? false : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
-        if (!stack_is_empty() && is_frame_eval) {
-            frame_t* frame = stack_pop();
-            if (frame == PYSTACK_REPEAT_MAGIC) {
-                mojo_stack_repeat();
-            } else if (has_cframes) {
-                while (frame != CFRAME_MAGIC) {
-                    mojo_frame_ref(frame);
+    if (pargs_native) {
+        bool native_repeat = py_repeat && stack_native_top() == EVAL_FRAME_MAGIC;
+        if (native_repeat)
+            (void)stack_native_pop();
 
-                    if (stack_is_empty())
-                        break;
+        while (!stack_native_is_empty()) {
+            frame_t* native_frame = stack_native_pop();
+            if (!isvalid(native_frame)) {
+                log_e("Invalid native frame"); // GCOV_EXCL_START
+                break;                         // GCOV_EXCL_STOP
+            }
 
-                    frame = stack_pop();
+            if (native_repeat) {
+                // If the Python stack is repeated, we have unwound the native stack
+                // up to PyEval_EvalFrameDefault, so we can emit these frames
+                // unconditionally.
+                mojo_frame_ref(native_frame);
+                continue;
+            }
+
+            if (native_frame == (frame_t*)EVAL_FRAME_MAGIC) {
+                if (!stack_is_empty()) {
+                    frame_t* frame = stack_pop();
+                    if (has_cframes) {
+                        while (frame != CFRAME_MAGIC) {
+                            mojo_frame_ref(frame);
+
+                            if (stack_is_empty())
+                                break;
+
+                            frame = stack_pop();
+                        }
+                    } else {
+                        if (frame != CFRAME_MAGIC) {
+                            mojo_frame_ref(frame);
+                        }
+                    }
                 }
             } else {
-                if (frame != CFRAME_MAGIC) {
-                    mojo_frame_ref(frame);
-                }
+                mojo_frame_ref(native_frame);
             }
-        } else {
-            mojo_frame_ref(native_frame);
+        }
+
+#ifdef DEBUG
+        if (!stack_is_empty()) {
+            log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
+        }
+#endif
+        while (!stack_kernel_is_empty()) {
+            char* scope = stack_kernel_pop();
+            mojo_frame_kernel(scope);
+            free(scope);
+        }
+
+        if (native_repeat) {
+            mojo_stack_repeat();
         }
     }
 
     // In non-native mode the native stack is always empty so the interleaving
     // loop above never runs.  Drain Python frames directly in that case.
-    if (!pargs_native) {
+    else {
         while (!stack_is_empty()) {
             frame_t* frame = stack_pop();
-            if (frame == PYSTACK_REPEAT_MAGIC) {
-                mojo_stack_repeat();
-                break;
-            }
             if (frame != CFRAME_MAGIC) {
                 mojo_frame_ref(frame);
             }
         }
-    }
-#ifdef DEBUG
-    if (!stack_is_empty()) {
-        log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
-    }
-#endif
-    while (!stack_kernel_is_empty()) {
-        char* scope = stack_kernel_pop();
-        mojo_frame_kernel(scope);
-        free(scope);
+        if (py_repeat) {
+            mojo_stack_repeat();
+        }
     }
 
     // Finish off sample with the metric(s)
@@ -231,28 +251,23 @@ where_event_handler__handle_stack_end(base_event_handler_t* self) {
             log_e("Invalid native frame"); // GCOV_EXCL_START
             break;                         // GCOV_EXCL_STOP
         }
-        cached_string_t* scope = native_frame->scope;
-        if (!isvalid(scope)) {
-            scope = UNKNOWN_SCOPE; // GCOV_EXCL_LINE
-        }
-
-        bool is_frame_eval
-            = (scope == UNKNOWN_SCOPE) ? false : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
-        if (!stack_is_empty() && is_frame_eval) {
+        if (native_frame == (frame_t*)EVAL_FRAME_MAGIC) {
             // TODO: if the py stack is empty we have a mismatch.
-            frame_t* frame = stack_pop();
-            if (has_cframes) {
-                while (frame != CFRAME_MAGIC) {
-                    format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+            if (!stack_is_empty()) {
+                frame_t* frame = stack_pop();
+                if (has_cframes) {
+                    while (frame != CFRAME_MAGIC) {
+                        format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
 
-                    if (stack_is_empty())
-                        break;
+                        if (stack_is_empty())
+                            break;
 
-                    frame = stack_pop();
-                }
-            } else {
-                if (frame != CFRAME_MAGIC) {
-                    format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+                        frame = stack_pop();
+                    }
+                } else {
+                    if (frame != CFRAME_MAGIC) {
+                        format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+                    }
                 }
             }
         } else {

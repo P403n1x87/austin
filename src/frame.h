@@ -81,6 +81,7 @@ frame__destroy(frame_t* self) {
 
 #define CFRAME_MAGIC         ((void*)0xCF)
 #define PYSTACK_REPEAT_MAGIC ((void*)0xB4)
+#define EVAL_FRAME_MAGIC     ((void*)0xEF)
 
 #include "code.h"
 #include "mojo.h"

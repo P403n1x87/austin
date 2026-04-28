@@ -1316,6 +1316,7 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
 
         py_thread__unwind(&py_thread);
 
+        // TODO: Now the stack repeat frame might be at the top!
         if (pargs_native && V_MIN(3, 11) && V_MAX(3, 12)) {
             // We expect a CFrame to sit at the top of the stack
             if (!stack_is_empty() && stack_top() != CFRAME_MAGIC) { // GCOV_EXCL_START
