@@ -278,6 +278,27 @@ _py_thread__unwind_cframe_stack(py_thread_t* self) {
 // ---- PUBLIC ----------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
+// Read the code object pointer from the top frame without copying the full
+// frame struct. For < 3.11 reads PyFrameObject.f_code; for >= 3.11 reads
+// _PyInterpreterFrame.f_code. Returns NULL on failure (treated as unknown).
+static inline void*
+_py_thread__read_top_code(py_thread_t* self) {
+    V_DESC(self->proc->py_v);
+
+    raddr_t code = NULL;
+    int     offset;
+
+    if (V_MIN(3, 11)) {
+        offset = py_v->py_iframe.o_code;
+    } else {
+        offset = py_v->py_frame.o_code;
+    }
+
+    copy_memory(self->proc->ref, (char*)self->top_frame + offset, sizeof(raddr_t), &code);
+    return code;
+}
+
+// ----------------------------------------------------------------------------
 // Core thread-state read: copies the remote thread state and extracts all
 // fields except the datastack chunk.  Declared static inline so that both
 // py_thread__read_remote and py_thread__read_with_stack_remote can call it
@@ -394,13 +415,25 @@ py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr, thread_tracke
 
     entry->last_gen = tracker->sample_gen;
 
-    if (!pargs_native && isvalid(self->top_frame) && entry->top_frame == self->top_frame) {
-        self->is_repeat = true;
-        SUCCESS;
+    V_DESC(self->proc->py_v);
+    // For Python < 3.11 heap-allocated frame objects can be freed and
+    // reallocated at the same address; verify the code object too.
+    // For >= 3.11 frames live in a stack chunk with variable sizing, so
+    // address collisions are rare enough that the frame check alone suffices.
+    void* top_code = (isvalid(self->top_frame) && V_MAX(3, 10)) ? _py_thread__read_top_code(self) : NULL;
+
+    if (entry->top_frame == self->top_frame) {
+        if (V_MIN(3, 11) || top_code == entry->top_code) {
+            self->is_repeat = true;
+            SUCCESS;
+        }
     }
 
     _py_thread__load_stack(self);
+
+    // Track the last seen top frame information.
     entry->top_frame = self->top_frame;
+    entry->top_code  = top_code;
 
     SUCCESS;
 }

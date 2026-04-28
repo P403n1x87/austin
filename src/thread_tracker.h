@@ -44,6 +44,7 @@
 typedef struct {
     uintptr_t    tid;
     void*        top_frame; // Python-only pre-unwind identity (NULL = no prior emit)
+    void*        top_code;  // code object at top_frame, guards against frame reuse
     unsigned int last_gen;
 } thread_tracker_entry_t;
 
