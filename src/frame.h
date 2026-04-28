@@ -79,7 +79,8 @@ frame__destroy(frame_t* self) {
     sfree(self);
 }
 
-#define CFRAME_MAGIC ((void*)0xCF)
+#define CFRAME_MAGIC         ((void*)0xCF)
+#define PYSTACK_REPEAT_MAGIC ((void*)0xB4)
 
 #include "code.h"
 #include "mojo.h"

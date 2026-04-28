@@ -29,7 +29,7 @@
 #include "cache.h"
 #include "platform.h"
 
-#define MOJO_VERSION 3
+#define MOJO_VERSION 4
 
 enum {
     MOJO_RESERVED,
@@ -45,6 +45,7 @@ enum {
     MOJO_METRIC_MEMORY,
     MOJO_STRING,
     MOJO_STRING_REF,
+    MOJO_STACK_REPEAT,
     MOJO_MAX,
 };
 
@@ -151,6 +152,8 @@ mojo_integer(mojo_int_t integer, int sign) {
     mojo_event(MOJO_FRAME_REF);  \
     mojo_integer(frame->key, 0);
 
+#define mojo_stack_repeat() mojo_event(MOJO_STACK_REPEAT);
+
 #define mojo_frame_kernel(scope)   \
     mojo_event(MOJO_FRAME_KERNEL); \
     mojo_string(scope);
@@ -171,3 +174,25 @@ mojo_integer(mojo_int_t integer, int sign) {
 #define mojo_string_ref(key)     \
     mojo_event(MOJO_STRING_REF); \
     mojo_ref(key);
+
+// Emit the metric tail shared by MOJO_STACK and MOJO_STACK_REPEAT.
+// Assumes pargs is in scope (always true inside the sampler/event handlers).
+#define mojo_emit_metrics(sample)                        \
+    {                                                    \
+        if ((sample)->gc_state == GC_STATE_COLLECTING) { \
+            mojo_event(MOJO_GC);                         \
+        }                                                \
+        if (pargs.full) {                                \
+            mojo_metric_time((sample)->time);            \
+            if ((sample)->is_idle) {                     \
+                mojo_event(MOJO_IDLE);                   \
+            }                                            \
+            mojo_metric_memory((sample)->memory);        \
+        } else {                                         \
+            if (pargs.memory) {                          \
+                mojo_metric_memory((sample)->memory);    \
+            } else {                                     \
+                mojo_metric_time((sample)->time);        \
+            }                                            \
+        }                                                \
+    }

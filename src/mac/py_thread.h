@@ -460,6 +460,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
 
         stack_native_push(frame);
 
+        if (self->is_repeat && _py_thread__is_pyeval_frame(self, frame->scope))
+            break;
+
         if (fp == 0)
             break;
 

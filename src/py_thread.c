@@ -362,8 +362,19 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
 }
 
 // ----------------------------------------------------------------------------
+static inline void
+_py_thread__load_stack(py_thread_t* self) {
+    if (!isvalid(self->stack) && isvalid(self->stack_raddr)) {
+        self->stack = stack_chunk_new(self->proc->ref, self->stack_raddr);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Read the thread state and immediately perform the top-frame cache check.
+// Sets self->is_repeat; if not a repeat, loads the stack chunk right away to
+// minimise the window between the thread-state read and the frame data read.
 int
-py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr) {
+py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr, thread_tracker_t* tracker) {
     if (!isvalid(self)) { // GCOV_EXCL_START
         set_error(NULL, "Invalid thread pointer");
         FAIL;
@@ -372,20 +383,32 @@ py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr) {
     if (fail(_py_thread__read_remote(self, addr)))
         FAIL;
 
-    if (isvalid(self->stack_raddr)) {
-        self->stack = stack_chunk_new(self->proc->ref, self->stack_raddr);
+    self->is_repeat = false;
+
+    if (!isvalid(tracker))
+        SUCCESS;
+
+    thread_tracker_entry_t* entry = thread_tracker__get_or_create(tracker, self->tid);
+    if (!isvalid(entry))
+        SUCCESS;
+
+    entry->last_gen = tracker->sample_gen;
+
+    if (!pargs_native && isvalid(self->top_frame) && entry->top_frame == self->top_frame) {
+        self->is_repeat = true;
+        SUCCESS;
     }
+
+    _py_thread__load_stack(self);
+    entry->top_frame = self->top_frame;
 
     SUCCESS;
 }
 
 // ----------------------------------------------------------------------------
 int
-py_thread__next(py_thread_t* self) {
+py_thread__next(py_thread_t* self, thread_tracker_t* tracker) {
     V_DESC(self->proc->py_v);
-
-    // Determine if we want to read the stack chunk as well.
-    bool has_stack = isvalid(self->stack);
 
     if (V_MIN(3, 11)) {
         stack_chunk__destroy(self->stack);
@@ -397,7 +420,8 @@ py_thread__next(py_thread_t* self) {
 
     log_t("Found next thread");
 
-    return has_stack ? py_thread__read_with_stack_remote(self, self->next) : py_thread__read_remote(self, self->next);
+    return isvalid(tracker) ? py_thread__read_with_stack_remote(self, self->next, tracker)
+                            : py_thread__read_remote(self, self->next);
 }
 
 // ----------------------------------------------------------------------------
@@ -412,18 +436,15 @@ py_thread__unwind(py_thread_t* self) {
 
     V_DESC(self->proc->py_v);
 
-    // Fetch the datastack chunk if it wasn't read upfront (e.g. thread was
-    // read with py_thread__read_remote during the interrupt loop).
-    // However, in this case it might be better to re-read the whole thread
-    // state.
-    if (!isvalid(self->stack) && isvalid(self->stack_raddr)) {
-        self->stack = stack_chunk_new(self->proc->ref, self->stack_raddr);
-    }
-
     // Clear the Python stack state before any Python stack unwinding.
     stack_reset();
 
-    if (isvalid(self->top_frame)) {
+    if (self->is_repeat) {
+        stack_push_py_repeat();
+    } else if (isvalid(self->top_frame)) {
+        // Ensure the stack chunk is loaded before unwinding
+        _py_thread__load_stack(self);
+
         if (V_MIN(3, 13)) {
             if (fail(_py_thread__unwind_iframe_stack(self, self->top_frame))) {
                 error = true;
@@ -443,8 +464,6 @@ py_thread__unwind(py_thread_t* self) {
         }
     }
 
-    // Update sampling stats
-    stats_count_sample();
     if (error)
         stats_count_error();
 }

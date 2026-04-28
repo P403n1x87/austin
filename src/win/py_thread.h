@@ -451,6 +451,10 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         if (fail(_push_native_frame(self, pc)))
             FAIL;
 
+        frame_t* top = _stack->native_base[_stack->native_pointer - 1];
+        if (self->is_repeat && _py_thread__is_pyeval_frame(self, top->scope))
+            break;
+
         // Save pre-step state so we can fall back to StackWalk64 if the
         // pdata unwinder produces a PC outside any known module.
         uintptr_t saved_pc = pc;

@@ -429,7 +429,7 @@ _py_proc__check_interp_state(py_proc_t* self, raddr_t interp) {
         if (!error_is(OS)) // GCOV_EXCL_START
             FAIL;
 
-        if (fail(py_thread__next(&thread))) {
+        if (fail(py_thread__next(&thread, NULL))) {
             log_d("Failed to get next thread while inferring TID field offset");
             FAIL;
         }
@@ -784,6 +784,13 @@ py_proc_new(bool child) {
     py_proc->py_v           = NULL;
 
     _prehash_symbols();
+
+    // Tracking information about seen threads. Threads that have disappeared
+    // are evicted on a generation basis.
+    py_proc->thread_tracker = thread_tracker_new();
+    if (!isvalid(py_proc->thread_tracker)) { // GCOV_EXCL_START
+        FAIL_GOTO(error);
+    } // GCOV_EXCL_STOP
 
     py_proc->frame_cache = lru_cache_new(MAX_FRAME_CACHE_SIZE, (void (*)(value_t))frame__destroy);
     if (!isvalid(py_proc->frame_cache)) { // GCOV_EXCL_START
@@ -1167,7 +1174,7 @@ _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
     do {
         if (fail(py_thread__interrupt(&py_thread)))
             FAIL;
-    } while (success(py_thread__next(&py_thread)));
+    } while (success(py_thread__next(&py_thread, NULL)));
 
     if (!error_is(ITEREND))
         FAIL;
@@ -1183,11 +1190,13 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
     ssize_t mem_delta      = 0;
     raddr_t current_thread = NULL;
 
+    self->thread_tracker->sample_gen++;
+
     V_DESC(self->py_v);
 
     py_thread_t py_thread = py_thread__init(self);
 
-    if (fail(py_thread__read_with_stack_remote(&py_thread, tstate_head))) {
+    if (fail(py_thread__read_with_stack_remote(&py_thread, tstate_head, self->thread_tracker))) {
         if (is_fatal(austin_errno)) {
             FAIL;
         }
@@ -1315,7 +1324,12 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
         }
 
         event_handler__emit_stack_end();
-    } while (success(py_thread__next(&py_thread)));
+
+        stats_count_sample();
+    } while (success(py_thread__next(&py_thread, self->thread_tracker)));
+
+    // Evict cache entries for threads that disappeared this sweep.
+    thread_tracker__evict_stale(self->thread_tracker);
 
     if (!error_is(ITEREND)) { // GCOV_EXCL_START
         FAIL;
@@ -1502,6 +1516,8 @@ py_proc__destroy(py_proc_t* self) {
     sfree(self->lib_path);
     sfree(self->interpreter_state_com.data);
     sfree(self->extra);
+
+    thread_tracker__destroy(self->thread_tracker);
 
     lru_cache__destroy(self->string_cache);
     lru_cache__destroy(self->frame_cache);

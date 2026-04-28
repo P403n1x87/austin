@@ -107,9 +107,10 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
         bool             is_frame_eval
             = (scope == UNKNOWN_SCOPE) ? false : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
         if (!stack_is_empty() && is_frame_eval) {
-            // TODO: if the py stack is empty we have a mismatch.
             frame_t* frame = stack_pop();
-            if (has_cframes) {
+            if (frame == PYSTACK_REPEAT_MAGIC) {
+                mojo_stack_repeat();
+            } else if (has_cframes) {
                 while (frame != CFRAME_MAGIC) {
                     mojo_frame_ref(frame);
 
@@ -133,6 +134,10 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
     if (!pargs_native) {
         while (!stack_is_empty()) {
             frame_t* frame = stack_pop();
+            if (frame == PYSTACK_REPEAT_MAGIC) {
+                mojo_stack_repeat();
+                break;
+            }
             if (frame != CFRAME_MAGIC) {
                 mojo_frame_ref(frame);
             }
@@ -149,25 +154,8 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
         free(scope);
     }
 
-    if (self->sample_data.gc_state == GC_STATE_COLLECTING) {
-        mojo_event(MOJO_GC);
-    }
-
     // Finish off sample with the metric(s)
-    sample_t* sample = &self->sample_data;
-    if (pargs.full) {
-        mojo_metric_time(sample->time);
-        if (sample->is_idle) {
-            mojo_event(MOJO_IDLE);
-        }
-        mojo_metric_memory(sample->memory);
-    } else {
-        if (pargs.memory) {
-            mojo_metric_memory(sample->memory);
-        } else {
-            mojo_metric_time(sample->time);
-        }
-    }
+    mojo_emit_metrics(&self->sample_data);
 
     _mojo_flush();
 

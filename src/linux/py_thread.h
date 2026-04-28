@@ -411,6 +411,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         }
 
         stack_native_push(frame);
+
+        if (self->is_repeat && _py_thread__is_pyeval_frame(self, frame->scope))
+            break;
     } while (!stack_native_full() && unw_step(&cursor) > 0);
 
     SUCCESS;
@@ -610,6 +613,9 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         }
 
         stack_native_push(frame);
+
+        if (self->is_repeat && _py_thread__is_pyeval_frame(self, frame->scope))
+            break;
 
         if (use_cfi) {
             // CFI mode: use .eh_frame unwinding.  fp still holds the current

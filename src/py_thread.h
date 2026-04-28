@@ -31,6 +31,7 @@
 #include "py_proc.h"
 #include "stack.h"
 #include "stats.h"
+#include "thread_tracker.h"
 
 #define MAXLEN         1024
 #define MAX_STACK_SIZE 2048
@@ -50,9 +51,23 @@ typedef struct thread {
     stack_chunk_t* stack;
 
     tstate_status_t status;
+
+    bool is_repeat; // set by py_thread__next: true when top_frame matches cache
 } py_thread_t;
 
 #define py_thread__init(_proc) {.proc = _proc}
+
+static inline bool
+_py_thread__is_pyeval_frame(py_thread_t* self, cached_string_t* scope) {
+    if (scope == self->proc->pyeval_scope)
+        return true;
+    if (!self->proc->pyeval_scope && scope != UNKNOWN_SCOPE
+        && isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"))) {
+        self->proc->pyeval_scope = scope;
+        return true;
+    }
+    return false;
+}
 
 /**
  * Fill the thread structure from the given remote address.
@@ -65,24 +80,27 @@ int
 py_thread__read_remote(py_thread_t*, raddr_t);
 
 /**
- * Read the thread state and its datastack chunk from remote memory.
- *
- * Use this when the stack chunk is needed immediately (e.g. the sampling loop).
- * For the interrupt loop where only tid/next are needed, use
- * py_thread__read_remote instead.
+ * Read the thread state and immediately perform the top-frame cache check. Sets
+ * self->is_repeat; if not a repeat, loads the stack chunk right away to
+ * minimise the window between the thread-state read and the frame data read.
+ * The tracker may be NULL, in which case this behaves like
+ * py_thread__read_remote.
  */
 int
-py_thread__read_with_stack_remote(py_thread_t*, raddr_t);
+py_thread__read_with_stack_remote(py_thread_t*, raddr_t, thread_tracker_t*);
 
 /**
- * Get the next thread, if any.
+ * Get the next thread, if any.  If the tracker is non-NULL, checks the
+ * top-frame cache immediately after reading the thread state and loads the
+ * stack chunk if the stack has changed, setting self->is_repeat accordingly.
  *
- * @param  py_thread_t  self.
+ * @param  py_thread_t    self.
+ * @param  thread_tracker_t optional cache (NULL for non-sampling callers).
  *
- * @return a pointer to the next py_thread_t instance.
+ * @return SUCCESS or FAIL/STOP.
  */
 int
-py_thread__next(py_thread_t*);
+py_thread__next(py_thread_t*, thread_tracker_t*);
 
 /**
  * Unwind the thread.

@@ -97,6 +97,8 @@ stack_py_push(raddr_t origin, raddr_t code, int lasti) {
 #define stack_full()     (_stack->pointer >= _stack->size)
 
 #define stack_py_push_cframe() (stack_py_push(CFRAME_MAGIC, NULL, 0))
+#define stack_push_py_repeat()                                  \
+    { _stack->base[_stack->pointer++] = PYSTACK_REPEAT_MAGIC; }
 
 #define stack_native_push(frame)                               \
     { _stack->native_base[_stack->native_pointer++] = frame; }
