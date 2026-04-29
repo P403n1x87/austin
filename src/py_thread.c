@@ -493,14 +493,16 @@ py_thread__unwind(py_thread_t* self) {
     if (pargs_native) {
         _py_thread__unwind_native(self, &error);
 
-        // If the Python stack was marked as a repeat but
-        // _PyEval_EvalFrameDefault was not found on the native stack, the
-        // thread is momentarily outside the eval loop (GIL handoff, C-extension
-        // call chain that doesn't pass through the eval frame at this instant).
-        // Treat this as a non-repeat: emit the collected native frames only,
-        // and force a full Python unwind next time so we don't emit cascading
-        // empty stacks via MOJO_STACK_REPEAT.
-        if (self->is_repeat && stack_native_top() != (frame_t*)EVAL_FRAME_MAGIC) {
+        if (stack_native_top() == (frame_t*)EVAL_FRAME_MAGIC) {
+            // Sentinel present: consume it so the emit loop only sees real frames.
+            (void)stack_native_pop();
+        } else if (self->is_repeat) {
+            // Python stack marked as repeat but _PyEval_EvalFrameDefault was not
+            // found on the native stack.  The thread is momentarily outside the
+            // eval loop (GIL handoff, C-extension call chain that doesn't pass
+            // through the eval frame at this instant).  Emit collected native
+            // frames only, and force a full Python unwind next sample to avoid
+            // cascading empty stacks via MOJO_STACK_REPEAT.
             self->is_repeat               = false;
             thread_tracker_entry_t* entry = thread_tracker__get_or_create(self->proc->thread_tracker, self->tid);
             if (isvalid(entry))

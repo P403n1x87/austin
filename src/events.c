@@ -92,8 +92,10 @@ mojo_event_handler__handle_new_frame(base_event_handler_t* self, frame_t* frame)
 static inline void
 mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
     bool py_repeat = stack_top() == PYSTACK_REPEAT_MAGIC;
-    if (py_repeat)
+    if (py_repeat) {
         (void)stack_pop();
+        mojo_stack_repeat();
+    }
 
     bool has_cframes = false;
     if (stack_top() == CFRAME_MAGIC) {
@@ -102,10 +104,6 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
     }
 
     if (pargs_native) {
-        bool native_repeat = py_repeat && stack_native_top() == EVAL_FRAME_MAGIC;
-        if (native_repeat)
-            (void)stack_native_pop();
-
         while (!stack_native_is_empty()) {
             frame_t* native_frame = stack_native_pop();
             if (!isvalid(native_frame)) {
@@ -113,10 +111,9 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
                 break;                         // GCOV_EXCL_STOP
             }
 
-            if (native_repeat) {
-                // If the Python stack is repeated, we have unwound the native stack
-                // up to PyEval_EvalFrameDefault, so we can emit these frames
-                // unconditionally.
+            if (py_repeat) {
+                // Python stack is repeated; native frames above the eval boundary
+                // are always emitted unconditionally.
                 mojo_frame_ref(native_frame);
                 continue;
             }
@@ -154,10 +151,6 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
             mojo_frame_kernel(scope);
             free(scope);
         }
-
-        if (native_repeat) {
-            mojo_stack_repeat();
-        }
     }
 
     // In non-native mode the native stack is always empty so the interleaving
@@ -168,9 +161,6 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
             if (frame != CFRAME_MAGIC) {
                 mojo_frame_ref(frame);
             }
-        }
-        if (py_repeat) {
-            mojo_stack_repeat();
         }
     }
 
