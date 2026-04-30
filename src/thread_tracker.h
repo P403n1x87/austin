@@ -41,11 +41,18 @@
 
 #define MAX_THREAD_TRACKER 256
 
+#define LASTI_UNSET ((uintptr_t)-1)
+
 typedef struct {
-    uintptr_t    tid;
-    void*        top_frame; // Python-only pre-unwind identity (NULL = no prior emit)
-    void*        top_code;  // code object at top_frame, guards against frame reuse
-    unsigned int last_gen;
+    void*     frame; // remote address of the top frame (NULL = no prior emit)
+    void*     code;  // code object at frame, guards against frame reuse (< 3.11)
+    uintptr_t lasti; // lasti/prev_instr at frame, guards against same frame/different line
+} py_frame_id_t;
+
+typedef struct {
+    uintptr_t     tid;
+    py_frame_id_t top; // Python-only pre-unwind identity
+    unsigned int  last_gen;
 } thread_tracker_entry_t;
 
 typedef struct {

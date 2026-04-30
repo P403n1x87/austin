@@ -120,6 +120,54 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
 }
 
 // ----------------------------------------------------------------------------
+// Read the top frame into a local buffer and extract lasti + code for the
+// repeat-detection identity check.  Handles the CFrame indirection on 3.11-3.12
+// (where self->top_frame is a CFrame, not an iframe) without using the stack
+// chunk (which may not be loaded yet at this call site).
+// Returns true on success, false if the read failed or top_frame is invalid.
+static inline bool
+_py_thread__read_top_frame_identity(py_thread_t* self, uintptr_t* out_lasti, void** out_code) {
+    V_DESC(self->proc->py_v);
+    py_proc_t* proc = self->proc;
+
+    *out_lasti = LASTI_UNSET;
+    *out_code  = NULL;
+
+    if (!isvalid(self->top_frame))
+        return false;
+
+    if (V_MIN(3, 11)) {
+        raddr_t iframe_addr = self->top_frame;
+
+        if (!V_MIN(3, 13)) {
+            // 3.11-3.12: top_frame is a CFrame pointer; dereference current_frame.
+            PyCFrame cframe;
+            if (fail(copy_py(proc->ref, self->top_frame, py_cframe, cframe)))
+                return false;
+            iframe_addr = V_FIELD(raddr_t, cframe, py_cframe, o_current_frame);
+            if (!isvalid(iframe_addr))
+                return false;
+        }
+
+        PyInterpreterFrame fi;
+        if (fail(copy_py(proc->ref, iframe_addr, py_iframe, fi)))
+            return false;
+
+        *out_lasti = V_FIELD(uintptr_t, fi, py_iframe, o_prev_instr);
+        // out_code not used for >= 3.11 (code-object guard only applies to < 3.11)
+    } else {
+        PyFrameObject fr;
+        if (fail(copy_py(proc->ref, self->top_frame, py_frame, fr)))
+            return false;
+
+        *out_lasti = (uintptr_t)(unsigned int)V_FIELD(int, fr, py_frame, o_lasti);
+        *out_code  = V_FIELD(raddr_t, fr, py_frame, o_code);
+    }
+
+    return true;
+}
+
+// ----------------------------------------------------------------------------
 static inline int
 _py_thread__push_remote_frame(py_thread_t* self, raddr_t* prev) {
     PyFrameObject frame;
@@ -225,6 +273,8 @@ _py_thread__push_iframe(py_thread_t* self, raddr_t* prev) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_frame_stack(py_thread_t* self) {
+    V_DESC(self->proc->py_v);
+
     raddr_t prev = self->top_frame;
 
     while (isvalid(prev)) {
@@ -241,11 +291,15 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
             FAIL;
         }
 
-        // Up-stack optimisation: repeat the previous stack if a frame matches
-        // the previous sample's top frame. Only for non-native samples.
-        if (!pargs_native && isvalid(prev) && prev == self->prev_top_frame) {
-            stack_py_push_repeat();
-            SUCCESS;
+        // Up-stack optimisation: repeat the previous stack if the next frame
+        // matches the previous sample's top frame. Only for non-native samples.
+        if (!pargs_native && isvalid(prev) && prev == self->prev_top.frame) {
+            PyFrameObject fr;
+            if (success(copy_py(self->proc->ref, prev, py_frame, fr))
+                && (uintptr_t)(unsigned int)V_FIELD(int, fr, py_frame, o_lasti) == self->prev_top.lasti) {
+                stack_py_push_repeat();
+                SUCCESS;
+            }
         }
     }
 
@@ -255,6 +309,8 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
+    V_DESC(self->proc->py_v);
+
     raddr_t curr = iframe_raddr;
 
     while (isvalid(curr)) {
@@ -275,9 +331,20 @@ _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
 
         // Up-stack optimisation: repeat the previous stack if a frame matches
         // the previous sample's top frame. Only for non-native samples.
-        if (!pargs_native && isvalid(curr) && curr == self->prev_top_frame) {
-            stack_py_push_repeat();
-            SUCCESS;
+        if (!pargs_native && isvalid(curr) && curr == self->prev_top.frame) {
+            uintptr_t lasti = LASTI_UNSET;
+            void*     local = stack_chunk__resolve(self->stack, curr);
+            if (isvalid(local)) {
+                lasti = *(uintptr_t*)((char*)local + py_v->py_iframe.o_prev_instr);
+            } else {
+                PyInterpreterFrame fi;
+                if (success(copy_py(self->proc->ref, curr, py_iframe, fi)))
+                    lasti = V_FIELD(uintptr_t, fi, py_iframe, o_prev_instr);
+            }
+            if (lasti == self->prev_top.lasti) {
+                stack_py_push_repeat();
+                SUCCESS;
+            }
         }
     }
 
@@ -300,25 +367,6 @@ _py_thread__unwind_cframe_stack(py_thread_t* self) {
 // ---- PUBLIC ----------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-// Read the code object pointer from a frame without copying the full struct.
-// For < 3.11 reads PyFrameObject.f_code; for >= 3.11 reads
-// _PyInterpreterFrame.f_code. Returns NULL on failure (treated as unknown).
-static inline void*
-_py_thread__read_frame_code(py_thread_t* self, raddr_t frame) {
-    V_DESC(self->proc->py_v);
-
-    raddr_t code   = NULL;
-    int     offset = V_MIN(3, 11) ? py_v->py_iframe.o_code : py_v->py_frame.o_code;
-
-    copy_memory(self->proc->ref, (char*)frame + offset, sizeof(raddr_t), &code);
-    return code;
-}
-
-static inline void*
-_py_thread__read_top_code(py_thread_t* self) {
-    return _py_thread__read_frame_code(self, self->top_frame);
-}
-
 // ----------------------------------------------------------------------------
 // Core thread-state read: copies the remote thread state and extracts all
 // fields except the datastack chunk.  Declared static inline so that both
@@ -438,27 +486,28 @@ py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr, thread_tracke
 
     V_DESC(self->proc->py_v);
 
+    // Read the top frame once; extract lasti + code for the repeat check.
     // For Python < 3.11 heap-allocated frame objects can be freed and
     // reallocated at the same address; verify the code object too.
     // For >= 3.11 frames live in a stack chunk with variable sizing, so
     // address collisions are rare enough that the frame check alone suffices.
-    void* top_code = (isvalid(self->top_frame) && V_MAX(3, 10)) ? _py_thread__read_top_code(self) : NULL;
+    void*     top_code  = NULL;
+    uintptr_t top_lasti = LASTI_UNSET;
 
-    if (isvalid(self->top_frame) && entry->top_frame == self->top_frame) {
-        if (V_MIN(3, 11) || top_code == entry->top_code) {
+    if (_py_thread__read_top_frame_identity(self, &top_lasti, &top_code)) {
+        if (entry->top.frame == self->top_frame && top_lasti == entry->top.lasti
+            && (V_MIN(3, 11) || top_code == entry->top.code)) {
             self->is_repeat = true;
             SUCCESS;
         }
     }
 
     // Expose the previous top for partial-repeat detection during unwinding.
-    self->prev_top_frame = entry->top_frame;
-    self->prev_top_code  = entry->top_code;
+    self->prev_top = entry->top;
 
     _py_thread__load_stack(self);
 
-    entry->top_frame = self->top_frame;
-    entry->top_code  = top_code;
+    entry->top = (py_frame_id_t){self->top_frame, top_code, top_lasti};
 
     SUCCESS;
 }
@@ -506,7 +555,7 @@ py_thread__unwind(py_thread_t* self) {
             self->is_repeat               = false;
             thread_tracker_entry_t* entry = thread_tracker__get_or_create(self->proc->thread_tracker, self->tid);
             if (isvalid(entry))
-                entry->top_frame = NULL;
+                entry->top.frame = NULL;
         }
     }
 

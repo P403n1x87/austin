@@ -52,9 +52,8 @@ typedef struct thread {
 
     tstate_status_t status;
 
-    bool    is_repeat;      // true when top_frame+code matches the previous sample
-    raddr_t prev_top_frame; // previous sample's top frame (for partial repeat detection)
-    void*   prev_top_code;  // code at prev_top_frame (< 3.11 only)
+    bool          is_repeat; // true when top_frame+code+lasti matches the previous sample
+    py_frame_id_t prev_top;  // previous sample's top frame identity (for partial repeat detection)
 } py_thread_t;
 
 #define py_thread__init(_proc) {.proc = _proc}
