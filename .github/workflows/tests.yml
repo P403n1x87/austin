@@ -120,7 +120,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x86_64, aarch64]
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
         include:
           - arch: x86_64
             runs-on: ubuntu-24.04
@@ -157,14 +157,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}-dev
 
-      - name: Install Python 3.10
+      - name: Install Python 3.13
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Install test dependencies
         run: |
-          python3.10 -m venv .venv
+          python3.13 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r test/requirements.txt
@@ -173,7 +173,7 @@ jobs:
         run: |
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           ulimit -c unlimited
-          python3.10 -c "import ctypes;ctypes.string_at(0)" || true
+          python3.13 -c "import ctypes;ctypes.string_at(0)" || true
           ls core.* && rm core.* || true
 
       - name: Run unit tests
@@ -282,14 +282,14 @@ jobs:
 
       - run: chmod +x src/austin && chmod +x src/austinp
 
-      - name: Install Python 3.10
+      - name: Install Python 3.13
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Build wheels
         run: |
-          python3.10 -m venv .venv
+          python3.13 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-bw.txt
@@ -349,7 +349,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
@@ -370,10 +370,10 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}-dev
 
-      - name: Install Python 3.10
+      - name: Install Python 3.13
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Remove signature from the Python binary
         run: |
@@ -382,8 +382,8 @@ jobs:
 
       - name: Install test dependencies
         run: |
-          python3.10 -m pip install --upgrade pip
-          python3.10 -m pip install -r test/requirements.txt
+          python3.13 -m pip install --upgrade pip
+          python3.13 -m pip install -r test/requirements.txt
           python${{ matrix.python-version }} -m venv .venv \
             || (python${{ matrix.python-version }} -m pip install virtualenv && python${{ matrix.python-version }} -m virtualenv .venv)
 
@@ -449,14 +449,14 @@ jobs:
 
       - run: chmod +x src/austin
 
-      - name: Install Python 3.10
+      - name: Install Python 3.13
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Build wheels
         run: |
-          python3.10 -m venv .venv
+          python3.13 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-bw.txt
@@ -499,7 +499,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
@@ -597,19 +597,19 @@ jobs:
           path: src
 
       - uses: actions/setup-python@v4
-        name: Install Python 3.10
+        name: Install Python 3.13
         with:
-          python-version: '3.10'
+          python-version: '3.13'
 
       - name: Build wheels
         shell: bash
         run: |
-          py -3.10 -m pip install --upgrade pip
-          py -3.10 -m pip install -r scripts/requirements-bw.txt
+          py -3.13 -m pip install --upgrade pip
+          py -3.13 -m pip install -r scripts/requirements-bw.txt
           
           export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
 
-          py -3.10 scripts/build-wheel.py \
+          py -3.13 scripts/build-wheel.py \
             --version=$VERSION \
             --platform=win_amd64 \
             --files austin.exe:src/austin.exe
