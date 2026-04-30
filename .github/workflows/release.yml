@@ -3,6 +3,14 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (build artifacts but skip all uploads)'
+        required: false
+        default: true
+        type: boolean
+
 jobs:
   release-linux:
     strategy:
@@ -23,10 +31,10 @@ jobs:
       - uses: actions/checkout@v3
         name: Checkout Austin
 
-      - name: Install Python 3.10
+      - name: Install Python 3.13
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Setup libunwind
         uses: ./.github/actions/setup-libunwind
@@ -38,7 +46,7 @@ jobs:
 
       - name: Generate artifacts
         run: |
-          python3.10 -m venv .venv
+          python3.13 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-bw.txt
@@ -76,6 +84,7 @@ jobs:
           deactivate
 
       - name: Upload artifacts to release
+        if: ${{ !inputs.dry_run }}
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -85,6 +94,7 @@ jobs:
           file_glob: true
 
       - name: Upload Python wheels to PyPI
+        if: ${{ !inputs.dry_run }}
         run: |
           source .venv/bin/activate
           twine upload dist/*.whl --username __token__ --password ${{ secrets.PYPI_TOKEN }}
@@ -130,6 +140,7 @@ jobs:
           popd
 
       - name: Upload to choco
+        if: ${{ !inputs.dry_run }}
         shell: bash
         run: |
           export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
@@ -146,6 +157,7 @@ jobs:
           popd
 
       - name: Upload artifacts to release
+        if: ${{ !inputs.dry_run }}
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -154,28 +166,29 @@ jobs:
           overwrite: true
           file_glob: true
 
-      - name: Install Python 3.10
+      - name: Install Python 3.13
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Build Python wheels
         shell: bash
         run: |
-          py -3.10 -m pip install --upgrade pip
-          py -3.10 -m pip install -r scripts/requirements-bw.txt
+          py -3.13 -m pip install --upgrade pip
+          py -3.13 -m pip install -r scripts/requirements-bw.txt
           
           export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
 
-          py -3.10 scripts/build-wheel.py \
+          py -3.13 scripts/build-wheel.py \
             --version=$VERSION \
             --platform=win_amd64 \
             --files austin.exe:src/austin.exe
       
       - name: Upload Python wheels to PyPI
+        if: ${{ !inputs.dry_run }}
         shell: bash
         run: |
-          py -3.10 -m twine upload dist/*.whl --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+          py -3.13 -m twine upload dist/*.whl --username __token__ --password ${{ secrets.PYPI_TOKEN }}
 
   release-osx:
     runs-on: macos-latest
@@ -186,14 +199,14 @@ jobs:
       - uses: actions/checkout@v3
         name: Checkout Austin
 
-      - name: Install Python 3.10
+      - name: Install Python 3.13
         uses: actions/setup-python@v4
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Generate artifacts
         run: |
-          python3.10 -m venv .venv
+          python3.13 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-bw.txt
@@ -228,6 +241,7 @@ jobs:
           deactivate
 
       - name: Upload artifacts to release
+        if: ${{ !inputs.dry_run }}
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -235,8 +249,9 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
-      
+
       - name: Upload Python wheels to PyPI
+        if: ${{ !inputs.dry_run }}
         shell: bash
         run: |
           source .venv/bin/activate

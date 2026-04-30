@@ -279,13 +279,6 @@ typedef struct {
         offsetof(s, collecting), \
     }
 
-// ---- Python 3.9 ------------------------------------------------------------
-
-python_v python_v3_9 = {
-    PY_CODE(PyCodeObject3_8),     PY_FRAME(PyFrameObject3_7),     PY_THREAD(PyThreadState3_8),
-    PY_IS(PyInterpreterState3_9), PY_RUNTIME(_PyRuntimeState3_8), PY_GC(struct _gc_runtime_state3_8),
-};
-
 // ---- Python 3.10 -----------------------------------------------------------
 
 python_v python_v3_10 = {
@@ -327,11 +320,6 @@ get_version_descriptor(int major, int minor, int patch) {
     // ---- Python 3 ------------------------------------------------------------
     case 3:
         switch (minor) {
-        //, 3.9
-        case 9:
-            py_v = &python_v3_9;
-            break;
-
         // 3.10
         case 10:
             py_v = &python_v3_10;
