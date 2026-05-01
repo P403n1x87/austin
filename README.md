@@ -328,9 +328,32 @@ representation of the collected data that can be processed by the `mojo2austin`
 tool that comes with the [`austin-python`] Python package to produce the more
 commonly used collapsed stack format. The MOJO format can also be converted to
 the [Speedscope] JSON format using the `austin2speedscope` tool that also comes
-with the [`austin-python`] Python package. If you use Visual Studio Code, you
-can use the [Austin VS Code extension] to visualise the profile data directly
-in the editor.
+with the [`austin-python`] Python package.
+
+> [!TIP]
+> The recommended way to visualise Austin profiles is with the
+> [Austin VS Code extension]. It opens `.mojo` files directly and renders
+> interactive flame graphs, source-level annotations, and thread breakdowns
+> without any extra conversion steps. The extension also ships with an MCP
+> server that lets coding agents query profiling data autonomously.
+
+If you prefer command-line tools such as [Brendan Gregg's
+`flamegraph.pl`][FlameGraph] to generate flame graph visualisations, you first
+need to convert Austin's MOJO output to collapsed stack format with the
+`mojo2austin` utility from the [`austin-python`] package:
+
+~~~ console
+pip install austin-python
+mojo2austin profile.mojo /dev/stdout | flamegraph.pl > profile.svg
+~~~
+
+Open `profile.svg` in a browser to explore the interactive flame graph.
+
+> [!NOTE]
+> Austin writes binary MOJO data to stdout by default, so piping Austin's
+> output directly into `flamegraph.pl` will not work. Always save to a file
+> first (with `-o profile.mojo` or output redirection) and then convert with
+> `mojo2austin`.
 
 > [!IMPORTANT]
 > If you are running Austin directly in a terminal, make sure to either redirect
