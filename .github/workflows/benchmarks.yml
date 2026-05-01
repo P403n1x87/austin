@@ -256,7 +256,7 @@ jobs:
         run: |
           python -m venv .venv
           source .venv/Scripts/activate
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           cd austin
           pip install -r scripts/requirements-bm.txt
           cd -
