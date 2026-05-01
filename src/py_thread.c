@@ -128,6 +128,9 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
 static inline bool
 _py_thread__read_top_frame_identity(py_thread_t* self, uintptr_t* out_lasti, void** out_code) {
     V_DESC(self->proc->py_v);
+
+    V_ALLOCA(iframe, fi);
+
     py_proc_t* proc = self->proc;
 
     *out_lasti = LASTI_UNSET;
@@ -149,7 +152,6 @@ _py_thread__read_top_frame_identity(py_thread_t* self, uintptr_t* out_lasti, voi
                 return false;
         }
 
-        PyInterpreterFrame fi;
         if (fail(copy_py(proc->ref, iframe_addr, py_iframe, fi)))
             return false;
 
@@ -311,6 +313,8 @@ static inline int
 _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
     V_DESC(self->proc->py_v);
 
+    V_ALLOCA(iframe, fi);
+
     raddr_t curr = iframe_raddr;
 
     while (isvalid(curr)) {
@@ -336,10 +340,8 @@ _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
             void*     local = stack_chunk__resolve(self->stack, curr);
             if (isvalid(local)) {
                 lasti = *(uintptr_t*)((char*)local + py_v->py_iframe.o_prev_instr);
-            } else {
-                PyInterpreterFrame fi;
-                if (success(copy_py(self->proc->ref, curr, py_iframe, fi)))
-                    lasti = V_FIELD(uintptr_t, fi, py_iframe, o_prev_instr);
+            } else if (success(copy_py(self->proc->ref, curr, py_iframe, fi))) {
+                lasti = V_FIELD(uintptr_t, fi, py_iframe, o_prev_instr);
             }
             if (lasti == self->prev_top.lasti) {
                 stack_py_push_repeat();

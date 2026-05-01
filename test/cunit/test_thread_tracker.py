@@ -1,6 +1,5 @@
 from test.cunit.thread_tracker import ThreadTracker
 
-
 MAX_THREAD_TRACKER = 256
 
 
