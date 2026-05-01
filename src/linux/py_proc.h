@@ -356,13 +356,13 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
     log_d("Executable path: %s", pd->exe_path);
 
     map       = &(pd->maps[MAP_BIN]);
-    map->path = proc_root(self->pid, pd->exe_path);
+    map->base = first_binary_map->address;
+    map->size = first_binary_map->size;
+    map->path = proc_map_file_path(self->pid, pd->exe_path, map->base, map->size);
     if (!isvalid(map->path)) {
         FAIL; // GCOV_EXCL_LINE
     }
     map->file_size   = _file_size(map->path);
-    map->base        = first_binary_map->address;
-    map->size        = first_binary_map->size;
     map->has_symbols = success(_py_proc__analyze_elf(self, map->path, map->base, &bss));
     if (map->has_symbols) {
         map->bss_base = bss.base;
@@ -400,14 +400,13 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
 
     proc_map_t* first_lib_map = proc_map__first_submatch(proc_maps, LIB_NEEDLE);
     if (isvalid(first_lib_map)) {
-        if (success(_py_proc__analyze_elf(self, first_lib_map->pathname, first_lib_map->address, &bss))) {
+        char* lib_path
+            = proc_map_file_path(self->pid, first_lib_map->pathname, first_lib_map->address, first_lib_map->size);
+        if (isvalid(lib_path) && success(_py_proc__analyze_elf(self, lib_path, first_lib_map->address, &bss))) {
             // The library binary has symbols
             map = &(pd->maps[MAP_LIBSYM]);
 
-            map->path = proc_root(self->pid, first_lib_map->pathname);
-            if (!isvalid(map->path)) {
-                FAIL; // GCOV_EXCL_LINE
-            }
+            map->path        = lib_path;
             map->file_size   = _file_size(map->path);
             map->base        = first_lib_map->address;
             map->size        = first_lib_map->size;
@@ -417,6 +416,7 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
 
             log_d("Library path: %s (with symbols)", map->path);
         } else {
+            sfree(lib_path);
             // We look for something matching "libpythonX.Y"
             PROC_MAP_ITER(first_lib_map, m) {
                 unsigned int v;
@@ -424,7 +424,7 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
                 if (sscanf(needle, "libpython%u.%u", &v, &v) == 2) {
                     map = &(pd->maps[MAP_LIBNEEDLE]);
 
-                    map->path = proc_root(self->pid, m->pathname);
+                    map->path = proc_map_file_path(self->pid, m->pathname, m->address, m->size);
                     if (!isvalid(map->path))
                         FAIL; // GCOV_EXCL_LINE
 

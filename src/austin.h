@@ -33,5 +33,5 @@
 from scripts.utils import get_current_version_from_changelog as version
 print(f'#define VERSION "{version()}"')
 ]]] */
-#define VERSION "4.0.0"
+#define VERSION "4.1.0"
 // [[[end]]]

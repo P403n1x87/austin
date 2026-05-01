@@ -22,11 +22,13 @@
 
 #pragma once
 
+#include <inttypes.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/ptrace.h>
+#include <sys/stat.h>
 
 #include "../error.h"
 #include "../hints.h"
@@ -215,4 +217,34 @@ proc_root(pid_t pid, char* file) {
     } // GCOV_EXCL_STOP
 
     return proc_root;
+}
+
+// ----------------------------------------------------------------------------
+// Return an accessible path for the file backing a memory mapping.
+//
+// /proc/<pid>/map_files/<start>-<end> is preferred: it is a kernel-maintained
+// symlink that survives file deletion and works across mount namespaces (e.g.
+// containers), as long as the mapping is still alive. Falls back to
+// /proc/<pid>/root/<pathname> for kernels or configurations where map_files is
+// not available.
+static inline char*
+proc_map_file_path(pid_t pid, char* pathname, void* addr, size_t size) {
+    char* path = calloc(1, 64);
+    if (!isvalid(path)) // GCOV_EXCL_START
+        return proc_root(pid, pathname);
+    // GCOV_EXCL_STOP
+
+    uintptr_t start = (uintptr_t)addr;
+    uintptr_t upper = start + size;
+    if (sprintf(path, "/proc/%d/map_files/%" PRIxPTR "-%" PRIxPTR, pid, start, upper) < 0) { // GCOV_EXCL_START
+        free(path);
+        return proc_root(pid, pathname);
+    } // GCOV_EXCL_STOP
+
+    struct stat s;
+    if (stat(path, &s) == 0)
+        return path;
+
+    free(path);
+    return proc_root(pid, pathname);
 }
