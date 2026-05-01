@@ -1,4 +1,4 @@
-austin-python~=2.1
+austin-python~=2.2
 flaky~=3.8
 pytest~=9.0
 pytest-xdist~=3.8
