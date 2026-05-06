@@ -61,7 +61,8 @@ austin_SOURCES = \
   platform.c     \
   py_proc_list.c \
   py_proc.c      \
-  py_thread.c
+  py_thread.c    \
+  thread_tracker.c
 
 
 # ---- Austin P ----

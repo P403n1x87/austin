@@ -451,6 +451,14 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         if (fail(_push_native_frame(self, pc)))
             FAIL;
 
+        frame_t* top = _stack->native_base[_stack->native_pointer - 1];
+        if (unlikely(is_pyeval_frame(top->scope))) {
+            (void)stack_native_pop();
+            stack_native_push((frame_t*)EVAL_FRAME_MAGIC);
+            if (self->is_repeat)
+                break;
+        }
+
         // Save pre-step state so we can fall back to StackWalk64 if the
         // pdata unwinder produces a PC outside any known module.
         uintptr_t saved_pc = pc;
@@ -498,7 +506,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
 
 static inline void
 _py_thread__unwind_native(py_thread_t* self, bool* error) {
-    if (pargs_native && _py_thread__is_interrupted(self)) {
+    if (_py_thread__is_interrupted(self)) {
         if (fail(_py_thread__unwind_native_frame_stack(self))) {
             *error = true;
         }

@@ -26,6 +26,7 @@
 #include <sys/types.h>
 
 #include "cache.h"
+#include "thread_tracker.h"
 #ifdef PL_LINUX
 #include "linux/vm-range-tree.h"
 #ifdef AUSTINP
@@ -77,13 +78,13 @@ typedef struct {
 
     raddr_t istate_raddr;
 
-    lru_cache_t* frame_cache;
-    lru_cache_t* string_cache;
-    lru_cache_t* code_cache;
-    lru_cache_t* interpreter_state_cache;
-
+    lru_cache_t*      frame_cache;
+    lru_cache_t*      string_cache;
+    lru_cache_t*      code_cache;
+    lru_cache_t*      interpreter_state_cache;
+    thread_tracker_t* thread_tracker;
     // Temporal profiling support
-    microseconds_t timestamp;
+    microseconds_t    timestamp;
 
     // Memory profiling support
     ssize_t last_resident_memory;

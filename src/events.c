@@ -91,46 +91,71 @@ mojo_event_handler__handle_new_frame(base_event_handler_t* self, frame_t* frame)
 
 static inline void
 mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
+    bool py_repeat = stack_top() == PYSTACK_REPEAT_MAGIC;
+    if (py_repeat) {
+        (void)stack_pop();
+        mojo_stack_repeat();
+    }
+
     bool has_cframes = false;
     if (stack_top() == CFRAME_MAGIC) {
         has_cframes = true;
         (void)stack_pop();
     }
 
-    while (!stack_native_is_empty()) {
-        frame_t* native_frame = stack_native_pop();
-        if (!isvalid(native_frame)) {
-            log_e("Invalid native frame"); // GCOV_EXCL_START
-            break;                         // GCOV_EXCL_STOP
-        }
-        cached_string_t* scope = native_frame->scope;
-        bool             is_frame_eval
-            = (scope == UNKNOWN_SCOPE) ? false : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
-        if (!stack_is_empty() && is_frame_eval) {
-            // TODO: if the py stack is empty we have a mismatch.
-            frame_t* frame = stack_pop();
-            if (has_cframes) {
-                while (frame != CFRAME_MAGIC) {
-                    mojo_frame_ref(frame);
+    if (pargs_native) {
+        while (!stack_native_is_empty()) {
+            frame_t* native_frame = stack_native_pop();
+            if (!isvalid(native_frame)) {
+                log_e("Invalid native frame"); // GCOV_EXCL_START
+                break;                         // GCOV_EXCL_STOP
+            }
 
-                    if (stack_is_empty())
-                        break;
+            if (py_repeat) {
+                // Python stack is repeated; native frames above the eval boundary
+                // are always emitted unconditionally.
+                mojo_frame_ref(native_frame);
+                continue;
+            }
 
-                    frame = stack_pop();
+            if (native_frame == (frame_t*)EVAL_FRAME_MAGIC) {
+                if (!stack_is_empty()) {
+                    frame_t* frame = stack_pop();
+                    if (has_cframes) {
+                        while (frame != CFRAME_MAGIC) {
+                            mojo_frame_ref(frame);
+
+                            if (stack_is_empty())
+                                break;
+
+                            frame = stack_pop();
+                        }
+                    } else {
+                        if (frame != CFRAME_MAGIC) {
+                            mojo_frame_ref(frame);
+                        }
+                    }
                 }
             } else {
-                if (frame != CFRAME_MAGIC) {
-                    mojo_frame_ref(frame);
-                }
+                mojo_frame_ref(native_frame);
             }
-        } else {
-            mojo_frame_ref(native_frame);
+        }
+
+#ifdef DEBUG
+        if (!stack_is_empty()) {
+            log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
+        }
+#endif
+        while (!stack_kernel_is_empty()) {
+            char* scope = stack_kernel_pop();
+            mojo_frame_kernel(scope);
+            free(scope);
         }
     }
 
     // In non-native mode the native stack is always empty so the interleaving
     // loop above never runs.  Drain Python frames directly in that case.
-    if (!pargs_native) {
+    else {
         while (!stack_is_empty()) {
             frame_t* frame = stack_pop();
             if (frame != CFRAME_MAGIC) {
@@ -138,36 +163,9 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
             }
         }
     }
-#ifdef DEBUG
-    if (!stack_is_empty()) {
-        log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
-    }
-#endif
-    while (!stack_kernel_is_empty()) {
-        char* scope = stack_kernel_pop();
-        mojo_frame_kernel(scope);
-        free(scope);
-    }
-
-    if (self->sample_data.gc_state == GC_STATE_COLLECTING) {
-        mojo_event(MOJO_GC);
-    }
 
     // Finish off sample with the metric(s)
-    sample_t* sample = &self->sample_data;
-    if (pargs.full) {
-        mojo_metric_time(sample->time);
-        if (sample->is_idle) {
-            mojo_event(MOJO_IDLE);
-        }
-        mojo_metric_memory(sample->memory);
-    } else {
-        if (pargs.memory) {
-            mojo_metric_memory(sample->memory);
-        } else {
-            mojo_metric_time(sample->time);
-        }
-    }
+    mojo_emit_metrics(&self->sample_data);
 
     _mojo_flush();
 
@@ -243,28 +241,23 @@ where_event_handler__handle_stack_end(base_event_handler_t* self) {
             log_e("Invalid native frame"); // GCOV_EXCL_START
             break;                         // GCOV_EXCL_STOP
         }
-        cached_string_t* scope = native_frame->scope;
-        if (!isvalid(scope)) {
-            scope = UNKNOWN_SCOPE; // GCOV_EXCL_LINE
-        }
-
-        bool is_frame_eval
-            = (scope == UNKNOWN_SCOPE) ? false : isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
-        if (!stack_is_empty() && is_frame_eval) {
+        if (native_frame == (frame_t*)EVAL_FRAME_MAGIC) {
             // TODO: if the py stack is empty we have a mismatch.
-            frame_t* frame = stack_pop();
-            if (has_cframes) {
-                while (frame != CFRAME_MAGIC) {
-                    format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+            if (!stack_is_empty()) {
+                frame_t* frame = stack_pop();
+                if (has_cframes) {
+                    while (frame != CFRAME_MAGIC) {
+                        format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
 
-                    if (stack_is_empty())
-                        break;
+                        if (stack_is_empty())
+                            break;
 
-                    frame = stack_pop();
-                }
-            } else {
-                if (frame != CFRAME_MAGIC) {
-                    format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+                        frame = stack_pop();
+                    }
+                } else {
+                    if (frame != CFRAME_MAGIC) {
+                        format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
+                    }
                 }
             }
         } else {

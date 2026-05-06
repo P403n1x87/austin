@@ -85,10 +85,18 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
     for (int i = 0; i < stack_pointer(); i++) {
         py_frame_t py_frame = stack_py_get(i);
 
+        // TODO: we can avoid this branching by checking the top of the stack
+        // beforehand.
+        if (py_frame.origin == PYSTACK_REPEAT_MAGIC) {
+            stack_set(i, PYSTACK_REPEAT_MAGIC);
+            break;
+        }
+
         if (py_frame.origin == CFRAME_MAGIC) {
             stack_set(i, CFRAME_MAGIC);
             continue;
         }
+
         int      lasti     = py_frame.lasti;
         key_dt   frame_key = py_frame_key(py_frame.code, lasti);
         frame_t* frame     = lru_cache__maybe_hit(cache, frame_key);
@@ -109,6 +117,56 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
     }
 
     SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+// Read the top frame into a local buffer and extract lasti + code for the
+// repeat-detection identity check.  Handles the CFrame indirection on 3.11-3.12
+// (where self->top_frame is a CFrame, not an iframe) without using the stack
+// chunk (which may not be loaded yet at this call site).
+// Returns true on success, false if the read failed or top_frame is invalid.
+static inline bool
+_py_thread__read_top_frame_identity(py_thread_t* self, uintptr_t* out_lasti, void** out_code) {
+    V_DESC(self->proc->py_v);
+
+    V_ALLOCA(iframe, fi);
+
+    py_proc_t* proc = self->proc;
+
+    *out_lasti = LASTI_UNSET;
+    *out_code  = NULL;
+
+    if (!isvalid(self->top_frame))
+        return false;
+
+    if (V_MIN(3, 11)) {
+        raddr_t iframe_addr = self->top_frame;
+
+        if (!V_MIN(3, 13)) {
+            // 3.11-3.12: top_frame is a CFrame pointer; dereference current_frame.
+            PyCFrame cframe;
+            if (fail(copy_py(proc->ref, self->top_frame, py_cframe, cframe)))
+                return false;
+            iframe_addr = V_FIELD(raddr_t, cframe, py_cframe, o_current_frame);
+            if (!isvalid(iframe_addr))
+                return false;
+        }
+
+        if (fail(copy_py(proc->ref, iframe_addr, py_iframe, fi)))
+            return false;
+
+        *out_lasti = V_FIELD(uintptr_t, fi, py_iframe, o_prev_instr);
+        // out_code not used for >= 3.11 (code-object guard only applies to < 3.11)
+    } else {
+        PyFrameObject fr;
+        if (fail(copy_py(proc->ref, self->top_frame, py_frame, fr)))
+            return false;
+
+        *out_lasti = (uintptr_t)(unsigned int)V_FIELD(int, fr, py_frame, o_lasti);
+        *out_code  = V_FIELD(raddr_t, fr, py_frame, o_code);
+    }
+
+    return true;
 }
 
 // ----------------------------------------------------------------------------
@@ -217,6 +275,8 @@ _py_thread__push_iframe(py_thread_t* self, raddr_t* prev) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_frame_stack(py_thread_t* self) {
+    V_DESC(self->proc->py_v);
+
     raddr_t prev = self->top_frame;
 
     while (isvalid(prev)) {
@@ -232,6 +292,17 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
             log_d("Circular frame reference detected");
             FAIL;
         }
+
+        // Up-stack optimisation: repeat the previous stack if the next frame
+        // matches the previous sample's top frame. Only for non-native samples.
+        if (!pargs_native && isvalid(prev) && prev == self->prev_top.frame) {
+            PyFrameObject fr;
+            if (success(copy_py(self->proc->ref, prev, py_frame, fr))
+                && (uintptr_t)(unsigned int)V_FIELD(int, fr, py_frame, o_lasti) == self->prev_top.lasti) {
+                stack_py_push_repeat();
+                SUCCESS;
+            }
+        }
     }
 
     SUCCESS;
@@ -240,6 +311,10 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
+    V_DESC(self->proc->py_v);
+
+    V_ALLOCA(iframe, fi);
+
     raddr_t curr = iframe_raddr;
 
     while (isvalid(curr)) {
@@ -256,6 +331,22 @@ _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
         if (stack_has_cycle()) {
             log_d("Circular frame reference detected");
             FAIL;
+        }
+
+        // Up-stack optimisation: repeat the previous stack if a frame matches
+        // the previous sample's top frame. Only for non-native samples.
+        if (!pargs_native && isvalid(curr) && curr == self->prev_top.frame) {
+            uintptr_t lasti = LASTI_UNSET;
+            void*     local = stack_chunk__resolve(self->stack, curr);
+            if (isvalid(local)) {
+                lasti = *(uintptr_t*)((char*)local + py_v->py_iframe.o_prev_instr);
+            } else if (success(copy_py(self->proc->ref, curr, py_iframe, fi))) {
+                lasti = V_FIELD(uintptr_t, fi, py_iframe, o_prev_instr);
+            }
+            if (lasti == self->prev_top.lasti) {
+                stack_py_push_repeat();
+                SUCCESS;
+            }
         }
     }
 
@@ -277,6 +368,7 @@ _py_thread__unwind_cframe_stack(py_thread_t* self) {
 
 // ---- PUBLIC ----------------------------------------------------------------
 
+// ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 // Core thread-state read: copies the remote thread state and extracts all
 // fields except the datastack chunk.  Declared static inline so that both
@@ -362,8 +454,19 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
 }
 
 // ----------------------------------------------------------------------------
+static inline void
+_py_thread__load_stack(py_thread_t* self) {
+    if (!isvalid(self->stack) && isvalid(self->stack_raddr)) {
+        self->stack = stack_chunk_new(self->proc->ref, self->stack_raddr);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Read the thread state and immediately perform the top-frame cache check.
+// Sets self->is_repeat; if not a repeat, loads the stack chunk right away to
+// minimise the window between the thread-state read and the frame data read.
 int
-py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr) {
+py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr, thread_tracker_t* tracker) {
     if (!isvalid(self)) { // GCOV_EXCL_START
         set_error(NULL, "Invalid thread pointer");
         FAIL;
@@ -372,20 +475,49 @@ py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr) {
     if (fail(_py_thread__read_remote(self, addr)))
         FAIL;
 
-    if (isvalid(self->stack_raddr)) {
-        self->stack = stack_chunk_new(self->proc->ref, self->stack_raddr);
+    self->is_repeat = false;
+
+    if (!isvalid(tracker))
+        SUCCESS;
+
+    thread_tracker_entry_t* entry = thread_tracker__get_or_create(tracker, self->tid);
+    if (!isvalid(entry))
+        SUCCESS;
+
+    entry->last_gen = tracker->sample_gen;
+
+    V_DESC(self->proc->py_v);
+
+    // Read the top frame once; extract lasti + code for the repeat check.
+    // For Python < 3.11 heap-allocated frame objects can be freed and
+    // reallocated at the same address; verify the code object too.
+    // For >= 3.11 frames live in a stack chunk with variable sizing, so
+    // address collisions are rare enough that the frame check alone suffices.
+    void*     top_code  = NULL;
+    uintptr_t top_lasti = LASTI_UNSET;
+
+    if (_py_thread__read_top_frame_identity(self, &top_lasti, &top_code)) {
+        if (entry->top.frame == self->top_frame && top_lasti == entry->top.lasti
+            && (V_MIN(3, 11) || top_code == entry->top.code)) {
+            self->is_repeat = true;
+            SUCCESS;
+        }
     }
+
+    // Expose the previous top for partial-repeat detection during unwinding.
+    self->prev_top = entry->top;
+
+    _py_thread__load_stack(self);
+
+    entry->top = (py_frame_id_t){self->top_frame, top_code, top_lasti};
 
     SUCCESS;
 }
 
 // ----------------------------------------------------------------------------
 int
-py_thread__next(py_thread_t* self) {
+py_thread__next(py_thread_t* self, thread_tracker_t* tracker) {
     V_DESC(self->proc->py_v);
-
-    // Determine if we want to read the stack chunk as well.
-    bool has_stack = isvalid(self->stack);
 
     if (V_MIN(3, 11)) {
         stack_chunk__destroy(self->stack);
@@ -397,7 +529,8 @@ py_thread__next(py_thread_t* self) {
 
     log_t("Found next thread");
 
-    return has_stack ? py_thread__read_with_stack_remote(self, self->next) : py_thread__read_remote(self, self->next);
+    return isvalid(tracker) ? py_thread__read_with_stack_remote(self, self->next, tracker)
+                            : py_thread__read_remote(self, self->next);
 }
 
 // ----------------------------------------------------------------------------
@@ -408,22 +541,39 @@ py_thread__unwind(py_thread_t* self) {
     // Platform-specific native stack unwinding dispatch.
     // Each platform header defines _py_thread__unwind_native which handles
     // the is_interrupted check, kernel stack, and native frame unwinding.
-    _py_thread__unwind_native(self, &error);
+    if (pargs_native) {
+        _py_thread__unwind_native(self, &error);
+
+        if (stack_native_top() == (frame_t*)EVAL_FRAME_MAGIC) {
+            // Sentinel present: consume it so the emit loop only sees real frames.
+            (void)stack_native_pop();
+        } else if (self->is_repeat) {
+            // Python stack marked as repeat but _PyEval_EvalFrameDefault was not
+            // found on the native stack.  The thread is momentarily outside the
+            // eval loop (GIL handoff, C-extension call chain that doesn't pass
+            // through the eval frame at this instant).  Emit collected native
+            // frames only, and force a full Python unwind next sample to avoid
+            // cascading empty stacks via MOJO_STACK_REPEAT.
+            self->is_repeat               = false;
+            thread_tracker_entry_t* entry = thread_tracker__get_or_create(self->proc->thread_tracker, self->tid);
+            if (isvalid(entry))
+                entry->top.frame = NULL;
+        }
+    }
 
     V_DESC(self->proc->py_v);
-
-    // Fetch the datastack chunk if it wasn't read upfront (e.g. thread was
-    // read with py_thread__read_remote during the interrupt loop).
-    // However, in this case it might be better to re-read the whole thread
-    // state.
-    if (!isvalid(self->stack) && isvalid(self->stack_raddr)) {
-        self->stack = stack_chunk_new(self->proc->ref, self->stack_raddr);
-    }
 
     // Clear the Python stack state before any Python stack unwinding.
     stack_reset();
 
-    if (isvalid(self->top_frame)) {
+    if (self->is_repeat) {
+        // The top frame is the same as the previous sample, so we can skip
+        // unwinding and just push a repeat marker.
+        stack_py_push_repeat();
+    } else if (isvalid(self->top_frame)) {
+        // Ensure the stack chunk is loaded before unwinding
+        _py_thread__load_stack(self);
+
         if (V_MIN(3, 13)) {
             if (fail(_py_thread__unwind_iframe_stack(self, self->top_frame))) {
                 error = true;
@@ -437,14 +587,12 @@ py_thread__unwind(py_thread_t* self) {
                 error = true;
             }
         }
-
-        if (fail(_py_thread__resolve_py_stack(self))) {
-            error = true;
-        }
     }
 
-    // Update sampling stats
-    stats_count_sample();
+    if (fail(_py_thread__resolve_py_stack(self))) {
+        error = true;
+    }
+
     if (error)
         stats_count_error();
 }

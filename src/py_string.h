@@ -47,6 +47,11 @@ typedef struct _string {
 static cached_string_t _unknown_scope __attribute__((unused)) = {.key = 1, .value = "<unknown>"};
 #define UNKNOWN_SCOPE (&_unknown_scope)
 
+static inline bool
+is_pyeval_frame(cached_string_t* scope) {
+    return scope != UNKNOWN_SCOPE && isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
+}
+
 static inline cached_string_t*
 cached_string_new(key_dt key, char* value) {
     cached_string_t* cached_string = (cached_string_t*)malloc(sizeof(cached_string_t));

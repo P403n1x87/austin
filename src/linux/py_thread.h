@@ -410,7 +410,12 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
             event_handler__emit_new_frame(frame);
         }
 
-        stack_native_push(frame);
+        if (unlikely(is_pyeval_frame(frame->scope))) {
+            stack_native_push((frame_t*)EVAL_FRAME_MAGIC);
+            if (self->is_repeat)
+                break;
+        } else
+            stack_native_push(frame);
     } while (!stack_native_full() && unw_step(&cursor) > 0);
 
     SUCCESS;
@@ -609,7 +614,12 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
             event_handler__emit_new_frame(frame);
         }
 
-        stack_native_push(frame);
+        if (unlikely(is_pyeval_frame(frame->scope))) {
+            stack_native_push((frame_t*)EVAL_FRAME_MAGIC);
+            if (self->is_repeat)
+                break;
+        } else
+            stack_native_push(frame);
 
         if (use_cfi) {
             // CFI mode: use .eh_frame unwinding.  fp still holds the current
@@ -777,7 +787,7 @@ _py_thread__unwind_native(py_thread_t* self, bool* error) {
     }
 #elif defined(__x86_64__) || defined(__aarch64__)
     // fp-walk: only unwind when native mode is explicitly enabled.
-    if (pargs_native && fail(_py_thread__unwind_native_frame_stack(self))) {
+    if (fail(_py_thread__unwind_native_frame_stack(self))) {
         *error = true;
     }
 #endif

@@ -458,7 +458,12 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
             event_handler__emit_new_frame(frame);
         }
 
-        stack_native_push(frame);
+        if (unlikely(is_pyeval_frame(frame->scope))) {
+            stack_native_push((frame_t*)EVAL_FRAME_MAGIC);
+            if (self->is_repeat)
+                break;
+        } else
+            stack_native_push(frame);
 
         if (fp == 0)
             break;
@@ -506,7 +511,7 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
 
 static inline void
 _py_thread__unwind_native(py_thread_t* self, bool* error) {
-    if (pargs_native && fail(_py_thread__unwind_native_frame_stack(self))) {
+    if (fail(_py_thread__unwind_native_frame_stack(self))) {
         *error = true;
     }
     // No re-read here: the thread is suspended (thread_suspend) so its
