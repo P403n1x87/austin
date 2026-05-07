@@ -35,31 +35,40 @@ METADATA = {
 }
 
 
-AUSTIN_WHEELS = {
-    "manylinux_2_17_aarch64.manylinux2014_aarch64": (
-        "gnu-linux-aarch64.tar.xz",
-        ("austin", "austinp"),
-    ),
-    "manylinux_2_12_x86_64.manylinux2010_x86_64": (
-        "gnu-linux-amd64.tar.xz",
-        ("austin", "austinp"),
-    ),
-    "manylinux_2_17_armv7l.manylinux2014_armv7l": (
-        "gnu-linux-armv7.tar.xz",
-        ("austin", "austinp"),
-    ),
-    "manylinux_2_17_ppc64le.manylinux2014_ppc64le": (
-        "gnu-linux-ppc64le.tar.xz",
-        ("austin", "austinp"),
-    ),
+# Static table for platforms whose release-tarball naming doesn't carry a
+# libc-version component (macOS, Windows). The Linux glibc/musl tarballs are
+# instead derived from the platform tag at lookup time, since the tag carries
+# the libc version (see release_tarball_for_platform).
+STATIC_PLATFORM_TARBALLS = {
     "macosx_11_0_x86_64": ("mac64.zip", ("austin",)),
     "macosx_11_0_arm64": ("mac-arm64.zip", ("austin",)),
-    "musllinux_1_1_aarch64": ("musl-linux-aarch64.tar.xz", ("austin",)),
-    "musllinux_1_1_x86_64": ("musl-linux-amd64.tar.xz", ("austin",)),
-    "musllinux_1_1_armv7l": ("musl-linux-armv7.tar.xz", ("austin",)),
-    "musllinux_1_1_ppc64le": ("musl-linux-ppc64le.tar.xz", ("austin",)),
     "win_amd64": ("win64.zip", ("austin",)),
 }
+
+
+def release_tarball_for_platform(platform: str) -> tuple[str, tuple[str, ...]]:
+    """Return (release-tarball-suffix, variants-to-extract) for a wheel platform tag.
+
+    The Linux release tarballs published by the workflows follow the convention:
+      austin-{version}-gnu-{glibc_major}_{glibc_minor}-linux-{arch}.tar.xz
+      austin-{version}-musl-{musl_major}_{musl_minor}-linux-{arch}.tar.xz
+    so for a tag like `manylinux_2_28_x86_64` we return `gnu-2_28-linux-x86_64.tar.xz`.
+    """
+    if platform in STATIC_PLATFORM_TARBALLS:
+        return STATIC_PLATFORM_TARBALLS[platform]
+
+    parts = platform.split("_")
+    if platform.startswith("manylinux_") and len(parts) >= 4:
+        major, minor = parts[1], parts[2]
+        arch = "_".join(parts[3:])
+        return (f"gnu-{major}_{minor}-linux-{arch}.tar.xz", ("austin", "austinp"))
+
+    if platform.startswith("musllinux_") and len(parts) >= 4:
+        major, minor = parts[1], parts[2]
+        arch = "_".join(parts[3:])
+        return (f"musl-{major}_{minor}-linux-{arch}.tar.xz", ("austin",))
+
+    raise ValueError(f"Unknown platform tag: {platform}")
 
 
 def make_message(headers, payload=None):
@@ -115,7 +124,7 @@ def write_austin_wheel(out_dir, *, version, platform, austin_bin_data):
             "Wheel-Version": "1.0",
             "Generator": "austin-dist build-wheel.py",
             "Root-Is-Purelib": "false",
-            "Tag": f"{python}-none-{platform}",
+            "Tag": [f"{python}-none-{p}" for p in platform.split(".")],
         }
     )
 
@@ -174,7 +183,6 @@ if __name__ == "__main__":
     argp.add_argument(
         "--platform",
         help="Platform to build wheels for",
-        choices=AUSTIN_WHEELS.keys(),
         default=None,
     )
 
@@ -193,25 +201,30 @@ if __name__ == "__main__":
     dist_dir = Path.cwd() / "dist"
     dist_dir.mkdir(exist_ok=True)
 
-    for platform, (suffix, variants) in AUSTIN_WHEELS.items():
-        if args.platform is not None and args.platform != platform:
-            continue
-
-        bin_data = (
-            (
-                download_release(version, suffix, variant_name=variant)
-                for variant in variants
-            )
-            if args.files is None
-            else (
-                (file_name, Path(bin_path).read_bytes())
-                for file_name, bin_path in (file.split(":") for file in args.files)
-            )
-        )
+    if args.files is not None:
+        if args.platform is None:
+            argp.error("--platform is required when --files is given")
 
         write_austin_wheel(
             dist_dir,
             version=version,
-            platform=platform,
-            austin_bin_data=bin_data,
+            platform=args.platform,
+            austin_bin_data=[
+                (file_name, Path(bin_path).read_bytes())
+                for file_name, bin_path in (file.split(":") for file in args.files)
+            ],
+        )
+    else:
+        if args.platform is None:
+            argp.error("--platform is required when --files is not given")
+
+        suffix, variants = release_tarball_for_platform(args.platform)
+        write_austin_wheel(
+            dist_dir,
+            version=version,
+            platform=args.platform,
+            austin_bin_data=[
+                download_release(version, suffix, variant_name=variant)
+                for variant in variants
+            ],
         )
