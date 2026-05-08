@@ -222,29 +222,34 @@ proc_root(pid_t pid, char* file) {
 // ----------------------------------------------------------------------------
 // Return an accessible path for the file backing a memory mapping.
 //
-// /proc/<pid>/map_files/<start>-<end> is preferred: it is a kernel-maintained
-// symlink that survives file deletion and works across mount namespaces (e.g.
-// containers), as long as the mapping is still alive. Falls back to
-// /proc/<pid>/root/<pathname> for kernels or configurations where map_files is
-// not available.
+// /proc/<pid>/root/<pathname> is tried first — it handles the normal case and
+// real containers (different mount namespaces) transparently.  If that path is
+// inaccessible (e.g. the file has been deleted, as in a container-like
+// scenario), we fall back to /proc/<pid>/map_files/<start>-<end>, a
+// kernel-maintained symlink that stays valid via the inode reference kept by
+// the mapping even after the file is unlinked.
 static inline char*
 proc_map_file_path(pid_t pid, char* pathname, void* addr, size_t size) {
+    char* root_path = proc_root(pid, pathname);
+    if (isvalid(root_path)) {
+        struct stat s;
+        if (stat(root_path, &s) == 0)
+            return root_path;
+        free(root_path);
+    }
+
+    // proc_root path inaccessible (file deleted) — fall back to map_files
     char* path = calloc(1, 64);
     if (!isvalid(path)) // GCOV_EXCL_START
-        return proc_root(pid, pathname);
+        return NULL;
     // GCOV_EXCL_STOP
 
     uintptr_t start = (uintptr_t)addr;
     uintptr_t upper = start + size;
     if (sprintf(path, "/proc/%d/map_files/%" PRIxPTR "-%" PRIxPTR, pid, start, upper) < 0) { // GCOV_EXCL_START
         free(path);
-        return proc_root(pid, pathname);
+        return NULL;
     } // GCOV_EXCL_STOP
 
-    struct stat s;
-    if (stat(path, &s) == 0)
-        return path;
-
-    free(path);
-    return proc_root(pid, pathname);
+    return path;
 }
