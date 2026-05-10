@@ -200,7 +200,7 @@ static sym_table_t*
 _build_table64(void* map, uintptr_t load_base) {
     struct mach_header_64* hdr = (struct mach_header_64*)map;
 
-    if (hdr->filetype != MH_EXECUTE && hdr->filetype != MH_DYLIB)
+    if (hdr->filetype != MH_EXECUTE && hdr->filetype != MH_DYLIB && hdr->filetype != MH_BUNDLE)
         return NULL;
 
     int64_t  slide     = 0;
@@ -263,7 +263,7 @@ _build_table64_from_cache(const _dsc_t* dsc, uint64_t image_va, uintptr_t load_b
     struct mach_header_64* hdr = (struct mach_header_64*)hdr_raw;
     if (hdr->magic != MH_MAGIC_64)
         return NULL;
-    if (hdr->filetype != MH_EXECUTE && hdr->filetype != MH_DYLIB)
+    if (hdr->filetype != MH_EXECUTE && hdr->filetype != MH_DYLIB && hdr->filetype != MH_BUNDLE)
         return NULL;
 
     int64_t  slide            = 0;
