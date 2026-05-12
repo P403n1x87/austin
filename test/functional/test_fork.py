@@ -30,6 +30,7 @@ from test.utils import austin
 from test.utils import parse_mojo
 from test.utils import has_frame
 from test.utils import maps
+from test.utils import version_in
 from test.utils import processes
 from test.utils import python
 from test.utils import sum_full_metrics
@@ -46,7 +47,9 @@ import pytest
 @variants
 def test_fork_wall_time(austin, py):
     result = austin("-i", "2ms", *python(py), target("target34.py"))
-    assert py in (result.stderr or result.stdout), result.stderr or result.stdout
+    assert version_in(py, result.stderr or result.stdout), (
+        result.stderr or result.stdout
+    )
 
     assert len(processes(result.samples)) == 1
     ts = threads(result.samples)
@@ -112,6 +115,10 @@ def test_fork_cpu_time_idle(py, austin):
 @pytest.mark.parametrize("args", ("-m", "-cm"))
 @allpythons()
 def test_fork_memory(py, args):
+    if py.endswith("t"):
+        pytest.skip(
+            "Memory mode requires the GIL; not supported for free-threaded Python"
+        )
     result = austin(args, "-i", "1ms", *python(py), target("target34.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
@@ -176,7 +183,9 @@ def test_fork_multiprocess(py):
 @allpythons()
 def test_fork_full_metrics(py):
     result = austin("-i", "10ms", "-f", *python(py), target("target34.py"))
-    assert py in (result.stderr or result.stdout), result.stderr or result.stdout
+    assert version_in(py, result.stderr or result.stdout), (
+        result.stderr or result.stdout
+    )
 
     assert len(processes(result.samples)) == 1
     ts = threads(result.samples)
@@ -194,7 +203,9 @@ def test_fork_full_metrics(py):
 
     assert 0 < 0.9 * d < wall < 2.1 * d
     assert 0 < cpu <= wall
-    assert alloc * dealloc
+    if not py.endswith("t"):
+        # Memory tracking requires the GIL; free-threaded Python always yields 0 deltas.
+        assert alloc * dealloc
 
 
 @pytest.mark.parametrize("exposure", (1, 2))
@@ -227,7 +238,9 @@ def test_fork_exposure(py, exposure, children):
 @allpythons(min=(3, 11))
 def test_qualnames(py, austin):
     result = austin("-i", "1ms", *python(py), target("qualnames.py"))
-    assert py in (result.stderr or result.stdout), result.stderr or result.stdout
+    assert version_in(py, result.stderr or result.stdout), (
+        result.stderr or result.stdout
+    )
 
     assert len(processes(result.samples)) == 1
     ts = threads(result.samples)
@@ -291,7 +304,9 @@ def test_fork_int_signal(py):
 @variants
 def test_fork_exec(austin, py, children):
     result = austin("-i", "2ms", *children, *python(py), target("target_exec.py"))
-    assert py in (result.stderr or result.stdout), result.stderr or result.stdout
+    assert version_in(py, result.stderr or result.stdout), (
+        result.stderr or result.stdout
+    )
 
     assert len(processes(result.samples)) == 1
     ts = threads(result.samples)

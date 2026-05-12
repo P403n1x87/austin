@@ -256,8 +256,9 @@ def test_native_does_not_affect_cpu_time_linux(py):
     cpu_total, _ = sum_metrics(cpu.samples)
 
     # CPU time must be strictly less than wall time for a target that does
-    # real sleep: the idle periods should be filtered out.
-    assert cpu_total < wall_total, (
-        f"CPU total ({cpu_total}) should be less than wall total ({wall_total}): "
-        "idle threads may not be filtered correctly"
-    )
+    # real sleep with the GIL: the idle periods should be filtered out.
+    if not py.endswith("t"):
+        assert cpu_total < wall_total, (
+            f"CPU total ({cpu_total}) should be less than wall total ({wall_total}): "
+            "idle threads may not be filtered correctly"
+        )

@@ -538,8 +538,8 @@ folder in either the SVG, PDF or PNG format
 
 # Compatibility
 
-Austin supports Python 3.10 through 3.14, and has been tested on the following
-platforms and architectures
+Austin supports Python 3.10 through 3.14, including **free-threaded builds**,
+and has been tested on the following platforms and architectures
 
 |             | <img src="art/tux.svg" /> | <img src="art/win.svg"/> | <img src="art/apple.svg"/> |
 | ----------- | ------------------------- | ------------------------ | -------------------------- |
@@ -549,15 +549,19 @@ platforms and architectures
 | **arm64**   | ✓                         |                          | ✓                          |
 | **ppc64le** | ✓                         |                          |                            |
 
+> [!NOTE]
+> Memory profiling (`-m`/`--memory`) is not supported in free-threaded Python
+> builds as it relies on GIL state to identify the active thread.
+
 If you are looking for support for older versions of CPython, the following table
 summarises the compatibility of Austin with CPython versions
 
-| CPython Versions  | Austin Version |
-| ----------------- | -------------- |
-| 2.3-2.7, 3.3-3.11 | 3.5            |
-| 3.8-3.13          | 3.7            |
-| 3.9-3.14          | 4.0            |
-| 3.10-3.14         | 4.1            |
+| CPython Versions                     | Austin Version |
+| ------------------------------------ | -------------- |
+| 2.3-2.7, 3.3-3.11                    | 3.5            |
+| 3.8-3.13                             | 3.7            |
+| 3.9-3.14                             | 4.0            |
+| 3.10-3.14, (incl. free-threaded)     | 4.1            |
 
 > [!NOTE]
 > Austin *might* work with other platforms and architectures not listed above.

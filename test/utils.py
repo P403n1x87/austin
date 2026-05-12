@@ -40,6 +40,7 @@ from subprocess import TimeoutExpired
 from subprocess import check_output
 from tempfile import gettempdir
 from test import PYTHON_VERSIONS
+from test import _ver_tuple
 from time import sleep
 from types import FrameType
 from types import ModuleType
@@ -70,16 +71,29 @@ def target(name: str = "target34.py") -> str:
     return str(HERE / "targets" / name)
 
 
+def version_in(py: str, text: str) -> bool:
+    """Check whether Austin's version output for `py` appears in `text`.
+
+    Austin emits the full patch version, e.g. '3.13.13t' for py='3.13t' or
+    '3.13.1' for py='3.13'. For free-threaded builds the 't' suffix is
+    appended after the patch number, so a simple substring search won't work.
+    """
+    import re
+
+    base = py.rstrip("t")
+    ft = py.endswith("t")
+    pattern = re.escape(base) + r"\.\d+" + ("t" if ft else "")
+    return bool(re.search(pattern, text))
+
+
 def allpythons(min=None, max=None):
     def _(f):
         versions = PYTHON_VERSIONS
         if min is not None:
-            versions = [_ for _ in versions if _ >= min]
+            versions = [v for v in versions if _ver_tuple(v) >= min]
         if max is not None:
-            versions = [_ for _ in versions if _ <= max]
-        return pytest.mark.parametrize(
-            "py", [".".join([str(_) for _ in v]) for v in versions]
-        )(f)
+            versions = [v for v in versions if _ver_tuple(v) <= max]
+        return pytest.mark.parametrize("py", versions)(f)
 
     return _
 

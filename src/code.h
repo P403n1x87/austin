@@ -36,13 +36,14 @@ typedef struct {
     line_table_t     line_table;
     size_t           line_table_size;
     unsigned int     first_line_number;
+    raddr_t          co_tlbc_raddr; // cached _PyCodeArray* for TLBC (3.14+ FT); NULL otherwise
 } code_t;
 
 // ----------------------------------------------------------------------------
 static inline code_t*
 code_new(
     key_dt key, cached_string_t* filename, cached_string_t* scope, line_table_t line_table, size_t line_table_size,
-    unsigned int first_line_number
+    unsigned int first_line_number, raddr_t co_tlbc_raddr
 ) {
     code_t* code = (code_t*)malloc(sizeof(code_t));
     if (!isvalid(code)) {
@@ -55,6 +56,7 @@ code_new(
     code->line_table        = line_table;
     code->line_table_size   = line_table_size;
     code->first_line_number = first_line_number;
+    code->co_tlbc_raddr     = co_tlbc_raddr;
 
     return code;
 }
@@ -139,7 +141,11 @@ _code_remote(py_proc_t* py_proc, raddr_t code_raddr) {
         FAIL_PTR;
     }
 
+    // co_tlbc is already in the local code buffer (no extra read needed).
+    raddr_t co_tlbc_raddr = py_v->py_code.o_tlbc ? V_FIELD(raddr_t, code, py_code, o_tlbc) : NULL;
+
     return code_new(
-        (key_dt)code_raddr, filename, scope, lnotab, len, V_FIELD(unsigned int, code, py_code, o_firstlineno)
+        (key_dt)code_raddr, filename, scope, lnotab, len, V_FIELD(unsigned int, code, py_code, o_firstlineno),
+        co_tlbc_raddr
     );
 }

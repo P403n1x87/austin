@@ -126,6 +126,19 @@ jobs:
             runs-on: ubuntu-24.04
           - arch: aarch64
             runs-on: ubuntu-24.04-arm
+          # Free-threaded builds on both arches
+          - arch: x86_64
+            python-version: "3.13t"
+            runs-on: ubuntu-24.04
+          - arch: x86_64
+            python-version: "3.14t"
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            python-version: "3.13t"
+            runs-on: ubuntu-24.04-arm
+          - arch: aarch64
+            python-version: "3.14t"
+            runs-on: ubuntu-24.04-arm
     runs-on: ${{ matrix.runs-on }}
     if: needs.changes.outputs.src == 'true' || needs.changes.outputs.tests == 'true' || needs.changes.result == 'skipped'
 
@@ -152,13 +165,21 @@ jobs:
             valgrind \
             gdb
 
-      - name: Install Python
-        uses: actions/setup-python@v4
+      - name: Install Python (standard)
+        if: ${{ !endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}-dev
 
+      - name: Install Python (free-threaded)
+        if: ${{ endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -283,7 +304,7 @@ jobs:
       - run: chmod +x src/austin && chmod +x src/austinp
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -349,7 +370,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
@@ -365,13 +386,21 @@ jobs:
 
       - run: chmod +x src/austin
 
-      - name: Install Python
-        uses: actions/setup-python@v4
+      - name: Install Python (standard)
+        if: ${{ !endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}-dev
 
+      - name: Install Python (free-threaded)
+        if: ${{ endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -450,7 +479,7 @@ jobs:
       - run: chmod +x src/austin
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -499,7 +528,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
@@ -513,12 +542,20 @@ jobs:
           name: austin-binary-${{ runner.os }}
           path: src
 
-      - name: Install Python
-        uses: actions/setup-python@v4
+      - name: Install Python (standard)
+        if: ${{ !endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}-dev
 
-      - uses: actions/setup-python@v4
+      - name: Install Python (free-threaded)
+        if: ${{ endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - uses: actions/setup-python@v5
         name: Install Python 3.12
         with:
           python-version: "3.12"
@@ -596,7 +633,7 @@ jobs:
           name: austin-binary-${{ runner.os }}
           path: src
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v5
         name: Install Python 3.13
         with:
           python-version: '3.13'

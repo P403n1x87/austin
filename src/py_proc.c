@@ -266,6 +266,10 @@ _py_proc__infer_python_version(py_proc_t* self) {
 
             init_version_descriptor(self->py_v, &py_d);
 
+            self->free_threaded = py_d.v3_13.free_threaded != 0;
+            if (self->free_threaded)
+                log_d("Free-threaded Python detected");
+
             SUCCESS;
         }
         log_d("PyRuntimeState structure does not match expected cookie");
@@ -1418,15 +1422,16 @@ py_proc__sample(py_proc_t* self) {
 // ----------------------------------------------------------------------------
 void
 py_proc__log_version(py_proc_t* self, bool is_parent) {
-    int major = self->py_v->major;
-    int minor = self->py_v->minor;
-    int patch = self->py_v->patch;
+    int         major = self->py_v->major;
+    int         minor = self->py_v->minor;
+    int         patch = self->py_v->patch;
+    const char* ft    = self->free_threaded ? "t" : "";
 
     if (is_parent) {
-        if (patch == 0xFF) {                                                 // GCOV_EXCL_LINE
-            event_handler__emit_metadata("python", "%d.%d.?", major, minor); // GCOV_EXCL_LINE
+        if (patch == 0xFF) {                                                       // GCOV_EXCL_LINE
+            event_handler__emit_metadata("python", "%d.%d.?%s", major, minor, ft); // GCOV_EXCL_LINE
         } else
-            event_handler__emit_metadata("python", "%d.%d.%d", major, minor, patch);
+            event_handler__emit_metadata("python", "%d.%d.%d%s", major, minor, patch, ft);
     }
 
     if (pargs.pipe)
@@ -1437,19 +1442,19 @@ py_proc__log_version(py_proc_t* self, bool is_parent) {
     if (pargs.children) {
         if (patch == 0xFF) // GCOV_EXCL_START
             log_m(
-                "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d" CRESET,
-                is_parent ? "Parent" : "Child", self->pid, major, minor
+                "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d%s" CRESET,
+                is_parent ? "Parent" : "Child", self->pid, major, minor, ft
             );
         else // GCOV_EXCL_STOP
             log_m(
-                "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d" CRESET,
-                is_parent ? "Parent" : "Child", self->pid, major, minor, patch
+                "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d%s" CRESET,
+                is_parent ? "Parent" : "Child", self->pid, major, minor, patch, ft
             );
     } else {
         if (patch == 0xFF) // GCOV_EXCL_START
-            log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d" CRESET, major, minor);
+            log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d%s" CRESET, major, minor, ft);
         else // GCOV_EXCL_STOP
-            log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d" CRESET, major, minor, patch);
+            log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d%s" CRESET, major, minor, patch, ft);
     }
 }
 

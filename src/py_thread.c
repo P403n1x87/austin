@@ -207,6 +207,10 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
 
     raddr_t origin     = *prev;
     raddr_t code_raddr = V_FIELD_PTR(raddr_t, iframe, py_iframe, o_code);
+    // In free-threaded mode f_executable is a _PyStackRef tagged pointer;
+    // the actual PyObject* is stored in the low bits with Py_TAG_BITS (0x3) masked in.
+    if (self->proc->free_threaded)
+        code_raddr = (raddr_t)((uintptr_t)code_raddr & ~(uintptr_t)3);
 
     *prev = V_FIELD_PTR(raddr_t, iframe, py_iframe, o_previous);
     if (unlikely(origin == *prev)) {
@@ -223,11 +227,45 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
         SUCCESS;
     }
 
-    stack_py_push(
-        origin, code_raddr,
-        (((int)(V_FIELD_PTR(raddr_t, iframe, py_iframe, o_prev_instr) - code_raddr)) - py_v->py_code.o_code)
-            / sizeof(_Py_CODEUNIT)
-    );
+    raddr_t instr_ptr = V_FIELD_PTR(raddr_t, iframe, py_iframe, o_prev_instr);
+    int     lasti     = 0;
+
+    // In free-threaded Python 3.14+, instr_ptr points into a thread-local bytecode
+    // copy (TLBC).  Compute lasti relative to the correct TLBC entry base, not
+    // co_code_adaptive, so that line-number resolution is accurate for all threads.
+    if (py_v->py_iframe.o_tlbc_index && py_v->py_code.o_tlbc) {
+        int32_t tlbc_idx = V_FIELD_PTR(int32_t, iframe, py_iframe, o_tlbc_index);
+        if (tlbc_idx > 0) {
+            // Try the code cache first — _code_remote already extracts co_tlbc from
+            // the code object buffer it reads, so hot functions cost 0 reads here.
+            code_t* cached_code   = lru_cache__maybe_hit(self->proc->code_cache, (key_dt)code_raddr);
+            raddr_t co_tlbc_raddr = cached_code ? cached_code->co_tlbc_raddr : NULL;
+
+            if (!isvalid(co_tlbc_raddr)) { // GCOV_EXCL_BR_LINE
+                // Cache miss (first encounter): read co_tlbc from the code object.
+                copy_memory(self->proc->ref, code_raddr + py_v->py_code.o_tlbc, sizeof(co_tlbc_raddr), &co_tlbc_raddr);
+            }
+
+            if (isvalid(co_tlbc_raddr)) { // GCOV_EXCL_BR_LINE
+                // _PyCodeArray: { Py_ssize_t size; char *entries[1]; }
+                // entries start at offset sizeof(Py_ssize_t) = 8.
+                raddr_t tlbc_base = NULL;
+                if (success(copy_memory(
+                        self->proc->ref, co_tlbc_raddr + sizeof(ssize_t) + (ssize_t)tlbc_idx * (ssize_t)sizeof(raddr_t),
+                        sizeof(tlbc_base), &tlbc_base
+                    ))
+                    && isvalid(tlbc_base)) { // GCOV_EXCL_BR_LINE
+                    lasti = (int)(instr_ptr - tlbc_base) / (int)sizeof(_Py_CODEUNIT);
+                    goto push_frame;
+                }
+            }
+        }
+    }
+
+    lasti = (((int)(instr_ptr - code_raddr)) - (int)py_v->py_code.o_code) / (int)sizeof(_Py_CODEUNIT);
+
+push_frame:
+    stack_py_push(origin, code_raddr, lasti);
 
     if (pargs_native && V_EQ(3, 11) && V_FIELD_PTR(int, iframe, py_iframe, o_is_entry)) {
         // This marks the end of a CFrame
