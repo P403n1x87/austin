@@ -84,171 +84,72 @@ _file_size(char* file) {
 }
 
 // GCOV_EXCL_START
-/*[[[cog
-from pathlib import Path
-analyze_elf = Path("src/linux/analyze_elf.h").read_text()
-print(analyze_elf)
-print(analyze_elf.replace("64", "32"))
-]]]*/
-// ----------------------------------------------------------------------------
-static Elf64_Addr
-_get_base_64(Elf64_Ehdr* ehdr, void* elf_map) {
-    for (int i = 0; i < ehdr->e_phnum; ++i) {
-        Elf64_Phdr* phdr = (Elf64_Phdr*)(elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);
-        if (phdr->p_type == PT_LOAD)
-            return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
-    }
-    return UINT64_MAX;
-} /* _get_base_64 */
+#define _DEF_ANALYZE_ELF(BITS, ADDR_SENTINEL)                                                                           \
+    static Elf##BITS##_Addr _get_base_##BITS(Elf##BITS##_Ehdr* ehdr, void* elf_map) {                                   \
+        for (int i = 0; i < ehdr->e_phnum; ++i) {                                                                       \
+            Elf##BITS##_Phdr* phdr = (Elf##BITS##_Phdr*)(elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);              \
+            if (phdr->p_type == PT_LOAD)                                                                                \
+                return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;                                                   \
+        }                                                                                                               \
+        return ADDR_SENTINEL;                                                                                           \
+    } /* _get_base_##BITS */                                                                                            \
+                                                                                                                        \
+    static int _py_proc__analyze_elf##BITS(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss) {  \
+        register int symbols = 0;                                                                                       \
+                                                                                                                        \
+        Elf##BITS##_Ehdr* ehdr = elf_map;                                                                               \
+                                                                                                                        \
+        Elf##BITS##_Xword sht_size     = ehdr->e_shnum * ehdr->e_shentsize;                                             \
+        Elf##BITS##_Off   elf_map_size = ehdr->e_shoff + sht_size;                                                      \
+        Elf##BITS##_Shdr* p_shdr;                                                                                       \
+                                                                                                                        \
+        Elf##BITS##_Shdr* p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr->e_shstrndx);                                  \
+        char*             sh_name_base = elf_map + p_shstrtab->sh_offset;                                               \
+        Elf##BITS##_Shdr* p_dynsym     = NULL;                                                                          \
+        Elf##BITS##_Addr  base         = _get_base_##BITS(ehdr, elf_map);                                               \
+                                                                                                                        \
+        void*  bss_base = NULL;                                                                                         \
+        size_t bss_size = 0;                                                                                            \
+                                                                                                                        \
+        if (base != ADDR_SENTINEL) {                                                                                    \
+            log_d("ELF base @ %p", base);                                                                               \
+            for (Elf##BITS##_Off sh_off = ehdr->e_shoff; sh_off < elf_map_size; sh_off += ehdr->e_shentsize) {          \
+                p_shdr = (Elf##BITS##_Shdr*)(elf_map + sh_off);                                                         \
+                if (p_shdr->sh_type == SHT_DYNSYM && strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0) {          \
+                    p_dynsym = p_shdr;                                                                                  \
+                } else if (strcmp(sh_name_base + p_shdr->sh_name, ".bss") == 0) {                                       \
+                    bss_base = elf_base + (p_shdr->sh_addr - base);                                                     \
+                    bss_size = p_shdr->sh_size;                                                                         \
+                } else if (strcmp(sh_name_base + p_shdr->sh_name, ".PyRuntime") == 0) {                                 \
+                    self->map.runtime.base = elf_base + (p_shdr->sh_addr - base);                                       \
+                    self->map.runtime.size = p_shdr->sh_size;                                                           \
+                }                                                                                                       \
+            }                                                                                                           \
+            if (isvalid(p_dynsym) && p_dynsym->sh_offset != 0) {                                                        \
+                Elf##BITS##_Shdr* p_strtabsh = (Elf##BITS##_Shdr*)(elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));      \
+                for (Elf##BITS##_Off tab_off  = p_dynsym->sh_offset; tab_off < p_dynsym->sh_offset + p_dynsym->sh_size; \
+                     tab_off                 += p_dynsym->sh_entsize) {                                                 \
+                    Elf##BITS##_Sym* sym      = (Elf##BITS##_Sym*)(elf_map + tab_off);                                  \
+                    char*            sym_name = (char*)(elf_map + p_strtabsh->sh_offset + sym->st_name);                \
+                    void*            value    = elf_base + (sym->st_value - base);                                      \
+                    if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= DYNSYM_COUNT)                        \
+                        break;                                                                                          \
+                }                                                                                                       \
+            }                                                                                                           \
+        }                                                                                                               \
+        if (symbols < DYNSYM_MANDATORY) {                                                                               \
+            set_error(BINARY, "Not all required symbols found");                                                        \
+            FAIL;                                                                                                       \
+        }                                                                                                               \
+        bss->base = bss_base;                                                                                           \
+        bss->size = bss_size;                                                                                           \
+        log_d("BSS @ %p (size %x, offset %x)", bss_base, bss_size, bss_base - elf_base);                                \
+        SUCCESS;                                                                                                        \
+    } /* _py_proc__analyze_elf##BITS */
 
-static int
-_py_proc__analyze_elf64(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss) {
-    register int symbols = 0;
-
-    Elf64_Ehdr* ehdr = elf_map;
-
-    // Section header must be read from binary as it is not loaded into memory
-    Elf64_Xword sht_size     = ehdr->e_shnum * ehdr->e_shentsize;
-    Elf64_Off   elf_map_size = ehdr->e_shoff + sht_size;
-    Elf64_Shdr* p_shdr;
-
-    Elf64_Shdr* p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr->e_shstrndx);
-    char*       sh_name_base = elf_map + p_shstrtab->sh_offset;
-    Elf64_Shdr* p_dynsym     = NULL;
-    Elf64_Addr  base         = _get_base_64(ehdr, elf_map);
-
-    void*  bss_base = NULL;
-    size_t bss_size = 0;
-
-    if (base != UINT64_MAX) {
-        log_d("ELF base @ %p", base);
-
-        for (Elf64_Off sh_off = ehdr->e_shoff; sh_off < elf_map_size; sh_off += ehdr->e_shentsize) {
-            p_shdr = (Elf64_Shdr*)(elf_map + sh_off);
-
-            if (p_shdr->sh_type == SHT_DYNSYM && strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0) {
-                p_dynsym = p_shdr;
-            } else if (strcmp(sh_name_base + p_shdr->sh_name, ".bss") == 0) {
-                bss_base = elf_base + (p_shdr->sh_addr - base);
-                bss_size = p_shdr->sh_size;
-            } else if (strcmp(sh_name_base + p_shdr->sh_name, ".PyRuntime") == 0) {
-                self->map.runtime.base = elf_base + (p_shdr->sh_addr - base);
-                self->map.runtime.size = p_shdr->sh_size;
-            }
-        }
-
-        if (isvalid(p_dynsym)) {
-            if (p_dynsym->sh_offset != 0) {
-                Elf64_Shdr* p_strtabsh = (Elf64_Shdr*)(elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
-
-                // Search for dynamic symbols
-                for (Elf64_Off tab_off  = p_dynsym->sh_offset; tab_off < p_dynsym->sh_offset + p_dynsym->sh_size;
-                     tab_off           += p_dynsym->sh_entsize) {
-                    Elf64_Sym* sym      = (Elf64_Sym*)(elf_map + tab_off);
-                    char*      sym_name = (char*)(elf_map + p_strtabsh->sh_offset + sym->st_name);
-                    void*      value    = elf_base + (sym->st_value - base);
-                    if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= DYNSYM_COUNT) {
-                        // We have found all the symbols. No need to look further
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    if (symbols < DYNSYM_MANDATORY) {
-        set_error(BINARY, "Not all required symbols found");
-        FAIL;
-    }
-
-    // Communicate BSS data back to the caller
-    bss->base = bss_base;
-    bss->size = bss_size;
-    log_d("BSS @ %p (size %x, offset %x)", bss_base, bss_size, bss_base - elf_base);
-
-    SUCCESS;
-} /* _py_proc__analyze_elf64 */
-
-// ----------------------------------------------------------------------------
-static Elf32_Addr
-_get_base_32(Elf32_Ehdr* ehdr, void* elf_map) {
-    for (int i = 0; i < ehdr->e_phnum; ++i) {
-        Elf32_Phdr* phdr = (Elf32_Phdr*)(elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);
-        if (phdr->p_type == PT_LOAD)
-            return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;
-    }
-    return UINT32_MAX;
-} /* _get_base_32 */
-
-static int
-_py_proc__analyze_elf32(py_proc_t* self, void* elf_map, void* elf_base, proc_vm_map_block_t* bss) {
-    register int symbols = 0;
-
-    Elf32_Ehdr* ehdr = elf_map;
-
-    // Section header must be read from binary as it is not loaded into memory
-    Elf32_Xword sht_size     = ehdr->e_shnum * ehdr->e_shentsize;
-    Elf32_Off   elf_map_size = ehdr->e_shoff + sht_size;
-    Elf32_Shdr* p_shdr;
-
-    Elf32_Shdr* p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr->e_shstrndx);
-    char*       sh_name_base = elf_map + p_shstrtab->sh_offset;
-    Elf32_Shdr* p_dynsym     = NULL;
-    Elf32_Addr  base         = _get_base_32(ehdr, elf_map);
-
-    void*  bss_base = NULL;
-    size_t bss_size = 0;
-
-    if (base != UINT32_MAX) {
-        log_d("ELF base @ %p", base);
-
-        for (Elf32_Off sh_off = ehdr->e_shoff; sh_off < elf_map_size; sh_off += ehdr->e_shentsize) {
-            p_shdr = (Elf32_Shdr*)(elf_map + sh_off);
-
-            if (p_shdr->sh_type == SHT_DYNSYM && strcmp(sh_name_base + p_shdr->sh_name, ".dynsym") == 0) {
-                p_dynsym = p_shdr;
-            } else if (strcmp(sh_name_base + p_shdr->sh_name, ".bss") == 0) {
-                bss_base = elf_base + (p_shdr->sh_addr - base);
-                bss_size = p_shdr->sh_size;
-            } else if (strcmp(sh_name_base + p_shdr->sh_name, ".PyRuntime") == 0) {
-                self->map.runtime.base = elf_base + (p_shdr->sh_addr - base);
-                self->map.runtime.size = p_shdr->sh_size;
-            }
-        }
-
-        if (isvalid(p_dynsym)) {
-            if (p_dynsym->sh_offset != 0) {
-                Elf32_Shdr* p_strtabsh = (Elf32_Shdr*)(elf_map + ELF_SH_OFF(ehdr, p_dynsym->sh_link));
-
-                // Search for dynamic symbols
-                for (Elf32_Off tab_off  = p_dynsym->sh_offset; tab_off < p_dynsym->sh_offset + p_dynsym->sh_size;
-                     tab_off           += p_dynsym->sh_entsize) {
-                    Elf32_Sym* sym      = (Elf32_Sym*)(elf_map + tab_off);
-                    char*      sym_name = (char*)(elf_map + p_strtabsh->sh_offset + sym->st_name);
-                    void*      value    = elf_base + (sym->st_value - base);
-                    if ((symbols += _py_proc__check_sym(self, sym_name, value)) >= DYNSYM_COUNT) {
-                        // We have found all the symbols. No need to look further
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    if (symbols < DYNSYM_MANDATORY) {
-        set_error(BINARY, "Not all required symbols found");
-        FAIL;
-    }
-
-    // Communicate BSS data back to the caller
-    bss->base = bss_base;
-    bss->size = bss_size;
-    log_d("BSS @ %p (size %x, offset %x)", bss_base, bss_size, bss_base - elf_base);
-
-    SUCCESS;
-} /* _py_proc__analyze_elf32 */
-
-//[[[end]]]
+_DEF_ANALYZE_ELF(64, UINT64_MAX)
+_DEF_ANALYZE_ELF(32, UINT32_MAX)
+#undef _DEF_ANALYZE_ELF
 // GCOV_EXCL_STOP
 
 // ----------------------------------------------------------------------------
@@ -307,6 +208,208 @@ _py_proc__analyze_elf(py_proc_t* self, char* path, void* elf_base, proc_vm_map_b
     } // GCOV_EXCL_STOP
 } /* _py_proc__analyze_elf */
 
+// Read the dynamic symbol table directly from the target process's virtual
+// address space.  Parses ELF header → program headers → PT_DYNAMIC →
+// DT_SYMTAB / DT_STRTAB / DT_HASH.  Section headers are not needed —
+// they exist only in the file.  BSS is zeroed; callers use the proc_maps
+// heuristic as fallback.
+// GCOV_EXCL_START
+#define _DEF_ANALYZE_ELF_FROM_MEMORY(BITS)                                                                             \
+    static int _py_proc__analyze_elf##BITS##_from_memory(py_proc_t* self, void* elf_base, proc_vm_map_block_t* bss) {  \
+        bss->base = NULL;                                                                                              \
+        bss->size = 0;                                                                                                 \
+                                                                                                                       \
+        Elf##BITS##_Ehdr ehdr;                                                                                         \
+        if (fail(copy_memory(self->ref, elf_base, sizeof(Elf##BITS##_Ehdr), &ehdr)))                                   \
+            FAIL;                                                                                                      \
+        if (memcmp(ehdr.e_ident, ELFMAG, SELFMAG) != 0 || ehdr.e_ident[EI_CLASS] != ELFCLASS##BITS) {                  \
+            set_error(BINARY, "Bad ELF header in process memory");                                                     \
+            FAIL;                                                                                                      \
+        }                                                                                                              \
+        if (ehdr.e_phnum == 0 || ehdr.e_phentsize < sizeof(Elf##BITS##_Phdr)) {                                        \
+            set_error(BINARY, "No usable program headers");                                                            \
+            FAIL;                                                                                                      \
+        }                                                                                                              \
+        size_t            phdrs_size = (size_t)ehdr.e_phnum * ehdr.e_phentsize;                                        \
+        Elf##BITS##_Phdr* phdrs      = malloc(phdrs_size);                                                             \
+        if (!isvalid(phdrs)) {                                                                                         \
+            set_error(MALLOC, "Cannot allocate program headers buffer");                                               \
+            FAIL;                                                                                                      \
+        }                                                                                                              \
+        if (fail(copy_memory(self->ref, (void*)((uintptr_t)elf_base + (uintptr_t)ehdr.e_phoff), phdrs_size, phdrs))) { \
+            free(phdrs);                                                                                               \
+            FAIL;                                                                                                      \
+        }                                                                                                              \
+        /* First pass: ELF file base from first PT_LOAD */                                                             \
+        Elf##BITS##_Addr file_base = (Elf##BITS##_Addr)(-1);                                                           \
+        for (int i = 0; i < ehdr.e_phnum; i++) {                                                                       \
+            if (phdrs[i].p_type == PT_LOAD) {                                                                          \
+                file_base = phdrs[i].p_vaddr - phdrs[i].p_vaddr % phdrs[i].p_align;                                    \
+                break;                                                                                                 \
+            }                                                                                                          \
+        }                                                                                                              \
+        if (file_base == (Elf##BITS##_Addr)(-1)) {                                                                     \
+            free(phdrs);                                                                                               \
+            set_error(BINARY, "No PT_LOAD segment");                                                                   \
+            FAIL;                                                                                                      \
+        }                                                                                                              \
+        /* Second pass: locate PT_DYNAMIC */                                                                           \
+        void*  dyn_raddr = NULL;                                                                                       \
+        size_t dyn_size  = 0;                                                                                          \
+        for (int i = 0; i < ehdr.e_phnum; i++) {                                                                       \
+            if (phdrs[i].p_type == PT_DYNAMIC) {                                                                       \
+                dyn_raddr = (void*)((uintptr_t)elf_base + (uintptr_t)phdrs[i].p_vaddr - (uintptr_t)file_base);         \
+                dyn_size  = phdrs[i].p_memsz;                                                                          \
+                break;                                                                                                 \
+            }                                                                                                          \
+        }                                                                                                              \
+        free(phdrs);                                                                                                   \
+        if (!isvalid(dyn_raddr)) {                                                                                     \
+            set_error(BINARY, "No PT_DYNAMIC segment");                                                                \
+            FAIL;                                                                                                      \
+        }                                                                                                              \
+        size_t           ndyn = dyn_size / sizeof(Elf##BITS##_Dyn);                                                    \
+        Elf##BITS##_Dyn* dyn  = malloc(dyn_size);                                                                      \
+        if (!isvalid(dyn)) {                                                                                           \
+            set_error(MALLOC, "Cannot allocate dynamic section buffer");                                               \
+            FAIL;                                                                                                      \
+        }                                                                                                              \
+        if (fail(copy_memory(self->ref, dyn_raddr, dyn_size, dyn))) {                                                  \
+            free(dyn);                                                                                                 \
+            FAIL;                                                                                                      \
+        }                                                                                                              \
+        void*    symtab_raddr = NULL;                                                                                  \
+        void*    strtab_raddr = NULL;                                                                                  \
+        void*    hash_raddr   = NULL;                                                                                  \
+        uint32_t strtab_size  = 0;                                                                                     \
+        for (size_t i = 0; i < ndyn; i++) {                                                                            \
+            switch (dyn[i].d_tag) {                                                                                    \
+            case DT_SYMTAB:                                                                                            \
+                symtab_raddr = (void*)(uintptr_t)dyn[i].d_un.d_ptr;                                                    \
+                break;                                                                                                 \
+            case DT_STRTAB:                                                                                            \
+                strtab_raddr = (void*)(uintptr_t)dyn[i].d_un.d_ptr;                                                    \
+                break;                                                                                                 \
+            case DT_STRSZ:                                                                                             \
+                strtab_size = (uint32_t)dyn[i].d_un.d_val;                                                             \
+                break;                                                                                                 \
+            case DT_HASH:                                                                                              \
+                hash_raddr = (void*)(uintptr_t)dyn[i].d_un.d_ptr;                                                      \
+                break;                                                                                                 \
+            case DT_NULL:                                                                                              \
+                i = ndyn;                                                                                              \
+                break;                                                                                                 \
+            }                                                                                                          \
+        }                                                                                                              \
+        free(dyn);                                                                                                     \
+        if (!isvalid(symtab_raddr) || !isvalid(strtab_raddr)) {                                                        \
+            set_error(BINARY, "Dynamic symbol/string table not found");                                                \
+            FAIL;                                                                                                      \
+        }                                                                                                              \
+        /* Symbol count from DT_HASH nchain; cap at 8192 if absent */                                                  \
+        uint32_t nsyms       = 0;                                                                                      \
+        bool     nsyms_exact = false;                                                                                  \
+        if (isvalid(hash_raddr)) {                                                                                     \
+            uint32_t hdr[2];                                                                                           \
+            if (success(copy_memory(self->ref, hash_raddr, sizeof(hdr), hdr)) && hdr[1] > 0) {                         \
+                nsyms       = hdr[1];                                                                                  \
+                nsyms_exact = true;                                                                                    \
+            }                                                                                                          \
+        }                                                                                                              \
+        if (nsyms == 0)                                                                                                \
+            nsyms = 8192;                                                                                              \
+        if (strtab_size == 0 || strtab_size > (1 << 20))                                                               \
+            strtab_size = 65536;                                                                                       \
+        cu_char* strtab = malloc(strtab_size + 1);                                                                     \
+        if (!isvalid(strtab)) {                                                                                        \
+            set_error(MALLOC, "Cannot allocate string table buffer");                                                  \
+            FAIL;                                                                                                      \
+        }                                                                                                              \
+        strtab[strtab_size] = '\0';                                                                                    \
+        if (fail(copy_memory(self->ref, strtab_raddr, strtab_size, strtab)))                                           \
+            FAIL;                                                                                                      \
+        register int symbols = 0;                                                                                      \
+        if (nsyms_exact) {                                                                                             \
+            /* Exact count known: batch-read the whole symtab in one syscall */                                        \
+            size_t   symtab_size = (size_t)nsyms * sizeof(Elf##BITS##_Sym);                                            \
+            cu_void* symtab      = malloc(symtab_size);                                                                \
+            if (isvalid(symtab) && success(copy_memory(self->ref, symtab_raddr, symtab_size, symtab))) {               \
+                for (uint32_t i = 0; i < nsyms && symbols < DYNSYM_COUNT; i++) {                                       \
+                    Elf##BITS##_Sym* sym = &((Elf##BITS##_Sym*)symtab)[i];                                             \
+                    if (sym->st_value == 0 || sym->st_name >= strtab_size)                                             \
+                        continue;                                                                                      \
+                    void* value  = (void*)((uintptr_t)elf_base + (uintptr_t)sym->st_value - (uintptr_t)file_base);     \
+                    symbols     += _py_proc__check_sym(self, strtab + sym->st_name, value);                            \
+                }                                                                                                      \
+            }                                                                                                          \
+        } else {                                                                                                       \
+            /* Count unknown: read one page at a time to amortise syscall overhead */                                  \
+            size_t   page_size = (size_t)getpagesize();                                                                \
+            uint32_t chunk     = (uint32_t)(page_size / sizeof(Elf##BITS##_Sym));                                      \
+            cu_void* chunk_buf = malloc(page_size);                                                                    \
+            if (!isvalid(chunk_buf)) {                                                                                 \
+                set_error(MALLOC, "Cannot allocate symbol chunk buffer");                                              \
+                FAIL;                                                                                                  \
+            }                                                                                                          \
+            for (uint32_t i = 0; i < nsyms && symbols < DYNSYM_COUNT; i += chunk) {                                    \
+                uint32_t n  = (i + chunk <= nsyms) ? chunk : (nsyms - i);                                              \
+                size_t   sz = n * sizeof(Elf##BITS##_Sym);                                                             \
+                if (fail(copy_memory(                                                                                  \
+                        self->ref, (void*)((uintptr_t)symtab_raddr + i * sizeof(Elf##BITS##_Sym)), sz, chunk_buf       \
+                    ))) {                                                                                              \
+                    /* Chunk read failed: fall back to single-symbol reads to recover valid data */                    \
+                    for (uint32_t k = 0; k < n && symbols < DYNSYM_COUNT; k++) {                                       \
+                        Elf##BITS##_Sym sym;                                                                           \
+                        if (fail(copy_memory(                                                                          \
+                                self->ref, (void*)((uintptr_t)symtab_raddr + (i + k) * sizeof(Elf##BITS##_Sym)),       \
+                                sizeof(Elf##BITS##_Sym), &sym                                                          \
+                            )))                                                                                        \
+                            break;                                                                                     \
+                        if (sym.st_value == 0 || sym.st_name >= strtab_size)                                           \
+                            continue;                                                                                  \
+                        void* value  = (void*)((uintptr_t)elf_base + (uintptr_t)sym.st_value - (uintptr_t)file_base);  \
+                        symbols     += _py_proc__check_sym(self, strtab + sym.st_name, value);                         \
+                    }                                                                                                  \
+                    break;                                                                                             \
+                }                                                                                                      \
+                for (uint32_t j = 0; j < n && symbols < DYNSYM_COUNT; j++) {                                           \
+                    Elf##BITS##_Sym* sym = &((Elf##BITS##_Sym*)chunk_buf)[j];                                          \
+                    if (sym->st_value == 0 || sym->st_name >= strtab_size)                                             \
+                        continue;                                                                                      \
+                    void* value  = (void*)((uintptr_t)elf_base + (uintptr_t)sym->st_value - (uintptr_t)file_base);     \
+                    symbols     += _py_proc__check_sym(self, strtab + sym->st_name, value);                            \
+                }                                                                                                      \
+            }                                                                                                          \
+        }                                                                                                              \
+        if (symbols < DYNSYM_MANDATORY) {                                                                              \
+            set_error(BINARY, "Not all required symbols found in process memory");                                     \
+            FAIL;                                                                                                      \
+        }                                                                                                              \
+        SUCCESS;                                                                                                       \
+    } /* _py_proc__analyze_elf##BITS##_from_memory */
+
+_DEF_ANALYZE_ELF_FROM_MEMORY(64)
+_DEF_ANALYZE_ELF_FROM_MEMORY(32)
+#undef _DEF_ANALYZE_ELF_FROM_MEMORY
+
+// ----------------------------------------------------------------------------
+// Dispatcher: read ELF class from process memory and call the right variant.
+static int
+_py_proc__analyze_elf_from_memory(py_proc_t* self, void* elf_base, proc_vm_map_block_t* bss) {
+    unsigned char ei_class;
+    if (fail(copy_memory(self->ref, (void*)((uintptr_t)elf_base + EI_CLASS), 1, &ei_class)))
+        FAIL;
+    switch (ei_class) {
+    case ELFCLASS64:
+        return _py_proc__analyze_elf64_from_memory(self, elf_base, bss);
+    case ELFCLASS32:
+        return _py_proc__analyze_elf32_from_memory(self, elf_base, bss);
+    default:
+        set_error(BINARY, "Unknown ELF class in process memory");
+        FAIL;
+    }
+} /* _py_proc__analyze_elf_from_memory */
+
 // ----------------------------------------------------------------------------
 static int
 _py_proc__inspect_vm_maps(py_proc_t* self) {
@@ -356,14 +459,17 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
     log_d("Executable path: %s", pd->exe_path);
 
     map       = &(pd->maps[MAP_BIN]);
-    map->path = proc_root(self->pid, pd->exe_path);
+    map->base = first_binary_map->address;
+    map->size = first_binary_map->size;
+    map->path = proc_map_file_path(self->pid, pd->exe_path, map->base, map->size);
     if (!isvalid(map->path)) {
         FAIL; // GCOV_EXCL_LINE
     }
-    map->file_size   = _file_size(map->path);
-    map->base        = first_binary_map->address;
-    map->size        = first_binary_map->size;
-    map->has_symbols = success(_py_proc__analyze_elf(self, map->path, map->base, &bss));
+    map->file_size = _file_size(map->path);
+    log_d("Analyzing binary map from memory: %s @ %p", pd->exe_path, map->base);
+    map->has_symbols = success(_py_proc__analyze_elf_from_memory(self, map->base, &bss));
+    if (!map->has_symbols)
+        map->has_symbols = success(_py_proc__analyze_elf(self, map->path, map->base, &bss));
     if (map->has_symbols) {
         map->bss_base = bss.base;
         map->bss_size = bss.size;
@@ -400,23 +506,27 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
 
     proc_map_t* first_lib_map = proc_map__first_submatch(proc_maps, LIB_NEEDLE);
     if (isvalid(first_lib_map)) {
-        if (success(_py_proc__analyze_elf(self, first_lib_map->pathname, first_lib_map->address, &bss))) {
+        char* lib_path
+            = proc_map_file_path(self->pid, first_lib_map->pathname, first_lib_map->address, first_lib_map->size);
+        log_d("Analyzing library map from memory: %s @ %p", first_lib_map->pathname, first_lib_map->address);
+        bool lib_has_symbols
+            = success(_py_proc__analyze_elf_from_memory(self, first_lib_map->address, &bss))
+           || (isvalid(lib_path) && success(_py_proc__analyze_elf(self, lib_path, first_lib_map->address, &bss)));
+        if (lib_has_symbols) {
             // The library binary has symbols
             map = &(pd->maps[MAP_LIBSYM]);
 
-            map->path = proc_root(self->pid, first_lib_map->pathname);
-            if (!isvalid(map->path)) {
-                FAIL; // GCOV_EXCL_LINE
-            }
-            map->file_size   = _file_size(map->path);
+            map->path        = lib_path;
+            map->file_size   = isvalid(lib_path) ? _file_size(lib_path) : 0;
             map->base        = first_lib_map->address;
             map->size        = first_lib_map->size;
             map->has_symbols = true;
             map->bss_base    = bss.base;
             map->bss_size    = bss.size;
 
-            log_d("Library path: %s (with symbols)", map->path);
+            log_d("Library path: %s (with symbols)", lib_path ? lib_path : "(from memory)");
         } else {
+            sfree(lib_path);
             // We look for something matching "libpythonX.Y"
             PROC_MAP_ITER(first_lib_map, m) {
                 unsigned int v;
@@ -424,7 +534,7 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
                 if (sscanf(needle, "libpython%u.%u", &v, &v) == 2) {
                     map = &(pd->maps[MAP_LIBNEEDLE]);
 
-                    map->path = proc_root(self->pid, m->pathname);
+                    map->path = proc_map_file_path(self->pid, m->pathname, m->address, m->size);
                     if (!isvalid(map->path))
                         FAIL; // GCOV_EXCL_LINE
 
@@ -437,6 +547,23 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
 
                     break;
                 }
+            }
+        }
+    }
+
+    // If library analysis found symbols but no BSS (e.g. via memory analysis),
+    // scan proc_maps for an anonymous RW region after the library — same
+    // heuristic used for the binary above.
+    if (isvalid(first_lib_map) && isvalid(pd->maps[MAP_LIBSYM].path) && pd->maps[MAP_LIBSYM].bss_size == 0) {
+        PROC_MAP_ITER(first_lib_map, m) {
+            if (!isvalid(m->pathname) && m->perms == (PERMS_READ | PERMS_WRITE) && m->size > 0) {
+                pd->maps[MAP_LIBSYM].bss_base = m->address - page_size;
+                pd->maps[MAP_LIBSYM].bss_size = m->size + page_size;
+                log_d(
+                    "Library BSS section found @ %p (size %zx)", pd->maps[MAP_LIBSYM].bss_base,
+                    pd->maps[MAP_LIBSYM].bss_size
+                );
+                break;
             }
         }
     }
@@ -475,10 +602,17 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
         }
     }
 
-    // Work out BSS map
+    // Work out BSS map: prefer library BSS (from section headers) if present.
+    // Memory-based analysis leaves BSS NULL since section headers are not
+    // mapped; fall back to the binary BSS which is populated by the proc_maps
+    // heuristic.
     int map_index      = isvalid(pd->maps[MAP_LIBSYM].path) ? MAP_LIBSYM : MAP_BIN;
     self->map.bss.base = pd->maps[map_index].bss_base;
     self->map.bss.size = pd->maps[map_index].bss_size;
+    if (!isvalid(self->map.bss.base) && map_index == MAP_LIBSYM) {
+        self->map.bss.base = pd->maps[MAP_BIN].bss_base;
+        self->map.bss.size = pd->maps[MAP_BIN].bss_size;
+    }
     if (!isvalid(self->map.bss.base)) {
         set_error(OS, "Failed to find valid BSS map");
         FAIL;

@@ -22,11 +22,13 @@
 
 #pragma once
 
+#include <inttypes.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/ptrace.h>
+#include <sys/stat.h>
 
 #include "../error.h"
 #include "../hints.h"
@@ -215,4 +217,39 @@ proc_root(pid_t pid, char* file) {
     } // GCOV_EXCL_STOP
 
     return proc_root;
+}
+
+// ----------------------------------------------------------------------------
+// Return an accessible path for the file backing a memory mapping.
+//
+// /proc/<pid>/root/<pathname> is tried first — it handles the normal case and
+// real containers (different mount namespaces) transparently.  If that path is
+// inaccessible (e.g. the file has been deleted, as in a container-like
+// scenario), we fall back to /proc/<pid>/map_files/<start>-<end>, a
+// kernel-maintained symlink that stays valid via the inode reference kept by
+// the mapping even after the file is unlinked.
+static inline char*
+proc_map_file_path(pid_t pid, char* pathname, void* addr, size_t size) {
+    char* root_path = proc_root(pid, pathname);
+    if (isvalid(root_path)) {
+        struct stat s;
+        if (stat(root_path, &s) == 0)
+            return root_path;
+        free(root_path);
+    }
+
+    // proc_root path inaccessible (file deleted) — fall back to map_files
+    char* path = calloc(1, 64);
+    if (!isvalid(path)) // GCOV_EXCL_START
+        return NULL;
+    // GCOV_EXCL_STOP
+
+    uintptr_t start = (uintptr_t)addr;
+    uintptr_t upper = start + size;
+    if (sprintf(path, "/proc/%d/map_files/%" PRIxPTR "-%" PRIxPTR, pid, start, upper) < 0) { // GCOV_EXCL_START
+        free(path);
+        return NULL;
+    } // GCOV_EXCL_STOP
+
+    return path;
 }

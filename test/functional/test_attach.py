@@ -167,7 +167,6 @@ def test_where_kernel_austinp(py):
 
 @pytest.mark.parametrize("prefix", [[], ["unshare", "-p", "-f", "-r"]])
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux only")
-@pytest.mark.xfail(os.getenv("CI") == "true", reason="Fails in CI")
 @requires_sudo
 @allpythons()
 def test_attach_container_like(py, tmp_path, prefix):
@@ -178,6 +177,9 @@ def test_attach_container_like(py, tmp_path, prefix):
     symbols. We also test against an interpreter started in a different PID
     namespace to emulate a container as closely as possible.
     """
+    if prefix and os.getenv("CI") == "true":
+        pytest.xfail("PID namespace case not yet reliable in CI")
+
     venv_path = tmp_path / ".venv"
     p = run_python(py, "-m", "venv", "--copies", str(venv_path))
     p.wait(30)
@@ -195,14 +197,14 @@ def test_attach_container_like(py, tmp_path, prefix):
         result = austin("-Cp", str(p.pid))
         assert result.returncode == 0
 
-        ts = threads(result.stdout)
+        ts = threads(result.samples)
         assert len(ts) == 1
 
         assert has_frame(result.samples, filename="sleepy.py", function="<module>")
 
         meta = result.metadata
 
-        a = sum_metrics(result.stdout)
+        a, _ = sum_metrics(result.samples)
         d = int(meta["duration"])
 
         assert abs(a - d) <= (a + d) * 0.25
