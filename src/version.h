@@ -172,6 +172,11 @@ typedef struct {
     // True when PyUnicodeObject_state.interned is a full unsigned char (not 2-bit field).
     // Introduced in CPython 3.14 free-threaded builds; changes kind/compact bit positions.
     bool     ft_interned_byte;
+    // Byte offset within _PyUnicodeObject_state to the word holding kind:3/compact:1.
+    // Probed lazily on first FT string read: GCC/Clang packs the bits at +1 (immediately
+    // after unsigned char interned); MSVC aligns unsigned int bitfields to +4.
+    // -1 means not yet probed.
+    int      ft_state_kind_byte;
 } py_unicode_v;
 
 typedef struct {
@@ -474,10 +479,11 @@ get_version_descriptor(int major, int minor, int patch) {
 
 // In free-threaded 3.14+, PyUnicodeObject_state.interned became a full
 // unsigned char rather than a 2-bit field, shifting kind/compact bit positions.
-#define PY_UNICODE_314(ver)                                                  \
-    {                                                                        \
-        PY_UNICODE_313(ver);                                                 \
-        py_v->py_unicode.ft_interned_byte = py_d->v##ver.pyobject.size > 16; \
+#define PY_UNICODE_314(ver)                                                         \
+    {                                                                               \
+        PY_UNICODE_313(ver);                                                        \
+        py_v->py_unicode.ft_interned_byte   = py_d->v##ver.pyobject.size > 16;      \
+        py_v->py_unicode.ft_state_kind_byte = -1; /* probed on first string read */ \
     }
 
 // ----------------------------------------------------------------------------

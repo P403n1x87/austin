@@ -99,9 +99,10 @@ _string_remote(proc_ref_t pref, raddr_t raddr, python_v* py_v) {
     // unicode offsets to locate the state bitfield, length, and ASCII data. The
     // PyObject header is larger in free-threaded builds.
     if (V_MIN(3, 13) && py_v->py_unicode.ascii_size > 0) {
-        // length[8] + hash[8] + state[4] — state always sits exactly
-        // sizeof(Py_ssize_t) + sizeof(Py_hash_t) after length.
-        char hdr[sizeof(ssize_t) + sizeof(Py_hash_t) + sizeof(uint32_t)];
+        // Read length[8] + hash[8] + state[8]. The state struct is 8 bytes on
+        // all platforms (4-byte-aligned, padded to 8), but the bitfield layout
+        // within it differs by compiler.
+        char hdr[sizeof(ssize_t) + sizeof(Py_hash_t) + 2 * sizeof(uint32_t)];
         if (fail(copy_memory(pref, raddr + py_v->py_unicode.o_length, sizeof(hdr), hdr))) // GCOV_EXCL_LINE
             FAIL_PTR;                                                                     // GCOV_EXCL_LINE
 
@@ -110,9 +111,21 @@ _string_remote(proc_ref_t pref, raddr_t raddr, python_v* py_v) {
 
         unsigned int kind, compact;
         if (py_v->py_unicode.ft_interned_byte) {
-            // 3.14+ free-threaded: interned is a full unsigned char (byte 0),
-            // kind:3/compact:1/ascii:1 are packed into the next byte (byte 1).
-            uint8_t bits = (state_word >> 8) & 0xff;
+            // 3.14+ free-threaded: interned is a full unsigned char at byte +0
+            // of the state struct. The compiler determines where
+            // kind:3/compact:1 follows: GCC/Clang packs them at byte +1; MSVC
+            // aligns unsigned int bitfields to a 4-byte boundary so they land
+            // at byte +4. Probe on first use: try +1 (GCC), fall back to +4
+            // (MSVC).
+            if (unlikely(py_v->py_unicode.ft_state_kind_byte < 0)) {
+                // Probe: a valid kind is 1–4; if byte +1 gives that, it's GCC
+                // layout.
+                int kb1                             = *(uint8_t*)(hdr + sizeof(ssize_t) + sizeof(Py_hash_t) + 1) & 7;
+                int kb4                             = *(uint8_t*)(hdr + sizeof(ssize_t) + sizeof(Py_hash_t) + 4) & 7;
+                py_v->py_unicode.ft_state_kind_byte = (kb1 >= 1 && kb1 <= 4) ? 1 : (kb4 >= 1 && kb4 <= 4) ? 4 : 1;
+                log_d("Probed FT unicode state kind byte at +%d", py_v->py_unicode.ft_state_kind_byte);
+            }
+            uint8_t bits = *(uint8_t*)(hdr + sizeof(ssize_t) + sizeof(Py_hash_t) + py_v->py_unicode.ft_state_kind_byte);
             kind         = bits & 7;
             compact      = (bits >> 3) & 1;
         } else {
