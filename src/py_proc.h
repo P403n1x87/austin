@@ -94,6 +94,8 @@ typedef struct {
 
     bool free_threaded;
 
+    uint64_t tlbc_generation; // current interpreter tlbc_generation (3.14+ FT)
+
 #ifdef PL_LINUX
 #ifdef AUSTINP
     struct _puw {

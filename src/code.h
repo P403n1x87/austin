@@ -37,6 +37,9 @@ typedef struct {
     size_t           line_table_size;
     unsigned int     first_line_number;
     raddr_t          co_tlbc_raddr; // cached _PyCodeArray* for TLBC (3.14+ FT); NULL otherwise
+    raddr_t*         tlbc_entries;  // snapshot of _PyCodeArray.entries; NULL until first read
+    ssize_t          tlbc_count;    // number of entries in the snapshot
+    uint64_t         tlbc_gen;      // tlbc_generation at which the snapshot was taken
 } code_t;
 
 // ----------------------------------------------------------------------------
@@ -57,6 +60,9 @@ code_new(
     code->line_table_size   = line_table_size;
     code->first_line_number = first_line_number;
     code->co_tlbc_raddr     = co_tlbc_raddr;
+    code->tlbc_entries      = NULL;
+    code->tlbc_count        = 0;
+    code->tlbc_gen          = 0;
 
     return code;
 }
@@ -69,6 +75,7 @@ code__destroy(code_t* self) {
     }
 
     sfree(self->line_table);
+    sfree(self->tlbc_entries);
 
     free(self);
 }
