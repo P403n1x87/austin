@@ -3,6 +3,7 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 from subprocess import PIPE
+from subprocess import CalledProcessError
 from subprocess import Popen
 from subprocess import check_output
 from tempfile import TemporaryDirectory
@@ -71,9 +72,21 @@ def venv(py, reqs):
         env["LD_LIBRARY_PATH"] = str(venv_path / "lib")
         env["PATH"] = str(venv_path / "bin") + os.pathsep + env["PATH"]
 
-        check_output(
-            ["python", "-m", "pip", "install", "-r", reqs, "--use-pep517"], env=env
-        )
+        exc = None
+        for attempt in range(3):
+            try:
+                check_output(
+                    ["python", "-m", "pip", "install", "-r", reqs, "--use-pep517"],
+                    env=env,
+                )
+                break
+            except CalledProcessError as e:
+                exc = e
+        else:
+            raise RuntimeError(
+                f"Failed to install requirements after {attempt + 1} attempts: "
+                f"{exc.output.decode()}"
+            )
 
         yield env
 

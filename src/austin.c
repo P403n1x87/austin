@@ -104,8 +104,19 @@ do_single_process(py_proc_t* py_proc) {
             sample_timer_start();
 
             if (fail(result = py_proc__sample(py_proc))) {
-                // Try to re-initialise
-                if (fail(py_proc__init(py_proc)))
+                // Retry reinit after exec: Python startup may be slow on
+                // emulated platforms (e.g. QEMU aarch64).  Bound the total
+                // wait to 10× the startup timeout so we don't spin forever
+                // if the process exec'd into a non-Python binary.
+                bool           reinit_ok    = false;
+                microseconds_t reinit_limit = gettime() + pargs.timeout;
+                while (interrupt_signal == 0 && gettime() < reinit_limit && py_proc__is_running(py_proc)) {
+                    if (success(py_proc__init(py_proc))) {
+                        reinit_ok = true;
+                        break;
+                    }
+                }
+                if (!reinit_ok)
                     FAIL_BREAK;
             }
 
@@ -122,8 +133,17 @@ do_single_process(py_proc_t* py_proc) {
             sample_timer_start();
 
             if (fail(result = py_proc__sample(py_proc))) {
-                // Try to re-initialise
-                if (pargs.where || fail(py_proc__init(py_proc)))
+                if (pargs.where)
+                    FAIL_BREAK;
+                bool           reinit_ok    = false;
+                microseconds_t reinit_limit = gettime() + pargs.timeout;
+                while (interrupt_signal == 0 && gettime() < reinit_limit && py_proc__is_running(py_proc)) {
+                    if (success(py_proc__init(py_proc))) {
+                        reinit_ok = true;
+                        break;
+                    }
+                }
+                if (!reinit_ok)
                     FAIL_BREAK;
             }
 
