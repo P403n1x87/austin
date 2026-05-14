@@ -156,6 +156,7 @@ typedef struct {
     offset_t o_gc;
     offset_t o_gil_state;
     offset_t o_code_object_gen;
+    offset_t o_tlbc_generation;
 } py_is_v;
 
 typedef struct {
@@ -462,6 +463,7 @@ get_version_descriptor(int major, int minor, int patch) {
     {                                                                                \
         PY_IS_313(v);                                                                \
         V_ASSIGN(v, is.o_code_object_gen, interpreter_state.code_object_generation); \
+        V_ASSIGN(v, is.o_tlbc_generation, interpreter_state.tlbc_generation);        \
     }
 
 #define PY_GC_313(v)                                 \

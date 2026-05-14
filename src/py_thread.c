@@ -236,24 +236,57 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
     if (py_v->py_iframe.o_tlbc_index && py_v->py_code.o_tlbc) {
         int32_t tlbc_idx = V_FIELD_PTR(int32_t, iframe, py_iframe, o_tlbc_index);
         if (tlbc_idx > 0) {
-            // Try the code cache first — _code_remote already extracts co_tlbc from
-            // the code object buffer it reads, so hot functions cost 0 reads here.
             code_t* cached_code   = lru_cache__maybe_hit(self->proc->code_cache, (key_dt)code_raddr);
             raddr_t co_tlbc_raddr = cached_code ? cached_code->co_tlbc_raddr : NULL;
 
             if (!isvalid(co_tlbc_raddr)) { // GCOV_EXCL_BR_LINE
-                // Cache miss (first encounter): read co_tlbc from the code object.
                 copy_memory(self->proc->ref, code_raddr + py_v->py_code.o_tlbc, sizeof(co_tlbc_raddr), &co_tlbc_raddr);
             }
 
             if (isvalid(co_tlbc_raddr)) { // GCOV_EXCL_BR_LINE
-                // _PyCodeArray entries start at offset sizeof(Py_ssize_t).
                 raddr_t tlbc_base = NULL;
-                if (success(copy_memory(
-                        self->proc->ref, co_tlbc_raddr + sizeof(ssize_t) + (ssize_t)tlbc_idx * (ssize_t)sizeof(raddr_t),
-                        sizeof(tlbc_base), &tlbc_base
-                    ))
-                    && isvalid(tlbc_base)) { // GCOV_EXCL_BR_LINE
+
+                // Use the cached _PyCodeArray snapshot when the generation
+                // matches and the index is in range
+                uint64_t cur_tlbc_gen = self->proc->tlbc_generation;
+                if (cached_code && cached_code->tlbc_gen == cur_tlbc_gen && tlbc_idx < cached_code->tlbc_count) {
+                    tlbc_base = cached_code->tlbc_entries[tlbc_idx];
+                } else {
+                    // Read the full array header to get count, then all entries.
+                    ssize_t count = 0;
+                    if (success(copy_memory(self->proc->ref, co_tlbc_raddr, sizeof(count), &count))
+                        && count > 0) { // GCOV_EXCL_BR_LINE
+                        raddr_t* entries = (raddr_t*)malloc((size_t)count * sizeof(raddr_t));
+                        if (isvalid(entries)
+                            && success(copy_memory(
+                                self->proc->ref, co_tlbc_raddr + sizeof(ssize_t), (size_t)count * sizeof(raddr_t),
+                                entries
+                            ))) {
+                            if (tlbc_idx < count)
+                                tlbc_base = entries[tlbc_idx]; // cppcheck-suppress uninitdata
+                            if (cached_code) {
+                                sfree(cached_code->tlbc_entries);
+                                cached_code->tlbc_entries = entries;
+                                cached_code->tlbc_count   = count;
+                                cached_code->tlbc_gen     = cur_tlbc_gen;
+                            } else {
+                                free(entries);
+                            }
+                        } else {
+                            sfree(entries);
+                        }
+                    }
+                    // Fall back to single-entry read if array fetch failed.
+                    if (!isvalid(tlbc_base)) {
+                        copy_memory(
+                            self->proc->ref,
+                            co_tlbc_raddr + sizeof(ssize_t) + (ssize_t)tlbc_idx * (ssize_t)sizeof(raddr_t),
+                            sizeof(tlbc_base), &tlbc_base
+                        );
+                    }
+                }
+
+                if (isvalid(tlbc_base)) { // GCOV_EXCL_BR_LINE
                     lasti = (int)(instr_ptr - tlbc_base) / (int)sizeof(_Py_CODEUNIT);
                     goto push_frame;
                 }

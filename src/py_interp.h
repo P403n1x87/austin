@@ -36,6 +36,7 @@
 typedef struct _interpreter_state {
     int64_t  id;
     uint64_t code_object_gen;
+    uint64_t tlbc_gen;
 } interpreter_state_t;
 
 // ----------------------------------------------------------------------------
@@ -49,6 +50,7 @@ interpreter_state_new(int64_t id, uint64_t code_object_gen) {
 
     state->id              = id;
     state->code_object_gen = code_object_gen;
+    state->tlbc_gen        = 0;
 
     return state;
 }

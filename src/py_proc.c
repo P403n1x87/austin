@@ -1239,6 +1239,11 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
             ))
             FAIL; // GCOV_EXCL_LINE
 
+        uint64_t tlbc_gen = 0;
+        if (py_v->py_is.o_tlbc_generation) {
+            _py_proc__get_interpreter_state_field(self, interp, tlbc_generation, tlbc_gen);
+        }
+
         key_dt               key                    = interpreter_state_key(interp_id);
         interpreter_state_t* interpreter_state_info = lru_cache__maybe_hit(self->interpreter_state_cache, key);
         if (!isvalid(interpreter_state_info)) {
@@ -1268,6 +1273,12 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
             lru_cache__invalidate(self->code_cache);
 
             interpreter_state_info->code_object_gen = code_object_gen;
+        }
+
+        if (tlbc_gen != interpreter_state_info->tlbc_gen) {
+            log_d("TLBC generation changed from %lu to %lu", interpreter_state_info->tlbc_gen, tlbc_gen);
+            interpreter_state_info->tlbc_gen = tlbc_gen;
+            self->tlbc_generation            = tlbc_gen;
         }
     }
 
