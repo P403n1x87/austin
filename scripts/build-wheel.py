@@ -8,6 +8,12 @@ from urllib.request import urlopen
 from wheel.wheelfile import WheelFile
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 
+# Free-threaded CPython ABI tags to include alongside the generic py3 tag.
+# Each entry produces an additional Tag: line in the wheel metadata and a
+# dotted component in the wheel filename, making pip prefer this wheel for
+# free-threaded Python environments without requiring a separate upload.
+FT_PYTHON_TAGS = ["cp313t", "cp314t"]
+
 METADATA = {
     "Summary": "Austin - Frame Stack Sampler for CPython",
     "Author": "Gabriele N. Tornetta",
@@ -88,11 +94,18 @@ def make_message(headers, payload=None):
     return message.getvalue().encode("utf-8")
 
 
-def write_austin_wheel(out_dir, *, version, platform, austin_bin_data):
+def write_austin_wheel(
+    out_dir, *, version, platform, austin_bin_data, free_threaded=True
+):
     package_name = "austin-dist"
-    python = "py3"
+    # All Python version tags covered by this wheel: the generic py3 tag plus,
+    # on platforms that ship free-threaded CPython builds, explicit FT tags.
+    # The filename uses them dotted; the WHEEL metadata lists a Tag: line for
+    # every (python, abi, platform) combination.
+    python_tags = ["py3"] + (FT_PYTHON_TAGS if free_threaded else [])
+    python_filename = ".".join(python_tags)
     dist_name = package_name.replace("-", "_")
-    wheel_name = f"{dist_name}-{version}-{python}-none-{platform}.whl"
+    wheel_name = f"{dist_name}-{version}-{python_filename}-none-{platform}.whl"
     dist_info = f"{dist_name}-{version}.dist-info"
     wheel_path = out_dir / wheel_name
 
@@ -124,7 +137,11 @@ def write_austin_wheel(out_dir, *, version, platform, austin_bin_data):
             "Wheel-Version": "1.0",
             "Generator": "austin-dist build-wheel.py",
             "Root-Is-Purelib": "false",
-            "Tag": [f"{python}-none-{p}" for p in platform.split(".")],
+            # One Tag: entry per (python_tag, platform) combination so that pip
+            # resolves this wheel for both GIL and free-threaded environments.
+            "Tag": [
+                f"{py}-none-{p}" for py in python_tags for p in platform.split(".")
+            ],
         }
     )
 
@@ -194,12 +211,21 @@ if __name__ == "__main__":
         default=None,
     )
 
+    argp.add_argument(
+        "--no-free-threaded",
+        help="Omit free-threaded Python tags (use for platforms without FT builds, e.g. musllinux)",
+        action="store_true",
+        default=False,
+    )
+
     args = argp.parse_args()
 
     version = args.version or get_latest_release()
 
     dist_dir = Path.cwd() / "dist"
     dist_dir.mkdir(exist_ok=True)
+
+    free_threaded = not args.no_free_threaded
 
     if args.files is not None:
         if args.platform is None:
@@ -213,6 +239,7 @@ if __name__ == "__main__":
                 (file_name, Path(bin_path).read_bytes())
                 for file_name, bin_path in (file.split(":") for file in args.files)
             ],
+            free_threaded=free_threaded,
         )
     else:
         if args.platform is None:
@@ -227,4 +254,5 @@ if __name__ == "__main__":
                 download_release(version, suffix, variant_name=variant)
                 for variant in variants
             ],
+            free_threaded=free_threaded,
         )

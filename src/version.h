@@ -97,6 +97,7 @@ typedef struct {
     offset_t o_firstlineno;
     offset_t o_code;
     offset_t o_qualname;
+    offset_t o_tlbc; // offset of co_tlbc in PyCodeObject; 0 when not present (GIL/3.13)
 } py_code_v;
 
 typedef struct {
@@ -123,6 +124,7 @@ typedef struct {
     offset_t o_prev_instr;
     offset_t o_is_entry;
     offset_t o_owner;
+    offset_t o_tlbc_index; // offset of tlbc_index in frame; 0 when not present (GIL/3.13)
 } py_iframe_v;
 
 typedef struct {
@@ -163,6 +165,22 @@ typedef struct {
 } py_gc_v;
 
 typedef struct {
+    ssize_t  size;
+    ssize_t  ascii_size; // sizeof(PyASCIIObject) in target build
+    offset_t o_state;
+    offset_t o_length;
+    // True when PyUnicodeObject_state.interned is a full unsigned char (not
+    // 2-bit field). Introduced in CPython 3.14 free-threaded builds; changes
+    // kind/compact bit positions.
+    bool     ft_interned_byte;
+    // Byte offset within _PyUnicodeObject_state to the word holding
+    // kind:3/compact:1. Probed lazily on first FT string read: GCC/Clang packs
+    // the bits immediately after unsigned char interned; MSVC aligns unsigned
+    // int bitfields to +4. -1 means not yet probed.
+    int      ft_state_kind_byte;
+} py_unicode_v;
+
+typedef struct {
     py_code_v    py_code;
     py_frame_v   py_frame;
     py_thread_v  py_thread;
@@ -171,10 +189,16 @@ typedef struct {
     py_gc_v      py_gc;
     py_cframe_v  py_cframe;
     py_iframe_v  py_iframe;
+    py_unicode_v py_unicode;
 
     int major;
     int minor;
     int patch;
+
+    // Size of PyObject header in the target build (biased refcounting adds
+    // ob_tid + extra fields). Used to compute ob_size / string-data offsets
+    // without hardcoding the GIL layout.
+    ssize_t py_object_size;
 } python_v;
 
 #ifdef PY_PROC_C
@@ -350,6 +374,12 @@ get_version_descriptor(int major, int minor, int patch) {
         py_v->major = major;
         py_v->minor = minor;
         py_v->patch = patch;
+
+        // Default to the standard GIL PyObject header size. For Python 3.13+
+        // init_version_descriptor() reads the actual size from the debug
+        // offsets and overwrites this, handling free-threaded builds
+        // transparently.
+        py_v->py_object_size = sizeof(PyObject);
     }
 
     if (!isvalid(py_v)) { // GCOV_EXCL_START
@@ -378,6 +408,12 @@ get_version_descriptor(int major, int minor, int patch) {
         V_ASSIGN(v, code.o_qualname, code_object.qualname);       \
     }
 
+#define PY_CODE_314(v)                                 \
+    {                                                  \
+        PY_CODE_313(v);                                \
+        V_ASSIGN(v, code.o_tlbc, code_object.co_tlbc); \
+    }
+
 #define PY_IFRAME_313(v)                                               \
     {                                                                  \
         V_ASSIGN(v, iframe.size, interpreter_frame.size);              \
@@ -385,6 +421,12 @@ get_version_descriptor(int major, int minor, int patch) {
         V_ASSIGN(v, iframe.o_code, interpreter_frame.executable);      \
         V_ASSIGN(v, iframe.o_prev_instr, interpreter_frame.instr_ptr); \
         V_ASSIGN(v, iframe.o_owner, interpreter_frame.owner);          \
+    }
+
+#define PY_IFRAME_314(v)                                                \
+    {                                                                   \
+        PY_IFRAME_313(v);                                               \
+        V_ASSIGN(v, iframe.o_tlbc_index, interpreter_frame.tlbc_index); \
     }
 
 #define PY_THREAD_313(v)                                                       \
@@ -428,6 +470,23 @@ get_version_descriptor(int major, int minor, int patch) {
         V_ASSIGN(v, gc.o_collecting, gc.collecting); \
     }
 
+#define PY_UNICODE_313(ver)                                                 \
+    {                                                                       \
+        V_ASSIGN(ver, unicode.size, unicode_object.size);                   \
+        V_ASSIGN(ver, unicode.ascii_size, unicode_object.asciiobject_size); \
+        V_ASSIGN(ver, unicode.o_state, unicode_object.state);               \
+        V_ASSIGN(ver, unicode.o_length, unicode_object.length);             \
+    }
+
+// In free-threaded 3.14+, PyUnicodeObject_state.interned became a full
+// unsigned char rather than a 2-bit field, shifting kind/compact bit positions.
+#define PY_UNICODE_314(ver)                                                         \
+    {                                                                               \
+        PY_UNICODE_313(ver);                                                        \
+        py_v->py_unicode.ft_interned_byte   = py_d->v##ver.pyobject.size > 16;      \
+        py_v->py_unicode.ft_state_kind_byte = -1; /* probed on first string read */ \
+    }
+
 // ----------------------------------------------------------------------------
 static void
 init_version_descriptor(python_v* py_v, _Py_DebugOffsets* py_d) {
@@ -439,15 +498,19 @@ init_version_descriptor(python_v* py_v, _Py_DebugOffsets* py_d) {
         PY_RUNTIME_313(3_13);
         PY_IS_313(3_13);
         PY_GC_313(3_13);
+        PY_UNICODE_313(3_13);
+        py_v->py_object_size = py_d->v3_13.pyobject.size;
         break;
 
     case 14:
-        PY_CODE_313(3_14);
-        PY_IFRAME_313(3_14);
+        PY_CODE_314(3_14);
+        PY_IFRAME_314(3_14);
         PY_THREAD_313(3_14);
         PY_RUNTIME_313(3_14);
         PY_IS_314(3_14);
         PY_GC_313(3_14);
+        PY_UNICODE_314(3_14);
+        py_v->py_object_size = py_d->v3_14.pyobject.size;
         break;
 
     default:                                                                           // GCOV_EXCL_LINE

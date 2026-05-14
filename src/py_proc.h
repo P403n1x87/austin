@@ -92,6 +92,8 @@ typedef struct {
     // Offset of the tstate_current field within the _PyRuntimeState structure
     unsigned int tstate_current_offset;
 
+    bool free_threaded;
+
 #ifdef PL_LINUX
 #ifdef AUSTINP
     struct _puw {

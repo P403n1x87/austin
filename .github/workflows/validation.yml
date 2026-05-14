@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
@@ -32,13 +32,21 @@ jobs:
 
     name: Data validation on Linux (x86_64) with Python ${{ matrix.python-version }}
     steps:
-      - name: Install Python
-        uses: actions/setup-python@v4
+      - name: Install Python (standard)
+        if: ${{ !endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}-dev
 
+      - name: Install Python (free-threaded)
+        if: ${{ endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -133,7 +141,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
@@ -142,13 +150,21 @@ jobs:
 
     name: Data validation on Windows (x86_64) with Python ${{ matrix.python-version }}
     steps:
-      - name: Install Python
-        uses: actions/setup-python@v4
+      - name: Install Python (standard)
+        if: ${{ !endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}-dev
 
+      - name: Install Python (free-threaded)
+        if: ${{ endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -230,7 +246,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t"]
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
@@ -239,13 +255,21 @@ jobs:
 
     name: Data validation on macOS (arm64) with Python ${{ matrix.python-version }}
     steps:
-      - name: Install Python
-        uses: actions/setup-python@v4
+      - name: Install Python (standard)
+        if: ${{ !endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}-dev
 
+      - name: Install Python (free-threaded)
+        if: ${{ endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 

@@ -1,7 +1,9 @@
 2026-**-** v4.1.0
 
-  Improved support for Linux containers.
+  Added support for free-threaded CPython builds.
   
+  Improved support for Linux containers.
+
 
 2025-10-31 v4.0.0
 

@@ -30,6 +30,7 @@ from test.utils import python
 from test.utils import sum_metrics
 from test.utils import target
 from test.utils import threads
+from test.utils import version_in
 
 
 @allpythons()
@@ -40,7 +41,7 @@ def test_pipe_wall_time(py):
 
     meta = result.metadata
 
-    assert meta["python"].startswith(py), meta
+    assert version_in(py, meta["python"]), meta
     assert meta["mode"] == "wall", meta
     assert int(meta["duration"]) > 100000, meta
     assert meta["interval"] == str(interval * 1000), meta
@@ -65,7 +66,7 @@ def test_pipe_cpu_time(py):
 
     meta = result.metadata
 
-    assert meta["python"].startswith(py), meta
+    assert version_in(py, meta["python"]), meta
     assert meta["mode"] == "cpu", meta
     assert int(meta["duration"]) > 100000, meta
     assert meta["interval"] == "1000", meta
@@ -82,7 +83,7 @@ def test_pipe_wall_time_multiprocess(py):
     assert int(meta["duration"]) > 100000, meta
     assert meta["interval"] == "1000", meta
     assert meta["multiprocess"] == "on", meta
-    assert meta["python"].startswith(py), meta
+    assert version_in(py, meta["python"]), meta
 
 
 @allpythons()
@@ -97,7 +98,7 @@ def test_pipe_wall_time_multiprocess_output(py, tmp_path):
     assert int(meta["duration"]) > 100000, meta
     assert meta["interval"] == "1000", meta
     assert meta["multiprocess"] == "on", meta
-    assert meta["python"].startswith(py), meta
+    assert version_in(py, meta["python"]), meta
 
 
 @allpythons(min=(3, 11))
@@ -118,7 +119,9 @@ def test_python_version(py):
         )
     )
 
-    assert reported_version == actual_version, meta
+    suffix = "t" if py.endswith("t") else ""
+
+    assert reported_version == actual_version + suffix, meta
 
 
 # TODO: Test TTY behaviour

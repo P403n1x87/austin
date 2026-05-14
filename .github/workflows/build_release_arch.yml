@@ -85,7 +85,7 @@ jobs:
           file_glob: true
 
       - name: Install Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -109,14 +109,17 @@ jobs:
               ;;
           esac
 
+          # FT Python has no official builds for armv7/ppc64le.
           python scripts/build-wheel.py \
             --version=$VERSION \
             --platform=$PLATFORM \
+            --no-free-threaded \
             --files austin:./artifacts/austin austinp:./artifacts/austinp
 
           python scripts/build-wheel.py \
             --version=$VERSION \
             --platform=$MUSL_PLATFORM \
+            --no-free-threaded \
             --files austin:./artifacts/austin.musl
 
           deactivate

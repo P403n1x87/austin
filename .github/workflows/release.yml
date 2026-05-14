@@ -51,7 +51,7 @@ jobs:
         name: Checkout Austin
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -120,7 +120,7 @@ jobs:
         name: Checkout Austin
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -223,7 +223,7 @@ jobs:
         name: Checkout Austin
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -249,6 +249,7 @@ jobs:
           python scripts/build-wheel.py \
             --version=${{ steps.tag.outputs.version }} \
             --platform=${{ steps.tag.outputs.platform }} \
+            --no-free-threaded \
             --files austin:src/austin
           deactivate
 
@@ -342,7 +343,7 @@ jobs:
           file_glob: true
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -381,7 +382,7 @@ jobs:
         name: Checkout Austin
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
