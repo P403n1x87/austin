@@ -247,8 +247,7 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
             }
 
             if (isvalid(co_tlbc_raddr)) { // GCOV_EXCL_BR_LINE
-                // _PyCodeArray: { Py_ssize_t size; char *entries[1]; }
-                // entries start at offset sizeof(Py_ssize_t) = 8.
+                // _PyCodeArray entries start at offset sizeof(Py_ssize_t).
                 raddr_t tlbc_base = NULL;
                 if (success(copy_memory(
                         self->proc->ref, co_tlbc_raddr + sizeof(ssize_t) + (ssize_t)tlbc_idx * (ssize_t)sizeof(raddr_t),

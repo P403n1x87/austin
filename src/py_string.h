@@ -228,8 +228,6 @@ _bytes_remote(proc_ref_t pref, raddr_t raddr, ssize_t* size, python_v* py_v) {
     unsigned char* array = NULL;
 
     // ob_size is at offset py_object_size (right after the PyObject header).
-    // In GIL builds: py_object_size=16, ob_size at 16.
-    // In free-threaded builds: py_object_size=32, ob_size at 32.
     if (fail(copy_memory(pref, raddr + py_v->py_object_size, sizeof(ssize_t), &len))) // GCOV_EXCL_LINE
         FAIL_PTR;                                                                     // GCOV_EXCL_LINE
     len++;                                                                            // Include null-terminator

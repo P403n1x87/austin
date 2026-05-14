@@ -141,7 +141,6 @@ _code_remote(py_proc_t* py_proc, raddr_t code_raddr) {
         FAIL_PTR;
     }
 
-    // co_tlbc is already in the local code buffer (no extra read needed).
     raddr_t co_tlbc_raddr = py_v->py_code.o_tlbc ? V_FIELD(raddr_t, code, py_code, o_tlbc) : NULL;
 
     return code_new(

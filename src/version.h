@@ -169,13 +169,14 @@ typedef struct {
     ssize_t  ascii_size; // sizeof(PyASCIIObject) in target build
     offset_t o_state;
     offset_t o_length;
-    // True when PyUnicodeObject_state.interned is a full unsigned char (not 2-bit field).
-    // Introduced in CPython 3.14 free-threaded builds; changes kind/compact bit positions.
+    // True when PyUnicodeObject_state.interned is a full unsigned char (not
+    // 2-bit field). Introduced in CPython 3.14 free-threaded builds; changes
+    // kind/compact bit positions.
     bool     ft_interned_byte;
-    // Byte offset within _PyUnicodeObject_state to the word holding kind:3/compact:1.
-    // Probed lazily on first FT string read: GCC/Clang packs the bits at +1 (immediately
-    // after unsigned char interned); MSVC aligns unsigned int bitfields to +4.
-    // -1 means not yet probed.
+    // Byte offset within _PyUnicodeObject_state to the word holding
+    // kind:3/compact:1. Probed lazily on first FT string read: GCC/Clang packs
+    // the bits immediately after unsigned char interned; MSVC aligns unsigned
+    // int bitfields to +4. -1 means not yet probed.
     int      ft_state_kind_byte;
 } py_unicode_v;
 
@@ -194,9 +195,9 @@ typedef struct {
     int minor;
     int patch;
 
-    // Size of PyObject header in the target build.  16 in GIL builds,
-    // 32 in free-threaded builds (biased refcounting adds ob_tid + extra fields).
-    // Used to compute ob_size / string-data offsets without hardcoding the GIL layout.
+    // Size of PyObject header in the target build (biased refcounting adds
+    // ob_tid + extra fields). Used to compute ob_size / string-data offsets
+    // without hardcoding the GIL layout.
     ssize_t py_object_size;
 } python_v;
 
