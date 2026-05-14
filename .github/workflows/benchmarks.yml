@@ -18,9 +18,14 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+
+      - name: Install free-threaded Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13t"
 
       - name: Install benchmark dependencies
         run: |
@@ -178,9 +183,14 @@ jobs:
           path: austin
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+
+      - name: Install free-threaded Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13t"
 
       - uses: actions/download-artifact@v4
         with:
@@ -234,7 +244,7 @@ jobs:
           path: austin
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -290,7 +300,7 @@ jobs:
           path: austin
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
@@ -350,7 +360,7 @@ jobs:
           path: austin
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 

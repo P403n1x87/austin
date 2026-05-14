@@ -6,6 +6,7 @@ import enum
 import json
 import platform
 import re
+import shutil
 from subprocess import TimeoutExpired
 import sys
 import typing as t
@@ -21,6 +22,18 @@ from scipy.stats import ttest_ind
 from test.utils import target
 
 VERSIONS = ("base", "dev")
+
+
+def _find_free_threaded_python() -> t.Optional[str]:
+    """Return the path to a free-threaded Python interpreter, or None."""
+    for candidate in ("python3.13t", "python3.14t"):
+        path = shutil.which(candidate)
+        if path is not None:
+            return path
+    return None
+
+
+FT_PYTHON = _find_free_threaded_python()
 
 
 # ---- Metrics ---------------------------------------------------------------
@@ -258,6 +271,45 @@ SCENARIOS: t.List[Scenario] = [
         )
         for i in (100, 1000, 10000)
     ],
+    *(
+        [
+            *[
+                Scenario(
+                    group="Free-threaded wall time",
+                    title=f"Free-threaded wall time [sampling interval: {i}]",
+                    args=["-i", str(i), FT_PYTHON, target("target34.py")],
+                )
+                for i in (1, 10, 100, 1000)
+            ],
+            *[
+                Scenario(
+                    group="Free-threaded CPU time",
+                    title=f"Free-threaded CPU time [sampling interval: {i}]",
+                    args=["-ci", str(i), FT_PYTHON, target("target34.py")],
+                )
+                for i in (1, 10, 100, 1000)
+            ],
+            *[
+                Scenario(
+                    group="Free-threaded full metrics",
+                    title=f"Free-threaded full metrics [sampling interval: {i}]",
+                    args=["-fi", str(i), FT_PYTHON, target("target34.py")],
+                )
+                for i in (1, 10, 100, 1000)
+            ],
+            *[
+                Scenario(
+                    group="Free-threaded native wall time",
+                    title=f"Free-threaded native wall time [sampling interval: {i}]",
+                    args=["-ni", str(i), FT_PYTHON, target("target34.py")],
+                    metrics=NativeMetrics,
+                )
+                for i in (100, 1000, 10000)
+            ],
+        ]
+        if FT_PYTHON
+        else []
+    ),
 ]
 
 # Ordered unique groups, derived from SCENARIOS (preserves definition order).
