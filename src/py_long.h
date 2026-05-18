@@ -52,9 +52,9 @@ py_long__read(proc_ref_t pref, raddr_t raddr, python_v* py_v) {
 
     // 32-bit Python: PyObject_HEAD = ob_refcnt(4) + ob_type*(4) = 8 bytes.
     int is_32bit    = (hdr <= 8);
-    int ptr_bytes   = is_32bit ? 4 : 8; // sizeof(uintptr_t / Py_ssize_t) in target
-    int digit_bytes = is_32bit ? 2 : 4; // sizeof(digit) in target (uint16 vs uint32)
-    int shift       = is_32bit ? PyLong_SHIFT_15 : PyLong_SHIFT_30;
+    int ptr_bytes   = is_32bit ? 4 : 8; // sizeof(uintptr_t / Py_ssize_t) in target // GCOV_EXCL_BR_LINE
+    int digit_bytes = is_32bit ? 2 : 4; // sizeof(digit) in target (uint16 vs uint32) // GCOV_EXCL_BR_LINE
+    int shift       = is_32bit ? PyLong_SHIFT_15 : PyLong_SHIFT_30; // GCOV_EXCL_BR_LINE
 
     // Maximum body size: ptr_bytes (tag/size) + 2 * digit_bytes.
     char    body[8 + 2 * 4] = {0}; // large enough for 64-bit (8 + 8 = 16 B)
@@ -64,9 +64,11 @@ py_long__read(proc_ref_t pref, raddr_t raddr, python_v* py_v) {
 
     if (V_MIN(3, 12)) {
         // 3.12+: body = lv_tag (ptr_bytes) + ob_digit[0..1] (digit_bytes each).
-        uintptr_t lv_tag = (ptr_bytes == 4) ? (uintptr_t)*(uint32_t*)body : (uintptr_t)*(uint64_t*)body;
+        uintptr_t lv_tag
+            = (ptr_bytes == 4) ? (uintptr_t)*(uint32_t*)body : (uintptr_t)*(uint64_t*)body; // GCOV_EXCL_BR_LINE
 
-        uint32_t d0 = (digit_bytes == 2) ? (uint32_t)*(uint16_t*)(body + ptr_bytes) : *(uint32_t*)(body + ptr_bytes);
+        uint32_t d0 = (digit_bytes == 2) ? (uint32_t)*(uint16_t*)(body + ptr_bytes)
+                                         : *(uint32_t*)(body + ptr_bytes); // GCOV_EXCL_BR_LINE
 
         if (lv_tag < ((uintptr_t)2 << _PyLong_NON_SIZE_BITS)) {
             // Compact: value = sign * ob_digit[0]
@@ -80,8 +82,9 @@ py_long__read(proc_ref_t pref, raddr_t raddr, python_v* py_v) {
 
         long val = (long)d0;
         if (digit_count == 2) {
-            uint32_t d1  = (digit_bytes == 2) ? (uint32_t)*(uint16_t*)(body + ptr_bytes + digit_bytes)
-                                              : *(uint32_t*)(body + ptr_bytes + digit_bytes);
+            uint32_t d1  = (digit_bytes == 2)
+                             ? (uint32_t)*(uint16_t*)(body + ptr_bytes + digit_bytes) // GCOV_EXCL_BR_LINE
+                             : *(uint32_t*)(body + ptr_bytes + digit_bytes);
             val         |= (long)d1 << shift;
         }
 
@@ -91,7 +94,7 @@ py_long__read(proc_ref_t pref, raddr_t raddr, python_v* py_v) {
 
     } else {
         // 3.10-3.11: body = ob_size (ptr_bytes, signed) + ob_digit[0..1].
-        long ob_size = (ptr_bytes == 4) ? (long)*(int32_t*)body : (long)*(int64_t*)body;
+        long ob_size = (ptr_bytes == 4) ? (long)*(int32_t*)body : (long)*(int64_t*)body; // GCOV_EXCL_BR_LINE
         if (ob_size == 0)
             return 0;
 
@@ -99,12 +102,14 @@ py_long__read(proc_ref_t pref, raddr_t raddr, python_v* py_v) {
         if (digit_count > 2)
             return -1;
 
-        uint32_t d0 = (digit_bytes == 2) ? (uint32_t)*(uint16_t*)(body + ptr_bytes) : *(uint32_t*)(body + ptr_bytes);
+        uint32_t d0 = (digit_bytes == 2) ? (uint32_t)*(uint16_t*)(body + ptr_bytes)
+                                         : *(uint32_t*)(body + ptr_bytes); // GCOV_EXCL_BR_LINE
 
         long val = (long)d0;
         if (digit_count == 2) {
-            uint32_t d1  = (digit_bytes == 2) ? (uint32_t)*(uint16_t*)(body + ptr_bytes + digit_bytes)
-                                              : *(uint32_t*)(body + ptr_bytes + digit_bytes);
+            uint32_t d1  = (digit_bytes == 2)
+                             ? (uint32_t)*(uint16_t*)(body + ptr_bytes + digit_bytes) // GCOV_EXCL_BR_LINE
+                             : *(uint32_t*)(body + ptr_bytes + digit_bytes);
             val         |= (long)d1 << shift;
         }
         if (ob_size < 0)

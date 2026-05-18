@@ -260,6 +260,28 @@ def test_fork_thread_names(py):
 
 
 @allpythons()
+def test_fork_thread_names_single(py):
+    result = austin("-i", "1ms", *python(py), target("sleepy.py"))
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    ts = {thread for _, thread, _ in threads(result.samples)}
+    assert ts == {"MainThread"}, ts
+
+
+@allpythons()
+def test_fork_thread_names_transition(py):
+    """Starts single-threaded (no threading module), then imports threading and
+    spawns named workers.  Verifies the NAME_NO_THREADING → NAME_RESOLVED
+    transition: the main thread should be "MainThread" from the single-thread
+    path, and the workers should be resolved via threading._active."""
+    result = austin("-i", "1ms", *python(py), target("target_thread_names.py"))
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    ts = {thread for _, thread, _ in threads(result.samples)}
+    assert ts == {"MainThread", "Worker1", "Worker2"}, ts
+
+
+@allpythons()
 def test_no_logging(py, monkeypatch):
     monkeypatch.setenv("AUSTIN_NO_LOGGING", "1")
     result = austin("-i", "1ms", *python(py), target("target34.py"))

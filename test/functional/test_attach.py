@@ -178,6 +178,34 @@ def test_attach_thread_names(py):
         assert ts == {"MainThread", "SecondThread"}, ts
 
 
+@requires_sudo
+@allpythons()
+def test_attach_thread_names_single(py):
+    with run_python(py, target("sleepy.py"), sleep_after=0.5) as p:
+        result = austin("-i", "1ms", "-p", str(p.pid))
+        assert result.returncode == 0, result.stderr or result.stdout
+
+        ts = {thread for _, thread, _ in threads(result.samples)}
+        assert ts == {"MainThread"}, ts
+
+
+@requires_sudo
+@allpythons()
+def test_attach_thread_names_transition(py):
+    """Attaches while the process is single-threaded (phase 1), then the
+    target imports threading and spawns named workers (phase 2).  Verifies
+    that Austin resolves the transition from the single-thread "MainThread"
+    path to full threading._active lookup."""
+    with run_python(py, target("target_thread_names.py")) as p:
+        sleep(0.5)
+
+        result = austin("-i", "1ms", "-p", str(p.pid))
+        assert result.returncode == 0, result.stderr or result.stdout
+
+        ts = {thread for _, thread, _ in threads(result.samples)}
+        assert ts == {"MainThread", "Worker1", "Worker2"}, ts
+
+
 @pytest.mark.parametrize("prefix", [[], ["unshare", "-p", "-f", "-r"]])
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux only")
 @requires_sudo

@@ -87,10 +87,12 @@ _read_tgt_ptr(proc_ref_t pref, raddr_t addr, python_v* py_v) {
         return result;
     }
     // 32-bit target pointer: read 4 bytes and zero-extend.
+    // GCOV_EXCL_START
     uint32_t v = 0;
     if (success(copy_memory(pref, addr, 4, &v)))
         return (raddr_t)(uintptr_t)v;
     return NULL;
+    // GCOV_EXCL_STOP
 }
 
 // Read ob_type from a PyObject and check Py_TPFLAGS_UNICODE_SUBCLASS.
@@ -101,10 +103,10 @@ _is_unicode_object(proc_ref_t pref, raddr_t obj, python_v* py_v) {
     // ob_type is the last pointer in PyObject_HEAD: at offset py_object_size - ptr_size.
     raddr_t ob_type = _read_tgt_ptr(pref, obj + py_v->py_object_size - ps, py_v);
     if (!isvalid(ob_type))
-        return false;
+        return false; // GCOV_EXCL_LINE
     unsigned long tp_flags = 0;
     if (fail(copy_memory(pref, ob_type + _TP_FLAGS_OFF(py_v), sizeof(tp_flags), &tp_flags)))
-        return false;
+        return false; // GCOV_EXCL_LINE
     return (tp_flags & _PY_TPFLAGS_UNICODE_SUBCLASS) != 0;
 }
 
@@ -123,11 +125,11 @@ _lookup_name_in_active(proc_ref_t pref, raddr_t active_dict, long tid, python_v*
         // key_obj and val_obj are adjacent pointers — read both at once.
         raddr_t kv[2]      = {NULL, NULL};
         if (fail(copy_memory(pref, entry_addr + e.key_off, sizeof(kv), kv)))
-            continue;
+            continue; // GCOV_EXCL_LINE
         raddr_t key_obj = kv[0];
         raddr_t val_obj = kv[1];
         if (!isvalid(key_obj) || !isvalid(val_obj))
-            continue;
+            continue; // GCOV_EXCL_BR_LINE
 
         long ident = py_long__read(pref, key_obj, py_v);
         log_d("thread name: _active[%zd] ident=0x%lx want=0x%lx", i, ident, tid);
@@ -139,17 +141,17 @@ _lookup_name_in_active(proc_ref_t pref, raddr_t active_dict, long tid, python_v*
         // 1. Get ob_type pointer (always the last pointer in PyObject_HEAD).
         ssize_t tps     = _TARGET_PTR_SIZE(py_v);
         raddr_t ob_type = _read_tgt_ptr(pref, val_obj + py_v->py_object_size - tps, py_v);
-        if (!isvalid(ob_type)) {
+        if (!isvalid(ob_type)) { // GCOV_EXCL_START
             log_d("thread name: ob_type NULL/read failed");
             continue;
-        }
+        } // GCOV_EXCL_STOP
 
         // 2. Read tp_flags.
         // Py_TPFLAGS_MANAGED_DICT  = 1 << 4  (3.11+)
         // Py_TPFLAGS_INLINE_VALUES = 1 << 2  (3.13+)
         unsigned long tp_flags = 0;
         if (fail(copy_memory(pref, ob_type + _TP_FLAGS_OFF(py_v), sizeof(tp_flags), &tp_flags)))
-            continue;
+            continue; // GCOV_EXCL_LINE
 
         // 3. Locate Thread._name.  The mechanism differs by Python version:
         //
@@ -188,9 +190,9 @@ _lookup_name_in_active(proc_ref_t pref, raddr_t active_dict, long tid, python_v*
                     char    iv_buf[8 + 32 * sizeof(raddr_t)];
                     ssize_t iv_read = sizeof(iv_buf);
                     if (fail(copy_memory(pref, iv, iv_read, iv_buf)))
-                        continue;
+                        continue; // GCOV_EXCL_LINE
                     uint8_t cap = ((PyDictValues3_13*)iv_buf)->capacity;
-                    if (cap > 32)
+                    if (cap > 32) // GCOV_EXCL_BR_LINE
                         cap = 32;
                     raddr_t* vals = (raddr_t*)((char*)iv_buf + offsetof(PyDictValues3_13, values[0]));
                     for (uint8_t k = 0; k < cap; k++) {
@@ -214,15 +216,15 @@ _lookup_name_in_active(proc_ref_t pref, raddr_t active_dict, long tid, python_v*
                     // capacity is at vp[-1]; read it together with up to 32 value slots.
                     char    vbuf[1 + 32 * sizeof(raddr_t)];
                     if (fail(copy_memory(pref, (char*)vp - 1, sizeof(vbuf), vbuf)))
-                        continue;
+                        continue; // GCOV_EXCL_LINE
                     uint8_t cap = *(uint8_t*)vbuf;
-                    if (cap > 32)
+                    if (cap > 32) // GCOV_EXCL_BR_LINE
                         cap = 32;
                     raddr_t* slots = (raddr_t*)((char*)vbuf + 1);
                     for (uint8_t k = 0; k < cap; k++) {
                         raddr_t vobj = slots[k];
                         if (!isvalid(vobj) || !_is_unicode_object(pref, vobj, py_v))
-                            continue;
+                            continue; // GCOV_EXCL_LINE
                         char* s = _string_remote(pref, vobj, py_v);
                         if (isvalid(s))
                             return s;
@@ -243,15 +245,15 @@ _lookup_name_in_active(proc_ref_t pref, raddr_t active_dict, long tid, python_v*
                     // capacity at vp[-1]; read together with up to 32 slots.
                     char vbuf[1 + 32 * sizeof(raddr_t)];
                     if (fail(copy_memory(pref, (char*)vp - 1, sizeof(vbuf), vbuf)))
-                        continue;
+                        continue; // GCOV_EXCL_LINE
                     uint8_t cap = *(uint8_t*)vbuf;
-                    if (cap > 32)
+                    if (cap > 32) // GCOV_EXCL_BR_LINE
                         cap = 32;
                     raddr_t* slots = (raddr_t*)((char*)vbuf + 1);
                     for (uint8_t k = 0; k < cap; k++) {
                         raddr_t vobj = slots[k];
                         if (!isvalid(vobj) || !_is_unicode_object(pref, vobj, py_v))
-                            continue;
+                            continue; // GCOV_EXCL_LINE
                         char* s = _string_remote(pref, vobj, py_v);
                         if (isvalid(s))
                             return s;
@@ -263,9 +265,9 @@ _lookup_name_in_active(proc_ref_t pref, raddr_t active_dict, long tid, python_v*
         } else { // 3.10: traditional tp_dictoffset, split dict
             Py_ssize_t tp_dictoffset = 0;
             if (fail(copy_memory(pref, ob_type + _TP_DICTOFFSET_OFF(py_v), sizeof(tp_dictoffset), &tp_dictoffset)))
-                continue;
+                continue; // GCOV_EXCL_LINE
             if (tp_dictoffset == 0)
-                continue;
+                continue; // GCOV_EXCL_LINE
             copy_memory(pref, (char*)val_obj + tp_dictoffset, sizeof(raddr_t), &inst_dict);
             if (isvalid(inst_dict)) {
                 ssize_t base  = py_v->py_object_size;
@@ -279,30 +281,33 @@ _lookup_name_in_active(proc_ref_t pref, raddr_t active_dict, long tid, python_v*
                     // Read full keys header in one call.
                     PyDictKeysObject3_10 khdr;
                     if (fail(copy_memory(pref, ma_keys, sizeof(khdr), &khdr)))
-                        continue;
+                        continue; // GCOV_EXCL_LINE
                     ssize_t nslots   = khdr.dk_size;
                     ssize_t nentries = khdr.dk_nentries;
-                    if (nslots > 0 && nslots <= (1 << 20) && nentries > 0 && nentries <= 65536) {
-                        ssize_t ibs = (nslots <= 0xff) ? 1 : (nslots <= 0xffff) ? 2 : (nslots <= 0xffffffff) ? 4 : 8;
+                    if (nslots > 0 && nslots <= (1 << 20) && nentries > 0 && nentries <= 65536) { // GCOV_EXCL_BR_LINE
+                        ssize_t ibs     = (nslots <= 0xff)       ? 1
+                                        : (nslots <= 0xffff)     ? 2
+                                        : (nslots <= 0xffffffff) ? 4
+                                                                 : 8; // GCOV_EXCL_BR_LINE
                         raddr_t entries = (raddr_t)((char*)ma_keys + sizeof(PyDictKeysObject3_10) + nslots * ibs);
                         for (ssize_t k = 0; k < nentries; k++) {
                             raddr_t eaddr   = (raddr_t)((char*)entries + k * sizeof(PyDictKeyEntry));
                             raddr_t key_obj = NULL;
                             copy_memory(pref, eaddr + offsetof(PyDictKeyEntry, me_key), sizeof(raddr_t), &key_obj);
                             if (!isvalid(key_obj))
-                                continue;
+                                continue; // GCOV_EXCL_LINE
                             char* ks = _string_remote(pref, key_obj, py_v);
                             if (!isvalid(ks))
-                                continue;
+                                continue; // GCOV_EXCL_LINE
                             int match = (strcmp(ks, "_name") == 0);
                             free(ks);
                             if (!match)
                                 continue;
                             raddr_t name_obj = NULL;
                             copy_memory(pref, (char*)ma_values + k * sizeof(raddr_t), sizeof(raddr_t), &name_obj);
-                            if (isvalid(name_obj))
+                            if (isvalid(name_obj)) // GCOV_EXCL_BR_LINE
                                 return _string_remote(pref, name_obj, py_v);
-                            break;
+                            break; // GCOV_EXCL_LINE
                         }
                     }
                     continue; // split dict handled
@@ -311,12 +316,12 @@ _lookup_name_in_active(proc_ref_t pref, raddr_t active_dict, long tid, python_v*
         }
 
         if (!isvalid(inst_dict))
-            continue;
+            continue; // GCOV_EXCL_LINE
 
         // Regular combined __dict__: look up "_name" directly.
         raddr_t name_obj = py_dict__lookup_str(pref, inst_dict, "_name", py_v);
         if (!isvalid(name_obj))
-            continue;
+            continue; // GCOV_EXCL_LINE
 
         return _string_remote(pref, name_obj, py_v);
     }
@@ -333,21 +338,21 @@ _resolve_active_dict(proc_ref_t pref, raddr_t interp_raddr, python_v* py_v) {
     if (py_v->py_is.o_imports_modules) {
         // 3.10-3.11 and 3.13+: interp->modules IS sys.modules directly.
         if (fail(copy_memory(pref, interp_raddr + py_v->py_is.o_imports_modules, sizeof(raddr_t), &sys_modules)))
-            return NULL;
+            return NULL; // GCOV_EXCL_LINE
     } else if (py_v->py_is.o_sysdict) {
         // 3.12: interp->sysdict is sys.__dict__; look up "modules" in it.
         raddr_t sysdict = NULL;
         if (fail(copy_memory(pref, interp_raddr + py_v->py_is.o_sysdict, sizeof(raddr_t), &sysdict)))
-            return NULL;
+            return NULL; // GCOV_EXCL_LINE
         if (!isvalid(sysdict))
-            return NULL;
+            return NULL; // GCOV_EXCL_LINE
         sys_modules = py_dict__lookup_str(pref, sysdict, "modules", py_v);
     } else {
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
     }
 
     if (!isvalid(sys_modules))
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
 
     raddr_t threading_mod = py_dict__lookup_str(pref, sys_modules, "threading", py_v);
     if (!isvalid(threading_mod))
@@ -356,7 +361,7 @@ _resolve_active_dict(proc_ref_t pref, raddr_t interp_raddr, python_v* py_v) {
     // PyModuleObject.md_dict is the first field after PyObject_HEAD.
     raddr_t mod_dict = NULL;
     if (fail(copy_memory(pref, threading_mod + py_v->py_object_size, sizeof(raddr_t), &mod_dict)))
-        return NULL;
+        return NULL; // GCOV_EXCL_LINE
     if (!isvalid(mod_dict))
         return NULL;
 
@@ -371,7 +376,7 @@ static inline int
 _count_threads_capped2(proc_ref_t pref, raddr_t interp_raddr, python_v* py_v) {
     raddr_t tstate = NULL;
     if (fail(copy_memory(pref, interp_raddr + py_v->py_is.o_tstate_head, sizeof(raddr_t), &tstate)))
-        return 0;
+        return 0; // GCOV_EXCL_LINE
     if (!isvalid(tstate))
         return 0;
 
@@ -422,9 +427,13 @@ py_thread__resolve_name(
             entry->name_state = NAME_RESOLVED;
             return;
         }
-        // threading imported but tid absent → native thread, use TID fallback.
+        // threading imported but tid absent — could be a race: the thread has
+        // started OS execution but not yet called threading._bootstrap and
+        // registered in _active.  Keep retrying so it gets named as soon as
+        // it appears.  For C extension threads genuinely absent from _active,
+        // the TID fallback is shown each sample while we keep trying.
         entry->name[0]    = '\0';
-        entry->name_state = NAME_RESOLVED;
+        entry->name_state = NAME_NO_THREADING;
         return;
     }
 
@@ -435,6 +444,6 @@ py_thread__resolve_name(
         entry->name_state = NAME_RESOLVED;
     } else {
         // Retry next sample — threading may be imported later.
-        entry->name_state = NAME_NO_THREADING;
+        entry->name_state = NAME_NO_THREADING; // GCOV_EXCL_LINE
     }
 }

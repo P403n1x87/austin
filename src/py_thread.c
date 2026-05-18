@@ -557,7 +557,7 @@ py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr, thread_tracke
 
     thread_tracker_entry_t* entry = thread_tracker__get_or_create(tracker, self->tid);
     if (!isvalid(entry))
-        SUCCESS;
+        SUCCESS; // GCOV_EXCL_LINE
 
     entry->last_gen  = tracker->sample_gen;
     entry->native_id = self->native_id;

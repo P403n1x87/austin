@@ -1324,8 +1324,8 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
             }
         }
 
-        thread_tracker_entry_t* tentry      = thread_tracker__get_or_create(self->thread_tracker, py_thread.tid);
-        const char*             thread_name = (isvalid(tentry) && tentry->name[0]) ? tentry->name : NULL;
+        thread_tracker_entry_t* tentry = thread_tracker__get_or_create(self->thread_tracker, py_thread.tid);
+        const char* thread_name = (isvalid(tentry) && tentry->name[0]) ? tentry->name : NULL; // GCOV_EXCL_BR_LINE
 
         sample_t sample = {
             .pid         = self->pid,

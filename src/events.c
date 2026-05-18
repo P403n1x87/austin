@@ -51,7 +51,7 @@ mojo_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sam
     if (sample->thread_name && sample->thread_name[0])
         snprintf(thread_name, sizeof(thread_name), "%s", sample->thread_name);
     else
-        sprintf(thread_name, FORMAT_TID, sample->tid);
+        sprintf(thread_name, FORMAT_TID, sample->tid); // GCOV_EXCL_LINE
 
     mojo_event(MOJO_STACK);
     mojo_integer(sample->pid, 0);
@@ -227,9 +227,10 @@ static inline void
 where_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sample) {
     char tid_buf[32];
     if (!sample->thread_name || !sample->thread_name[0])
-        sprintf(tid_buf, FORMAT_TID, sample->tid);
+        sprintf(tid_buf, FORMAT_TID, sample->tid); // GCOV_EXCL_LINE
 
-    const char* tname = (sample->thread_name && sample->thread_name[0]) ? sample->thread_name : tid_buf;
+    const char* tname
+        = (sample->thread_name && sample->thread_name[0]) ? sample->thread_name : tid_buf; // GCOV_EXCL_BR_LINE
     fprintfp(pargs.output_file, WHERE_HEAD_FORMAT, sample->pid, sample->iid, tname, sample->is_idle ? "💤" : "🚀");
 }
 

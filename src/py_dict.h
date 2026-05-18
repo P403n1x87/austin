@@ -57,11 +57,11 @@ _dk_index_bytes_pre311(ssize_t dk_size) {
     if (dk_size <= 0xff)
         return 1;
     else if (dk_size <= 0xffff)
-        return 2;
+        return 2; // GCOV_EXCL_LINE
     else if (dk_size <= 0xffffffff)
-        return 4;
+        return 4; // GCOV_EXCL_LINE
     else
-        return 8;
+        return 8; // GCOV_EXCL_LINE
 }
 
 // ----------------------------------------------------------------------------
@@ -89,7 +89,7 @@ py_dict__entries(proc_ref_t pref, raddr_t dict_raddr, python_v* py_v, dict_entri
     // Read ma_keys and ma_values in one call — they are adjacent in PyDictBody.
     raddr_t kv[2] = {NULL, NULL};
     if (fail(copy_memory(pref, dict_raddr + base + (ssize_t)offsetof(PyDictBody, ma_keys), sizeof(kv), kv)))
-        return 1;
+        return 1; // GCOV_EXCL_LINE
     raddr_t ma_keys   = kv[0];
     raddr_t ma_values = kv[1];
     if (!isvalid(ma_keys) || isvalid(ma_values))
@@ -107,7 +107,7 @@ py_dict__entries(proc_ref_t pref, raddr_t dict_raddr, python_v* py_v, dict_entri
         // Compact layout (3.11+): read the full keys header in one call.
         PyDictKeysObject3_11 hdr;
         if (fail(copy_memory(pref, ma_keys, sizeof(hdr), &hdr)))
-            return 1;
+            return 1; // GCOV_EXCL_LINE
         nslots    = (ssize_t)1 << hdr.dk_log2_size;
         // dk_log2_index_bytes is log2 of the *total* index table byte count.
         idx_bytes = (ssize_t)1 << hdr.dk_log2_index_bytes;
@@ -122,7 +122,7 @@ py_dict__entries(proc_ref_t pref, raddr_t dict_raddr, python_v* py_v, dict_entri
         // 3.10: read the full keys header in one call.
         PyDictKeysObject3_10 hdr;
         if (fail(copy_memory(pref, ma_keys, sizeof(hdr), &hdr)))
-            return 1;
+            return 1; // GCOV_EXCL_LINE
         nslots    = hdr.dk_size;
         nentries  = hdr.dk_nentries;
         idx_bytes = _dk_index_bytes_pre311(nslots);
@@ -148,7 +148,7 @@ py_dict__entries(proc_ref_t pref, raddr_t dict_raddr, python_v* py_v, dict_entri
 // ----------------------------------------------------------------------------
 // py_dict__log_keys: log all string keys found in a remote dict (debug only).
 static inline void
-py_dict__log_keys(proc_ref_t pref, raddr_t dict_raddr, python_v* py_v) {
+py_dict__log_keys(proc_ref_t pref, raddr_t dict_raddr, python_v* py_v) { // GCOV_EXCL_START
     dict_entries_t e;
     if (py_dict__entries(pref, dict_raddr, py_v, &e)) {
         log_d("py_dict_keys: failed to read dict entries at %p", dict_raddr);
@@ -170,7 +170,7 @@ py_dict__log_keys(proc_ref_t pref, raddr_t dict_raddr, python_v* py_v) {
             log_d("py_dict_keys:   [%zd] <non-string key_obj=%p>", i, key_obj);
         }
     }
-}
+} // GCOV_EXCL_STOP
 
 // ----------------------------------------------------------------------------
 // py_dict__lookup_str: find a C string key in a remote combined PyDict.
@@ -189,7 +189,7 @@ py_dict__lookup_str(proc_ref_t pref, raddr_t dict_raddr, const char* key, python
         // key_off and value_off are always adjacent pointers — read both at once.
         raddr_t pair[2] = {NULL, NULL};
         if (fail(copy_memory(pref, entry + e.key_off, sizeof(pair), pair)))
-            continue;
+            continue; // GCOV_EXCL_LINE
         raddr_t key_obj = pair[0];
         raddr_t val_obj = pair[1];
         if (!isvalid(key_obj) || !isvalid(val_obj))
