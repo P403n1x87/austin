@@ -251,6 +251,15 @@ def test_qualnames(py, austin):
 
 
 @allpythons()
+def test_fork_thread_names(py):
+    result = austin("-i", "1ms", *python(py), target("target34.py"))
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    ts = {thread for _, thread, _ in threads(result.samples)}
+    assert ts == {"MainThread", "SecondThread"}, ts
+
+
+@allpythons()
 def test_no_logging(py, monkeypatch):
     monkeypatch.setenv("AUSTIN_NO_LOGGING", "1")
     result = austin("-i", "1ms", *python(py), target("target34.py"))

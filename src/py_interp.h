@@ -20,12 +20,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+#pragma once
+
 #include <stdint.h>
 #include <stdlib.h>
 
 #include "cache.h"
 #include "error.h"
 #include "hints.h"
+#include "mem.h"
 
 // We don't expect to have more than 256 concurrent interpreters. If we do, we
 // might end up evicting interpreter states and losing tracking information
@@ -37,6 +40,7 @@ typedef struct _interpreter_state {
     int64_t  id;
     uint64_t code_object_gen;
     uint64_t tlbc_gen;
+    raddr_t  active_dict_raddr; // cached threading._active; NULL = not yet resolved
 } interpreter_state_t;
 
 // ----------------------------------------------------------------------------
@@ -48,9 +52,10 @@ interpreter_state_new(int64_t id, uint64_t code_object_gen) {
         FAIL_PTR;
     } // GCOV_EXCL_STOP
 
-    state->id              = id;
-    state->code_object_gen = code_object_gen;
-    state->tlbc_gen        = 0;
+    state->id                = id;
+    state->code_object_gen   = code_object_gen;
+    state->tlbc_gen          = 0;
+    state->active_dict_raddr = NULL; // must be NULL until first successful resolution
 
     return state;
 }

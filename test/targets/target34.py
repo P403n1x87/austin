@@ -34,5 +34,5 @@ def keep_cpu_busy():
 
 
 if __name__ == "__main__":
-    threading.Thread(target=keep_cpu_busy).start()
+    threading.Thread(target=keep_cpu_busy, name="SecondThread").start()
     keep_cpu_busy()

@@ -42,7 +42,9 @@ typedef struct thread {
     raddr_t addr;
     raddr_t next;
 
-    uintptr_t tid;
+    uintptr_t tid;       // OS thread ID used for display (kernel TID on Linux)
+    uintptr_t native_id; // raw PyThreadState.thread_id (pthread_t on Linux/macOS)
+                         // used for threading._active ident matching
 
     raddr_t top_frame;
 

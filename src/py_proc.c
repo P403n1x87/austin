@@ -1198,6 +1198,68 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
 
     V_DESC(self->py_v);
 
+    // Set up the interpreter state record before the first thread read so that
+    // current_interp_state is valid for ALL thread reads (including the very
+    // first one), enabling thread name resolution on sample 1.
+    int64_t interp_id = 0;
+    if (fail(_py_proc__get_interpreter_state_field(self, interp, id, interp_id))) // GCOV_EXCL_LINE
+        FAIL;                                                                     // GCOV_EXCL_LINE
+
+    {
+        uint64_t code_object_gen = 0;
+        if (V_MIN(3, 14)) {
+            if (fail( // GCOV_EXCL_LINE
+                    _py_proc__get_interpreter_state_field(self, interp, code_object_gen, code_object_gen)
+                ))
+                FAIL; // GCOV_EXCL_LINE
+        }
+
+        key_dt               key                    = interpreter_state_key(interp_id);
+        interpreter_state_t* interpreter_state_info = lru_cache__maybe_hit(self->interpreter_state_cache, key);
+        if (!isvalid(interpreter_state_info)) {
+            interpreter_state_info = interpreter_state_new(interp_id, code_object_gen);
+            if (!isvalid(interpreter_state_info)) // GCOV_EXCL_LINE
+                FAIL;                             // GCOV_EXCL_LINE
+
+            log_d(
+                "Creating new interpreter state info record for interpreter %lx with code object generation %lu",
+                interp_id, code_object_gen
+            );
+
+            lru_cache__store(self->interpreter_state_cache, key, interpreter_state_info);
+        }
+
+        if (V_MIN(3, 14)) {
+            if (code_object_gen != interpreter_state_info->code_object_gen) {
+                log_d(
+                    "Code object generation changed from %lu to %lu, invalidating frame cache",
+                    interpreter_state_info->code_object_gen, code_object_gen
+                );
+
+                // This is the only safe place where we can invalidate the frame
+                // cache. Doing it while in the middle of unwinding is dangerous
+                // because the frames that are put in the stack are owned by the
+                // cache and we might end up with dangling pointers.
+                lru_cache__invalidate(self->frame_cache);
+                lru_cache__invalidate(self->code_cache);
+
+                interpreter_state_info->code_object_gen = code_object_gen;
+            }
+
+            uint64_t tlbc_gen = 0;
+            if (py_v->py_is.o_tlbc_generation) {
+                _py_proc__get_interpreter_state_field(self, interp, tlbc_generation, tlbc_gen);
+            }
+            if (tlbc_gen != interpreter_state_info->tlbc_gen) {
+                log_d("TLBC generation changed from %lu to %lu", interpreter_state_info->tlbc_gen, tlbc_gen);
+                interpreter_state_info->tlbc_gen = tlbc_gen;
+                self->tlbc_generation            = tlbc_gen;
+            }
+        }
+
+        self->current_interp_state = interpreter_state_info;
+    }
+
     py_thread_t py_thread = py_thread__init(self);
 
     if (fail(py_thread__read_with_stack_remote(&py_thread, tstate_head, self->thread_tracker))) {
@@ -1224,62 +1286,6 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
             current_thread = (raddr_t)gil_state.last_holder._value;
         } else
             current_thread = _py_proc__current_thread_state(self);
-    }
-
-    int64_t interp_id = 0;
-    if (fail(_py_proc__get_interpreter_state_field(self, interp, id, interp_id))) // GCOV_EXCL_LINE
-        FAIL;                                                                     // GCOV_EXCL_LINE
-
-    // In Python 3.14 we can use the code object generation to determine if we
-    // need to invalidate the frame cache.
-    if (V_MIN(3, 14)) {
-        uint64_t code_object_gen = 0;
-        if (fail( // GCOV_EXCL_LINE
-                _py_proc__get_interpreter_state_field(self, interp, code_object_gen, code_object_gen)
-            ))
-            FAIL; // GCOV_EXCL_LINE
-
-        uint64_t tlbc_gen = 0;
-        if (py_v->py_is.o_tlbc_generation) {
-            _py_proc__get_interpreter_state_field(self, interp, tlbc_generation, tlbc_gen);
-        }
-
-        key_dt               key                    = interpreter_state_key(interp_id);
-        interpreter_state_t* interpreter_state_info = lru_cache__maybe_hit(self->interpreter_state_cache, key);
-        if (!isvalid(interpreter_state_info)) {
-            interpreter_state_info = interpreter_state_new(interp_id, code_object_gen);
-            if (!isvalid(interpreter_state_info)) // GCOV_EXCL_LINE
-                FAIL;                             // GCOV_EXCL_LINE
-
-            log_d(
-                "Creating new interpreter state info record for interpreter %lx with code object generation %lu",
-                interp_id, code_object_gen
-            );
-
-            lru_cache__store(self->interpreter_state_cache, key, interpreter_state_info);
-        }
-
-        if (code_object_gen != interpreter_state_info->code_object_gen) {
-            log_d(
-                "Code object generation changed from %lu to %lu, invalidating frame cache",
-                interpreter_state_info->code_object_gen, code_object_gen
-            );
-
-            // This is the only safe place where we can invalidate the frame
-            // cache. Doing it while in the middle of unwinding is dangerous
-            // because the frames that are put in the stack are owned by the
-            // cache and we might end up with dangling pointers.
-            lru_cache__invalidate(self->frame_cache);
-            lru_cache__invalidate(self->code_cache);
-
-            interpreter_state_info->code_object_gen = code_object_gen;
-        }
-
-        if (tlbc_gen != interpreter_state_info->tlbc_gen) {
-            log_d("TLBC generation changed from %lu to %lu", interpreter_state_info->tlbc_gen, tlbc_gen);
-            interpreter_state_info->tlbc_gen = tlbc_gen;
-            self->tlbc_generation            = tlbc_gen;
-        }
     }
 
     do {
@@ -1318,14 +1324,18 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
             }
         }
 
+        thread_tracker_entry_t* tentry      = thread_tracker__get_or_create(self->thread_tracker, py_thread.tid);
+        const char*             thread_name = (isvalid(tentry) && tentry->name[0]) ? tentry->name : NULL;
+
         sample_t sample = {
-            .pid      = self->pid,
-            .tid      = py_thread.tid,
-            .iid      = interp_id,
-            .time     = time_delta,
-            .memory   = mem_delta,
-            .is_idle  = is_idle,
-            .gc_state = gc,
+            .pid         = self->pid,
+            .tid         = py_thread.tid,
+            .iid         = interp_id,
+            .time        = time_delta,
+            .memory      = mem_delta,
+            .is_idle     = is_idle,
+            .gc_state    = gc,
+            .thread_name = thread_name,
         };
         event_handler__emit_stack_begin(&sample);
 

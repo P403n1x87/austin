@@ -165,6 +165,19 @@ def test_where_kernel_austinp(py):
         assert "do_syscall" in result.stdout
 
 
+@requires_sudo
+@allpythons()
+def test_attach_thread_names(py):
+    with run_python(py, target("target34.py")) as p:
+        sleep(0.5)
+
+        result = austin("-i", "1ms", "-p", str(p.pid))
+        assert result.returncode == 0, result.stderr or result.stdout
+
+        ts = {thread for _, thread, _ in threads(result.samples)}
+        assert ts == {"MainThread", "SecondThread"}, ts
+
+
 @pytest.mark.parametrize("prefix", [[], ["unshare", "-p", "-f", "-r"]])
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux only")
 @requires_sudo

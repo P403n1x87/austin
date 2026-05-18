@@ -49,10 +49,20 @@ typedef struct {
     uintptr_t lasti; // lasti/prev_instr at frame, guards against same frame/different line
 } py_frame_id_t;
 
+typedef enum {
+    NAME_UNRESOLVED = 0, // not yet attempted
+    NAME_RESOLVED,       // name is set; don't retry
+    NAME_NO_THREADING,   // threading not imported yet; retry each sample until resolved
+} thread_name_state_t;
+
 typedef struct {
-    uintptr_t     tid;
-    py_frame_id_t top; // Python-only pre-unwind identity
-    unsigned int  last_gen;
+    uintptr_t           tid;       // display TID (kernel TID on Linux, pthread_t on macOS)
+    uintptr_t           native_id; // PyThreadState.thread_id — always pthread_t;
+                                   // matches threading._active ident on all platforms
+    py_frame_id_t       top;       // Python-only pre-unwind identity
+    unsigned int        last_gen;
+    char                name[128];
+    thread_name_state_t name_state;
 } thread_tracker_entry_t;
 
 typedef struct {

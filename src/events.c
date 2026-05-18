@@ -44,11 +44,14 @@ base_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sam
 
 static inline void
 mojo_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sample) {
-    char thread_name[64];
+    char thread_name[128];
 
     base_event_handler__handle_stack_begin(self, sample);
 
-    sprintf(thread_name, FORMAT_TID, sample->tid);
+    if (sample->thread_name && sample->thread_name[0])
+        snprintf(thread_name, sizeof(thread_name), "%s", sample->thread_name);
+    else
+        sprintf(thread_name, FORMAT_TID, sample->tid);
 
     mojo_event(MOJO_STACK);
     mojo_integer(sample->pid, 0);
@@ -202,9 +205,9 @@ const char* WHERE_SAMPLE_FORMAT_NATIVE
 const char* WHERE_SAMPLE_FORMAT_KERNEL = "    " BHBLU256 "%s" CRESET " 🐧\n";
 #if defined PL_WIN
 const char* WHERE_HEAD_FORMAT
-    = "\n\n%4$s Process " BMAG "%1$I64d" CRESET " 🧵 Thread " BBLU "%2$I64d:%3$I64d" CRESET "\n\n";
+    = "\n\n%4$s Process " BMAG "%1$I64d" CRESET " 🧵 Thread " BBLU "%2$I64d:%3$s" CRESET "\n\n";
 #else
-const char* WHERE_HEAD_FORMAT = "\n\n%4$s Process " BMAG "%1$d" CRESET " 🧵 Thread " BBLU "%2$ld:%3$ld" CRESET "\n\n";
+const char* WHERE_HEAD_FORMAT = "\n\n%4$s Process " BMAG "%1$d" CRESET " 🧵 Thread " BBLU "%2$ld:%3$s" CRESET "\n\n";
 #endif
 
 // ----------------------------------------------------------------------------
@@ -222,9 +225,12 @@ format_kernel_frame_ref(const char* format, char* scope) {
 
 static inline void
 where_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sample) {
-    fprintfp(
-        pargs.output_file, WHERE_HEAD_FORMAT, sample->pid, sample->iid, sample->tid, sample->is_idle ? "💤" : "🚀"
-    );
+    char tid_buf[32];
+    if (!sample->thread_name || !sample->thread_name[0])
+        sprintf(tid_buf, FORMAT_TID, sample->tid);
+
+    const char* tname = (sample->thread_name && sample->thread_name[0]) ? sample->thread_name : tid_buf;
+    fprintfp(pargs.output_file, WHERE_HEAD_FORMAT, sample->pid, sample->iid, tname, sample->is_idle ? "💤" : "🚀");
 }
 
 void

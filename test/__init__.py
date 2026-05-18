@@ -1,7 +1,7 @@
 import os
 import platform
 
-PY3_EARLIEST = 9
+PY3_EARLIEST = 10
 PY3_LATEST = 14
 
 
