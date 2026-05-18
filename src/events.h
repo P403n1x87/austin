@@ -55,13 +55,14 @@ typedef enum {
 } gc_state_t;
 
 typedef struct {
-    pid_t          pid;      // Process ID
-    int64_t        iid;      // Interpreter ID
-    uintptr_t      tid;      // Thread ID
-    microseconds_t time;     // Time of the sample
-    ssize_t        memory;   // Memory usage
-    gc_state_t     gc_state; // GC state
-    bool           is_idle;  // Is the thread idle?
+    pid_t          pid;         // Process ID
+    int64_t        iid;         // Interpreter ID
+    uintptr_t      tid;         // Thread ID
+    microseconds_t time;        // Time of the sample
+    ssize_t        memory;      // Memory usage
+    gc_state_t     gc_state;    // GC state
+    bool           is_idle;     // Is the thread idle?
+    const char*    thread_name; // Thread name from threading module, or NULL for TID fallback
 } sample_t;
 
 struct _eh;

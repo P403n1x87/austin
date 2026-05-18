@@ -41,6 +41,7 @@
 #include "version.h"
 
 #include "py_thread.h"
+#include "py_thread_name.h"
 
 // ---- PRIVATE ---------------------------------------------------------------
 
@@ -476,6 +477,10 @@ _py_thread__read_remote(py_thread_t* self, raddr_t addr) {
         self->tid = V_FIELD(long, ts, py_thread, o_thread_id);
     }
 #endif
+    // threading._active always keys by PyThreadState.thread_id (pthread_t on
+    // Linux/macOS, regardless of version). Capture it before any kernel-TID
+    // conversion so name resolution can match it correctly.
+    self->native_id = V_FIELD(long, ts, py_thread, o_thread_id);
     if (self->tid == 0) {
         set_error(OS, "Cannot retrieve native thread ID information");
         FAIL;
@@ -552,9 +557,17 @@ py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr, thread_tracke
 
     thread_tracker_entry_t* entry = thread_tracker__get_or_create(tracker, self->tid);
     if (!isvalid(entry))
-        SUCCESS;
+        SUCCESS; // GCOV_EXCL_LINE
 
-    entry->last_gen = tracker->sample_gen;
+    entry->last_gen  = tracker->sample_gen;
+    entry->native_id = self->native_id;
+
+    // Resolve thread name if not yet done (or threading not imported yet).
+    if (entry->name_state != NAME_RESOLVED && isvalid(self->proc->current_interp_state)) {
+        py_thread__resolve_name(
+            self->proc->ref, self->proc->istate_raddr, self->proc->current_interp_state, entry, self->proc->py_v
+        );
+    }
 
     V_DESC(self->proc->py_v);
 

@@ -7,7 +7,7 @@
 #
 # Austin is a Python frame stack sampler for CPython.
 #
-# Copyright (c) 2019 Gabriele N. Tornetta <phoenix1987@gmail.com>.
+# Copyright (c) 2025 Gabriele N. Tornetta <phoenix1987@gmail.com>.
 # All rights reserved.
 #
 # This program is free software: you can redistribute it and/or modify
@@ -22,17 +22,35 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import threading
+# Thread-name transition test target.
+#
+# Phase 1: single-threaded, threading module not yet imported.
+#   Austin should name the main thread "MainThread" via the single-thread path.
+#
+# Phase 2: threading is imported and two named threads are created.
+#   Austin should resolve "Worker1" and "Worker2" via threading._active.
+from time import sleep
 
 
-def keep_cpu_busy():
-    a = []
-    for i in range(10_000_000):
-        a.append(i)
-        if i % 1000000 == 0:
-            print("Unwanted output " + str(i))
+def wait():
+    sleep(0.5)
 
 
 if __name__ == "__main__":
-    threading.Thread(target=keep_cpu_busy, name="SecondThread").start()
-    keep_cpu_busy()
+    # Phase 1: no threading module — single thread
+    wait()
+
+    # Phase 2: import threading and start named workers
+    import threading
+
+    workers = [
+        threading.Thread(target=wait, name="Worker1"),
+        threading.Thread(target=wait, name="Worker2"),
+    ]
+    for w in workers:
+        w.start()
+
+    wait()
+
+    for w in workers:
+        w.join()

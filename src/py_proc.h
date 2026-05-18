@@ -26,6 +26,7 @@
 #include <sys/types.h>
 
 #include "cache.h"
+#include "py_interp.h"
 #include "thread_tracker.h"
 #ifdef PL_LINUX
 #include "linux/vm-range-tree.h"
@@ -78,13 +79,14 @@ typedef struct {
 
     raddr_t istate_raddr;
 
-    lru_cache_t*      frame_cache;
-    lru_cache_t*      string_cache;
-    lru_cache_t*      code_cache;
-    lru_cache_t*      interpreter_state_cache;
-    thread_tracker_t* thread_tracker;
+    lru_cache_t*         frame_cache;
+    lru_cache_t*         string_cache;
+    lru_cache_t*         code_cache;
+    lru_cache_t*         interpreter_state_cache;
+    thread_tracker_t*    thread_tracker;
+    interpreter_state_t* current_interp_state; // set per-interpreter during sampling
     // Temporal profiling support
-    microseconds_t    timestamp;
+    microseconds_t       timestamp;
 
     // Memory profiling support
     ssize_t last_resident_memory;

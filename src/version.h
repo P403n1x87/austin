@@ -154,6 +154,8 @@ typedef struct {
     offset_t o_tstate_head;
     offset_t o_id;
     offset_t o_gc;
+    offset_t o_imports_modules; // interp->modules (3.10-3.11) or imports_modules (3.13+): IS sys.modules
+    offset_t o_sysdict;         // interp->sysdict (3.12 only): sys.__dict__; reach sys.modules via ["modules"]
     offset_t o_gil_state;
     offset_t o_code_object_gen;
     offset_t o_tlbc_generation;
@@ -282,20 +284,24 @@ typedef struct {
         offsetof(s, interpreters.head), \
     }
 
-#define PY_IS(s)                                                                                  \
-    {                                                                                             \
-        sizeof(s), offsetof(s, next), offsetof(s, tstate_head), offsetof(s, id), offsetof(s, gc), \
+// 3.10: interp->modules IS sys.modules directly (first pointer after gc)
+#define PY_IS(s)                                                                                                        \
+    {                                                                                                                   \
+        sizeof(s), offsetof(s, next), offsetof(s, tstate_head), offsetof(s, id), offsetof(s, gc), offsetof(s, modules), \
     }
 
-#define PY_IS_311(s)                                                                               \
-    {                                                                                              \
-        sizeof(s), offsetof(s, next), offsetof(s, threads.head), offsetof(s, id), offsetof(s, gc), \
+// 3.11: same — modules is first pointer after gc
+#define PY_IS_311(s)                                                                                                     \
+    {                                                                                                                    \
+        sizeof(s), offsetof(s, next), offsetof(s, threads.head), offsetof(s, id), offsetof(s, gc), offsetof(s, modules), \
     }
 
-#define PY_IS_312(s)                                                   \
-    {                                                                  \
-        sizeof(s),       offsetof(s, next), offsetof(s, threads.head), \
-        offsetof(s, id), offsetof(s, gc),   offsetof(s, ceval.gil),    \
+// 3.12: no direct modules field; sysdict (first pointer after gc) gives sys.__dict__
+//       whose ["modules"] key reaches sys.modules.
+#define PY_IS_312(s)                                                                                  \
+    {                                                                                                 \
+        sizeof(s), offsetof(s, next),    offsetof(s, threads.head), offsetof(s, id), offsetof(s, gc), \
+        0,         offsetof(s, sysdict), offsetof(s, ceval.gil),                                      \
     }
 
 #define PY_GC(s)                 \
@@ -308,7 +314,7 @@ typedef struct {
 
 python_v python_v3_10 = {
     PY_CODE(PyCodeObject3_8),     PY_FRAME(PyFrameObject3_10),    PY_THREAD(PyThreadState3_8),
-    PY_IS(PyInterpreterState3_9), PY_RUNTIME(_PyRuntimeState3_8), PY_GC(struct _gc_runtime_state3_8),
+    PY_IS(PyInterpreterState3_9), PY_RUNTIME(_PyRuntimeState3_8), PY_GC(struct _gc_runtime_state3_12),
 };
 
 // ---- Python 3.11 -----------------------------------------------------------
@@ -316,8 +322,8 @@ python_v python_v3_10 = {
 python_v python_v3_11 = {
     PY_CODE_311(PyCodeObject3_11),
     PY_FRAME(PyFrameObject3_10), // Irrelevant
-    PY_THREAD_311(PyThreadState3_11),   PY_IS_311(PyInterpreterState3_11), PY_RUNTIME_311(_PyRuntimeState3_11),
-    PY_GC(struct _gc_runtime_state3_8), PY_CFRAME_311(_PyCFrame3_11),      PY_IFRAME_311(_PyInterpreterFrame3_11),
+    PY_THREAD_311(PyThreadState3_11),    PY_IS_311(PyInterpreterState3_11), PY_RUNTIME_311(_PyRuntimeState3_11),
+    PY_GC(struct _gc_runtime_state3_12), PY_CFRAME_311(_PyCFrame3_11),      PY_IFRAME_311(_PyInterpreterFrame3_11),
 };
 
 // ---- Python 3.12 -----------------------------------------------------------
@@ -449,14 +455,15 @@ get_version_descriptor(int major, int minor, int patch) {
         V_ASSIGN(v, runtime.o_interp_head, runtime_state.interpreters_head); \
     }
 
-#define PY_IS_313(v)                                                   \
-    {                                                                  \
-        V_ASSIGN(v, is.size, interpreter_state.size);                  \
-        V_ASSIGN(v, is.o_next, interpreter_state.next);                \
-        V_ASSIGN(v, is.o_tstate_head, interpreter_state.threads_head); \
-        V_ASSIGN(v, is.o_id, interpreter_state.id);                    \
-        V_ASSIGN(v, is.o_gc, interpreter_state.gc);                    \
-        V_ASSIGN(v, is.o_gil_state, interpreter_state.ceval_gil);      \
+#define PY_IS_313(v)                                                          \
+    {                                                                         \
+        V_ASSIGN(v, is.size, interpreter_state.size);                         \
+        V_ASSIGN(v, is.o_next, interpreter_state.next);                       \
+        V_ASSIGN(v, is.o_tstate_head, interpreter_state.threads_head);        \
+        V_ASSIGN(v, is.o_id, interpreter_state.id);                           \
+        V_ASSIGN(v, is.o_gc, interpreter_state.gc);                           \
+        V_ASSIGN(v, is.o_imports_modules, interpreter_state.imports_modules); \
+        V_ASSIGN(v, is.o_gil_state, interpreter_state.ceval_gil);             \
     }
 
 #define PY_IS_314(v)                                                                 \
