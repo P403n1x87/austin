@@ -334,7 +334,7 @@ def test_fork_int_signal(py):
 @allpythons()
 @variants
 def test_fork_exec(austin, py, children):
-    result = austin("-i", "2ms", *children, *python(py), target("target_exec.py"))
+    result = austin("-i", "1ms", *children, *python(py), target("target_exec.py"))
     assert version_in(py, result.stderr or result.stdout), (
         result.stderr or result.stdout
     )

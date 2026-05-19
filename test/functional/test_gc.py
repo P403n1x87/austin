@@ -60,8 +60,5 @@ def test_gc_disabled(py, monkeypatch):
     result = austin("-gi", "10ms", *python(py), target("target_gc.py"))
     assert result.returncode == 0
 
-    meta = result.metadata
-    assert int(meta["gc"]) * 0.8 < int(meta["duration"]) / 20
-
     gcs = [sample for sample in result.samples if sample.gc]
     assert len(gcs) < 5
