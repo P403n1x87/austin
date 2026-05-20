@@ -1367,7 +1367,14 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
 typedef struct {
     py_proc_t*     proc;
     microseconds_t time_delta;
+    bool           found; // set to true when at least one non-Python thread is sampled
 } _non_python_sample_ctx_t;
+
+// Target re-check window for the OS thread enumeration (microseconds).
+// When no non-Python threads were seen, we skip the scan until this much wall
+// time has elapsed — equivalent to (window / sampling_interval) samples.
+// Sampling intervals >= the window produce a value of 1 (check every sample).
+#define NON_PYTHON_SCAN_WINDOW_US 100000 // 100 ms
 
 // ----------------------------------------------------------------------------
 // Emit a single sample for a non-Python (native-only) thread.
@@ -1414,16 +1421,18 @@ _emit_non_python_thread_sample(py_thread_t* thread, void* userdata) {
 
     event_handler__emit_stack_end();
 
+    ctx->found = true;
     stats_count_sample();
 }
 
 // ----------------------------------------------------------------------------
 // Sample native stacks for every OS thread that was not covered by the Python
-// thread sweep.  No-op unless native mode is active.
+// thread sweep.  Updates self->has_non_python_threads for the next cycle.
 static inline void
 _py_proc__sample_non_python_threads(py_proc_t* self, microseconds_t time_delta) {
     _non_python_sample_ctx_t ctx = {.proc = self, .time_delta = time_delta};
     py_thread__for_each_non_python(self, self->thread_tracker, _emit_non_python_thread_sample, &ctx);
+    self->has_non_python_threads = ctx.found;
 }
 
 // ----------------------------------------------------------------------------
@@ -1434,7 +1443,9 @@ static inline int
 _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t time_delta) {
     V_DESC(self->py_v);
 
-    raddr_t tstate_head = NULL;
+    raddr_t tstate_head     = NULL;
+    bool    scan_non_python = false;
+
     if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, tstate_head))) // GCOV_EXCL_LINE
         FAIL;                                                                                // GCOV_EXCL_LINE
 
@@ -1451,13 +1462,21 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
             FAIL;                                                   // GCOV_EXCL_LINE
         }
         // Extend the snapshot to non-Python OS threads (best-effort).
-        py_thread__interrupt_os_threads(self);
+        // Skip the expensive OS enumeration when the previous sweep found none
+        // and we have not yet reached the periodic re-check window (100 ms).
+        unsigned int scan_interval = (unsigned int)(NON_PYTHON_SCAN_WINDOW_US / pargs.t_sampling_interval);
+        if (scan_interval == 0)
+            scan_interval = 1;
+        scan_non_python = self->has_non_python_threads || self->sample_ticker % scan_interval == 0;
+        if (scan_non_python)
+            py_thread__interrupt_os_threads(self);
     }
 
     int result = _py_proc__sample_threads(self, interp, tstate_head, time_delta);
 
     // In native mode, also emit samples for threads with no PyThreadState.
-    if (pargs_native && success(result))
+    // Only needed when we ran the OS scan above.
+    if (pargs_native && success(result) && scan_non_python)
         _py_proc__sample_non_python_threads(self, time_delta);
 
     if (pargs_native)
@@ -1469,6 +1488,8 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
 // ----------------------------------------------------------------------------
 int
 py_proc__sample(py_proc_t* self) {
+    self->sample_ticker++;
+
     raddr_t current_interp = self->istate_raddr;
 
     V_DESC(self->py_v);

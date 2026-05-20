@@ -96,6 +96,11 @@ typedef struct {
 
     bool free_threaded;
 
+    // Non-Python thread sampling: track whether any were found last sweep so
+    // we can skip the expensive OS thread enumeration on pure-Python processes.
+    bool         has_non_python_threads;
+    unsigned int sample_ticker;
+
     uint64_t tlbc_generation; // current interpreter tlbc_generation (3.14+ FT)
 
 #ifdef PL_LINUX
