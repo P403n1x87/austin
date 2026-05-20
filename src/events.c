@@ -53,9 +53,10 @@ mojo_event_handler__handle_stack_begin(base_event_handler_t* self, sample_t* sam
     else
         sprintf(thread_name, FORMAT_TID, sample->tid); // GCOV_EXCL_LINE
 
+    bool is_iid_negative = sample->iid < 0;
     mojo_event(MOJO_STACK);
     mojo_integer(sample->pid, 0);
-    mojo_integer(sample->iid, 0);
+    mojo_integer(is_iid_negative ? -sample->iid : sample->iid, is_iid_negative);
     mojo_string(thread_name);
 }
 

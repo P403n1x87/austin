@@ -23,6 +23,7 @@
 #pragma once
 
 #include <Ntstatus.h>
+#include <tlhelp32.h>
 #include <winternl.h>
 
 #include "../argparse.h"
@@ -516,6 +517,85 @@ _py_thread__unwind_native(py_thread_t* self, bool* error) {
 // ---- Allocation/deallocation -----------------------------------------------
 
 #define WIN_THREAD_TABLE_SIZE 256
+
+// ---- Non-Python thread sampling (native mode) ------------------------------
+
+// Interrupt all OS threads in the target process not already interrupted.
+// Best-effort: failures are silently ignored.
+void
+py_thread__interrupt_os_threads(py_proc_t* proc) {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+    if (snap == INVALID_HANDLE_VALUE)
+        return;
+
+    THREADENTRY32 entry = {.dwSize = sizeof(entry)};
+    if (!Thread32First(snap, &entry)) {
+        CloseHandle(snap);
+        return;
+    }
+
+    do {
+        if (entry.th32OwnerProcessID != (DWORD)proc->pid)
+            continue;
+
+        uintptr_t tid = (uintptr_t)entry.th32ThreadID;
+        if (isvalid(hash_table__get(_int, (key_dt)tid)))
+            continue; // already interrupted by the Python thread sweep
+
+        py_thread_t thread = py_thread__init(proc);
+        thread.tid         = tid;
+        py_thread__interrupt(&thread); // best-effort
+    } while (Thread32Next(snap, &entry));
+
+    CloseHandle(snap);
+}
+
+// Call fn(thread, userdata) for each interrupted thread that was not visited
+// during the Python thread sweep.  Sets last_gen on each visited entry.
+void
+py_thread__for_each_non_python(
+    py_proc_t* proc, thread_tracker_t* tracker, void (*fn)(py_thread_t*, void*), void* userdata
+) {
+    key_dt interrupted[256];
+    int    n = 0;
+    hash_table__iteritems_start(_int, key_dt, _itid, void*, _sentinel) {
+        (void)_sentinel;
+        if (n < 256)
+            interrupted[n++] = _itid;
+    }
+    hash_table__iter_stop(_int);
+
+    for (int i = 0; i < n; i++) {
+        uintptr_t tid = (uintptr_t)interrupted[i];
+
+        thread_tracker_entry_t* entry = thread_tracker__get_or_create(tracker, tid);
+        if (!isvalid(entry))
+            continue;
+        if (entry->last_gen == tracker->sample_gen)
+            continue; // already sampled as a Python thread
+
+        entry->last_gen = tracker->sample_gen;
+
+        if (!entry->name[0]) {
+            HANDLE h = (HANDLE)hash_table__get(_handles, (key_dt)tid);
+            if (isvalid(h)) {
+                PWSTR wname = NULL;
+                if (SUCCEEDED(GetThreadDescription(h, &wname)) && wname && wname[0]) {
+                    WideCharToMultiByte(CP_UTF8, 0, wname, -1, entry->name, sizeof(entry->name), NULL, NULL);
+                    entry->name_state = NAME_RESOLVED;
+                    LocalFree(wname);
+                }
+            }
+        }
+
+        // Synthetic py_thread_t: only .proc and .tid are populated.
+        // The unwinding and idle-check machinery needs nothing else for a
+        // thread that has no PyThreadState.
+        py_thread_t thread = py_thread__init(proc);
+        thread.tid         = tid;
+        fn(&thread, userdata);
+    }
+}
 
 static int
 _py_thread_allocate_native(void) {

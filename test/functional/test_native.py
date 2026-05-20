@@ -32,6 +32,7 @@ from test.utils import requires_sudo
 from test.utils import run_python
 from test.utils import sum_metrics
 from test.utils import target
+from test.utils import threads
 from time import sleep
 
 import pytest
@@ -262,3 +263,37 @@ def test_native_does_not_affect_cpu_time_linux(py):
             f"CPU total ({cpu_total}) should be less than wall total ({wall_total}): "
             "idle threads may not be filtered correctly"
         )
+
+
+# ---- Non-Python OS thread sampling -----------------------------------------
+
+
+@requires_sudo
+@allpythons()
+def test_native_non_python_thread(py, native_ext):
+    """Native mode must emit samples for OS threads with no PyThreadState.
+
+    The target imports native_ext and starts two threads named "Native-0"
+    and "Native-1" that have no PyThreadState.  Austin should include them in
+    the output with their OS thread name and only native frames.
+    """
+    result = austin("-n", "-i", "1ms", *python(py), target("target_native_thread.py"))
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    # Use threshold=0 so Native is not filtered out by the denoise step
+    # even if it appears in fewer samples than the Python main thread.
+    thread_names = {name for _, name, _ in threads(result.samples, threshold=0)}
+    assert {
+        "Native-0",
+        "Native-1",
+    } <= thread_names, (
+        f"Expected 'Native-0' and 'Native-1' threads in samples; got: {thread_names}"
+    )
+
+    # All frames for each native thread must be native (line == 0).
+    for sample in result.samples:
+        if not sample.thread.startswith("Native-"):
+            continue
+        assert all(
+            frame.line == 0 for frame in sample.frames
+        ), f"Expected only native frames for {sample.thread}, got: {sample.frames}"
