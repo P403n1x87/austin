@@ -18,6 +18,21 @@
 
 typedef HANDLE thread_handle_t;
 
+// SetThreadDescription was added in Windows 10 1607.  Load it dynamically so
+// the extension has no hard import dependency on it and loads on older systems.
+typedef HRESULT(WINAPI* _SetThreadDescriptionFn)(HANDLE, PCWSTR);
+
+static _SetThreadDescriptionFn
+_get_set_thread_description(void) {
+    static _SetThreadDescriptionFn fn = NULL;
+    if (!fn) {
+        HMODULE h = GetModuleHandleW(L"KernelBase.dll");
+        if (h)
+            fn = (_SetThreadDescriptionFn)GetProcAddress(h, "SetThreadDescription");
+    }
+    return fn;
+}
+
 typedef struct {
     volatile LONG* running;
     int            index;
@@ -25,10 +40,13 @@ typedef struct {
 
 static DWORD WINAPI
 _worker(LPVOID raw) {
-    worker_arg_t* a = (worker_arg_t*)raw;
-    wchar_t       name[32];
-    swprintf(name, 32, L"Native-%d", a->index);
-    SetThreadDescription(GetCurrentThread(), name);
+    worker_arg_t*           a  = (worker_arg_t*)raw;
+    _SetThreadDescriptionFn fn = _get_set_thread_description();
+    if (fn) {
+        wchar_t name[32];
+        swprintf(name, 32, L"Native-%d", a->index);
+        fn(GetCurrentThread(), name);
+    }
     while (InterlockedCompareExchange(a->running, 1, 1))
         Sleep(1);
     return 0;

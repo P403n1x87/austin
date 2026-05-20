@@ -96,10 +96,15 @@ typedef struct {
 
     bool free_threaded;
 
-    // Non-Python thread sampling: track whether any were found last sweep so
-    // we can skip the expensive OS thread enumeration on pure-Python processes.
-    bool         has_non_python_threads;
-    unsigned int sample_ticker;
+    // Non-Python thread sampling.
+    //
+    // The full OS thread enumeration (e.g. CreateToolhelp32Snapshot on Windows)
+    // is expensive and only runs when non_python_scan_deadline is reached.
+    // Between scans, known non-Python TIDs are re-interrupted directly from the
+    // cache, avoiding the enumeration entirely.
+    microseconds_t non_python_scan_deadline;
+    uintptr_t      non_python_tids[MAX_THREAD_TRACKER];
+    int            non_python_n;
 
     uint64_t tlbc_generation; // current interpreter tlbc_generation (3.14+ FT)
 

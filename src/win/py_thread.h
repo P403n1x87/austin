@@ -23,7 +23,6 @@
 #pragma once
 
 #include <Ntstatus.h>
-#include <tlhelp32.h>
 #include <winternl.h>
 
 #include "../argparse.h"
@@ -520,34 +519,56 @@ _py_thread__unwind_native(py_thread_t* self, bool* error) {
 
 // ---- Non-Python thread sampling (native mode) ------------------------------
 
+// Populate _pi_buffer via NtQuerySystemInformation and return a pointer to
+// the SYSTEM_PROCESS_INFORMATION entry for proc->pid, or NULL on failure.
+// Grows _pi_buffer as needed (same pattern as py_thread__is_idle).
+static SYSTEM_PROCESS_INFORMATION*
+_find_process_info(py_proc_t* proc) {
+    for (;;) {
+        ULONG    n;
+        NTSTATUS status = NtQuerySystemInformation(SystemProcessInformation, _pi_buffer, _pi_buffer_size, &n);
+        if (status == STATUS_INFO_LENGTH_MISMATCH) {
+            _pi_buffer_size = n;
+            PVOID buf       = realloc(_pi_buffer, n);
+            if (!isvalid(buf))
+                return NULL;
+            _pi_buffer = buf;
+            continue;
+        }
+        if (status != STATUS_SUCCESS)
+            return NULL;
+        break;
+    }
+
+    SYSTEM_PROCESS_INFORMATION* pi = (SYSTEM_PROCESS_INFORMATION*)_pi_buffer;
+    while (pi->UniqueProcessId != (HANDLE)proc->pid) {
+        if (pi->NextEntryOffset == 0)
+            return NULL;
+        pi = (SYSTEM_PROCESS_INFORMATION*)(((BYTE*)pi) + pi->NextEntryOffset);
+    }
+    return pi;
+}
+
 // Interrupt all OS threads in the target process not already interrupted.
+// Uses NtQuerySystemInformation (reuses _pi_buffer) rather than a system-wide
+// Toolhelp snapshot, which only enumerates the target process's threads.
 // Best-effort: failures are silently ignored.
 void
 py_thread__interrupt_os_threads(py_proc_t* proc) {
-    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
-    if (snap == INVALID_HANDLE_VALUE)
+    SYSTEM_PROCESS_INFORMATION* pi = _find_process_info(proc);
+    if (!isvalid(pi))
         return;
 
-    THREADENTRY32 entry = {.dwSize = sizeof(entry)};
-    if (!Thread32First(snap, &entry)) {
-        CloseHandle(snap);
-        return;
-    }
-
-    do {
-        if (entry.th32OwnerProcessID != (DWORD)proc->pid)
-            continue;
-
-        uintptr_t tid = (uintptr_t)entry.th32ThreadID;
+    SYSTEM_THREADS* ti = (SYSTEM_THREADS*)((char*)pi + sizeof(SYSTEM_PROCESS_INFORMATION));
+    for (ULONG i = 0; i < pi->NumberOfThreads; i++, ti++) {
+        uintptr_t tid = (uintptr_t)ti->ClientId.UniqueThread;
         if (isvalid(hash_table__get(_int, (key_dt)tid)))
             continue; // already interrupted by the Python thread sweep
 
         py_thread_t thread = py_thread__init(proc);
         thread.tid         = tid;
         py_thread__interrupt(&thread); // best-effort
-    } while (Thread32Next(snap, &entry));
-
-    CloseHandle(snap);
+    }
 }
 
 // Call fn(thread, userdata) for each interrupted thread that was not visited

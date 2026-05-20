@@ -165,7 +165,12 @@ def test_native_wall_time(py, save_mojo):
     meta = result.metadata
     assert meta["mode"] == "wall"
 
-    a, _ = sum_metrics(result.samples)
+    # Exclude non-Python threads (iid == -1) from the time sum: target34.py has
+    # exactly 2 Python threads, so total attributed time should be < 2.1 * d.
+    # Non-Python OS threads (Python runtime internals, etc.) are now also
+    # sampled in native mode and would push the total above the expected range.
+    python_samples = [s for s in result.samples if s.iid is not None and s.iid >= 0]
+    a, _ = sum_metrics(python_samples)
     d = int(meta["duration"])
     assert 0 < a < 2.1 * d
 
