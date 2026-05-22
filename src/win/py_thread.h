@@ -444,8 +444,22 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
     uintptr_t prev_pc = 0;
     uintptr_t prev_sp = 0;
     while (!stack_native_full()) {
-        if (pc == 0 || pc < 0x10000 || pc == prev_pc)
+        if (pc == 0 || pc < 0x10000)
             break;
+        if (pc == prev_pc) {
+            // Same PC as last step — either genuine recursion or an
+            // artefact from the pdata/.pdata+StackWalk64 hybrid.
+            uintptr_t cur_sp = gp[REG_RSP];
+            if (cur_sp != 0 && prev_sp != 0 && cur_sp > prev_sp) {
+                // SP advanced: genuine recursive call, allow through.
+            } else {
+                // SP stalled at the same PC — likely an unwind artefact.
+                // Try one StackWalk64 step to break out of the stuck state.
+                if (isvalid(hThread) && _stackwalk64_step(hProcess, hThread, &pc, gp))
+                    continue;
+                break;
+            }
+        }
         prev_pc = pc;
 
         if (fail(_push_native_frame(self, pc)))
@@ -484,9 +498,37 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         }
 
         if (!stepped) {
+            // Last resort: naive frame-pointer walk.  Only attempt when RBP
+            // looks like a genuine saved frame pointer: it must be above RSP,
+            // 8-byte aligned, within a plausible frame size, the return
+            // address it yields must land in a known module, and next_rbp must
+            // be strictly above rbp (unwind moves up the stack).
+            // Without these guards the walk produces garbage on x64 code that
+            // uses RBP as a general-purpose register (e.g. Python 3.10 DLL).
+            uintptr_t rbp = gp[REG_RBP];
+            uintptr_t sp  = gp[REG_RSP];
+            if (rbp != 0 && rbp > sp && (rbp & 7) == 0 && (rbp - sp) < 0x10000) {
+                uintptr_t ret_addr = 0;
+                uintptr_t next_rbp = 0;
+                SIZE_T    n_read   = 0;
+                bool got_ret = ReadProcessMemory(hProcess, (LPCVOID)(rbp + 8), &ret_addr, sizeof(ret_addr), &n_read)
+                            && n_read == sizeof(ret_addr) && _pc_in_module(ret_addr, _mod_table, _mod_count);
+                bool got_rbp = ReadProcessMemory(hProcess, (LPCVOID)rbp, &next_rbp, sizeof(next_rbp), &n_read)
+                            && n_read == sizeof(next_rbp) && next_rbp > rbp;
+                if (got_ret && got_rbp) {
+                    log_d(
+                        "win: fp fallback: rbp=%" PRIxPTR " -> ret=%" PRIxPTR " next_rbp=%" PRIxPTR, rbp, ret_addr,
+                        next_rbp
+                    );
+                    pc          = ret_addr;
+                    gp[REG_RSP] = rbp + 16;
+                    gp[REG_RBP] = next_rbp;
+                    continue;
+                }
+            }
             log_d(
-                "win: unwind stopped at pc=%" PRIxPTR " sp=%" PRIxPTR " (pdata and stackwalk64 both failed)", saved_pc,
-                saved_gp[REG_RSP]
+                "win: unwind stopped at pc=%" PRIxPTR " sp=%" PRIxPTR " (pdata, stackwalk64, and fp walk all failed)",
+                saved_pc, saved_gp[REG_RSP]
             );
             break;
         }
