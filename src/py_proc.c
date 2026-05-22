@@ -1364,6 +1364,83 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
     SUCCESS;
 } /* _py_proc__sample_threads */
 
+typedef struct {
+    py_proc_t*     proc;
+    microseconds_t time_delta;
+    uintptr_t      tids[MAX_THREAD_TRACKER]; // TIDs found this sweep, for cache update
+    int            n;
+} _non_python_sample_ctx_t;
+
+// Full OS thread enumeration is capped at this interval so that the expensive
+// platform scan (e.g. CreateToolhelp32Snapshot) is amortised even when
+// non-Python threads are present.  Between scans, cached TIDs are re-interrupted
+// directly without enumerating all OS threads.
+#define NON_PYTHON_SCAN_WINDOW_US 100000 // 100 ms
+
+// ----------------------------------------------------------------------------
+// Emit a single sample for a non-Python (native-only) thread.
+// Called by py_thread__for_each_non_python for every interrupted thread that
+// has no PyThreadState.
+//
+// `thread` is a synthetic py_thread_t with only .proc and .tid populated.
+// It carries exactly the information the native unwinding and idle-check
+// machinery needs; no Python-level fields (top_frame, stack, …) are set.
+static void
+_emit_non_python_thread_sample(py_thread_t* thread, void* userdata) {
+    _non_python_sample_ctx_t* ctx = (_non_python_sample_ctx_t*)userdata;
+
+    // Record TID in the cache regardless of idle/time filters so the fast
+    // re-interrupt path sees every non-Python thread next sample.
+    if (ctx->n < MAX_THREAD_TRACKER)
+        ctx->tids[ctx->n++] = thread->tid;
+
+    bool is_idle = py_thread__is_idle(thread);
+    if (!pargs.full && is_idle && pargs.cpu)
+        return;
+
+    if (ctx->time_delta == 0) // GCOV_EXCL_LINE
+        return;               // GCOV_EXCL_LINE
+
+    gc_state_t gc = GC_STATE_UNKNOWN;
+    if (pargs.gc) {
+        gc = py_proc__get_gc_state(ctx->proc);
+        if (gc == GC_STATE_COLLECTING)
+            stats_gc_time(ctx->time_delta);
+    }
+
+    thread_tracker_entry_t* tentry = thread_tracker__get_or_create(thread->proc->thread_tracker, thread->tid);
+    const char* thread_name        = (isvalid(tentry) && tentry->name[0]) ? tentry->name : NULL; // GCOV_EXCL_BR_LINE
+
+    sample_t sample = {
+        .pid         = ctx->proc->pid,
+        .tid         = thread->tid,
+        .iid         = -1, // no interpreter owns native-only threads
+        .time        = ctx->time_delta,
+        .memory      = 0, // non-Python threads never hold the GIL
+        .is_idle     = is_idle,
+        .gc_state    = gc,
+        .thread_name = thread_name,
+    };
+    event_handler__emit_stack_begin(&sample);
+
+    py_thread__unwind(thread);
+
+    event_handler__emit_stack_end();
+
+    stats_count_sample();
+}
+
+// ----------------------------------------------------------------------------
+// Sample native stacks for every OS thread that was not covered by the Python
+// thread sweep.  Updates the non-Python TID cache on py_proc_t.
+static inline void
+_py_proc__sample_non_python_threads(py_proc_t* self, microseconds_t time_delta) {
+    _non_python_sample_ctx_t ctx = {.proc = self, .time_delta = time_delta};
+    py_thread__for_each_non_python(self, self->thread_tracker, _emit_non_python_thread_sample, &ctx);
+    self->non_python_n = ctx.n;
+    memcpy(self->non_python_tids, ctx.tids, ctx.n * sizeof(uintptr_t));
+}
+
 // ----------------------------------------------------------------------------
 // Orchestrate a single interpreter sample: read the thread state head,
 // interrupt all threads (native mode), sample, then resume.
@@ -1372,7 +1449,9 @@ static inline int
 _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t time_delta) {
     V_DESC(self->py_v);
 
-    raddr_t tstate_head = NULL;
+    raddr_t tstate_head     = NULL;
+    bool    scan_non_python = false;
+
     if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, tstate_head))) // GCOV_EXCL_LINE
         FAIL;                                                                                // GCOV_EXCL_LINE
 
@@ -1388,9 +1467,31 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
             py_thread__resume_all_interrupted();                    // GCOV_EXCL_LINE
             FAIL;                                                   // GCOV_EXCL_LINE
         }
+        // Extend the snapshot to non-Python OS threads (best-effort).
+        // The full OS enumeration runs only when the deadline fires (every
+        // 100 ms).  Between deadline ticks, known non-Python TIDs are
+        // re-interrupted directly from the cache — no OS-wide scan needed.
+        microseconds_t now = gettime();
+        if (now >= self->non_python_scan_deadline) {
+            py_thread__interrupt_os_threads(self);
+            self->non_python_scan_deadline = now + NON_PYTHON_SCAN_WINDOW_US;
+            scan_non_python                = true;
+        } else if (self->non_python_n > 0) {
+            for (int i = 0; i < self->non_python_n; i++) {
+                py_thread_t t = py_thread__init(self);
+                t.tid         = self->non_python_tids[i];
+                py_thread__interrupt(&t); // best-effort
+            }
+            scan_non_python = true;
+        }
     }
 
     int result = _py_proc__sample_threads(self, interp, tstate_head, time_delta);
+
+    // In native mode, also emit samples for threads with no PyThreadState.
+    // Only needed when we ran the OS scan above.
+    if (pargs_native && success(result) && scan_non_python)
+        _py_proc__sample_non_python_threads(self, time_delta);
 
     if (pargs_native)
         py_thread__resume_all_interrupted();

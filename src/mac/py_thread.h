@@ -518,6 +518,99 @@ _py_thread__unwind_native(py_thread_t* self, bool* error) {
     // state cannot change between _py_proc__interrupt_threads and now.
 }
 
+// ---- Non-Python thread sampling (native mode) ------------------------------
+
+// Interrupt all OS threads not already interrupted.  Uses a single task_threads
+// call and pre-caches each Mach port so _py_thread__seize does not need to call
+// task_threads again per thread.  Best-effort: failures are silently ignored.
+void
+py_thread__interrupt_os_threads(py_proc_t* proc) {
+    if (!_silly_offset)
+        return; // offset not yet inferred; cannot map thread_handle to tid key
+
+    thread_act_array_t     threads;
+    mach_msg_type_number_t count;
+    if (task_threads(proc->ref, &threads, &count) != KERN_SUCCESS)
+        return;
+
+    for (mach_msg_type_number_t i = 0; i < count; i++) {
+        thread_act_t port = threads[i];
+
+        thread_identifier_info_data_t info       = {0};
+        mach_msg_type_number_t        info_count = THREAD_IDENTIFIER_INFO_COUNT;
+        if (thread_info(port, THREAD_IDENTIFIER_INFO, (thread_info_t)&info, &info_count) != KERN_SUCCESS) {
+            mach_port_deallocate(mach_task_self(), port);
+            continue;
+        }
+
+        uintptr_t tid = (uintptr_t)info.thread_handle - _silly_offset;
+
+        if (isvalid(hash_table__get(_int, (key_dt)tid))) {
+            mach_port_deallocate(mach_task_self(), port);
+            continue; // already interrupted by the Python thread sweep
+        }
+
+        // Pre-cache the port so _py_thread__seize skips its own task_threads call.
+        if (!isvalid(hash_table__get(_ports, (key_dt)tid)))
+            hash_table__set(_ports, (key_dt)tid, (value_t)(uintptr_t)port);
+        else
+            mach_port_deallocate(mach_task_self(), port);
+
+        py_thread_t thread = py_thread__init(proc);
+        thread.tid         = tid;
+        py_thread__interrupt(&thread); // best-effort
+    }
+    vm_deallocate(mach_task_self(), (vm_address_t)threads, count * sizeof(thread_act_t));
+}
+
+// Call fn(thread, userdata) for each interrupted thread that was not visited
+// during the Python thread sweep.  Sets last_gen on each visited entry.
+void
+py_thread__for_each_non_python(
+    py_proc_t* proc, thread_tracker_t* tracker, void (*fn)(py_thread_t*, void*), void* userdata
+) {
+    key_dt interrupted[256];
+    int    n = 0;
+    hash_table__iteritems_start(_int, key_dt, _itid, void*, _sentinel) {
+        (void)_sentinel;
+        if (n < 256)
+            interrupted[n++] = _itid;
+    }
+    hash_table__iter_stop(_int);
+
+    for (int i = 0; i < n; i++) {
+        uintptr_t tid = (uintptr_t)interrupted[i];
+
+        thread_tracker_entry_t* entry = thread_tracker__get_or_create(tracker, tid);
+        if (!isvalid(entry))
+            continue;
+        if (entry->last_gen == tracker->sample_gen)
+            continue; // already sampled as a Python thread
+
+        entry->last_gen = tracker->sample_gen;
+
+        if (!entry->name[0]) {
+            thread_act_t port = (thread_act_t)(uintptr_t)hash_table__get(_ports, (key_dt)tid);
+            if (port != MACH_PORT_NULL) {
+                thread_extended_info_data_t einfo       = {0};
+                mach_msg_type_number_t      einfo_count = THREAD_EXTENDED_INFO_COUNT;
+                if (thread_info(port, THREAD_EXTENDED_INFO, (thread_info_t)&einfo, &einfo_count) == KERN_SUCCESS
+                    && einfo.pth_name[0]) {
+                    snprintf(entry->name, sizeof(entry->name), "%s", einfo.pth_name);
+                    entry->name_state = NAME_RESOLVED;
+                }
+            }
+        }
+
+        // Synthetic py_thread_t: only .proc and .tid are populated.
+        // The unwinding and idle-check machinery needs nothing else for a
+        // thread that has no PyThreadState.
+        py_thread_t thread = py_thread__init(proc);
+        thread.tid         = tid;
+        fn(&thread, userdata);
+    }
+}
+
 // ---- Allocation/deallocation -----------------------------------------------
 
 #define MAC_THREAD_TABLE_SIZE 256

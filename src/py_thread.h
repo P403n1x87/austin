@@ -123,3 +123,15 @@ py_thread__is_idle(py_thread_t*);
 
 int
 py_thread__interrupt(py_thread_t*);
+
+// Interrupt all OS threads in the process not already interrupted (native mode,
+// best-effort).  Must be called after py_thread__interrupt has been called for
+// each Python thread so that platform state (e.g. _silly_offset) is ready.
+void
+py_thread__interrupt_os_threads(py_proc_t*);
+
+// Call fn(thread, userdata) for every thread interrupted this sample that has
+// no PyThreadState (i.e. was not visited during the Python thread sweep).
+// Sets last_gen on each visited tracker entry.
+void
+py_thread__for_each_non_python(py_proc_t*, thread_tracker_t*, void (*)(py_thread_t*, void*), void*);

@@ -517,6 +517,107 @@ _py_thread__unwind_native(py_thread_t* self, bool* error) {
 
 #define WIN_THREAD_TABLE_SIZE 256
 
+// ---- Non-Python thread sampling (native mode) ------------------------------
+
+// Populate _pi_buffer via NtQuerySystemInformation and return a pointer to
+// the SYSTEM_PROCESS_INFORMATION entry for proc->pid, or NULL on failure.
+// Grows _pi_buffer as needed (same pattern as py_thread__is_idle).
+static SYSTEM_PROCESS_INFORMATION*
+_find_process_info(py_proc_t* proc) {
+    for (;;) {
+        ULONG    n;
+        NTSTATUS status = NtQuerySystemInformation(SystemProcessInformation, _pi_buffer, _pi_buffer_size, &n);
+        if (status == STATUS_INFO_LENGTH_MISMATCH) {
+            _pi_buffer_size = n;
+            PVOID buf       = realloc(_pi_buffer, n);
+            if (!isvalid(buf))
+                return NULL;
+            _pi_buffer = buf;
+            continue;
+        }
+        if (status != STATUS_SUCCESS)
+            return NULL;
+        break;
+    }
+
+    SYSTEM_PROCESS_INFORMATION* pi = (SYSTEM_PROCESS_INFORMATION*)_pi_buffer;
+    while (pi->UniqueProcessId != (HANDLE)proc->pid) {
+        if (pi->NextEntryOffset == 0)
+            return NULL;
+        pi = (SYSTEM_PROCESS_INFORMATION*)(((BYTE*)pi) + pi->NextEntryOffset);
+    }
+    return pi;
+}
+
+// Interrupt all OS threads in the target process not already interrupted.
+// Uses NtQuerySystemInformation (reuses _pi_buffer) rather than a system-wide
+// Toolhelp snapshot, which only enumerates the target process's threads.
+// Best-effort: failures are silently ignored.
+void
+py_thread__interrupt_os_threads(py_proc_t* proc) {
+    SYSTEM_PROCESS_INFORMATION* pi = _find_process_info(proc);
+    if (!isvalid(pi))
+        return;
+
+    SYSTEM_THREADS* ti = (SYSTEM_THREADS*)((char*)pi + sizeof(SYSTEM_PROCESS_INFORMATION));
+    for (ULONG i = 0; i < pi->NumberOfThreads; i++, ti++) {
+        uintptr_t tid = (uintptr_t)ti->ClientId.UniqueThread;
+        if (isvalid(hash_table__get(_int, (key_dt)tid)))
+            continue; // already interrupted by the Python thread sweep
+
+        py_thread_t thread = py_thread__init(proc);
+        thread.tid         = tid;
+        py_thread__interrupt(&thread); // best-effort
+    }
+}
+
+// Call fn(thread, userdata) for each interrupted thread that was not visited
+// during the Python thread sweep.  Sets last_gen on each visited entry.
+void
+py_thread__for_each_non_python(
+    py_proc_t* proc, thread_tracker_t* tracker, void (*fn)(py_thread_t*, void*), void* userdata
+) {
+    key_dt interrupted[256];
+    int    n = 0;
+    hash_table__iteritems_start(_int, key_dt, _itid, void*, _sentinel) {
+        (void)_sentinel;
+        if (n < 256)
+            interrupted[n++] = _itid;
+    }
+    hash_table__iter_stop(_int);
+
+    for (int i = 0; i < n; i++) {
+        uintptr_t tid = (uintptr_t)interrupted[i];
+
+        thread_tracker_entry_t* entry = thread_tracker__get_or_create(tracker, tid);
+        if (!isvalid(entry))
+            continue;
+        if (entry->last_gen == tracker->sample_gen)
+            continue; // already sampled as a Python thread
+
+        entry->last_gen = tracker->sample_gen;
+
+        if (!entry->name[0]) {
+            HANDLE h = (HANDLE)hash_table__get(_handles, (key_dt)tid);
+            if (isvalid(h)) {
+                PWSTR wname = NULL;
+                if (SUCCEEDED(GetThreadDescription(h, &wname)) && wname && wname[0]) {
+                    WideCharToMultiByte(CP_UTF8, 0, wname, -1, entry->name, sizeof(entry->name), NULL, NULL);
+                    entry->name_state = NAME_RESOLVED;
+                    LocalFree(wname);
+                }
+            }
+        }
+
+        // Synthetic py_thread_t: only .proc and .tid are populated.
+        // The unwinding and idle-check machinery needs nothing else for a
+        // thread that has no PyThreadState.
+        py_thread_t thread = py_thread__init(proc);
+        thread.tid         = tid;
+        fn(&thread, userdata);
+    }
+}
+
 static int
 _py_thread_allocate_native(void) {
     // On Windows we need to fetch process and thread information to detect idle

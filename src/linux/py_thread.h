@@ -22,6 +22,7 @@
 
 #pragma once
 
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
@@ -133,6 +134,7 @@ py_thread__is_idle(py_thread_t* self) {
 
         return _tids_idle[index] & (1 << offset);
     }
+
     char file_name[64];
     char buffer[2048] = "";
 
@@ -794,6 +796,86 @@ _py_thread__unwind_native(py_thread_t* self, bool* error) {
         *error = true;
     }
 #endif
+}
+
+// ---- Non-Python thread sampling (native mode) ------------------------------
+
+// Interrupt all OS threads not already interrupted.  Best-effort: failures
+// are silently ignored so that the Python thread sweep is not affected.
+void
+py_thread__interrupt_os_threads(py_proc_t* proc) {
+    char task_dir[32];
+    snprintf(task_dir, sizeof(task_dir), "/proc/%d/task", proc->pid);
+
+    DIR* dir = opendir(task_dir);
+    if (!isvalid(dir))
+        return;
+
+    struct dirent* ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (ent->d_name[0] == '.')
+            continue;
+
+        pid_t tid = (pid_t)strtol(ent->d_name, NULL, 10);
+        if (tid <= 0 || (size_t)tid >= max_pid)
+            continue;
+
+        if (_tids_int[tid >> 3] & (1 << (tid & 7)))
+            continue; // already interrupted by the Python thread sweep
+
+        py_thread_t thread = py_thread__init(proc);
+        thread.tid         = (uintptr_t)tid;
+        py_thread__interrupt(&thread); // best-effort
+    }
+    closedir(dir);
+}
+
+// Call fn(thread, userdata) for each interrupted thread that was not visited
+// during the Python thread sweep (i.e. has no PyThreadState).  Sets last_gen
+// on each visited tracker entry so the thread is not evicted after this sample.
+void
+py_thread__for_each_non_python(
+    py_proc_t* proc, thread_tracker_t* tracker, void (*fn)(py_thread_t*, void*), void* userdata
+) {
+    for (size_t i = 0; i < _int_n; i++) {
+        pid_t tid = _int_list[i];
+
+        if (!(_tids_int[tid >> 3] & (1 << (tid & 7))))
+            continue; // bit cleared; thread already resumed or invalid
+
+        thread_tracker_entry_t* entry = thread_tracker__get_or_create(tracker, (uintptr_t)tid);
+        if (!isvalid(entry))
+            continue;
+        if (entry->last_gen == tracker->sample_gen)
+            continue; // already sampled as a Python thread
+
+        entry->last_gen = tracker->sample_gen;
+
+        if (!entry->name[0]) {
+            char comm_path[64];
+            snprintf(comm_path, sizeof(comm_path), "/proc/%d/task/%d/comm", proc->pid, tid);
+            int fd = open(comm_path, O_RDONLY);
+            if (fd >= 0) {
+                char    comm[32];
+                ssize_t n = read(fd, comm, sizeof(comm) - 1);
+                close(fd);
+                if (n > 0) {
+                    if (comm[n - 1] == '\n')
+                        n--;
+                    comm[n] = '\0';
+                    snprintf(entry->name, sizeof(entry->name), "%s", comm);
+                    entry->name_state = NAME_RESOLVED;
+                }
+            }
+        }
+
+        // Synthetic py_thread_t: only .proc and .tid are populated.
+        // The unwinding and idle-check machinery needs nothing else for a
+        // thread that has no PyThreadState.
+        py_thread_t thread = py_thread__init(proc);
+        thread.tid         = (uintptr_t)tid;
+        fn(&thread, userdata);
+    }
 }
 
 // ---- Allocation/deallocation -----------------------------------------------
