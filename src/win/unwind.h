@@ -316,9 +316,14 @@ static inline bool
 _pe_try_epilog(
     HANDLE hProcess, uintptr_t pc, uintptr_t func_end, uint8_t frame_reg, uintptr_t* rip, uintptr_t gp[GP_REG_COUNT]
 ) {
-    // Read up to 128 bytes of instructions from pc to func_end.
+    // Read up to 32 bytes of instructions from pc to func_end.  A genuine
+    // in-progress epilog is at most a handful of pop/add/ret instructions
+    // (~20-30 bytes).  A larger window produces false positives when the
+    // thread is parked at a mid-function call site that happens to have
+    // epilog-looking bytes between it and the function end (e.g. the return
+    // site of NtWaitForSingleObject inside WaitForSingleObjectEx).
     size_t  remaining = (size_t)(func_end - pc);
-    uint8_t ibuf[128];
+    uint8_t ibuf[32];
     if (remaining == 0 || remaining > sizeof(ibuf))
         return false;
 
@@ -504,8 +509,43 @@ _pe_unwind_step(
                         if (tgt_ce && tgt_ce->count > 0) {
                             DWORD ret_rva      = (DWORD)(*rip - tgt_ce->image_base);
                             DWORD max_code_rva = tgt_ce->funcs[tgt_ce->count - 1].EndAddress;
-                            if (ret_rva > max_code_rva)
+                            if (ret_rva > max_code_rva) {
                                 epilog_valid = false;
+                            } else {
+                                // Require the return address to fall inside a
+                                // known RUNTIME_FUNCTION.  An address that is
+                                // in the module image but outside every .pdata
+                                // entry (e.g. a data section or a gap) is
+                                // almost certainly a false-positive epilog.
+                                // Leaf call sites (no RUNTIME_FUNCTION) are
+                                // still accepted because _pdata_find returning
+                                // NULL for them is expected and harmless.
+                                // We only reject when the ret_rva is strictly
+                                // beyond the last function end yet within the
+                                // image — that case is already caught above.
+                                // The stricter check: if we DO have a cache
+                                // entry and the address falls in a gap between
+                                // functions (pdata_find returns NULL AND it is
+                                // not a leaf, i.e. ret_rva <
+                                // funcs[0].BeginAddress or in a mid-pdata
+                                // gap), reject it.
+                                if (ret_rva < tgt_ce->funcs[0].BeginAddress)
+                                    epilog_valid = false;
+                                else if (_pdata_find(tgt_ce, ret_rva) == NULL) {
+                                    // ret_rva is between function entries —
+                                    // either a leaf call site (acceptable) or
+                                    // a gap (likely garbage).  Distinguish by
+                                    // checking the new RSP makes sense: after
+                                    // the epilog the RSP must be strictly
+                                    // above the saved_gp RSP (at least +8 for
+                                    // the popped return address, typically
+                                    // much more).  If RSP didn't advance by
+                                    // at least 16 bytes beyond the pre-step
+                                    // RSP the epilog likely consumed no frame.
+                                    if (gp[REG_RSP] < saved_gp[REG_RSP] + 16)
+                                        epilog_valid = false;
+                                }
+                            }
                         }
                     }
                 }
