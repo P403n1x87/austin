@@ -737,3 +737,68 @@ pdata_step(HANDLE hProcess, uintptr_t* pc, uintptr_t gp[GP_REG_COUNT], _mod_entr
 
     return _pe_unwind_step(ce, rt_func, *pc, hProcess, pc, gp);
 }
+
+// ---------------------------------------------------------------------------
+// Custom StackWalk64 callbacks backed by our local pdata/module caches
+// ---------------------------------------------------------------------------
+//
+// SymFunctionTableAccess64 depends on DbgHelp having loaded each module's
+// exception directory.  With SYMOPT_DEFERRED_LOADS that may not have happened
+// yet when a module is first encountered, causing StackWalk64 to fall back to
+// frame-pointer unwinding and produce garbage frames in optimised x64 code.
+//
+// These callbacks consult our own pdata cache first (already populated from
+// the target process via ReadProcessMemory), then fall through to DbgHelp for
+// any module we haven't seen yet.  Because we use the same cache as the fast
+// pdata walker, StackWalk64 effectively gets the same function table coverage
+// we do — but uses its own (battle-tested) unwind-opcode interpreter, which
+// may handle edge cases our walker misses.
+
+#if defined(_M_X64)
+
+static PVOID CALLBACK
+_custom_function_table_access64(HANDLE hProcess, DWORD64 addr_base) {
+    uintptr_t pc  = (uintptr_t)addr_base;
+    DWORD     mlo = 0, mhi = _mod_count;
+    while (mlo < mhi) {
+        DWORD mid = mlo + (mhi - mlo) / 2;
+        if (_mod_table[mid].base <= pc)
+            mlo = mid + 1;
+        else
+            mhi = mid;
+    }
+    if (mlo > 0 && pc >= _mod_table[mlo - 1].base && pc < _mod_table[mlo - 1].end) {
+        uintptr_t            image_base = _mod_table[mlo - 1].base;
+        pdata_cache_entry_t* ce         = _pdata_cache_lookup(image_base);
+        if (!ce)
+            ce = _pdata_cache_load(hProcess, image_base);
+        if (ce) {
+            DWORD             rva = (DWORD)(pc - image_base);
+            RUNTIME_FUNCTION* rf  = _pdata_find(ce, rva);
+            // For leaf functions rf is NULL: return NULL so StackWalk64 reads
+            // the return address from [RSP] directly, which is correct.
+            return (PVOID)rf;
+        }
+    }
+    // Module not in our table yet — fall back to DbgHelp.
+    return SymFunctionTableAccess64(hProcess, addr_base);
+}
+
+static DWORD64 CALLBACK
+_custom_get_module_base64(HANDLE hProcess, DWORD64 addr) {
+    uintptr_t pc  = (uintptr_t)addr;
+    DWORD     mlo = 0, mhi = _mod_count;
+    while (mlo < mhi) {
+        DWORD mid = mlo + (mhi - mlo) / 2;
+        if (_mod_table[mid].base <= pc)
+            mlo = mid + 1;
+        else
+            mhi = mid;
+    }
+    if (mlo > 0 && pc >= _mod_table[mlo - 1].base && pc < _mod_table[mlo - 1].end)
+        return (DWORD64)_mod_table[mlo - 1].base;
+    // Not in our table — fall back to DbgHelp.
+    return SymGetModuleBase64(hProcess, addr);
+}
+
+#endif // _M_X64

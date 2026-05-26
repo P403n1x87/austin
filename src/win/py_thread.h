@@ -381,7 +381,8 @@ _stackwalk64_step(HANDLE hProcess, HANDLE hThread, uintptr_t* pc, uintptr_t gp[G
     // than stepping to the caller.  Call up to twice to ensure we advance.
     for (int attempt = 0; attempt < 2; attempt++) {
         if (!StackWalk64(
-                machine, hProcess, hThread, &sf, &ctx, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL
+                machine, hProcess, hThread, &sf, &ctx, NULL, _custom_function_table_access64, _custom_get_module_base64,
+                NULL
             ))
             return false;
 
@@ -444,22 +445,8 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
     uintptr_t prev_pc = 0;
     uintptr_t prev_sp = 0;
     while (!stack_native_full()) {
-        if (pc == 0 || pc < 0x10000)
+        if (pc == 0 || pc < 0x10000 || pc == prev_pc)
             break;
-        if (pc == prev_pc) {
-            // Same PC as last step — either genuine recursion or an
-            // artefact from the pdata/.pdata+StackWalk64 hybrid.
-            uintptr_t cur_sp = gp[REG_RSP];
-            if (cur_sp != 0 && prev_sp != 0 && cur_sp > prev_sp) {
-                // SP advanced: genuine recursive call, allow through.
-            } else {
-                // SP stalled at the same PC — likely an unwind artefact.
-                // Try one StackWalk64 step to break out of the stuck state.
-                if (isvalid(hThread) && _stackwalk64_step(hProcess, hThread, &pc, gp))
-                    continue;
-                break;
-            }
-        }
         prev_pc = pc;
 
         if (fail(_push_native_frame(self, pc)))
