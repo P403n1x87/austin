@@ -449,11 +449,14 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
             break;
         prev_pc = pc;
 
+        log_d("win: unwind frame pc=%" PRIxPTR " sp=%" PRIxPTR, pc, gp[REG_RSP]);
+
         if (fail(_push_native_frame(self, pc)))
             FAIL;
 
         frame_t* top = _stack->native_base[_stack->native_pointer - 1];
         if (unlikely(is_pyeval_frame(top->scope))) {
+            log_d("win: unwind hit eval frame at pc=%" PRIxPTR, pc);
             (void)stack_native_pop();
             stack_native_push((frame_t*)EVAL_FRAME_MAGIC);
             if (self->is_repeat)
@@ -481,7 +484,10 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         // If the fast .pdata unwinder couldn't step, fall back to StackWalk64
         // for this one frame.
         if (!stepped && isvalid(hThread)) {
+            log_d("win: pdata failed for pc=%" PRIxPTR ", trying StackWalk64", saved_pc);
             stepped = _stackwalk64_step(hProcess, hThread, &pc, gp);
+            if (stepped)
+                log_d("win: StackWalk64 stepped to pc=%" PRIxPTR " sp=%" PRIxPTR, pc, gp[REG_RSP]);
         }
 
         if (!stepped) {
@@ -523,8 +529,13 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         // SP must advance (grow upward) on each frame; if it doesn't, the
         // unwind produced garbage and we should stop.
         uintptr_t sp = gp[REG_RSP];
-        if (sp != 0 && prev_sp != 0 && sp <= prev_sp)
+        if (sp != 0 && prev_sp != 0 && sp <= prev_sp) {
+            log_d(
+                "win: unwind stopped: sp=%" PRIxPTR " did not advance past prev_sp=%" PRIxPTR " (pc=%" PRIxPTR ")", sp,
+                prev_sp, pc
+            );
             break;
+        }
         prev_sp = sp;
     }
 

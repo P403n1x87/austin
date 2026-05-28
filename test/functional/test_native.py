@@ -153,14 +153,14 @@ def test_native_wall_time(py, save_mojo):
         result.samples, filename="target34.py", function="keep_cpu_busy", line=32
     ), "Expected Python frame from target34.py"
 
-    assert has_native_frame(
-        result.samples, filename_contains="python"
-    ), "Expected native frame from the Python runtime"
+    assert has_native_frame(result.samples, filename_contains="python"), (
+        "Expected native frame from the Python runtime"
+    )
 
     if _python_has_Py_RunMain_symbol(py):
-        assert has_native_frame(
-            result.samples, function="Py_RunMain"
-        ), "Expected Py_RunMain native frame from the Python runtime"
+        assert has_native_frame(result.samples, function="Py_RunMain"), (
+            "Expected Py_RunMain native frame from the Python runtime"
+        )
 
     meta = result.metadata
     assert meta["mode"] == "wall"
@@ -193,9 +193,9 @@ def test_native_interleaved(py, save_mojo):
             found_interleaved = True
             break
 
-    assert (
-        found_interleaved
-    ), "Expected at least one sample with both Python and native frames interleaved"
+    assert found_interleaved, (
+        "Expected at least one sample with both Python and native frames interleaved"
+    )
 
 
 @requires_sudo
@@ -208,18 +208,18 @@ def test_native_attach(py, save_mojo):
     save_mojo(result.stdout)
     assert result.returncode == 0, result.stderr or result.stdout
 
-    assert has_frame(
-        result.samples, filename="sleepy.py", function="<module>"
-    ), "Expected Python frame from sleepy.py in attach mode"
+    assert has_frame(result.samples, filename="sleepy.py", function="<module>"), (
+        "Expected Python frame from sleepy.py in attach mode"
+    )
 
-    assert has_native_frame(
-        result.samples, filename_contains="python"
-    ), "Expected native frame from the Python runtime in attach mode"
+    assert has_native_frame(result.samples, filename_contains="python"), (
+        "Expected native frame from the Python runtime in attach mode"
+    )
 
     if _python_has_Py_RunMain_symbol(py):
-        assert has_native_frame(
-            result.samples, function="Py_RunMain"
-        ), "Expected Py_RunMain native frame from the Python runtime in attach mode"
+        assert has_native_frame(result.samples, function="Py_RunMain"), (
+            "Expected Py_RunMain native frame from the Python runtime in attach mode"
+        )
 
     meta = result.metadata
     assert meta["mode"] == "wall"
@@ -238,9 +238,9 @@ def test_native_where(py):
     assert "<module>" in result.stdout, result.stdout
 
     if _python_has_Py_RunMain_symbol(py):
-        assert (
-            "Py_RunMain" in result.stdout
-        ), "Expected Py_RunMain native frame in where output"
+        assert "Py_RunMain" in result.stdout, (
+            "Expected Py_RunMain native frame in where output"
+        )
 
 
 @allpythons()
@@ -299,6 +299,62 @@ def test_native_non_python_thread(py, native_ext):
     for sample in result.samples:
         if not sample.thread.startswith("Native-"):
             continue
-        assert all(
-            frame.line == 0 for frame in sample.frames
-        ), f"Expected only native frames for {sample.thread}, got: {sample.frames}"
+        assert all(frame.line == 0 for frame in sample.frames), (
+            f"Expected only native frames for {sample.thread}, got: {sample.frames}"
+        )
+
+
+# ---- Windows unwind quality checks -----------------------------------------
+
+# These function names appear in a known garbage chain caused by a false-positive
+# epilog detection on Windows x64 (Python 3.10).  Any sample where one of these
+# functions appears as a *caller* of WaitForSingleObjectEx is bogus — real callers
+# are GIL-acquisition functions like take_gil / PyEval_RestoreThread, not list
+# operations.
+_WIN_GARBAGE_CALLERS = {"PyList_Reverse", "PyList_Append", "PyObject_GC_UnTrack"}
+
+
+def _has_garbage_win_unwind(samples) -> list[str]:
+    """Return descriptions of samples that show the known garbage unwind chain.
+
+    Austin frames are ordered outermost-first: frames[0] is the thread root and
+    frames[-1] is the leaf.  Callers of WaitForSingleObjectEx therefore appear
+    at *lower* indices (closer to [0]) than WaitForSingleObjectEx itself.
+    """
+    bad = []
+    for sample in samples:
+        frames = sample.frames
+        for i, frame in enumerate(frames):
+            if "WaitForSingleObjectEx" not in frame.function:
+                continue
+            # Check up to 4 frames outward (lower indices = callers)
+            lo = max(0, i - 4)
+            for j in range(lo, i):
+                if any(g in frames[j].function for g in _WIN_GARBAGE_CALLERS):
+                    bad.append(
+                        f"thread={sample.thread}: "
+                        + " -> ".join(f.function for f in frames[j : i + 2])
+                    )
+                    break
+    return bad
+
+
+@allpythons()
+@pytest.mark.skipif(not _IS_WIN, reason="Windows-specific unwind quality check")
+def test_native_no_garbage_unwind_win(py, save_mojo):
+    """On Windows, GIL-waiting threads must not show list/GC functions above WaitForSingleObjectEx.
+
+    A false-positive epilog detection in the pdata unwinder can produce a garbage
+    call chain like PyList_Reverse -> PyEval_RestoreThread -> PyObject_GC_UnTrack
+    -> WaitForSingleObjectEx.  This test catches that regression.
+    """
+    result = austin("-n", "-i", "1ms", *python(py), target("target34.py"))
+    save_mojo(result.stdout)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    bad = _has_garbage_win_unwind(result.samples)
+    assert not bad, (
+        "Garbage unwind chain detected on Windows:\n"
+        + "\n".join(f"  {b}" for b in bad[:10])
+        + f"\n\naustin stderr:\n{result.stderr}"
+    )

@@ -316,16 +316,14 @@ static inline bool
 _pe_try_epilog(
     HANDLE hProcess, uintptr_t pc, uintptr_t func_end, uint8_t frame_reg, uintptr_t* rip, uintptr_t gp[GP_REG_COUNT]
 ) {
-    // Read up to 32 bytes of instructions from pc to func_end.  A genuine
-    // in-progress epilog is at most a handful of pop/add/ret instructions
-    // (~20-30 bytes).  A larger window produces false positives when the
-    // thread is parked at a mid-function call site that happens to have
-    // epilog-looking bytes between it and the function end (e.g. the return
-    // site of NtWaitForSingleObject inside WaitForSingleObjectEx).
+    // Read up to 128 bytes of instructions from pc to func_end.
     size_t  remaining = (size_t)(func_end - pc);
-    uint8_t ibuf[32];
-    if (remaining == 0 || remaining > sizeof(ibuf))
+    uint8_t ibuf[128];
+    log_d("win: epilog? pc=%" PRIxPTR " func_end=%" PRIxPTR " remaining=%zu", pc, func_end, remaining);
+    if (remaining == 0 || remaining > sizeof(ibuf)) {
+        log_d("win: epilog skip: remaining=%zu out of range", remaining);
         return false;
+    }
 
     SIZE_T n = 0;
     if (!ReadProcessMemory(hProcess, (LPCVOID)pc, ibuf, remaining, &n) || n != remaining)
@@ -418,6 +416,10 @@ _pe_try_epilog(
         *rip        = ret_addr;
         gp[REG_RSP] = sp + 8;
         gp[REG_RBP] = bp;
+        log_d(
+            "win: epilog matched (ret) at pc=%" PRIxPTR " remaining=%zu -> ret=%" PRIxPTR " new_sp=%" PRIxPTR, pc,
+            remaining, ret_addr, gp[REG_RSP]
+        );
         return true;
     }
     if (*p == 0xeb || *p == 0xe9) {
@@ -431,6 +433,10 @@ _pe_try_epilog(
         *rip        = ret_addr;
         gp[REG_RSP] = sp + 8;
         gp[REG_RBP] = bp;
+        log_d(
+            "win: epilog matched (jmp) at pc=%" PRIxPTR " remaining=%zu -> ret=%" PRIxPTR " new_sp=%" PRIxPTR, pc,
+            remaining, ret_addr, gp[REG_RSP]
+        );
         return true;
     }
     if (*p == 0xff && p + 1 < end) {
@@ -446,10 +452,16 @@ _pe_try_epilog(
             *rip        = ret_addr;
             gp[REG_RSP] = sp + 8;
             gp[REG_RBP] = bp;
+            log_d(
+                "win: epilog matched (jmp*/call*) at pc=%" PRIxPTR " remaining=%zu -> ret=%" PRIxPTR
+                " new_sp=%" PRIxPTR,
+                pc, remaining, ret_addr, gp[REG_RSP]
+            );
             return true;
         }
     }
 
+    log_d("win: epilog no match at pc=%" PRIxPTR " remaining=%zu (byte=0x%02x)", pc, remaining, (unsigned)*p);
     return false; // Not a valid epilog
 }
 
@@ -770,12 +782,24 @@ pdata_step(HANDLE hProcess, uintptr_t* pc, uintptr_t gp[GP_REG_COUNT], _mod_entr
         if (!ReadProcessMemory(hProcess, (LPCVOID)gp[REG_RSP], &ret_addr, sizeof(ret_addr), &read_size)
             || read_size != sizeof(ret_addr))
             return false;
+        log_d(
+            "win: pdata_step: leaf %" PRIxPTR " -> ret=%" PRIxPTR " new_sp=%" PRIxPTR, *pc, ret_addr,
+            gp[REG_RSP] + sizeof(uintptr_t)
+        );
         *pc          = ret_addr;
         gp[REG_RSP] += sizeof(uintptr_t);
         return true;
     }
 
-    return _pe_unwind_step(ce, rt_func, *pc, hProcess, pc, gp);
+    log_d(
+        "win: pdata_step: pc=%" PRIxPTR " rva=%x rf=[%x,%x) in %s", *pc, rva, rt_func->BeginAddress,
+        rt_func->EndAddress, mod->path
+    );
+    uintptr_t old_pc = *pc;
+    bool      ok     = _pe_unwind_step(ce, rt_func, old_pc, hProcess, pc, gp);
+    if (ok)
+        log_d("win: pdata_step: unwound %" PRIxPTR " -> %" PRIxPTR " new_sp=%" PRIxPTR, old_pc, *pc, gp[REG_RSP]);
+    return ok;
 }
 
 // ---------------------------------------------------------------------------
