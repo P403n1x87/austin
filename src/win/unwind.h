@@ -115,6 +115,12 @@ typedef struct _pdata_cache_entry {
     uint8_t*                   xdata; // local copy of unwind data section(s)
     size_t                     xdata_size;
     uintptr_t                  xdata_rva; // RVA of the xdata section start
+    // Absolute [begin, end) address range of the largest function in this
+    // module.  Used to identify _PyEval_EvalFrameDefault by size rather than
+    // by symbol name, which is unreliable when only export-table symbols are
+    // available (common in CI without PDB files).
+    uintptr_t                  largest_func_begin;
+    uintptr_t                  largest_func_end;
     struct _pdata_cache_entry* next;
 } pdata_cache_entry_t;
 
@@ -239,6 +245,25 @@ _pdata_cache_load(HANDLE hProcess, uintptr_t image_base) {
     entry->xdata      = xdata;
     entry->xdata_size = xdata_size;
     entry->xdata_rva  = xdata_rva;
+
+    // Find the largest RUNTIME_FUNCTION in this module.  _PyEval_EvalFrameDefault
+    // is always the largest function in any CPython build by a large margin, so
+    // the biggest pdata entry reliably identifies it even without PDB symbols.
+    DWORD largest_size        = 0;
+    entry->largest_func_begin = 0;
+    entry->largest_func_end   = 0;
+    for (DWORD i = 0; i < count; i++) {
+        DWORD sz = funcs[i].EndAddress - funcs[i].BeginAddress;
+        if (sz > largest_size) {
+            largest_size              = sz;
+            entry->largest_func_begin = image_base + funcs[i].BeginAddress;
+            entry->largest_func_end   = image_base + funcs[i].EndAddress;
+        }
+    }
+    log_d(
+        "win: largest func in module at %" PRIxPTR ": [%" PRIxPTR ", %" PRIxPTR ") size=%lu", image_base,
+        entry->largest_func_begin, entry->largest_func_end, (unsigned long)largest_size
+    );
 
     size_t bucket        = (image_base >> 12) % _PDATA_CACHE_BUCKETS;
     entry->next          = _pdata_cache[bucket];

@@ -454,8 +454,42 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
         if (fail(_push_native_frame(self, pc)))
             FAIL;
 
-        frame_t* top = _stack->native_base[_stack->native_pointer - 1];
-        if (unlikely(is_pyeval_frame(top->scope))) {
+        frame_t* top     = _stack->native_base[_stack->native_pointer - 1];
+        // Detect _PyEval_EvalFrameDefault by symbol name OR by being the
+        // largest function in the Python DLL.  The name check fails when only
+        // export-table symbols are available (no PDB): the function then gets
+        // mislabeled as the nearest export.  The size-based check is reliable
+        // because _PyEval_EvalFrameDefault is always the biggest function in
+        // any CPython build by a large margin.
+        bool     is_eval = is_pyeval_frame(top->scope);
+        if (!is_eval && _mod_count > 0) {
+            // Binary-search the module table for this PC.
+            DWORD mlo = 0, mhi = _mod_count;
+            while (mlo < mhi) {
+                DWORD mid = mlo + (mhi - mlo) / 2;
+                if (_mod_table[mid].base <= pc)
+                    mlo = mid + 1;
+                else
+                    mhi = mid;
+            }
+            if (mlo > 0 && pc >= _mod_table[mlo - 1].base && pc < _mod_table[mlo - 1].end) {
+                // Only treat the largest function as the eval frame if the
+                // module is a Python DLL (path contains "python").
+                const char* mod_path = _mod_table[mlo - 1].path;
+                if (mod_path && (strstr(mod_path, "python") || strstr(mod_path, "Python"))) {
+                    pdata_cache_entry_t* ce = _pdata_cache_lookup(_mod_table[mlo - 1].base);
+                    if (ce && ce->largest_func_begin != 0 && pc >= ce->largest_func_begin
+                        && pc < ce->largest_func_end) {
+                        log_d(
+                            "win: eval frame by size at pc=%" PRIxPTR " in [%" PRIxPTR ",%" PRIxPTR ")", pc,
+                            ce->largest_func_begin, ce->largest_func_end
+                        );
+                        is_eval = true;
+                    }
+                }
+            }
+        }
+        if (unlikely(is_eval)) {
             log_d("win: unwind hit eval frame at pc=%" PRIxPTR, pc);
             (void)stack_native_pop();
             stack_native_push((frame_t*)EVAL_FRAME_MAGIC);

@@ -105,8 +105,17 @@ get_func_name(HANDLE hProcess, uintptr_t pc) {
         if (sym->Size > 0) {
             if (displacement >= sym->Size)
                 return NULL;
-        } else if (displacement > 0x10000) {
-            return NULL;
+        } else {
+            // Export-only symbol with unknown size: only accept if the PC is
+            // within 512 bytes of the exported entry point.  The previous
+            // threshold (64 KB) caused internal functions like take_gil and
+            // _PyEval_EvalFrameDefault to be mislabeled as the nearest
+            // preceding export (e.g. PyObject_GC_UnTrack, PyList_Reverse),
+            // producing garbage flame-graph labels and — critically — breaking
+            // the is_pyeval_frame check that relies on the symbol name to
+            // detect _PyEval_EvalFrameDefault and collect Python frames.
+            if (displacement > 512)
+                return NULL;
         }
     }
 
