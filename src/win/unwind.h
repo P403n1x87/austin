@@ -115,12 +115,14 @@ typedef struct _pdata_cache_entry {
     uint8_t*                   xdata; // local copy of unwind data section(s)
     size_t                     xdata_size;
     uintptr_t                  xdata_rva; // RVA of the xdata section start
-    // Absolute [begin, end) address range of the largest function in this
-    // module.  Used to identify _PyEval_EvalFrameDefault by size rather than
-    // by symbol name, which is unreliable when only export-table symbols are
-    // available (common in CI without PDB files).
+    // Absolute [begin, end) address range covering the largest function (==
+    // _PyEval_EvalFrameDefault) and any absorbed sub-entries/cold-blocks.
     uintptr_t                  largest_func_begin;
     uintptr_t                  largest_func_end;
+    // BeginAddress RVA of the main body of the largest function.  This is
+    // the canonical identifier used to recognise cold-block (CHAININFO)
+    // sub-entries via _pdata_logical_root comparisons.
+    DWORD                      main_func_rva;
     struct _pdata_cache_entry* next;
 } pdata_cache_entry_t;
 
@@ -137,6 +139,43 @@ _pdata_cache_lookup(uintptr_t image_base) {
         e = e->next;
     }
     return NULL;
+}
+
+// Get a pointer into the cached xdata buffer for a given RVA.
+// Returns NULL if the RVA is outside the cached region.
+static inline void*
+_pdata_get_xdata(pdata_cache_entry_t* ce, DWORD rva, size_t min_size) {
+    if (ce->xdata == NULL || rva < ce->xdata_rva || (rva - ce->xdata_rva) + min_size > ce->xdata_size)
+        return NULL;
+    return ce->xdata + (rva - ce->xdata_rva);
+}
+
+// Get a pointer to the UNWIND_INFO for a RUNTIME_FUNCTION from the cached
+// xdata buffer.  Returns NULL if the data is outside the cached region.
+static inline pe_unwind_info_t*
+_pdata_get_unwind_info(pdata_cache_entry_t* ce, RUNTIME_FUNCTION* rf) {
+    return (pe_unwind_info_t*)_pdata_get_xdata(ce, rf->UnwindData, sizeof(pe_unwind_info_t));
+}
+
+// Follow UNW_FLAG_CHAININFO links and return the logical root RUNTIME_FUNCTION.
+// A chained RF delegates its unwind to a parent RF; the root has no chain.
+// Returns rf itself if unchained or if the chain cannot be resolved.
+static inline RUNTIME_FUNCTION*
+_pdata_logical_root(pdata_cache_entry_t* ce, RUNTIME_FUNCTION* rf) {
+    int depth = 8; // guard against corrupt data
+    while (rf && depth-- > 0) {
+        pe_unwind_info_t* ui = _pdata_get_unwind_info(ce, rf);
+        if (!ui || !(ui->Flags & UNW_FLAG_CHAININFO))
+            break;
+        // The chained RUNTIME_FUNCTION follows the unwind codes (even-aligned).
+        DWORD             code_words = ((DWORD)ui->CountOfCodes + 1u) & ~1u;
+        DWORD             chain_off  = rf->UnwindData + sizeof(pe_unwind_info_t) + code_words * 2;
+        RUNTIME_FUNCTION* parent     = (RUNTIME_FUNCTION*)_pdata_get_xdata(ce, chain_off, sizeof(RUNTIME_FUNCTION));
+        if (!parent)
+            break;
+        rf = parent;
+    }
+    return rf;
 }
 
 // Read the PE exception directory (.pdata) and unwind data section from a
@@ -249,19 +288,85 @@ _pdata_cache_load(HANDLE hProcess, uintptr_t image_base) {
     // Find the largest RUNTIME_FUNCTION in this module.  _PyEval_EvalFrameDefault
     // is always the largest function in any CPython build by a large margin, so
     // the biggest pdata entry reliably identifies it even without PDB symbols.
+    //
+    // The compiler can split a large function into non-contiguous sub-sections.
+    // These appear as:
+    //   (a) UNW_FLAG_CHAININFO entries that reference the main body RF, or
+    //   (b) independent sub-entries placed at distant addresses (cold blocks).
+    //
+    // Strategy: find the main body (largest RF), then do two passes:
+    //   1. Scan all RFs for UNW_FLAG_CHAININFO links back to the main body.
+    //   2. Absorb adjacent entries within a 256-byte gap (handles case (b) when
+    //      the compiler does NOT emit a CHAININFO for cold blocks).
     DWORD largest_size        = 0;
+    DWORD largest_idx         = 0;
     entry->largest_func_begin = 0;
     entry->largest_func_end   = 0;
+    entry->main_func_rva      = 0;
     for (DWORD i = 0; i < count; i++) {
         DWORD sz = funcs[i].EndAddress - funcs[i].BeginAddress;
         if (sz > largest_size) {
             largest_size              = sz;
+            largest_idx               = i;
             entry->largest_func_begin = image_base + funcs[i].BeginAddress;
             entry->largest_func_end   = image_base + funcs[i].EndAddress;
         }
     }
+    if (entry->largest_func_begin != 0) {
+        // Save the main body's RVA before Pass 1 may expand largest_func_begin.
+        entry->main_func_rva = funcs[largest_idx].BeginAddress;
+
+        RUNTIME_FUNCTION* main_rf    = &funcs[largest_idx];
+        DWORD             main_begin = main_rf->BeginAddress;
+
+        // Pass 1: follow UNW_FLAG_CHAININFO links — absorb any RF whose
+        // logical root is the main body RF (handles both adjacent sub-entries
+        // and cold blocks at completely different addresses).
+        // NOTE: _pdata_logical_root returns a pointer into the xdata buffer
+        // when a CHAININFO chain is followed, while main_rf points into the
+        // funcs buffer.  Pointer identity is therefore UNRELIABLE; compare
+        // BeginAddress fields instead.
+        for (DWORD i = 0; i < count; i++) {
+            if (i == largest_idx)
+                continue;
+            pe_unwind_info_t* ui = _pdata_get_unwind_info(entry, &funcs[i]);
+            if (!ui || !(ui->Flags & UNW_FLAG_CHAININFO))
+                continue;
+            RUNTIME_FUNCTION* root = _pdata_logical_root(entry, &funcs[i]);
+            if (!root || root->BeginAddress != main_begin)
+                continue;
+            uintptr_t rf_begin = image_base + funcs[i].BeginAddress;
+            uintptr_t rf_end   = image_base + funcs[i].EndAddress;
+            log_d("win: eval frame: absorb chained RF [%" PRIxPTR ", %" PRIxPTR ") -> main body", rf_begin, rf_end);
+            if (rf_begin < entry->largest_func_begin)
+                entry->largest_func_begin = rf_begin;
+            if (rf_end > entry->largest_func_end)
+                entry->largest_func_end = rf_end;
+        }
+
+        // Pass 2: absorb immediately adjacent non-chained entries (gap <= 256
+        // bytes from the ORIGINAL boundary).  Snapshot begin/end first so the
+        // gap check uses fixed reference points — updating them inside the loop
+        // would let the boundary cascade and sweep the entire DLL (every pair
+        // of contiguous functions has gap == 0, which is always <= 256).
+        const DWORD gap         = 256;
+        uintptr_t   fixed_begin = entry->largest_func_begin;
+        uintptr_t   fixed_end   = entry->largest_func_end;
+        for (int j = (int)largest_idx - 1; j >= 0; j--) {
+            uintptr_t rf_end = image_base + funcs[j].EndAddress;
+            if (rf_end > fixed_begin || fixed_begin - rf_end > gap)
+                break;
+            entry->largest_func_begin = image_base + funcs[j].BeginAddress;
+        }
+        for (DWORD j = largest_idx + 1; j < count; j++) {
+            uintptr_t rf_begin = image_base + funcs[j].BeginAddress;
+            if (rf_begin < fixed_end || rf_begin - fixed_end > gap)
+                break;
+            entry->largest_func_end = image_base + funcs[j].EndAddress;
+        }
+    }
     log_d(
-        "win: largest func in module at %" PRIxPTR ": [%" PRIxPTR ", %" PRIxPTR ") size=%lu", image_base,
+        "win: eval frame region in module at %" PRIxPTR ": [%" PRIxPTR ", %" PRIxPTR ") largest_size=%lu", image_base,
         entry->largest_func_begin, entry->largest_func_end, (unsigned long)largest_size
     );
 
@@ -287,22 +392,6 @@ _pdata_find(pdata_cache_entry_t* ce, DWORD rva) {
             return &ce->funcs[mid];
     }
     return NULL;
-}
-
-// Get a pointer into the cached xdata buffer for a given RVA.
-// Returns NULL if the RVA is outside the cached region.
-static inline void*
-_pdata_get_xdata(pdata_cache_entry_t* ce, DWORD rva, size_t min_size) {
-    if (ce->xdata == NULL || rva < ce->xdata_rva || (rva - ce->xdata_rva) + min_size > ce->xdata_size)
-        return NULL;
-    return ce->xdata + (rva - ce->xdata_rva);
-}
-
-// Get a pointer to the UNWIND_INFO for a RUNTIME_FUNCTION from the cached
-// xdata buffer.  Returns NULL if the data is outside the cached region.
-static inline pe_unwind_info_t*
-_pdata_get_unwind_info(pdata_cache_entry_t* ce, RUNTIME_FUNCTION* rf) {
-    return (pe_unwind_info_t*)_pdata_get_xdata(ce, rf->UnwindData, sizeof(pe_unwind_info_t));
 }
 
 static void

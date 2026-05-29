@@ -229,8 +229,8 @@ def test_native_attach(py, save_mojo):
 @allpythons()
 def test_native_where(py):
     """--where output must include Python source information in native mode."""
-    with run_python(py, target("sleepy.py"), "2") as p:
-        sleep(0.5)
+    with run_python(py, target("sleepy.py"), "5") as p:
+        sleep(1.5)
         result = austin("-n", "-w", str(p.pid))
     assert result.returncode == 0, result.stderr or result.stdout
 
@@ -306,12 +306,17 @@ def test_native_non_python_thread(py, native_ext):
 
 # ---- Windows unwind quality checks -----------------------------------------
 
-# These function names appear in a known garbage chain caused by a false-positive
-# epilog detection on Windows x64 (Python 3.10).  Any sample where one of these
-# functions appears as a *caller* of WaitForSingleObjectEx is bogus — real callers
-# are GIL-acquisition functions like take_gil / PyEval_RestoreThread, not list
-# operations.
-_WIN_GARBAGE_CALLERS = {"PyList_Reverse", "PyList_Append", "PyObject_GC_UnTrack"}
+# These function names appear in a known garbage chain caused by cold-block
+# mislabeling on Windows x64 (Python 3.10).  Any sample where one of these
+# functions appears as a *caller* of WaitForSingleObjectEx is bogus — list
+# operations can never legitimately call WaitForSingleObjectEx.
+#
+# Note: PyObject_GC_UnTrack is excluded.  Without PDB symbols, take_gil
+# (which genuinely calls WaitForSingleObjectEx to acquire the GIL) is
+# mislabeled as PyObject_GC_UnTrack because it shares the same .pdata
+# RUNTIME_FUNCTION as that export.  The call relationship is real even if
+# the label is wrong, so flagging it would be a false positive.
+_WIN_GARBAGE_CALLERS = {"PyList_Reverse", "PyList_Append"}
 
 
 def _has_garbage_win_unwind(samples) -> list[str]:

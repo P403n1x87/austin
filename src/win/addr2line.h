@@ -84,8 +84,12 @@ _has_pdb_symbols(HANDLE hProcess, uintptr_t pc) {
     return mod_info.SymType == SymPdb || mod_info.SymType == SymDia;
 }
 
+// Resolve a PC to a function name.
+// If p_export_addr is not NULL it receives the export's base address on
+// success (useful for .pdata cross-checking by callers that have access to
+// the pdata cache).
 static inline const char*
-get_func_name(HANDLE hProcess, uintptr_t pc) {
+get_func_name(HANDLE hProcess, uintptr_t pc, uintptr_t* p_export_addr) {
     sym_init(hProcess);
 
     SYMBOL_INFO* sym  = (SYMBOL_INFO*)_sym_buf;
@@ -101,10 +105,20 @@ get_func_name(HANDLE hProcess, uintptr_t pc) {
     // Without PDBs (export-only), SymFromAddr maps the PC to the nearest
     // preceding export which can be wildly wrong.  Validate that the PC
     // actually falls within the reported symbol's bounds.
-    if (!_has_pdb_symbols(hProcess, pc)) {
+    bool has_pdb = _has_pdb_symbols(hProcess, pc);
+    log_d(
+        "win: sym pc=%" PRIxPTR " -> %s disp=%llu size=%lu has_pdb=%d", pc, sym->Name, (unsigned long long)displacement,
+        (unsigned long)sym->Size, (int)has_pdb
+    );
+    if (!has_pdb) {
         if (sym->Size > 0) {
-            if (displacement >= sym->Size)
+            if (displacement >= sym->Size) {
+                log_d(
+                    "win: sym rejected (size): pc=%" PRIxPTR " disp=%llu size=%lu", pc,
+                    (unsigned long long)displacement, (unsigned long)sym->Size
+                );
                 return NULL;
+            }
         } else {
             // Export-only symbol with unknown size: only accept if the PC is
             // within 512 bytes of the exported entry point.  The previous
@@ -114,10 +128,18 @@ get_func_name(HANDLE hProcess, uintptr_t pc) {
             // producing garbage flame-graph labels and — critically — breaking
             // the is_pyeval_frame check that relies on the symbol name to
             // detect _PyEval_EvalFrameDefault and collect Python frames.
-            if (displacement > 512)
+            if (displacement > 512) {
+                log_d(
+                    "win: sym rejected (disp>512): pc=%" PRIxPTR " sym=%s disp=%llu", pc, sym->Name,
+                    (unsigned long long)displacement
+                );
                 return NULL;
+            }
         }
     }
+
+    if (p_export_addr != NULL)
+        *p_export_addr = (uintptr_t)sym->Address;
 
     return sym->Name;
 }
