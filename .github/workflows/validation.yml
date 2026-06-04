@@ -168,50 +168,6 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Set up Python PDB symbol path
-        shell: pwsh
-        run: |
-          # Locate the test Python installation and ensure PDB files are present
-          # so DbgHelp can resolve _PyEval_EvalFrameDefault by name (including
-          # cold blocks that don't carry CHAININFO entries in python310.dll etc.)
-          $pyver = "${{ matrix.python-version }}" -replace 't$', ''
-          $pyinstall = Get-ChildItem "C:\hostedtoolcache\windows\Python" -Filter "$pyver.*" -ErrorAction SilentlyContinue |
-            Sort-Object Name -Descending | Select-Object -First 1
-          if (-not $pyinstall) {
-            Write-Host "Python $pyver not found in tool cache — skipping PDB setup"
-            exit 0
-          }
-          $pydir  = Join-Path $pyinstall.FullName "x64"
-          $fullver = $pyinstall.Name  # e.g. 3.12.10
-
-          $pdbs = Get-ChildItem $pydir -Filter "python*.pdb" -ErrorAction SilentlyContinue
-          if (-not $pdbs) {
-            Write-Host "No PDB files in $pydir — downloading core_pdb.msi for Python $fullver"
-            $msi = "$env:TEMP\core_pdb.msi"
-            $url = "https://www.python.org/ftp/python/$fullver/amd64/core_pdb.msi"
-            try {
-              Invoke-WebRequest -Uri $url -OutFile $msi -ErrorAction Stop
-              $extract = "$env:TEMP\pdb_extract"
-              Start-Process msiexec.exe -ArgumentList "/a `"$msi`" /qn TARGETDIR=`"$extract`"" -Wait -NoNewWindow
-              $extracted = Get-ChildItem $extract -Filter "python*.pdb" -Recurse -ErrorAction SilentlyContinue
-              if ($extracted) {
-                $extracted | ForEach-Object { Copy-Item $_.FullName $pydir }
-                Write-Host "Installed PDB files: $($extracted.Name -join ', ')"
-              } else {
-                Write-Host "No PDB files found after extraction — skipping symbol path setup"
-                exit 0
-              }
-            } catch {
-              Write-Host "Failed to download/extract PDB: $_  — skipping symbol path setup"
-              exit 0
-            }
-          } else {
-            Write-Host "PDB files already present: $($pdbs.Name -join ', ')"
-          }
-
-          Write-Host "Setting _NT_SYMBOL_PATH=$pydir"
-          Add-Content $env:GITHUB_ENV "_NT_SYMBOL_PATH=$pydir"
-
       - name: Check out the base branch
         uses: actions/checkout@v3
         with:

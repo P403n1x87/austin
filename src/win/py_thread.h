@@ -422,30 +422,7 @@ _stackwalk64_step(HANDLE hProcess, HANDLE hThread, uintptr_t* pc, uintptr_t gp[G
 // direct .pdata parsing for the majority of frames while preserving the data
 // quality of StackWalk64 for edge cases (syscall stubs, JIT code, etc.).
 
-// Return true if pc falls within the eval-frame region of any Python DLL.
-// Used to detect cold blocks: code that is a sub-section of
-// _PyEval_EvalFrameDefault but located at a distant virtual address, where
-// export-table symbol resolution would give a wrong label.
-static inline bool
-_pc_is_eval_frame(uintptr_t pc) {
-    if (pc == 0 || _mod_count == 0)
-        return false;
-    DWORD mlo = 0, mhi = _mod_count;
-    while (mlo < mhi) {
-        DWORD mid = mlo + (mhi - mlo) / 2;
-        if (_mod_table[mid].base <= pc)
-            mlo = mid + 1;
-        else
-            mhi = mid;
-    }
-    if (mlo == 0 || pc < _mod_table[mlo - 1].base || pc >= _mod_table[mlo - 1].end)
-        return false;
-    const char* mod_path = _mod_table[mlo - 1].path;
-    if (!mod_path || (!strstr(mod_path, "python") && !strstr(mod_path, "Python")))
-        return false;
-    pdata_cache_entry_t* ce = _pdata_cache_lookup(_mod_table[mlo - 1].base);
-    return ce && ce->largest_func_begin != 0 && pc >= ce->largest_func_begin && pc < ce->largest_func_end;
-}
+
 
 static inline int
 _py_thread__unwind_native_frame_stack(py_thread_t* self) {
@@ -517,23 +494,6 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
                                 ce->largest_func_begin, ce->largest_func_end
                             );
                             is_eval = true;
-                        }
-                        // Cold-block check: PC not in the absorbed range but its
-                        // RUNTIME_FUNCTION chains (via CHAININFO) back to the main
-                        // body of _PyEval_EvalFrameDefault.  pdata_step follows the
-                        // chain directly to EvalFrame's caller, bypassing the main
-                        // body — so the return-address check (_pc_is_eval_frame)
-                        // never fires.  We must recognise the cold block here.
-                        if (!is_eval && ce->main_func_rva != 0 && ce->xdata != NULL) {
-                            DWORD             rva = (DWORD)(pc - mod_base);
-                            RUNTIME_FUNCTION* rf  = _pdata_find(ce, rva);
-                            if (rf) {
-                                RUNTIME_FUNCTION* root = _pdata_logical_root(ce, rf);
-                                if (root && root->BeginAddress == ce->main_func_rva) {
-                                    log_d("win: eval frame by CHAININFO at pc=%" PRIxPTR, pc);
-                                    is_eval = true;
-                                }
-                            }
                         }
                     }
                 }
@@ -622,21 +582,6 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
                 saved_pc, saved_gp[REG_RSP]
             );
             break;
-        }
-
-        // If the current frame was not detected as an eval frame but the return
-        // address (new pc) lands inside the eval-frame region, then the current
-        // frame is a cold block of _PyEval_EvalFrameDefault placed at a distant
-        // virtual address by the compiler.  Without PDB symbols it gets a wrong
-        // export-table label (e.g. PyList_Reverse).  Remove the misleading
-        // native frame; the next iteration will detect is_eval for the main-body
-        // return address and push EVAL_FRAME_MAGIC.
-        if (!is_eval && _pc_is_eval_frame(pc)) {
-            log_d(
-                "win: cold block at %" PRIxPTR " returns into eval frame at %" PRIxPTR " — suppressing frame", saved_pc,
-                pc
-            );
-            (void)stack_native_pop();
         }
 
         // SP must advance (grow upward) on each frame; if it doesn't, the
