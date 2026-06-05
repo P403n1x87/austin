@@ -208,10 +208,15 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
 
     raddr_t origin     = *prev;
     raddr_t code_raddr = V_FIELD_PTR(raddr_t, iframe, py_iframe, o_code);
-    // In free-threaded mode f_executable is a _PyStackRef tagged pointer;
-    // the actual PyObject* is stored in the low bits with Py_TAG_BITS (0x3) masked in.
+    // f_executable is a _PyStackRef tagged pointer. Strip the tag bits to get
+    // the actual PyObject* address:
+    //   - Free-threaded builds: Py_TAG_BITS = 0x3 (bits 0-1)
+    //   - 3.15+ GIL builds: Py_TAG_REFCNT = 0x1 (bit 0); new in 3.15 — prior
+    //     GIL builds stored a raw pointer with no tag.
     if (self->proc->free_threaded)
         code_raddr = (raddr_t)((uintptr_t)code_raddr & ~(uintptr_t)3);
+    else if (V_MIN(3, 15))
+        code_raddr = (raddr_t)((uintptr_t)code_raddr & ~(uintptr_t)1);
 
     *prev = V_FIELD_PTR(raddr_t, iframe, py_iframe, o_previous);
     if (unlikely(origin == *prev)) {
@@ -220,9 +225,15 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
     }
 
     if (V_MIN(3, 12) && V_FIELD_PTR(char, iframe, py_iframe, o_owner) == FRAME_OWNED_BY_CSTACK) {
-        // This is a shim frame that we can ignore.
-        // In native mode we take this as the marker for the beginning of the stack
-        // for a call to PyEval_EvalFrameDefault.
+        // In 3.15+, contextvars.Context.run() creates a nested _PyEval_EvalFrameDefault
+        // call, producing intermediate entry frames whose `previous` links back to the
+        // outer eval loop's Python frame (e.g. Thread._bootstrap_inner). Skip these
+        // intermediate entry frames and continue the walk outward. Only the base entry
+        // frame (tstate->base_frame, previous == NULL) terminates the walk.
+        if (V_MIN(3, 15) && isvalid(*prev))
+            SUCCESS;
+
+        // This is a shim/entry frame that marks the beginning of a Python eval loop.
         if (pargs_native)
             stack_py_push_cframe();
         SUCCESS;

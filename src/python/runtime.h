@@ -469,7 +469,206 @@ typedef struct _Py_DebugOffsets3_14 {
 
 // ----------------------------------------------------------------------------
 
+typedef struct _Py_DebugOffsets3_15 {
+    char     cookie[8];
+    uint64_t version;
+    uint64_t free_threaded;
+    // Runtime state offset;
+    struct {
+        uint64_t size;
+        uint64_t finalizing;
+        uint64_t interpreters_head;
+    } runtime_state;
+
+    // Interpreter state offset;
+    struct {
+        uint64_t size;
+        uint64_t id;
+        uint64_t next;
+        uint64_t threads_head;
+        uint64_t threads_main;
+        uint64_t gc;
+        uint64_t imports_modules;
+        uint64_t sysdict;
+        uint64_t builtins;
+        uint64_t ceval_gil;
+        uint64_t gil_runtime_state;
+        uint64_t gil_runtime_state_enabled;
+        uint64_t gil_runtime_state_locked;
+        uint64_t gil_runtime_state_holder;
+        uint64_t code_object_generation;
+        uint64_t tlbc_generation;
+    } interpreter_state;
+
+    // Thread state offset; base_frame, last_profiled_frame and
+    // last_profiled_frame_seq added in 3.15
+    struct {
+        uint64_t size;
+        uint64_t prev;
+        uint64_t next;
+        uint64_t interp;
+        uint64_t current_frame;
+        uint64_t base_frame;
+        uint64_t last_profiled_frame;
+        uint64_t last_profiled_frame_seq;
+        uint64_t thread_id;
+        uint64_t native_thread_id;
+        uint64_t datastack_chunk;
+        uint64_t status;
+        uint64_t holds_gil;
+        uint64_t gil_requested;
+        uint64_t current_exception;
+        uint64_t exc_state;
+    } thread_state;
+
+    // Exception stack item offset (added in 3.15)
+    struct {
+        uint64_t exc_value;
+    } err_stackitem;
+
+    // InterpreterFrame offset;
+    struct {
+        uint64_t size;
+        uint64_t previous;
+        uint64_t executable;
+        uint64_t instr_ptr;
+        uint64_t localsplus;
+        uint64_t owner;
+        uint64_t stackpointer;
+        uint64_t tlbc_index;
+    } interpreter_frame;
+
+    // Code object offset;
+    struct {
+        uint64_t size;
+        uint64_t filename;
+        uint64_t name;
+        uint64_t qualname;
+        uint64_t linetable;
+        uint64_t firstlineno;
+        uint64_t argcount;
+        uint64_t localsplusnames;
+        uint64_t localspluskinds;
+        uint64_t co_code_adaptive;
+        uint64_t co_tlbc;
+    } code_object;
+
+    // PyObject offset;
+    struct {
+        uint64_t size;
+        uint64_t ob_type;
+    } pyobject;
+
+    // PyTypeObject object offset; tp_basicsize and tp_dictoffset added in 3.15
+    struct {
+        uint64_t size;
+        uint64_t tp_name;
+        uint64_t tp_repr;
+        uint64_t tp_flags;
+        uint64_t tp_basicsize;
+        uint64_t tp_dictoffset;
+    } type_object;
+
+    // PyHeapTypeObject offset (added in 3.15)
+    struct {
+        uint64_t size;
+        uint64_t ht_cached_keys;
+    } heap_type_object;
+
+    // PyTuple object offset;
+    struct {
+        uint64_t size;
+        uint64_t ob_item;
+        uint64_t ob_size;
+    } tuple_object;
+
+    // PyList object offset;
+    struct {
+        uint64_t size;
+        uint64_t ob_item;
+        uint64_t ob_size;
+    } list_object;
+
+    // PySet object offset;
+    struct {
+        uint64_t size;
+        uint64_t used;
+        uint64_t table;
+        uint64_t mask;
+    } set_object;
+
+    // PyDict object offset;
+    struct {
+        uint64_t size;
+        uint64_t ma_keys;
+        uint64_t ma_values;
+    } dict_object;
+
+    // PyFloat object offset;
+    struct {
+        uint64_t size;
+        uint64_t ob_fval;
+    } float_object;
+
+    // PyLong object offset;
+    struct {
+        uint64_t size;
+        uint64_t lv_tag;
+        uint64_t ob_digit;
+    } long_object;
+
+    // PyBytes object offset;
+    struct {
+        uint64_t size;
+        uint64_t ob_size;
+        uint64_t ob_sval;
+    } bytes_object;
+
+    // Unicode object offset; compactunicodeobject_size added in 3.15
+    struct {
+        uint64_t size;
+        uint64_t state;
+        uint64_t length;
+        uint64_t asciiobject_size;
+        uint64_t compactunicodeobject_size;
+    } unicode_object;
+
+    // GC runtime state offset; frame and generation_stats added in 3.15
+    struct {
+        uint64_t size;
+        uint64_t collecting;
+        uint64_t frame;
+        uint64_t generation_stats_size;
+        uint64_t generation_stats;
+    } gc;
+
+    // Generator object offset;
+    struct {
+        uint64_t size;
+        uint64_t gi_name;
+        uint64_t gi_iframe;
+        uint64_t gi_frame_state;
+    } gen_object;
+
+    struct {
+        uint64_t next;
+        uint64_t prev;
+    } llist_node;
+
+    struct {
+        uint64_t eval_breaker;
+        uint64_t remote_debugger_support;
+        uint64_t remote_debugging_enabled;
+        uint64_t debugger_pending_call;
+        uint64_t debugger_script_path;
+        uint64_t debugger_script_path_size;
+    } debugger_support;
+} _Py_DebugOffsets3_15;
+
+// ----------------------------------------------------------------------------
+
 typedef union {
     _Py_DebugOffsets3_13 v3_13;
     _Py_DebugOffsets3_14 v3_14;
+    _Py_DebugOffsets3_15 v3_15;
 } _Py_DebugOffsets;

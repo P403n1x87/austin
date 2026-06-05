@@ -49,7 +49,13 @@ static cached_string_t _unknown_scope __attribute__((unused)) = {.key = 1, .valu
 
 static inline bool
 is_pyeval_frame(cached_string_t* scope) {
-    return scope != UNKNOWN_SCOPE && isvalid(strstr(scope->value, "PyEval_EvalFrameDefault"));
+    if (scope == UNKNOWN_SCOPE || !isvalid(scope->value))
+        return false;
+    // Traditional interpreter: _PyEval_EvalFrameDefault appears on the stack.
+    // Tail-call interpreter (CPython 3.15+ with Clang): _PyEval_EvalFrameDefault
+    // is tail-called away; opcode handlers (_TAIL_CALL_<OPCODE>) appear instead.
+    // Anchor to the start of the name to avoid false positives.
+    return isvalid(strstr(scope->value, "PyEval_EvalFrameDefault")) || strncmp(scope->value, "_TAIL_CALL_", 11) == 0;
 }
 
 static inline cached_string_t*
