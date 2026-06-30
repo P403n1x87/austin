@@ -56,7 +56,7 @@
 #define BSS_MAP    (1 << 3)
 
 // Get the offset of the ith section header
-#define ELF_SH_OFF(ehdr, i) /* as */ (ehdr->e_shoff + i * ehdr->e_shentsize)
+#define ELF_SH_OFF(ehdr, i) /* as */ ((ehdr)->e_shoff + (size_t)(i) * (ehdr)->e_shentsize)
 
 union {
     Elf32_Ehdr v32;
@@ -87,7 +87,7 @@ _file_size(char* file) {
 #define _DEF_ANALYZE_ELF(BITS, ADDR_SENTINEL)                                                                           \
     static Elf##BITS##_Addr _get_base_##BITS(Elf##BITS##_Ehdr* ehdr, void* elf_map) {                                   \
         for (int i = 0; i < ehdr->e_phnum; ++i) {                                                                       \
-            Elf##BITS##_Phdr* phdr = (Elf##BITS##_Phdr*)(elf_map + ehdr->e_phoff + i * ehdr->e_phentsize);              \
+            Elf##BITS##_Phdr* phdr = (Elf##BITS##_Phdr*)(elf_map + ehdr->e_phoff + (size_t)i * ehdr->e_phentsize);      \
             if (phdr->p_type == PT_LOAD)                                                                                \
                 return phdr->p_vaddr - phdr->p_vaddr % phdr->p_align;                                                   \
         }                                                                                                               \
@@ -99,7 +99,7 @@ _file_size(char* file) {
                                                                                                                         \
         Elf##BITS##_Ehdr* ehdr = elf_map;                                                                               \
                                                                                                                         \
-        Elf##BITS##_Xword sht_size     = ehdr->e_shnum * ehdr->e_shentsize;                                             \
+        Elf##BITS##_Xword sht_size     = (Elf##BITS##_Xword)ehdr->e_shnum * ehdr->e_shentsize;                          \
         Elf##BITS##_Off   elf_map_size = ehdr->e_shoff + sht_size;                                                      \
         Elf##BITS##_Shdr* p_shdr;                                                                                       \
                                                                                                                         \

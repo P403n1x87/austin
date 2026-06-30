@@ -1564,13 +1564,13 @@ py_proc__log_version(py_proc_t* self, bool is_parent) {
     if (pargs.children) {
         if (patch == 0xFF) // GCOV_EXCL_START
             log_m(
-                "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d%s" CRESET,
-                is_parent ? "Parent" : "Child", self->pid, major, minor, ft
+                "🐍 %s process [" CYN "%d" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d%s" CRESET,
+                is_parent ? "Parent" : "Child", (int)self->pid, major, minor, ft
             );
         else // GCOV_EXCL_STOP
             log_m(
-                "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d%s" CRESET,
-                is_parent ? "Parent" : "Child", self->pid, major, minor, patch, ft
+                "🐍 %s process [" CYN "%d" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d%s" CRESET,
+                is_parent ? "Parent" : "Child", (int)self->pid, major, minor, patch, ft
             );
     } else {
         if (patch == 0xFF) // GCOV_EXCL_START

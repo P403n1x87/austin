@@ -126,7 +126,7 @@ do_single_process(py_proc_t* py_proc) {
     } else {
         if (!pargs.where) {
             log_m("");
-            log_m("🕑 Sampling for %d second%s ...", pargs.exposure, pargs.exposure != 1 ? "s" : "");
+            log_m("🕑 Sampling for %lu second%s ...", pargs.exposure, pargs.exposure != 1 ? "s" : "");
         }
         microseconds_t end_time = gettime() + pargs.exposure * 1000000;
         while (interrupt_signal == 0) {
@@ -236,7 +236,7 @@ do_child_processes(py_proc_t* py_proc) {
     } else {
         if (!pargs.pipe && !pargs.where) {
             log_m("");
-            log_m("🕑 Sampling for %d second%s ...", pargs.exposure, pargs.exposure != 1 ? "s" : "");
+            log_m("🕑 Sampling for %lu second%s ...", pargs.exposure, pargs.exposure != 1 ? "s" : "");
         }
         microseconds_t end_time = gettime() + pargs.exposure * 1000000;
         while (!py_proc_list__is_empty(list) && interrupt_signal == 0) {
