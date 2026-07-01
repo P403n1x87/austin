@@ -27,6 +27,9 @@ jobs:
         with:
           python-version: "3.13t"
 
+      - name: Install system dependencies
+        run: sudo apt-get install -y libopenblas-dev
+
       - name: Install benchmark dependencies
         run: |
           python3.13 -m venv .venv
@@ -203,6 +206,9 @@ jobs:
           cp dist/austin      austin/src/austin
           cp dist/austin-base austin/src/austin-base
 
+      - name: Install system dependencies
+        run: sudo apt-get install -y libopenblas-dev
+
       - name: Install runtime dependencies
         run: |
           python3.13 -m venv .venv
@@ -369,6 +375,9 @@ jobs:
           pattern: bench-results-*
           path: results/
           merge-multiple: true
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libopenblas-dev
 
       - name: Install runtime dependencies
         run: |
