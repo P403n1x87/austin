@@ -194,7 +194,7 @@ stats_log_metrics() {
         }
 
         log_m(
-            STAT_INDENT "Error rate" BLK " . . . . . . . . " CRESET BOLD "%d/%d" CRESET " (" BOLD "%.2f%%" CRESET ")",
+            STAT_INDENT "Error rate" BLK " . . . . . . . . " CRESET BOLD "%lu/%lu" CRESET " (" BOLD "%.2f%%" CRESET ")",
             _error_cnt, _sample_cnt, (float)_error_cnt / _sample_cnt * 100
         );
     } else {
