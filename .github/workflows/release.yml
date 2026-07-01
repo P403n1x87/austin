@@ -26,6 +26,9 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
+permissions:
+  contents: write
+
 jobs:
   release-linux-glibc:
     strategy:
