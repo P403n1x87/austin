@@ -2,6 +2,10 @@ name: Publish Austin Docker image
 on:
   release:
     types: [published]
+
+permissions:
+  contents: read
+
 jobs:
   push_to_registry:
     name: Push Docker image to Docker Hub

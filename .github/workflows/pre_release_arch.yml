@@ -3,6 +3,10 @@ on:
   push:
     tags:
       - 'v*-*'
+
+permissions:
+  contents: write
+
 jobs:
   release-linux-archs:
     runs-on: ubuntu-24.04

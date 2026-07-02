@@ -25,6 +25,9 @@ on:
 env:
   LIBUNWIND_VERSION: ${{ inputs.libunwind-version || 'v1.8.3' }}
 
+permissions:
+  contents: write
+
 jobs:
   release-linux-archs:
     runs-on: ubuntu-22.04
