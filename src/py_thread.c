@@ -246,6 +246,8 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
+    stack_reset();
+
     raddr_t curr = iframe_raddr;
 
     while (isvalid(curr)) {
