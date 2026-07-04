@@ -150,6 +150,10 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
 
     raddr_t origin     = *prev;
     raddr_t code_raddr = V_FIELD_PTR(raddr_t, iframe, py_iframe, o_code);
+    if (V_MIN(3, 14)) {
+        // CPython 3.14 stores the executable as a tagged _PyStackRef.
+        code_raddr = (raddr_t)(((uintptr_t)code_raddr) & ~(uintptr_t)3);
+    }
 
     *prev = V_FIELD_PTR(raddr_t, iframe, py_iframe, o_previous);
     if (unlikely(origin == *prev)) {
@@ -157,7 +161,8 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
         FAIL;
     }
 
-    if (V_MIN(3, 12) && V_FIELD_PTR(char, iframe, py_iframe, o_owner) == FRAME_OWNED_BY_CSTACK) {
+    char owner = V_FIELD_PTR(char, iframe, py_iframe, o_owner);
+    if (V_MIN(3, 12) && (owner == FRAME_OWNED_BY_CSTACK || (V_MIN(3, 14) && owner == FRAME_OWNED_BY_INTERPRETER))) {
 // This is a shim frame that we can ignore
 #ifdef NATIVE
         // In native mode we take this as the marker for the beginning of the stack
@@ -246,6 +251,8 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
+    stack_reset();
+
     raddr_t curr = iframe_raddr;
 
     while (isvalid(curr)) {
@@ -479,7 +486,16 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
                     }
                 }
                 if (!isvalid(scope)) {
-                    scope  = UNKNOWN_SCOPE;
+                    key_dt scope_key = ~((key_dt)pc);
+                    scope            = lru_cache__maybe_hit(string_cache, scope_key);
+                    if (!isvalid(scope)) {
+                        scope = cached_string_new(scope_key, strdup("<unknown>"));
+                        if (!isvalid(scope)) {
+                            FAIL; // GCOV_EXCL_LINE
+                        }
+                        lru_cache__store(string_cache, scope_key, (value_t)scope);
+                        event_handler__emit_new_string(scope);
+                    }
                     offset = 0;
                 }
 

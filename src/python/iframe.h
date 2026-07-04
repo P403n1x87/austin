@@ -55,7 +55,8 @@ typedef struct _PyInterpreterFrame3_11 {
     PyObject*                       localsplus[1];
 } _PyInterpreterFrame3_11;
 
-#define FRAME_OWNED_BY_CSTACK 3
+#define FRAME_OWNED_BY_CSTACK       3
+#define FRAME_OWNED_BY_INTERPRETER  4  // 3.14+
 
 typedef struct _PyInterpreterFrame3_12 {
     PyCodeObject*                   f_code; /* Strong reference */

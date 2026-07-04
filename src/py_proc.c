@@ -1226,7 +1226,9 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
 
     if (pargs.memory) {
         // Use the current thread to determine which thread is manipulating memory
-        if (V_MIN(3, 12)) {
+        if (py_v->free_threaded) {
+            current_thread = tstate_head;
+        } else if (V_MIN(3, 12)) {
             raddr_t gil_state_raddr = NULL;
             if (fail(_py_proc__get_interpreter_state_field(self, interp, gil_state, gil_state_raddr))) // GCOV_EXCL_LINE
                 FAIL;                                                                                  // GCOV_EXCL_LINE
