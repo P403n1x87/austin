@@ -84,6 +84,31 @@ string__hash(char* string) {
 }
 
 // ----------------------------------------------------------------------------
+static inline int
+_unicode_write_utf8(char* buffer, Py_UCS4 ch) {
+    if (ch < 0x80) {
+        buffer[0] = (char)ch;
+        return 1;
+    }
+    if (ch < 0x800) {
+        buffer[0] = (char)(0xC0 | (ch >> 6));
+        buffer[1] = (char)(0x80 | (ch & 0x3F));
+        return 2;
+    }
+    if (ch < 0x10000) {
+        buffer[0] = (char)(0xE0 | (ch >> 12));
+        buffer[1] = (char)(0x80 | ((ch >> 6) & 0x3F));
+        buffer[2] = (char)(0x80 | (ch & 0x3F));
+        return 3;
+    }
+    buffer[0] = (char)(0xF0 | (ch >> 18));
+    buffer[1] = (char)(0x80 | ((ch >> 12) & 0x3F));
+    buffer[2] = (char)(0x80 | ((ch >> 6) & 0x3F));
+    buffer[3] = (char)(0x80 | (ch & 0x3F));
+    return 4;
+}
+
+// ----------------------------------------------------------------------------
 static inline char*
 _string_remote(proc_ref_t pref, raddr_t raddr, python_v* py_v) {
     PyUnicodeObject unicode;
@@ -92,6 +117,95 @@ _string_remote(proc_ref_t pref, raddr_t raddr, python_v* py_v) {
 
     if (fail(copy_datatype(pref, raddr, unicode)))
         FAIL_PTR;
+
+    if (V_MIN(3, 13)) {
+        ssize_t len        = V_FIELD_PTR(ssize_t, &unicode, py_unicode, o_length);
+        unsigned char state = V_FIELD_PTR(unsigned char, &unicode, py_unicode, o_state);
+        if (py_v->free_threaded) {
+            // In free-threaded builds, PyASCIIObject.state.interned is a full
+            // unsigned char (for atomic access) instead of a 2-bit bitfield.
+            // This pushes kind/compact/ascii bitfields to the next byte.
+            // The +1 offset is little-endian specific (x86_64, aarch64).
+            state = *((unsigned char*)(((raddr_t)&unicode) + py_v->py_unicode.o_state + 1));
+        }
+
+        unsigned char kind    = py_v->free_threaded ? state & 0x07 : (state >> 2) & 0x07;
+        unsigned char compact = py_v->free_threaded ? state & 0x08 : state & 0x20;
+        unsigned char ascii   = py_v->free_threaded ? state & 0x10 : state & 0x40;
+
+        if (kind != 1 && kind != 2 && kind != 4) { // GCOV_EXCL_START
+            set_error(PYOBJECT, "Invalid PyASCIIObject kind");
+            FAIL_PTR;
+        } // GCOV_EXCL_STOP
+
+        if (!compact) { // GCOV_EXCL_START
+            set_error(PYOBJECT, "Unsupported non-compact PyUnicodeObject");
+            FAIL_PTR;
+        } // GCOV_EXCL_STOP
+
+        if (len < 0 || len > 4096) { // GCOV_EXCL_START
+            set_error(PYOBJECT, "Invalid string length");
+            FAIL_PTR;
+        } // GCOV_EXCL_STOP
+
+        if (len == 0) {
+            buffer = (char*)malloc(1);
+            if (!isvalid(buffer)) {
+                set_error(MALLOC, "Cannot allocate memory for string buffer");
+                FAIL_PTR;
+            }
+            buffer[0] = '\0';
+            return buffer;
+        }
+
+        // Non-ASCII compact strings store data after PyCompactUnicodeObject.
+        // On LP64, that is 16 bytes after PyASCIIObject.
+        raddr_t data = raddr + py_v->py_unicode.o_asciiobject_size + (ascii ? 0 : 16);
+        if (!isvalid(data)) { // GCOV_EXCL_START
+            set_error(PYOBJECT, "Invalid PyASCIIObject data pointer");
+            FAIL_PTR;
+        } // GCOV_EXCL_STOP
+
+        buffer = (char*)malloc((len * 4) + 1); // GCOV_EXCL_START
+        if (!isvalid(buffer)) {
+            set_error(MALLOC, "Cannot allocate memory for string buffer");
+            FAIL_PTR;
+        } // GCOV_EXCL_STOP
+
+        size_t raw_len = len * kind;
+        char*  raw     = (char*)malloc(raw_len);
+        if (!isvalid(raw)) {
+            free(buffer);
+            set_error(MALLOC, "Cannot allocate memory for string buffer");
+            FAIL_PTR;
+        }
+
+        if (fail(copy_memory(pref, data, raw_len, raw))) { // GCOV_EXCL_START
+            free(raw);
+            free(buffer);
+            FAIL_PTR;
+        } // GCOV_EXCL_STOP
+
+        size_t pos = 0;
+        for (ssize_t i = 0; i < len; i++) {
+            Py_UCS4 ch = 0;
+            switch (kind) {
+            case 1:
+                ch = ((Py_UCS1*)raw)[i];
+                break;
+            case 2:
+                ch = ((Py_UCS2*)raw)[i];
+                break;
+            case 4:
+                ch = ((Py_UCS4*)raw)[i];
+                break;
+            }
+            pos += _unicode_write_utf8(buffer + pos, ch);
+        }
+        free(raw);
+        buffer[pos] = '\0';
+        return buffer;
+    }
 
     PyASCIIObject ascii = unicode.v3._base._base;
 
@@ -144,7 +258,8 @@ _bytes_remote(proc_ref_t pref, raddr_t raddr, ssize_t* size, python_v* py_v) {
     if (fail(copy_datatype(pref, raddr, bytes))) // GCOV_EXCL_LINE
         FAIL_PTR;                                // GCOV_EXCL_LINE
 
-    if ((len = bytes.ob_base.ob_size + 1) < 1) { // Include null-terminator // GCOV_EXCL_START
+    len = V_MIN(3, 13) ? V_FIELD_PTR(ssize_t, &bytes, py_bytes, o_size) + 1 : bytes.ob_base.ob_size + 1;
+    if (len < 1) { // Include null-terminator // GCOV_EXCL_START
         set_error(PYOBJECT, "PyBytesObject is too short");
         FAIL_PTR;
     } // GCOV_EXCL_STOP
@@ -160,7 +275,8 @@ _bytes_remote(proc_ref_t pref, raddr_t raddr, ssize_t* size, python_v* py_v) {
         FAIL_PTR;
     } // GCOV_EXCL_STOP
 
-    if (fail(copy_memory(pref, raddr + offsetof(PyBytesObject, ob_sval), len, array))) {
+    raddr_t data = raddr + (V_MIN(3, 13) ? py_v->py_bytes.o_sval : offsetof(PyBytesObject, ob_sval));
+    if (fail(copy_memory(pref, data, len, array))) {
         free(array);
         FAIL_PTR;
     }

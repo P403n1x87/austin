@@ -163,6 +163,21 @@ typedef struct {
 } py_gc_v;
 
 typedef struct {
+    ssize_t size;
+
+    offset_t o_length;
+    offset_t o_state;
+    offset_t o_asciiobject_size;
+} py_unicode_v;
+
+typedef struct {
+    ssize_t size;
+
+    offset_t o_size;
+    offset_t o_sval;
+} py_bytes_v;
+
+typedef struct {
     py_code_v    py_code;
     py_frame_v   py_frame;
     py_thread_v  py_thread;
@@ -171,10 +186,13 @@ typedef struct {
     py_gc_v      py_gc;
     py_cframe_v  py_cframe;
     py_iframe_v  py_iframe;
+    py_unicode_v py_unicode;
+    py_bytes_v   py_bytes;
 
     int major;
     int minor;
     int patch;
+    int free_threaded;
 } python_v;
 
 #ifdef PY_PROC_C
@@ -440,26 +458,49 @@ get_version_descriptor(int major, int minor, int patch) {
         V_ASSIGN(v, gc.o_collecting, gc.collecting); \
     }
 
+#define PY_UNICODE(v)                                                   \
+    {                                                                   \
+        V_ASSIGN(v, unicode.size, unicode_object.size);                 \
+        V_ASSIGN(v, unicode.o_length, unicode_object.length);           \
+        V_ASSIGN(v, unicode.o_state, unicode_object.state);             \
+        V_ASSIGN(v, unicode.o_asciiobject_size, unicode_object.asciiobject_size); \
+    }
+
+#define PY_BYTES(v)                                          \
+    {                                                        \
+        V_ASSIGN(v, bytes.size, bytes_object.size);          \
+        V_ASSIGN(v, bytes.o_size, bytes_object.ob_size);     \
+        V_ASSIGN(v, bytes.o_sval, bytes_object.ob_sval);     \
+    }
+
 // ----------------------------------------------------------------------------
 static void
 init_version_descriptor(python_v* py_v, _Py_DebugOffsets* py_d) {
+    py_v->free_threaded = 0;
+
     switch (py_v->minor) {
     case 13:
+        py_v->free_threaded = py_d->v3_13.free_threaded != 0;
         PY_CODE_313(3_13);
         PY_IFRAME_313(3_13);
         PY_THREAD_313(3_13);
         PY_RUNTIME_313(3_13);
         PY_IS_313(3_13);
         PY_GC_313(3_13);
+        PY_UNICODE(3_13);
+        PY_BYTES(3_13);
         break;
 
     case 14:
+        py_v->free_threaded = py_d->v3_14.free_threaded != 0;
         PY_CODE_313(3_14);
         PY_IFRAME_313(3_14);
         PY_THREAD_313(3_14);
         PY_RUNTIME_313(3_14);
         PY_IS_314(3_14);
         PY_GC_313(3_14);
+        PY_UNICODE(3_14);
+        PY_BYTES(3_14);
         break;
 
     default:                                                                           // GCOV_EXCL_LINE
