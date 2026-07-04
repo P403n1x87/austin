@@ -479,7 +479,16 @@ _py_thread__unwind_native_frame_stack(py_thread_t* self) {
                     }
                 }
                 if (!isvalid(scope)) {
-                    scope  = UNKNOWN_SCOPE;
+                    key_dt scope_key = ~((key_dt)pc);
+                    scope            = lru_cache__maybe_hit(string_cache, scope_key);
+                    if (!isvalid(scope)) {
+                        scope = cached_string_new(scope_key, strdup("<unknown>"));
+                        if (!isvalid(scope)) {
+                            FAIL; // GCOV_EXCL_LINE
+                        }
+                        lru_cache__store(string_cache, scope_key, (value_t)scope);
+                        event_handler__emit_new_string(scope);
+                    }
                     offset = 0;
                 }
 
