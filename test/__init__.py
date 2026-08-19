@@ -2,7 +2,7 @@ import os
 import platform
 
 PY3_EARLIEST = 10
-PY3_LATEST = 14
+PY3_LATEST = 15
 
 
 def _ver_tuple(v: str) -> tuple[int, ...]:

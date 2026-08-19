@@ -369,6 +369,7 @@ get_version_descriptor(int major, int minor, int patch) {
         // 3.13+ (filled in at runtime)
         case 13:
         case 14:
+        case 15:
             py_v = &python_v3_13;
             break;
 
@@ -520,6 +521,17 @@ init_version_descriptor(python_v* py_v, _Py_DebugOffsets* py_d) {
         PY_GC_313(3_14);
         PY_UNICODE_314(3_14);
         py_v->py_object_size = py_d->v3_14.pyobject.size;
+        break;
+
+    case 15:
+        PY_CODE_314(3_15);
+        PY_IFRAME_314(3_15);
+        PY_THREAD_313(3_15);
+        PY_RUNTIME_313(3_15);
+        PY_IS_314(3_15);
+        PY_GC_313(3_15);
+        PY_UNICODE_314(3_15);
+        py_v->py_object_size = py_d->v3_15.pyobject.size;
         break;
 
     default:                                                                           // GCOV_EXCL_LINE
