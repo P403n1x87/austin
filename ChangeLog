@@ -4,6 +4,8 @@
   
   Improved support for Linux containers.
 
+  Bugfix: improved CPython detection on MacOS.
+
 
 2025-10-31 v4.0.0
 

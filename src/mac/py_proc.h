@@ -152,6 +152,13 @@ _py_proc__analyze_macho64(py_proc_t* self, void* base, void* map) {
                 if ((sym_tab[i].n_type & N_EXT) == 0)
                     continue;
 
+                // Skip undefined (imported) symbols. Extension modules commonly
+                // reference _PyRuntime etc. as undefined externals resolved by
+                // the dynamic linker, with n_value == 0; matching those would
+                // wrongly resolve the symbol to the extension's own load base.
+                if ((sym_tab[i].n_type & N_TYPE) == N_UNDF)
+                    continue;
+
                 char* sym_name = (char*)(str_tab + sym_tab[i].n_un.n_strx);
                 if (_py_proc__check_sym(self, sym_name, (void*)(offset + sym_tab[i].n_value))) {
                     self->sym_loaded++;
@@ -228,6 +235,13 @@ _py_proc__analyze_macho32(py_proc_t* self, void* base, void* map) {
                 void*         str_tab = (void*)(map + sw32(s, ((struct symtab_command*)cmd)->stroff));
 
                 if ((sym_tab[i].n_type & N_EXT) == 0)
+                    continue;
+
+                // Skip undefined (imported) symbols. Extension modules commonly
+                // reference _PyRuntime etc. as undefined externals resolved by
+                // the dynamic linker, with n_value == 0; matching those would
+                // wrongly resolve the symbol to the extension's own load base.
+                if ((sym_tab[i].n_type & N_TYPE) == N_UNDF)
                     continue;
 
                 char* sym_name = (char*)(str_tab + sym_tab[i].n_un.n_strx);
