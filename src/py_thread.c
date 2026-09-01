@@ -80,21 +80,21 @@ static char _native_buf[MAXLEN];
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_thread__resolve_py_stack(py_thread_t* self) {
+_py_thread__resolve_py_stack(py_thread_t* self, stack_dt* stack) {
     lru_cache_t* cache = self->proc->frame_cache;
 
-    for (int i = 0; i < stack_pointer(); i++) {
-        py_frame_t py_frame = stack_py_get(i);
+    for (int i = 0; i < stack->pointer; i++) {
+        py_frame_t py_frame = stack->py_base[i];
 
         // TODO: we can avoid this branching by checking the top of the stack
         // beforehand.
         if (py_frame.origin == PYSTACK_REPEAT_MAGIC) {
-            stack_set(i, PYSTACK_REPEAT_MAGIC);
+            stack->base[i] = (frame_t*)PYSTACK_REPEAT_MAGIC;
             break;
         }
 
         if (py_frame.origin == CFRAME_MAGIC) {
-            stack_set(i, CFRAME_MAGIC);
+            stack->base[i] = (frame_t*)CFRAME_MAGIC;
             continue;
         }
 
@@ -106,7 +106,7 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
             frame = _frame_remote(self->proc, py_frame.code, lasti);
             if (!isvalid(frame)) {
                 // Truncate the stack to the point where we have successfully resolved.
-                _stack->pointer = i;
+                stack->pointer = i;
                 FAIL;
             }
             lru_cache__store(cache, frame_key, frame);
@@ -114,10 +114,22 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
             event_handler__emit_new_frame(frame);
         }
 
-        stack_set(i, frame);
+        stack->base[i] = frame;
     }
 
     SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__resolve_thread_py_stack(py_thread_t* self) {
+    return _py_thread__resolve_py_stack(self, _stack);
+}
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__resolve_task_py_stack(py_thread_t* self) {
+    return _py_thread__resolve_py_stack(self, _task_stack);
 }
 
 // ----------------------------------------------------------------------------
@@ -306,7 +318,7 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
         }
     }
 
-    lasti = (((int)(instr_ptr - code_raddr)) - (int)py_v->py_code.o_code) / (int)sizeof(_Py_CODEUNIT);
+    lasti = V_LASTI(instr_ptr, code_raddr);
 
 push_frame:
     stack_py_push(origin, code_raddr, lasti);
@@ -683,7 +695,7 @@ py_thread__unwind(py_thread_t* self) {
         }
     }
 
-    if (fail(_py_thread__resolve_py_stack(self))) {
+    if (fail(_py_thread__resolve_thread_py_stack(self))) {
         error = true;
     }
 
@@ -693,11 +705,35 @@ py_thread__unwind(py_thread_t* self) {
 
 // ----------------------------------------------------------------------------
 int
+py_thread__unwind_iframe_chain(py_thread_t* self, raddr_t iframe_addr) {
+    stack_reset();
+
+    if (self->is_repeat) {
+        stack_py_push_repeat();
+    } else if (isvalid(iframe_addr) && fail(_py_thread__unwind_iframe_stack(self, iframe_addr))) {
+        FAIL;
+    }
+
+    return fail(_py_thread__resolve_thread_py_stack(self));
+}
+
+// ----------------------------------------------------------------------------
+int
+py_thread__resolve_task_stack(py_thread_t* self) {
+    return fail(_py_thread__resolve_task_py_stack(self));
+}
+
+// ----------------------------------------------------------------------------
+int
 py_thread_allocate(void) {
     if (isvalid(_stack)) // GCOV_EXCL_LINE
         SUCCESS;         // GCOV_EXCL_LINE
 
     if (fail(stack_allocate(MAX_STACK_SIZE))) { // GCOV_EXCL_START
+        FAIL;
+    } // GCOV_EXCL_STOP
+
+    if (fail(task_stack_allocate(MAX_TASK_STACK_SIZE))) { // GCOV_EXCL_START
         FAIL;
     } // GCOV_EXCL_STOP
 
@@ -722,6 +758,7 @@ py_thread_free(void) {
 #endif
 
     stack_deallocate();
+    task_stack_deallocate();
 
     _py_thread_free_native();
 }

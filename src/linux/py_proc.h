@@ -713,6 +713,98 @@ _py_proc__get_vm_maps(py_proc_t* self) {
 } /* _py_proc__get_vm_maps */
 
 // ----------------------------------------------------------------------------
+// Locate the ".AsyncioDebug" ELF section within an already-mapped ELF file.
+//
+// A dedicated, minimal section walk rather than the existing ELF analysis
+// helpers: those also require resolving mandatory .dynsym symbols, which an
+// extension module like _asyncio never exports, and section headers only
+// exist in the on-disk file, never in the live process image.
+#define _DEF_FIND_ASYNCIO_DEBUG_SECTION(BITS)                                                                 \
+    static void _py_proc__find_asyncio_debug_section_##BITS(py_proc_t* self, void* elf_map, void* elf_base) { \
+        Elf##BITS##_Ehdr* ehdr = elf_map;                                                                     \
+        Elf##BITS##_Addr  base = _get_base_##BITS(ehdr, elf_map);                                             \
+        if (base == (Elf##BITS##_Addr) - 1)                                                                   \
+            return;                                                                                           \
+                                                                                                              \
+        Elf##BITS##_Shdr* p_shstrtab   = elf_map + ELF_SH_OFF(ehdr, ehdr->e_shstrndx);                        \
+        char*             sh_name_base = elf_map + p_shstrtab->sh_offset;                                     \
+                                                                                                              \
+        Elf##BITS##_Xword sht_size     = (Elf##BITS##_Xword)ehdr->e_shnum * ehdr->e_shentsize;                \
+        Elf##BITS##_Off   elf_map_size = ehdr->e_shoff + sht_size;                                            \
+        for (Elf##BITS##_Off sh_off = ehdr->e_shoff; sh_off < elf_map_size; sh_off += ehdr->e_shentsize) {    \
+            Elf##BITS##_Shdr* p_shdr = (Elf##BITS##_Shdr*)(elf_map + sh_off);                                 \
+            if (strcmp(sh_name_base + p_shdr->sh_name, ".AsyncioDebug") == 0) {                               \
+                self->map.asyncio_debug.base = elf_base + (p_shdr->sh_addr - base);                           \
+                self->map.asyncio_debug.size = p_shdr->sh_size;                                               \
+                return;                                                                                       \
+            }                                                                                                 \
+        }                                                                                                     \
+    } /* _py_proc__find_asyncio_debug_section_##BITS */
+
+_DEF_FIND_ASYNCIO_DEBUG_SECTION(64)
+_DEF_FIND_ASYNCIO_DEBUG_SECTION(32)
+#undef _DEF_FIND_ASYNCIO_DEBUG_SECTION
+
+// ----------------------------------------------------------------------------
+static void
+_py_proc__find_asyncio_debug_section(py_proc_t* self, void* elf_map, void* elf_base) {
+    Elf64_Ehdr* ehdr = elf_map; // e_ident sits at the same offset regardless of class
+    switch (ehdr->e_ident[EI_CLASS]) {
+    case ELFCLASS64:
+        _py_proc__find_asyncio_debug_section_64(self, elf_map, elf_base);
+        break;
+    case ELFCLASS32:                                                      // GCOV_EXCL_LINE
+        _py_proc__find_asyncio_debug_section_32(self, elf_map, elf_base); // GCOV_EXCL_LINE
+        break;                                                            // GCOV_EXCL_LINE
+    }
+} // _py_proc__find_asyncio_debug_section
+
+// ----------------------------------------------------------------------------
+// Look for a mapped image belonging to the _asyncio extension module and, if
+// found, analyse it for the AsyncioDebug section.
+static void
+_py_proc__scan_for_asyncio(py_proc_t* self) {
+    if (isvalid(self->map.asyncio_debug.base))
+        return;
+
+    cu_proc_map_t* proc_maps = proc_map_new(self->pid);
+    if (!isvalid(proc_maps))
+        return;
+
+    proc_map_t* asyncio_map = proc_map__first_submatch(proc_maps, "_asyncio");
+    if (!isvalid(asyncio_map)) {
+        log_d("No _asyncio module mapped yet");
+        return;
+    }
+
+    cu_char* path = proc_map_file_path(self->pid, asyncio_map->pathname, asyncio_map->address, asyncio_map->size);
+    if (!isvalid(path)) {
+        log_d("Cannot resolve a readable path for the _asyncio module");
+        return;
+    }
+
+    cu_fd fd = open(path, O_RDONLY);
+    if (fd == -1) {
+        log_d("Cannot open _asyncio module at %s", path);
+        return;
+    }
+
+    struct stat s;
+    if (fstat(fd, &s) == -1) { // GCOV_EXCL_START
+        log_d("Cannot stat _asyncio module at %s", path);
+        return;
+    } // GCOV_EXCL_STOP
+
+    cu_map_t* map = map_new(fd, (size_t)s.st_size, MAP_PRIVATE);
+    if (!isvalid(map)) { // GCOV_EXCL_START
+        log_d("Cannot map _asyncio module at %s", path);
+        return;
+    } // GCOV_EXCL_STOP
+
+    _py_proc__find_asyncio_debug_section(self, map->addr, asyncio_map->address);
+} // _py_proc__scan_for_asyncio
+
+// ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t* self) {
     if (!isvalid(self)) { // GCOV_EXCL_START

@@ -54,11 +54,32 @@ extern
 #endif
     stack_dt* _stack;
 
+// A second, independent stack instance for asyncio task coroutine-chain
+// unwinding (see _py_asyncio__unwind_coro_chain in py_asyncio.c) -- kept
+// separate from _stack so a task's chain can be unwound and resolved
+// without clobbering whatever thread frames are already sitting in _stack,
+// un-drained, while a per-thread task-list scan runs between a thread's own
+// unwind and its stack_end. At most one task's chain is ever resident here
+// at a time (each is fully unwound, resolved and emitted before the next),
+// so it's sized much smaller than _stack -- see MAX_CORO_CHAIN_DEPTH in
+// py_asyncio.c -- a coroutine chain never comes close to an OS thread's
+// frame depth.
+#ifndef STACK_C
+extern
+#endif
+    stack_dt* _task_stack;
+
 int
 stack_allocate(size_t size);
 
 void
 stack_deallocate(void);
+
+int
+task_stack_allocate(size_t size);
+
+void
+task_stack_deallocate(void);
 
 static inline bool
 stack_has_cycle(void) {
@@ -95,6 +116,22 @@ stack_py_push(raddr_t origin, raddr_t code, int lasti) {
 #define stack_is_valid() (_stack->base[_stack->pointer - 1]->line != 0)
 #define stack_is_empty() (_stack->pointer == 0)
 #define stack_full()     (_stack->pointer >= _stack->size)
+
+// Task stack operations
+static inline void
+task_stack_py_push(raddr_t origin, raddr_t code, int lasti) {
+    _task_stack->py_base[_task_stack->pointer++] = (py_frame_t){.origin = origin, .code = code, .lasti = lasti};
+}
+
+#define task_stack_pointer() (_task_stack->pointer)
+#define task_stack_set(i, frame)      \
+    { _task_stack->base[i] = frame; }
+#define task_stack_pop()     (_task_stack->base[--_task_stack->pointer])
+#define task_stack_py_get(i) (_task_stack->py_base[i])
+#define task_stack_reset()        \
+    { _task_stack->pointer = 0; }
+#define task_stack_is_empty() (_task_stack->pointer == 0)
+#define task_stack_full()     (_task_stack->pointer >= _task_stack->size)
 
 #define stack_py_push_cframe() (stack_py_push(CFRAME_MAGIC, NULL, 0))
 #define stack_py_push_repeat() (stack_py_push(PYSTACK_REPEAT_MAGIC, NULL, 0))
