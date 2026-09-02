@@ -644,10 +644,10 @@ _py_proc__scan_for_asyncio(py_proc_t* self) {
     if (isvalid(self->map.asyncio_debug.base))
         return;
 
-    mach_vm_address_t              address = 0;
-    mach_vm_size_t                 size    = 0;
-    mach_msg_type_number_t         count   = sizeof(vm_region_basic_info_data_64_t);
-    vm_region_basic_info_data_64_t region_info;
+    mach_vm_address_t              address     = 0;
+    mach_vm_size_t                 size        = 0;
+    mach_msg_type_number_t         count       = sizeof(vm_region_basic_info_data_64_t);
+    vm_region_basic_info_data_64_t region_info = {0};
     mach_port_t                    object_name;
 
     char* path = (char*)calloc(MAXPATHLEN + 1, sizeof(char));
@@ -655,8 +655,8 @@ _py_proc__scan_for_asyncio(py_proc_t* self) {
         return;
 
     while (mach_vm_region(
-               self->ref, &address, &size, VM_REGION_BASIC_INFO_64,
-               (vm_region_info_t)&region_info, &count, &object_name // cppcheck-suppress [uninitvar]
+               self->ref, &address, &size, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&region_info, &count,
+               &object_name // cppcheck-suppress [uninitvar]
            )
            == KERN_SUCCESS) {
         if (!(region_info.protection & VM_PROT_EXECUTE)) {

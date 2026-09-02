@@ -25,18 +25,27 @@ from test.utils import allpythons
 from test.utils import austin
 from test.utils import python
 from test.utils import requires_sudo
+from test.utils import retry_where
 from test.utils import run_python
 from test.utils import target
 
 from flaky import flaky
-import pytest
 
 
 @requires_sudo
 @allpythons(min=(3, 14))
 def test_where_asyncio_task_tree(py):
-    with run_python(py, target("target_asyncio.py"), sleep_after=2) as p:
-        result = austin("-w", str(p.pid))
+    with run_python(py, target("target_asyncio.py")) as p:
+        expected = (
+            "worker-0",
+            "worker-1",
+            "pipeline_stage",
+            "process_item",
+            "fetch_data",
+            "leaf_work",
+            "sleep",
+        )
+        result = retry_where(p.pid, lambda out: all(s in out for s in expected))
         assert result.returncode == 0
 
         out = result.stdout
@@ -66,8 +75,14 @@ def test_where_asyncio_multiloop(py):
     only the first loop found was ever rendered -- every other thread's
     tasks were captured but silently dropped, not merely duplicated.
     """
-    with run_python(py, target("target_asyncio_multiloop.py"), sleep_after=1) as p:
-        result = austin("-w", str(p.pid))
+    with run_python(py, target("target_asyncio_multiloop.py")) as p:
+        expected = (
+            "loop0-worker-0",
+            "loop0-worker-1",
+            "loop1-worker-0",
+            "loop1-worker-1",
+        )
+        result = retry_where(p.pid, lambda out: all(s in out for s in expected))
         assert result.returncode == 0
 
         out = result.stdout
@@ -110,8 +125,10 @@ def test_where_asyncio_orphaned_task(py):
     """A task whose owning thread died while it was still referenced shows
     up in the "Orphaned task tree" fallback section rather than being
     silently dropped."""
-    with run_python(py, target("target_asyncio_orphan.py"), sleep_after=2) as p:
-        result = austin("-w", str(p.pid))
+    with run_python(py, target("target_asyncio_orphan.py")) as p:
+        result = retry_where(
+            p.pid, lambda out: "Orphaned task tree" in out and "stuck_worker" in out
+        )
         assert result.returncode == 0
 
         out = result.stdout

@@ -30,25 +30,22 @@
 #include "py_thread.h"
 #include "task_tracker.h"
 
-// AsyncioDebug carries no cookie, so we validate by sanity-checking the
-// embedded sizes instead: they must be non-zero and small enough to be a
-// plausible object/struct size, never hardcoded (they vary, e.g. on
-// free-threaded builds where TaskObj gains a task_tid field).
+// AsyncioDebug carries no cookie, so validate by sanity-checking the
+// embedded sizes instead -- never hardcoded, since they vary (e.g.
+// free-threaded builds add a task_tid field to TaskObj).
 #define IS_SANE_SIZE(x) ((x) > 0 && (x) <= 4096)
 
-// asyncio_interpreter_state.size is sizeof(PyInterpreterState), not a small
-// object size like the other two: PyInterpreterState embeds numerous
-// per-interpreter caches (GC state, object free lists, etc.) and is known to
-// be on the order of hundreds of KB on modern CPython builds, so it needs a
-// much larger bound than IS_SANE_SIZE.
+// sizeof(PyInterpreterState) runs into the hundreds of KB on modern builds,
+// so it needs a much larger bound than IS_SANE_SIZE.
 #define IS_SANE_INTERP_SIZE(x) ((x) > 0 && (x) <= (1 << 20))
 
-// Copy a field out of a remote object, at the offset given by one of
-// self->asyncio_offsets' three groups (task_object, interpreter_state,
-// thread_state -- passed short, the asyncio_ prefix they all share is added
-// here) -- the AsyncioDebug equivalent of copy_field_v (mem.h), which
-// instead indexes the version descriptor (py_v). raddr is the remote
-// address of the object itself, not of the field.
+// sizeof(PyThreadState); free-threaded builds embed substantial extra
+// per-thread state, so this also needs a larger bound than IS_SANE_SIZE.
+#define IS_SANE_THREAD_SIZE(x) ((x) > 0 && (x) <= (1 << 16))
+
+// AsyncioDebug equivalent of copy_field_v (mem.h). group is one of
+// task_object/interpreter_state/thread_state (the asyncio_ prefix they
+// share is added here); raddr is the object's own address, not the field's.
 #define copy_asyncio_field(self, group, field, raddr, dst)                                                 \
     copy_memory((self)->ref, (raddr) + (self)->asyncio_offsets.asyncio_##group.field, sizeof(dst), &(dst))
 
@@ -56,16 +53,14 @@ static bool
 _py_asyncio__validate(Py_AsyncioModuleDebugOffsets* offsets) {
     return IS_SANE_SIZE(offsets->asyncio_task_object.size)
         && IS_SANE_INTERP_SIZE(offsets->asyncio_interpreter_state.size)
-        && IS_SANE_SIZE(offsets->asyncio_thread_state.size);
+        && IS_SANE_THREAD_SIZE(offsets->asyncio_thread_state.size);
 } // _py_asyncio__validate
 
 // ----------------------------------------------------------------------------
 void
 py_asyncio__validate_and_cache(py_proc_t* self) {
-    // Read straight into the destination: every consumer of
-    // self->asyncio_offsets must gate on self->asyncio_debug_found first, so a
-    // failed read/validation leaving partial data here is harmless -- it just
-    // won't ever be looked at.
+    // Read straight into the destination -- consumers all gate on
+    // asyncio_debug_found first, so a failed/partial read here is harmless.
     if (fail(copy_remote(self->ref, self->map.asyncio_debug.base, self->asyncio_offsets))) {
         log_d("Cannot read AsyncioDebug offsets from remote process");
         return;
@@ -94,14 +89,12 @@ py_asyncio__validate_and_cache(py_proc_t* self) {
 } // py_asyncio__validate_and_cache
 
 // ----------------------------------------------------------------------------
-// Phase 2: task-graph walk (full waiter DAG + suspended-task coroutine
-// stacks). See py_asyncio.h for the call-site contract.
+// Phase 2: task-graph walk (waiter DAG + suspended-task coroutine stacks).
+// See py_asyncio.h for the call-site contract.
 //
-// Bounds below guard against corrupted/garbled remote memory and reference
-// cycles from a task graph that may be concurrently mutated by the target
-// process: they cap iteration counts rather than trusting the remote data to
-// be well-formed, mirroring (and in the cycle-detection case, improving on)
-// the safety valve CPython's own Modules/_remote_debugging/asyncio.c uses.
+// Bounds below cap iteration counts rather than trust remote data to be
+// well-formed, guarding against corrupted memory or a task graph the target
+// process is concurrently mutating.
 
 // Matches CPython's MAX_ITERATIONS safety valve for the intrusive task list.
 #define MAX_TASK_LIST_ITER (2 << 15)
@@ -135,10 +128,9 @@ _py_asyncio__emit_waiter_set(py_proc_t* self, raddr_t task_addr, raddr_t set_add
 } // _py_asyncio__emit_waiter_set
 
 // ----------------------------------------------------------------------------
-// Cheap fingerprint of task_awaited_by, cheap enough to compute every sample
-// without walking a multi-waiter set: identifies the waiter object itself in
-// the single-waiter case, or folds the set's table/mask/used triple in the
-// multi-waiter case. Either way, any actual add/remove/replace changes it.
+// Cheap fingerprint of task_awaited_by -- the waiter itself in the
+// single-waiter case, or a fold of the set's table/mask/used triple
+// otherwise. Any add/remove/replace changes it.
 static uintptr_t
 _py_asyncio__waiter_fingerprint(py_proc_t* self, raddr_t awaited_by, bool is_set) {
     if (!isvalid(awaited_by))
@@ -155,11 +147,9 @@ _py_asyncio__waiter_fingerprint(py_proc_t* self, raddr_t awaited_by, bool is_set
 } // _py_asyncio__waiter_fingerprint
 
 // ----------------------------------------------------------------------------
-// Resolve and cache a task's name (TaskObj.task_name, a plain str object —
-// unlike thread names there is no threading._active dict indirection to walk).
-// Reuses self->string_cache and the emit_new_string hook, exactly like
-// code.h's filename/scope caching, so repeat names cost one LRU lookup rather
-// than a fresh remote string read.
+// Resolve and cache a task's name (TaskObj.task_name, a plain str -- no
+// threading._active-style indirection needed). Reuses string_cache and
+// emit_new_string like code.h's filename/scope caching.
 static key_dt
 _py_asyncio__task_name_key(py_proc_t* self, raddr_t task_addr) {
     V_DESC(self->py_v);
@@ -189,19 +179,18 @@ _py_asyncio__task_name_key(py_proc_t* self, raddr_t task_addr) {
     return string_key;
 } // _py_asyncio__task_name_key
 
-// PyFrameState's numbering (Include/internal/pycore_frame.h) is NOT stable
-// across minor versions -- confirmed directly against each version's own
-// tagged source:
+// PyFrameState's numbering (pycore_frame.h) isn't stable across minor
+// versions:
 //   3.14.x:  CREATED=-3, SUSPENDED=-2, SUSPENDED_YIELD_FROM=-1, EXECUTING=0,
 //            COMPLETED=1, CLEARED=4 (no distinct "locked" variant)
 //   3.15+:   CREATED=0, SUSPENDED=1, SUSPENDED_YIELD_FROM=2,
 //            SUSPENDED_YIELD_FROM_LOCKED=3, EXECUTING=4, CLEARED=5
-// Checked via these two helpers (keyed off py_v->minor) instead of hardcoded
-// constants for exactly this reason -- a single hardcoded value silently
-// misclassifies every state on whichever version it wasn't written for.
+// Hence these two helpers keyed off py_v->minor, rather than a hardcoded
+// constant that would misclassify states on whichever version it wasn't
+// written for.
 static inline bool
 _py_asyncio__frame_state_done(int minor, int8_t frame_state) {
-    // 3.14: CPython's own FRAME_STATE_FINISHED(S) macro is (S) >= FRAME_COMPLETED(1).
+    // 3.14: FRAME_STATE_FINISHED(S) is (S) >= FRAME_COMPLETED(1).
     // 3.15+: only FRAME_CLEARED(5) means "don't touch this frame again".
     return minor <= 14 ? frame_state >= 1 : frame_state == 5;
 }
@@ -211,8 +200,8 @@ _py_asyncio__frame_state_yield_from(int minor, int8_t frame_state) {
     return minor <= 14 ? frame_state == -1 : (frame_state == 2 || frame_state == 3);
 }
 
-// Safety valve against a corrupted or (degenerately) cyclic await chain in
-// remote memory -- a legitimate chain is a handful of frames deep at most.
+// Safety valve against a corrupted or cyclic await chain -- a real chain is
+// only a handful of frames deep.
 #define MAX_CORO_CHAIN_DEPTH 64
 
 // _PyStackRef tagged-pointer scheme (stable since its introduction in 3.13):
@@ -220,74 +209,49 @@ _py_asyncio__frame_state_yield_from(int minor, int8_t frame_state) {
 #define UNTAG_STACKREF(bits) ((raddr_t)((uintptr_t)(bits) & ~(uintptr_t)0x3))
 
 // ----------------------------------------------------------------------------
-// Reconstructs a suspended task's full "await chain" -- the coroutines it is
-// transitively awaiting via plain `await expr` (as opposed to a separately
-// tracked Task, which has its own entry in the task graph). Unlike a normal
-// call stack, this can't be walked via the interpreter frame's `previous`
-// pointer: CPython clears that the moment a coroutine suspends (previous
-// only reflects an actively-executing C call chain). Instead this mirrors
-// CPython's own Modules/_remote_debugging/asyncio.c (parse_coro_chain /
-// handle_yield_from_frame), which reads what a suspended coroutine is
-// awaiting off its own evaluation stack, where CPython's bytecode keeps a
-// live reference to it independent of `previous`:
+// Reconstructs a suspended task's await chain -- the coroutines it awaits
+// via plain `await expr` (not a separate Task, which has its own task-graph
+// entry). Can't use the frame's `previous` pointer here (CPython clears it
+// on suspend); instead mirrors CPython's own parse_coro_chain /
+// handle_yield_from_frame (Modules/_remote_debugging/asyncio.c), reading
+// what a suspended coroutine awaits off its own evaluation stack:
 //
-//   1. Read this coroutine's gi_frame_state. Stop if FRAME_CLEARED.
-//   2. If gi_frame_state == FRAME_SUSPENDED_YIELD_FROM, peek the frame's own
-//      stack one slot below its top (stackpointer[-1]) for what it's
-//      awaiting, untag it, and check its type: if it's still the *same*
-//      type as this coroutine (i.e. another plain coroutine, not a Task,
-//      Future, or other awaitable), recurse into it first. Otherwise stop --
-//      that's where the task-level waiter/attachment machinery takes over.
-//   3. Push *only* this coroutine's own frame identity (code, lasti) after
-//      recursing, so the innermost (leaf) frame gets pushed first and the
-//      outermost (root) last -- matching the leaf-first push order every
-//      other stack-unwind path in Austin uses (_py_thread__unwind_iframe_stack
-//      et al.), which relies on the frame stack's LIFO pop to emit
-//      root-first/leaf-last on the wire. Appending root-to-leaf here would
-//      invert that ordering.
+//   1. Read gi_frame_state; stop if FRAME_CLEARED.
+//   2. If SUSPENDED_YIELD_FROM, peek one or two stack slots below the top
+//      (see slots_back below) for what it's awaiting, untag it, and recurse
+//      only if its type still matches this coroutine's own -- i.e. it's
+//      still a plain coroutine, not yet a Task/Future/other awaitable. That
+//      type check is what stops the walk at the task-level boundary.
+//   3. Push this coroutine's own frame identity (code, lasti) *after*
+//      recursing, so the leaf ends up pushed first and the root last --
+//      matching the leaf-first order every other unwind path in Austin
+//      relies on for its LIFO pop to emit root-first/leaf-last on the wire.
 //
-// Deliberately pushes with stack_py_push directly instead of going through
-// py_thread__append_iframe_stack (which walks the WHOLE `previous` chain,
-// not just one frame): that's exactly right for a normal call-stack unwind,
-// but wrong here. A coroutine currently *executing* on some thread (as
-// opposed to suspended) still has a live, non-NULL `previous` -- it's
-// genuinely part of that thread's real, active C call chain right now. Going
-// through py_thread__append_iframe_stack for such a coroutine would walk all
-// the way up through the thread's own eval-loop frames (Handle._run,
-// BaseEventLoop._run_once, ...), producing a single, garbled, doubled-up
-// "task stack" that mixes this coroutine's chain with the thread's own --
-// exactly the on-CPU/tall-stack bug this avoids. Each hop here only ever
-// wants its OWN single frame; the recursion above is what walks the chain.
+// Pushes via stack_py_push directly rather than py_thread__append_iframe_stack,
+// which walks the WHOLE previous chain -- right for a normal unwind, wrong
+// here: a coroutine currently *executing* still has a live previous into the
+// thread's own eval-loop frames, and walking it would garble this
+// coroutine's chain together with the thread's own.
 //
-// Writes the deepest successfully-pushed hop's identity into *out_leaf every
-// time, so a best-effort partial walk (a depth-limited or torn read) still
-// leaves the caller something usable -- consistent with the rest of this
-// file's treatment of remote-memory reads.
+// Writes the deepest pushed hop into *out_leaf every time, so a partial
+// (depth-limited or torn) walk still leaves something usable.
 //
-// *io_chain_fp is a running fingerprint, folding in this hop's (code, lasti)
-// on every call regardless of depth or recursion outcome, so it accumulates
-// the whole path from root to leaf as the recursion descends. See the
-// comment above task_frame_id_t (task_tracker.h) for why the leaf's own
-// identity alone can't tell two different callers of the same shared
-// coroutine (e.g. two call sites both awaiting asyncio.sleep()) apart: the
-// callee's (code, lasti) is intrinsic to the callee, not the caller, and its
-// frame address is unreliable since CPython's allocator tends to reuse a
-// just-freed same-size slot for the next allocation. Deliberately excludes
-// frame addresses entirely -- only (code, lasti) per hop feeds the
-// fingerprint, since that's the part that's actually stable per call site.
+// *io_chain_fp folds in every hop's (code, lasti) as the recursion descends,
+// covering root to leaf. Frame address is deliberately excluded -- CPython's
+// allocator can reuse a just-freed slot, but (code, lasti) is intrinsic to
+// the callee and stable per call site, which is what lets two different
+// callers of the same shared coroutine (e.g. two asyncio.sleep() call sites)
+// fingerprint differently (see task_frame_id_t in task_tracker.h).
 static void
 _py_asyncio__unwind_coro_chain(
     py_proc_t* self, raddr_t coro_addr, int depth, task_frame_id_t* out_leaf, uint64_t* io_chain_fp
 );
 
-// Recurse into whatever a coroutine at a SUSPENDED_YIELD_FROM point (see the
-// frame_state check at _py_asyncio__unwind_coro_chain's only call site
-// below) is awaiting, provided it's still a plain coroutine object (not yet
-// a Task/Future/other awaitable) -- comparing the awaited object's type to
-// gen_type_addr, the awaiting coroutine's own type, is what makes the walk
-// terminate at a Task/Future boundary without a special case for it. Reads
-// bail out early (guard-clause style) rather than nesting, since every step
-// here depends on the previous one succeeding.
+// Recurse into what a SUSPENDED_YIELD_FROM coroutine is awaiting, if it's
+// still a plain coroutine (its type matches gen_type_addr, the awaiting
+// coroutine's own type) -- that comparison is what stops the walk at a
+// Task/Future boundary. Guard-clause style since each step depends on the
+// last succeeding.
 static void
 _py_asyncio__recurse_into_awaited(
     py_proc_t* self, raddr_t iframe_addr, raddr_t gen_type_addr, int depth, task_frame_id_t* out_leaf,
@@ -299,8 +263,12 @@ _py_asyncio__recurse_into_awaited(
     if (fail(copy_field_v(self->ref, iframe, stackpointer, iframe_addr, stackpointer)) || stackpointer == 0)
         return;
 
+    // The awaited object sits one stack slot below the top on 3.14, but two
+    // slots below on 3.15.
+    uintptr_t slots_back = V_MAX(3, 14) ? 1 : 2;
+
     uintptr_t awaited_raw = 0;
-    if (fail(copy_remote(self->ref, (raddr_t)(stackpointer - sizeof(void*)), awaited_raw)))
+    if (fail(copy_remote(self->ref, (raddr_t)(stackpointer - slots_back * sizeof(void*)), awaited_raw)))
         return;
 
     raddr_t awaited_addr = UNTAG_STACKREF(awaited_raw);
@@ -341,33 +309,29 @@ _py_asyncio__unwind_coro_chain(
         || fail(copy_field_v(self->ref, iframe, prev_instr, iframe_addr, instr_ptr)))
         return;
 
-    // prev_instr is a raw pointer into the code object's own bytecode array,
-    // not a ready-to-use instruction index -- every other unwind path in
-    // Austin converts it via this same conversion before treating it as
-    // "lasti" (see V_LASTI in version.h, and _py_thread__push_local_iframe
-    // in py_thread.c for its non-TLBC use). Skipping this (an earlier
-    // version of this function stored the raw pointer directly) doesn't
-    // just give a wrong line number once resolved -- it also feeds a
-    // nonsensical value into the entry->top identity comparison in
-    // _py_asyncio__emit_task, which uses it to decide whether a task's leaf
-    // frame has actually changed since the last scan.
+    // f_executable is a _PyStackRef tagged pointer, not a raw PyCodeObject*,
+    // on any build new enough to have it tagged at all.
+    if (self->free_threaded)
+        code_addr = (raddr_t)((uintptr_t)code_addr & ~(uintptr_t)3);
+    else if (V_MIN(3, 15))
+        code_addr = (raddr_t)((uintptr_t)code_addr & ~(uintptr_t)1);
+
+    // prev_instr is a raw pointer into the code object's bytecode array, not
+    // a ready lasti -- convert via V_LASTI like every other unwind path (see
+    // _py_thread__push_local_iframe). Skipping this doesn't just mis-resolve
+    // the line: it also feeds entry->top's change-detection in
+    // _py_asyncio__emit_task a nonsense value.
     uintptr_t lasti = (uintptr_t)V_LASTI(instr_ptr, code_addr);
 
-    // FNV-1a-style mix of this hop's (code, lasti) into the running chain
-    // fingerprint -- see the comment above this function's declaration.
+    // FNV-1a mix of this hop's (code, lasti) into the running fingerprint
+    // (see this function's doc comment above).
     *io_chain_fp = (*io_chain_fp ^ (uint64_t)(uintptr_t)code_addr) * 1099511628211ull;
     *io_chain_fp = (*io_chain_fp ^ (uint64_t)lasti) * 1099511628211ull;
 
     *out_leaf = (task_frame_id_t){iframe_addr, code_addr, lasti, *io_chain_fp};
 
-    // Recurse into whatever this coroutine is awaiting *before* appending its
-    // own frame. Austin's other stack-unwind paths (_py_thread__unwind_iframe_stack
-    // et al.) always push the leaf frame first and the root last, relying on the
-    // frame stack's LIFO pop (mojo_event_handler__handle_task_stack_end) to emit
-    // root-first/leaf-last on the wire. Appending here in call order (root first)
-    // would invert that -- so instead we resolve the deeper frames first and only
-    // append this one on the way back out, matching the leaf-first push order
-    // every other stack in Austin uses.
+    // Recurse before appending this frame -- leaf-first push order, per the
+    // doc comment above.
     if (_py_asyncio__frame_state_yield_from(py_v->minor, frame_state))
         _py_asyncio__recurse_into_awaited(self, iframe_addr, gen_type_addr, depth, out_leaf, io_chain_fp);
 
@@ -386,21 +350,16 @@ _py_asyncio__emit_task(py_proc_t* self, raddr_t task_addr, microseconds_t time_d
         return;
     entry->last_gen = self->task_tracker->sample_gen;
 
-    // Accrue this scan's elapsed time onto whichever suspension point the
-    // task currently occupies. Flushed as soon as that point is observed to
-    // change below (attributed to the frame it was accrued against, not the
-    // new one), or discarded on a torn/failed coroutine read, since there is
-    // then no frame left to attribute it to.
+    // Accrue elapsed time onto the task's current suspension point; flushed
+    // once that point changes (attributed to the old frame), or discarded on
+    // a torn/failed coroutine read (no frame left to attribute it to).
     entry->suspended_time += time_delta;
 
-    // ---- coroutine stack: walk the whole await chain every scan (cheap --
-    // raw pointer reads only, no name resolution yet) to find the *leaf*
-    // frame's identity and a fingerprint of the whole chain above it, since
-    // the leaf alone can sit still while stale (see the comment above
-    // task_frame_id_t in task_tracker.h) even as the task genuinely makes
-    // progress. Only pay for the expensive part -- resolving names/scopes
-    // and emitting -- when that fingerprint has actually changed since last
-    // seen. ----
+    // ---- coroutine stack: walk the whole chain every scan (cheap raw
+    // pointer reads, no name resolution) for the leaf's identity and a
+    // fingerprint of the chain above it -- the leaf alone can look unchanged
+    // while the task still progresses (see task_frame_id_t in
+    // task_tracker.h). Only resolve/emit when the fingerprint changes. ----
     raddr_t coro_addr = NULL;
     if (success(copy_asyncio_field(self, task_object, task_coro, task_addr, coro_addr))
         && _is_plausible_ptr(coro_addr)) {
@@ -415,16 +374,15 @@ _py_asyncio__emit_task(py_proc_t* self, raddr_t task_addr, microseconds_t time_d
         bool changed         = !has_prior_frame || entry->top.chain_fp != leaf.chain_fp;
 
         if (changed && isvalid(leaf.frame)) {
-            // No prior frame on the task's first-ever sighting, so there's
-            // nothing to attribute the accrued time to; discard it rather
-            // than crediting it to a frame we never actually observed.
+            // First-ever sighting has no prior frame to attribute time to --
+            // discard rather than credit an unobserved frame.
             uint64_t elapsed = has_prior_frame ? entry->suspended_time : 0;
 
             if (success(py_thread__resolve_task_stack(&coro_thread))) {
                 key_dt name_key = _py_asyncio__task_name_key(self, task_addr);
-                // Keep the last known-good name cached (rather than
-                // clobbering it with 0) so a transient resolution failure
-                // here doesn't erase what we'll fall back on at eviction.
+                // Keep the last known-good name rather than clobbering it
+                // with 0, so a transient failure doesn't erase the eviction
+                // fallback.
                 if (name_key != 0)
                     entry->name_key = (uintptr_t)name_key;
                 event_handler__emit_task_stack_begin((uintptr_t)task_addr, (uintptr_t)name_key);
@@ -507,13 +465,11 @@ py_asyncio__scan_tasks_end(py_proc_t* self) {
         task_tracker_entry_t* entry = &tracker->entries[i];
 
         if (entry->last_gen < tracker->sample_gen) {
-            // This task is gone from the list (completed, or otherwise
-            // dropped) -- flush its accrued dwell time before discarding it,
-            // rather than losing it silently. No remote reads needed: the
-            // frame and name were already resolved and cached, so this is
-            // safe even if the TaskObj/coroutine has since been freed. The
-            // empty frame sequence tells consumers there's no new stack
-            // content, just a closing metric for what they already have.
+            // Task is gone from the list -- flush its accrued dwell time
+            // before discarding rather than losing it silently. No remote
+            // reads needed (frame/name already cached), safe even if the
+            // TaskObj has since been freed. Empty frame sequence signals a
+            // closing metric only, no new stack content.
             if (isvalid(entry->top.frame) && entry->suspended_time > 0) {
                 task_stack_reset();
                 event_handler__emit_task_stack_begin((uintptr_t)entry->task, entry->name_key);

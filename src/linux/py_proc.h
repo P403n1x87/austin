@@ -760,8 +760,41 @@ _py_proc__find_asyncio_debug_section(py_proc_t* self, void* elf_map, void* elf_b
 } // _py_proc__find_asyncio_debug_section
 
 // ----------------------------------------------------------------------------
-// Look for a mapped image belonging to the _asyncio extension module and, if
-// found, analyse it for the AsyncioDebug section.
+// Analyse one already-located mapped image for the AsyncioDebug section.
+// Never fatal -- the caller just tries the next candidate image.
+static void
+_py_proc__scan_image_for_asyncio(py_proc_t* self, proc_map_t* image_map) {
+    cu_char* path = proc_map_file_path(self->pid, image_map->pathname, image_map->address, image_map->size);
+    if (!isvalid(path)) {
+        log_d("Cannot resolve a readable path for %s", image_map->pathname);
+        return;
+    }
+
+    cu_fd fd = open(path, O_RDONLY);
+    if (fd == -1) {
+        log_d("Cannot open %s", path);
+        return;
+    }
+
+    struct stat s;
+    if (fstat(fd, &s) == -1) { // GCOV_EXCL_START
+        log_d("Cannot stat %s", path);
+        return;
+    } // GCOV_EXCL_STOP
+
+    cu_map_t* map = map_new(fd, (size_t)s.st_size, MAP_PRIVATE);
+    if (!isvalid(map)) { // GCOV_EXCL_START
+        log_d("Cannot map %s", path);
+        return;
+    } // GCOV_EXCL_STOP
+
+    _py_proc__find_asyncio_debug_section(self, map->addr, image_map->address);
+} // _py_proc__scan_image_for_asyncio
+
+// ----------------------------------------------------------------------------
+// Look for the AsyncioDebug section in the _asyncio module and, if it's
+// built straight into the main executable or libpython instead (some 3.14+
+// builds), fall back to those.
 static void
 _py_proc__scan_for_asyncio(py_proc_t* self) {
     if (isvalid(self->map.asyncio_debug.base))
@@ -772,36 +805,27 @@ _py_proc__scan_for_asyncio(py_proc_t* self) {
         return;
 
     proc_map_t* asyncio_map = proc_map__first_submatch(proc_maps, "_asyncio");
-    if (!isvalid(asyncio_map)) {
-        log_d("No _asyncio module mapped yet");
+    if (isvalid(asyncio_map))
+        _py_proc__scan_image_for_asyncio(self, asyncio_map);
+
+    if (isvalid(self->map.asyncio_debug.base))
         return;
+
+    // self->bin_path is already rewritten into an openable path; re-derive
+    // the raw maps pathname that proc_map__first needs.
+    char exe_path[1024];
+    if (success(proc_exe_readlink(self->pid, exe_path, sizeof(exe_path)))) {
+        proc_map_t* bin_map = proc_map__first(proc_maps, exe_path);
+        if (isvalid(bin_map))
+            _py_proc__scan_image_for_asyncio(self, bin_map);
     }
 
-    cu_char* path = proc_map_file_path(self->pid, asyncio_map->pathname, asyncio_map->address, asyncio_map->size);
-    if (!isvalid(path)) {
-        log_d("Cannot resolve a readable path for the _asyncio module");
+    if (isvalid(self->map.asyncio_debug.base))
         return;
-    }
 
-    cu_fd fd = open(path, O_RDONLY);
-    if (fd == -1) {
-        log_d("Cannot open _asyncio module at %s", path);
-        return;
-    }
-
-    struct stat s;
-    if (fstat(fd, &s) == -1) { // GCOV_EXCL_START
-        log_d("Cannot stat _asyncio module at %s", path);
-        return;
-    } // GCOV_EXCL_STOP
-
-    cu_map_t* map = map_new(fd, (size_t)s.st_size, MAP_PRIVATE);
-    if (!isvalid(map)) { // GCOV_EXCL_START
-        log_d("Cannot map _asyncio module at %s", path);
-        return;
-    } // GCOV_EXCL_STOP
-
-    _py_proc__find_asyncio_debug_section(self, map->addr, asyncio_map->address);
+    proc_map_t* lib_map = proc_map__first_submatch(proc_maps, LIB_NEEDLE);
+    if (isvalid(lib_map))
+        _py_proc__scan_image_for_asyncio(self, lib_map);
 } // _py_proc__scan_for_asyncio
 
 // ----------------------------------------------------------------------------

@@ -48,34 +48,34 @@
 #define MAX_TASK_TRACKER 1024
 
 typedef struct {
-    void*     frame;    // remote address of the coroutine's leaf iframe (NULL = no prior emit)
-    void*     code;     // code object at frame
+    void*     frame; // remote address of the coroutine's leaf iframe (NULL = no prior emit)
+    void*     code;  // code object at frame
     uintptr_t lasti;
     uint64_t  chain_fp; // fingerprint of the whole await chain from root to this leaf; see comment above
 } task_frame_id_t;
 
 typedef struct {
-    uintptr_t task;         // remote address of the TaskObj (key)
-    task_frame_id_t top;    // pre-unwind coroutine frame identity
-    uintptr_t waiter_fp;    // cheap fingerprint of task_awaited_by; 0 = no waiters
-    unsigned int last_gen;
+    uintptr_t       task;      // remote address of the TaskObj (key)
+    task_frame_id_t top;       // pre-unwind coroutine frame identity
+    uintptr_t       waiter_fp; // cheap fingerprint of task_awaited_by; 0 = no waiters
+    unsigned int    last_gen;
     // Wall/CPU time (same unit as sample_t.time) accumulated across scans
     // while `top` stayed unchanged, i.e. how long the task has been sitting
     // at its current suspension point. Flushed and reset to 0 as soon as
     // `top` is next observed to change (see _py_asyncio__emit_task) -- it
     // then describes how long the task dwelled at the frame it just left.
-    uint64_t suspended_time;
+    uint64_t        suspended_time;
     // Cached MOJO_TASK_STACK name key from the last successful resolution (0
     // = never resolved), so that flushing suspended_time on eviction (the
     // task has disappeared from the list, e.g. it completed) never needs to
     // re-read the TaskObj's name -- by then it may already be freed.
-    uintptr_t name_key;
+    uintptr_t       name_key;
 } task_tracker_entry_t;
 
 typedef struct {
     task_tracker_entry_t entries[MAX_TASK_TRACKER];
-    size_t                count;
-    unsigned int          sample_gen;
+    size_t               count;
+    unsigned int         sample_gen;
 } task_tracker_t;
 
 /**

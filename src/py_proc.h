@@ -119,11 +119,11 @@ typedef struct {
     // py_asyncio.h) until it is found, or until asyncio_scan_started_at is
     // old enough that we fall back to a sparse indefinite poll instead of
     // giving up outright. Once found, no further scanning is needed.
-    bool                         asyncio_debug_found;
-    microseconds_t               asyncio_scan_deadline;      // next allowed scan attempt
-    microseconds_t               asyncio_scan_started_at;    // when discovery began; 0 == not started yet
-    microseconds_t               asyncio_scan_interval;      // current backoff interval (the one just used)
-    microseconds_t               asyncio_scan_prev_interval; // previous backoff interval, for computing the next Fibonacci step
+    bool           asyncio_debug_found;
+    microseconds_t asyncio_scan_deadline;      // next allowed scan attempt
+    microseconds_t asyncio_scan_started_at;    // when discovery began; 0 == not started yet
+    microseconds_t asyncio_scan_interval;      // current backoff interval (the one just used)
+    microseconds_t asyncio_scan_prev_interval; // previous backoff interval, for computing the next Fibonacci step
     Py_AsyncioModuleDebugOffsets asyncio_offsets;
     task_tracker_t*              task_tracker; // per-task identity cache; see task_tracker.h
 

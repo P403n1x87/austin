@@ -39,10 +39,13 @@ proc_exe_readlink(pid_t pid, char* dest, ssize_t size) {
 
     sprintf(file_name, "/proc/%d/exe", pid);
 
-    if (readlink(file_name, dest, size) == -1) {
+    ssize_t len = readlink(file_name, dest, size - 1);
+    if (len == -1) {
         set_error(IO, "Cannot read symbolic link for executable");
         FAIL; // cppcheck-suppress [resourceLeak]
     }
+    // readlink() never null-terminates the buffer itself.
+    dest[len] = '\0';
 
     // Handle deleted files
     char* suffix = strstr(dest, DELETED_SUFFIX);

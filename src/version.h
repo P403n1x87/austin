@@ -105,8 +105,9 @@
  *
  * @return the lasti index, as an int.
  */
-#define V_LASTI(instr_ptr, code_raddr) \
-    ((int)((((intptr_t)(instr_ptr) - (intptr_t)(code_raddr)) - (intptr_t)py_v->py_code.o_code) / (intptr_t)sizeof(_Py_CODEUNIT)))
+#define V_LASTI(instr_ptr, code_raddr)                                                         \
+    ((int)((((intptr_t)(instr_ptr) - (intptr_t)(code_raddr)) - (intptr_t)py_v->py_code.o_code) \
+           / (intptr_t)sizeof(_Py_CODEUNIT)))
 
 typedef unsigned long offset_t;
 

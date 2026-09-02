@@ -376,14 +376,37 @@ _py_proc__find_asyncio_debug_section(py_proc_t* self, void* pMapping, void* base
 } // _py_proc__find_asyncio_debug_section
 
 // ----------------------------------------------------------------------------
-// Look for a loaded _asyncio extension module and, if found, analyse it for
-// the AsyncioDebug section.
-//
-// Deliberately NOT reusing _py_proc__analyze_pe: that also resolves this
-// module's exports and hard-fails if none of the expected ones are found --
-// true for the main binary/library, but never true for an extension module
-// like _asyncio, which exports none of the symbols it looks for. This only
-// ever needs one named section, found or not, no exports involved.
+// Map one already-located module by path and analyse it for the
+// AsyncioDebug section. Deliberately NOT _py_proc__analyze_pe: that also
+// resolves exports and hard-fails if none are found, which is never true for
+// an extension module like _asyncio.
+static void
+_py_proc__scan_module_for_asyncio(py_proc_t* self, char* path, void* base) {
+    cu_HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        log_d("Cannot open %s", path);
+        return;
+    }
+
+    cu_HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READONLY, 0, 0, 0);
+    if (!isvalid(hMapping)) {
+        log_d("Cannot create file mapping for %s", path);
+        return;
+    }
+
+    cu_VOF pMapping = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
+    if (!isvalid(pMapping)) {
+        log_d("Cannot map %s", path);
+        return;
+    }
+
+    _py_proc__find_asyncio_debug_section(self, pMapping, base);
+} // _py_proc__scan_module_for_asyncio
+
+// ----------------------------------------------------------------------------
+// Look for the AsyncioDebug section in the _asyncio module and, if it's
+// built straight into the main executable or the Python library instead
+// (some 3.14+ builds), fall back to those.
 static void
 _py_proc__scan_for_asyncio(py_proc_t* self) {
     if (isvalid(self->map.asyncio_debug.base))
@@ -400,31 +423,15 @@ _py_proc__scan_for_asyncio(py_proc_t* self) {
         return;
 
     do {
-        if (!isvalid(strstr(module.szExePath, "_asyncio")))
+        bool is_candidate = isvalid(strstr(module.szExePath, "_asyncio"))
+                         || (isvalid(self->bin_path) && strcmp(module.szExePath, self->bin_path) == 0)
+                         || (isvalid(self->lib_path) && strcmp(module.szExePath, self->lib_path) == 0);
+        if (!is_candidate)
             continue;
 
-        cu_HANDLE hFile = CreateFile(
-            module.szExePath, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL
-        );
-        if (hFile == INVALID_HANDLE_VALUE) {
-            log_d("Cannot open _asyncio module at %s", module.szExePath);
+        _py_proc__scan_module_for_asyncio(self, module.szExePath, (void*)module.modBaseAddr);
+        if (isvalid(self->map.asyncio_debug.base))
             return;
-        }
-
-        cu_HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READONLY, 0, 0, 0);
-        if (!isvalid(hMapping)) {
-            log_d("Cannot create file mapping for _asyncio module at %s", module.szExePath);
-            return;
-        }
-
-        cu_VOF pMapping = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
-        if (!isvalid(pMapping)) {
-            log_d("Cannot map _asyncio module at %s", module.szExePath);
-            return;
-        }
-
-        _py_proc__find_asyncio_debug_section(self, pMapping, (void*)module.modBaseAddr);
-        return; // Only one _asyncio module is expected per process.
     } while (Module32Next(mod_hdl, &module));
 } // _py_proc__scan_for_asyncio
 
