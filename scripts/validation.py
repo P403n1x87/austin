@@ -197,6 +197,26 @@ def _build_scenarios(python_version: str) -> t.List[Scenario]:
             "austin",
             ("-nci", "1ms", *py, target("target34.py")),
         ),
+        Scenario(
+            "Wall time [asyncio]",
+            "austin",
+            ("-i", "500", *py, target("target_asyncio.py")),
+        ),
+        Scenario(
+            "CPU time [asyncio]",
+            "austin",
+            ("-ci", "500", *py, target("target_asyncio.py")),
+        ),
+        Scenario(
+            "Wall time [asyncio multiloop]",
+            "austin",
+            ("-i", "500", *py, target("target_asyncio_multiloop.py")),
+        ),
+        Scenario(
+            "CPU time [asyncio multiloop]",
+            "austin",
+            ("-ci", "500", *py, target("target_asyncio_multiloop.py")),
+        ),
     ]
 
 
