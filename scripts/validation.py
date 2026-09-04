@@ -205,7 +205,7 @@ def _build_scenarios(python_version: str) -> t.List[Scenario]:
         Scenario(
             "CPU time [asyncio]",
             "austin",
-            ("-ci", "500", *py, target("target_asyncio.py")),
+            ("-ci", "500", *py, target("target_asyncio_cpu.py")),
         ),
         Scenario(
             "Wall time [asyncio multiloop]",
