@@ -31,6 +31,13 @@
 typedef uintptr_t key_dt;
 typedef void*     value_t;
 
+// Heap object addresses are at least 8-byte aligned, so their low 3 bits are
+// always zero and carry no entropy. Shift them out before using the address
+// as a cache/reference key so that truncating the key to fewer bits retains
+// as much real entropy as possible.
+#define PTR_ALIGN_SHIFT 3
+#define ptr_key(ptr)    (((key_dt)(uintptr_t)(ptr)) >> PTR_ALIGN_SHIFT)
+
 // -- Queue -------------------------------------------------------------------
 
 typedef struct queue_item_t {
