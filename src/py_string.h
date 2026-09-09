@@ -266,4 +266,4 @@ _bytes_remote(proc_ref_t pref, raddr_t raddr, ssize_t* size, python_v* py_v) {
     return array;
 }
 
-#define py_string_key(code, field) ((key_dt) * ((raddr_t*)((raddr_t) & code + py_v->py_code.field)))
+#define py_string_key(code, field) ptr_key(*((raddr_t*)((raddr_t) & code + py_v->py_code.field)))
