@@ -158,7 +158,7 @@ _py_asyncio__task_name_key(py_proc_t* self, raddr_t task_addr) {
     if (fail(copy_asyncio_field(self, task_object, task_name, task_addr, name_addr)) || !_is_plausible_ptr(name_addr))
         return 0;
 
-    key_dt           string_key = (key_dt)(uintptr_t)name_addr;
+    key_dt           string_key = ptr_key(name_addr);
     cached_string_t* cached     = (cached_string_t*)lru_cache__maybe_hit(self->string_cache, string_key);
     if (isvalid(cached))
         return string_key;

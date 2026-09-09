@@ -180,20 +180,21 @@ mojo_integer(mojo_int_t integer, int sign) {
 // Introduces the coroutine stack of a suspended task, keyed by the remote
 // address of its TaskObj and its (possibly cached) name (0 if unresolved).
 // Its owning thread is implicit in wire position, bracketed between the
-// MOJO_STACK it followed and the next one.
+// MOJO_STACK it followed and the next one. task_id is a raw TaskObj address, so
+// it goes through ptr_key to shift out its always-zero alignment bits.
 #define mojo_task_stack(task_id, name_key) \
     mojo_event(MOJO_TASK_STACK);           \
-    mojo_ref(task_id);                     \
+    mojo_ref(ptr_key(task_id));            \
     mojo_ref(name_key);
 
 // One edge of a task's waiter DAG: task_id is being awaited by waiter_id.
 // Emitted once per direct waiter, for every live task that has at least one
 // waiter, whenever the task's waiter-set fingerprint has changed since the
-// last scan.
+// last scan. Both are raw TaskObj/FutureObj addresses.
 #define mojo_task_waiter(task_id, waiter_id) \
     mojo_event(MOJO_TASK_WAITER);            \
-    mojo_ref(task_id);                       \
-    mojo_ref(waiter_id);
+    mojo_ref(ptr_key(task_id));              \
+    mojo_ref(ptr_key(waiter_id));
 
 // Emit the metric tail shared by MOJO_STACK and MOJO_STACK_REPEAT.
 // Assumes pargs is in scope (always true inside the sampler/event handlers).
