@@ -136,8 +136,8 @@ mojo_integer(mojo_int_t integer, int sign) {
     _mojo_write(buffer, ptr - buffer);
 }
 
-// We expect the least significant bits to be varied enough to provide a valid
-// key. This way we can keep the size of references to a maximum of 4 bytes.
+// We expect the retained bits to be varied enough to provide a valid key. This
+// way we can keep the size of references to a maximum of 4 bytes.
 #define mojo_ref(intorptr) (mojo_integer(MOJO_INT32 & ((mojo_int_t)(uintptr_t)intorptr), 0))
 
 // Mojo events

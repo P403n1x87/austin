@@ -87,7 +87,7 @@ frame__destroy(frame_t* self) {
 #include "mojo.h"
 #include "py_proc.h"
 
-#define py_frame_key(code, lasti) (((key_dt)(((key_dt)code) & MOJO_INT32) << 16) | lasti)
+#define py_frame_key(code, lasti) (((key_dt)(ptr_key(code) & MOJO_INT32) << 16) | (lasti))
 
 // ----------------------------------------------------------------------------
 static inline int
