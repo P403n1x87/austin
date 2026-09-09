@@ -202,7 +202,9 @@ mojo_event_handler__handle_task_stack_end(base_event_handler_t* self, uint64_t e
         }
     }
 
-    mojo_metric_time(elapsed);
+    // There is no memory profiling support for asyncio tasks.
+    if (!pargs.memory || pargs.full)
+        mojo_metric_time(elapsed);
 
     _mojo_flush();
 
@@ -213,10 +215,6 @@ mojo_event_handler__handle_task_stack_end(base_event_handler_t* self, uint64_t e
 static inline void
 mojo_event_handler__handle_task_waiter(base_event_handler_t* self, uintptr_t task_id, uintptr_t waiter_id) {
     mojo_task_waiter(task_id, waiter_id);
-    _mojo_flush();
-
-    if (pargs.pipe)
-        fflush(pargs.output_file);
 }
 
 event_handler_t*

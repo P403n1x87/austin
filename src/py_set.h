@@ -43,8 +43,10 @@
 #include "mem.h"
 #include "version.h"
 
-// Matches CPython's MAX_SET_TABLE_SIZE bound on a PySet's hash table.
-#define MAX_SET_TABLE_SLOTS (1 << 20)
+// Whilst CPython has a limit of (1 << 20), we never expect to come across
+// massive sets in practice, so we use a smaller values to reduce the chances
+// of reading bogus memory.
+#define MAX_SET_TABLE_SLOTS (1 << 16)
 
 typedef struct {
     ssize_t used;

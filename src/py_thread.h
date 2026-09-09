@@ -105,25 +105,6 @@ void
 py_thread__unwind(py_thread_t*);
 
 /**
- * Unwind an arbitrary interpreter frame chain (3.13+ inline-frame layout)
- * into the shared Python frame stack and resolve it, without going through
- * the OS-thread machinery in py_thread__unwind. Used to walk a suspended
- * asyncio task's coroutine frames from its gi_iframe address.
- *
- * self only needs proc set; stack/stack_raddr must be left NULL (there is no
- * datastack chunk to resolve against) so every frame is read remotely. Set
- * self->is_repeat and self->prev_top beforehand for repeat detection, exactly
- * as thread sampling does.
- *
- * @param  py_thread_t  self (synthetic; proc set, stack NULL).
- * @param  raddr_t      remote address of the top iframe (e.g. gi_iframe).
- *
- * @return SUCCESS or FAIL.
- */
-int
-py_thread__unwind_iframe_chain(py_thread_t*, raddr_t);
-
-/**
  * Resolve whatever raw frames have been accumulated on _task_stack (e.g. via
  * direct task_stack_py_push calls -- see py_asyncio.c's _py_asyncio__unwind_
  * coro_chain) into cached frame_t* pointers. Callers are responsible for

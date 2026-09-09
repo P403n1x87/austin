@@ -45,6 +45,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#include "cache.h" // lookup_t
+
+// Safety valve, not a realistic expectation: bounds memory/lookup-table
+// growth against a corrupted or adversarially-mutating remote task graph,
+// the same role MAX_TASK_TRACKER played when entries lived in a flat array.
 #define MAX_TASK_TRACKER 1024
 
 typedef struct {
@@ -73,9 +78,10 @@ typedef struct {
 } task_tracker_entry_t;
 
 typedef struct {
-    task_tracker_entry_t entries[MAX_TASK_TRACKER];
-    size_t               count;
-    unsigned int         sample_gen;
+    lookup_t*    by_task; // task address -> heap-allocated task_tracker_entry_t*
+    size_t       count;   // live entry count; tracked here so MAX_TASK_TRACKER
+                          // can be enforced without reaching into lookup_t
+    unsigned int sample_gen;
 } task_tracker_t;
 
 /**
@@ -88,20 +94,31 @@ task_tracker_new(void);
 
 /**
  * Return the existing entry for task, or allocate and return a new one.
- * Returns NULL only if the tracker is full (> MAX_TASK_TRACKER tasks).
+ * Returns NULL only if the tracker is full (> MAX_TASK_TRACKER tasks) or on
+ * allocation failure.
  */
 task_tracker_entry_t*
 task_tracker__get_or_create(task_tracker_t*, uintptr_t task);
 
 /**
- * Remove the entry at index i via swap-with-last, keeping the array compact.
- * Callers scanning for stale entries (last_gen < sample_gen) should flush any
- * pending state on an entry (e.g. suspended_time) *before* removing it -- see
- * py_asyncio__scan_tasks_end, which owns that policy since it needs the
- * py_proc_t context to emit anything.
+ * Collect up to `max` entries whose last_gen is older than the tracker's
+ * current sample_gen (i.e. tasks that disappeared from every list walked
+ * this sweep) into `out`. Does NOT remove them: a hash table can't be
+ * safely mutated while it's being walked. Pair with task_tracker__remove for
+ * each entry collected here, once the caller is done reading it (e.g. to flush
+ * its accrued dwell time before it's gone).
+ *
+ * @return the number of entries collected (never more than `max`).
+ */
+size_t
+task_tracker__collect_stale(task_tracker_t*, task_tracker_entry_t** out, size_t max);
+
+/**
+ * Remove and free the entry for `task`. Only safe to call once any
+ * in-progress task_tracker__collect_stale walk has returned.
  */
 void
-task_tracker__remove_at(task_tracker_t*, size_t i);
+task_tracker__remove(task_tracker_t*, uintptr_t task);
 
 /**
  * Destroy the task tracker and free all associated memory.

@@ -460,24 +460,22 @@ void
 py_asyncio__scan_tasks_end(py_proc_t* self) {
     task_tracker_t* tracker = self->task_tracker;
 
-    size_t i = 0;
-    while (i < tracker->count) {
-        task_tracker_entry_t* entry = &tracker->entries[i];
+    task_tracker_entry_t* stale[MAX_TASK_TRACKER];
+    size_t                n = task_tracker__collect_stale(tracker, stale, MAX_TASK_TRACKER);
 
-        if (entry->last_gen < tracker->sample_gen) {
-            // Task is gone from the list -- flush its accrued dwell time
-            // before discarding rather than losing it silently. No remote
-            // reads needed (frame/name already cached), safe even if the
-            // TaskObj has since been freed. Empty frame sequence signals a
-            // closing metric only, no new stack content.
-            if (isvalid(entry->top.frame) && entry->suspended_time > 0) {
-                task_stack_reset();
-                event_handler__emit_task_stack_begin((uintptr_t)entry->task, entry->name_key);
-                event_handler__emit_task_stack_end(entry->suspended_time);
-            }
-            task_tracker__remove_at(tracker, i);
-        } else {
-            i++;
+    for (size_t i = 0; i < n; i++) {
+        task_tracker_entry_t* entry = stale[i];
+
+        // Task is gone from the list -- flush its accrued dwell time
+        // before discarding rather than losing it silently. No remote
+        // reads needed (frame/name already cached), safe even if the
+        // TaskObj has since been freed. Empty frame sequence signals a
+        // closing metric only, no new stack content.
+        if (isvalid(entry->top.frame) && entry->suspended_time > 0) {
+            task_stack_reset();
+            event_handler__emit_task_stack_begin((uintptr_t)entry->task, entry->name_key);
+            event_handler__emit_task_stack_end(entry->suspended_time);
         }
+        task_tracker__remove(tracker, entry->task);
     }
 } // py_asyncio__scan_tasks_end

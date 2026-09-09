@@ -705,20 +705,6 @@ py_thread__unwind(py_thread_t* self) {
 
 // ----------------------------------------------------------------------------
 int
-py_thread__unwind_iframe_chain(py_thread_t* self, raddr_t iframe_addr) {
-    stack_reset();
-
-    if (self->is_repeat) {
-        stack_py_push_repeat();
-    } else if (isvalid(iframe_addr) && fail(_py_thread__unwind_iframe_stack(self, iframe_addr))) {
-        FAIL;
-    }
-
-    return fail(_py_thread__resolve_thread_py_stack(self));
-}
-
-// ----------------------------------------------------------------------------
-int
 py_thread__resolve_task_stack(py_thread_t* self) {
     return fail(_py_thread__resolve_task_py_stack(self));
 }

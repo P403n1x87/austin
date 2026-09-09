@@ -1209,7 +1209,11 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
 
         // The INTERP-wide list only ever holds orphaned tasks -- ones whose
         // owning thread was torn down while something else still held a
-        // reference to them.
+        // reference to them. An orphaned task has no thread left to drive
+        // its event loop, so it can never run again -- there is nothing to
+        // sample continuously. We only care about it for a one-shot -w/--where
+        // snapshot (to show it existed at that instant), not for ongoing
+        // sampling.
         if (pargs.where)
             py_asyncio__scan_task_list(self, py_asyncio__interp_task_list_head(self, interp), time_delta);
     }
