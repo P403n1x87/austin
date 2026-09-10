@@ -52,6 +52,7 @@
 #include "stats.h"
 #include "timer.h"
 
+#include "py_asyncio.h"
 #include "py_proc.h"
 #include "py_thread.h"
 
@@ -796,6 +797,13 @@ py_proc_new(bool child) {
         FAIL_GOTO(error);
     } // GCOV_EXCL_STOP
 
+    // Tracking information about seen asyncio tasks (3.14+), on the same
+    // generation-based eviction model as thread_tracker.
+    py_proc->task_tracker = task_tracker_new();
+    if (!isvalid(py_proc->task_tracker)) { // GCOV_EXCL_START
+        FAIL_GOTO(error);
+    } // GCOV_EXCL_STOP
+
     py_proc->frame_cache = lru_cache_new(MAX_FRAME_CACHE_SIZE, (void (*)(value_t))frame__destroy);
     if (!isvalid(py_proc->frame_cache)) { // GCOV_EXCL_START
         FAIL_GOTO(error);
@@ -1196,6 +1204,20 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
 
     self->thread_tracker->sample_gen++;
 
+    if (self->asyncio_debug_found) {
+        py_asyncio__scan_tasks_begin(self);
+
+        // The INTERP-wide list only ever holds orphaned tasks -- ones whose
+        // owning thread was torn down while something else still held a
+        // reference to them. An orphaned task has no thread left to drive
+        // its event loop, so it can never run again -- there is nothing to
+        // sample continuously. We only care about it for a one-shot -w/--where
+        // snapshot (to show it existed at that instant), not for ongoing
+        // sampling.
+        if (pargs.where)
+            py_asyncio__scan_task_list(self, py_asyncio__interp_task_list_head(self, interp), time_delta);
+    }
+
     V_DESC(self->py_v);
 
     // Set up the interpreter state record before the first thread read so that
@@ -1349,6 +1371,10 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
             } // GCOV_EXCL_STOP
         }
 
+        // Scan for thread-owned asyncio tasks.
+        if (self->asyncio_debug_found)
+            py_asyncio__scan_task_list(self, py_asyncio__thread_task_list_head(self, py_thread.addr), time_delta);
+
         event_handler__emit_stack_end();
 
         stats_count_sample();
@@ -1356,6 +1382,9 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
 
     // Evict cache entries for threads that disappeared this sweep.
     thread_tracker__evict_stale(self->thread_tracker);
+
+    if (self->asyncio_debug_found)
+        py_asyncio__scan_tasks_end(self);
 
     if (!error_is(ITEREND)) { // GCOV_EXCL_START
         FAIL;
@@ -1500,11 +1529,58 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
 } /* _py_proc__sample_interpreter */
 
 // ----------------------------------------------------------------------------
+// Retry AsyncioDebug offset discovery on a Fibonacci backoff until it succeeds
+// or the fast window elapses, then fall back to a sparse, effectively
+// negligible-cost poll for the rest of the process's life. No-op once
+// self->asyncio_debug_found is set, on a pre-3.14 interpreter (asyncio
+// introspection support doesn't exist before then), or in pure memory mode
+// (there's no meaningful per-task memory delta to report).
+static inline void
+_py_proc__maybe_discover_asyncio(py_proc_t* self) {
+    V_DESC(self->py_v);
+
+    if (self->asyncio_debug_found || !isvalid(py_v) || !V_MIN(3, 14) || (pargs.memory && !pargs.full))
+        return;
+
+    microseconds_t now = gettime();
+    if (now < self->asyncio_scan_deadline)
+        return;
+
+    if (self->asyncio_scan_started_at == 0)
+        self->asyncio_scan_started_at = now;
+
+    microseconds_t next_interval;
+    if (now - self->asyncio_scan_started_at >= ASYNCIO_SCAN_BACKOFF_WINDOW_US) {
+        // Fast backoff window elapsed with no success -- fall back to
+        // a sparse, effectively negligible-cost poll for the rest of
+        // the process's life instead of giving up outright.
+        next_interval = ASYNCIO_SCAN_SPARSE_INTERVAL_US;
+    } else if (self->asyncio_scan_interval == 0) {
+        // First attempt (asyncio_scan_deadline starts at 0, so this
+        // scan already ran as early as possible); seed the backoff.
+        next_interval = ASYNCIO_SCAN_BACKOFF_MIN_US;
+    } else {
+        microseconds_t fib               = self->asyncio_scan_prev_interval + self->asyncio_scan_interval;
+        self->asyncio_scan_prev_interval = self->asyncio_scan_interval;
+        next_interval                    = fib > ASYNCIO_SCAN_BACKOFF_CAP_US ? ASYNCIO_SCAN_BACKOFF_CAP_US : fib;
+    }
+    self->asyncio_scan_interval = next_interval;
+    self->asyncio_scan_deadline = now + next_interval;
+
+    _py_proc__scan_for_asyncio(self);
+    if (isvalid(self->map.asyncio_debug.base))
+        py_asyncio__validate_and_cache(self);
+} // _py_proc__maybe_discover_asyncio
+
+// ----------------------------------------------------------------------------
 int
 py_proc__sample(py_proc_t* self) {
     raddr_t current_interp = self->istate_raddr;
 
     V_DESC(self->py_v);
+
+    // Piggybacks on this function rather than its own call site for simplicity.
+    _py_proc__maybe_discover_asyncio(self);
 
     // Compute the time delta once for all interpreters. In native mode this is
     // done BEFORE the interrupt so we capture the wall time the threads were
@@ -1646,6 +1722,7 @@ py_proc__destroy(py_proc_t* self) {
     sfree(self->extra);
 
     thread_tracker__destroy(self->thread_tracker);
+    task_tracker__destroy(self->task_tracker);
 
     lru_cache__destroy(self->string_cache);
     lru_cache__destroy(self->frame_cache);

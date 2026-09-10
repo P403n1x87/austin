@@ -104,6 +104,9 @@ _py_proc__analyze_macho64(py_proc_t* self, void* base, void* map) {
         bin_attrs |= BT_EXEC;
         break;
     case MH_DYLIB:
+    // Python C-extension modules (e.g. _asyncio) are Mach-O bundles, not
+    // dylibs, but still carry the sections we scan for (AsyncioDebug etc).
+    case MH_BUNDLE:
         bin_attrs |= BT_LIB;
         break;
     default:
@@ -136,6 +139,12 @@ _py_proc__analyze_macho64(py_proc_t* self, void* base, void* map) {
                     if (strcmp(sec[j].sectname, "PyRuntime") == 0) {
                         self->map.runtime.base = (void*)(offset + sec[j].addr);
                         self->map.runtime.size = sec[j].size;
+                        continue;
+                    }
+                    // Exposed by the _asyncio extension module since Python 3.14.
+                    if (strcmp(sec[j].sectname, "AsyncioDebug") == 0) {
+                        self->map.asyncio_debug.base = (void*)(offset + sec[j].addr);
+                        self->map.asyncio_debug.size = sec[j].size;
                         continue;
                     }
                 }
@@ -189,6 +198,9 @@ _py_proc__analyze_macho32(py_proc_t* self, void* base, void* map) {
         bin_attrs |= BT_EXEC;
         break;
     case MH_DYLIB:
+    // Python C-extension modules (e.g. _asyncio) are Mach-O bundles, not
+    // dylibs, but still carry the sections we scan for (AsyncioDebug etc).
+    case MH_BUNDLE:
         bin_attrs |= BT_LIB;
         break;
     default:
@@ -221,6 +233,12 @@ _py_proc__analyze_macho32(py_proc_t* self, void* base, void* map) {
                     if (strcmp(sec[j].sectname, "PyRuntime") == 0) {
                         self->map.runtime.base = (void*)(offset + sec[j].addr);
                         self->map.runtime.size = sec[j].size;
+                        continue;
+                    }
+                    // Exposed by the _asyncio extension module since Python 3.14.
+                    if (strcmp(sec[j].sectname, "AsyncioDebug") == 0) {
+                        self->map.asyncio_debug.base = (void*)(offset + sec[j].addr);
+                        self->map.asyncio_debug.size = sec[j].size;
                         continue;
                     }
                 }
@@ -615,6 +633,48 @@ _py_proc__get_maps(py_proc_t* self) {
 
     SUCCESS;
 } // _py_proc__get_maps
+
+// ----------------------------------------------------------------------------
+// Look for a mapped image belonging to the _asyncio extension module and, if
+// found, analyse it for the AsyncioDebug section. Unlike the main binary and
+// libpython, _asyncio is loaded lazily on `import asyncio`, so this is called
+// on a throttled retry (see py_asyncio.c) rather than once at attach time.
+static void
+_py_proc__scan_for_asyncio(py_proc_t* self) {
+    if (isvalid(self->map.asyncio_debug.base))
+        return;
+
+    mach_vm_address_t              address     = 0;
+    mach_vm_size_t                 size        = 0;
+    mach_msg_type_number_t         count       = sizeof(vm_region_basic_info_data_64_t);
+    vm_region_basic_info_data_64_t region_info = {0};
+    mach_port_t                    object_name;
+
+    char* path = (char*)calloc(MAXPATHLEN + 1, sizeof(char));
+    if (!isvalid(path))
+        return;
+
+    while (mach_vm_region(
+               self->ref, &address, &size, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&region_info, &count,
+               &object_name // cppcheck-suppress [uninitvar]
+           )
+           == KERN_SUCCESS) {
+        if (!(region_info.protection & VM_PROT_EXECUTE)) {
+            address += size;
+            continue;
+        }
+
+        int path_len = proc_regionfilename(self->pid, address, path, MAXPATHLEN);
+        if (path_len > 0 && isvalid(strstr(path, "_asyncio"))) {
+            _py_proc__analyze_macho(self, path, (void*)address, size);
+            break; // Only one _asyncio module is expected per process.
+        }
+
+        address += size;
+    }
+
+    free(path);
+} // _py_proc__scan_for_asyncio
 
 // ----------------------------------------------------------------------------
 static ssize_t

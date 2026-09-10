@@ -353,6 +353,89 @@ _py_proc__is_running(py_proc_t* self) {
 }
 
 // ----------------------------------------------------------------------------
+// Locate the "AsyncioDebug" PE section exposed by the _asyncio extension
+// module. Section names longer than IMAGE_SIZEOF_SHORT_NAME (8 bytes) are
+// truncated by the linker in the final image, so both the section's raw Name
+// field and the search string are compared only up to that length.
+static void
+_py_proc__find_asyncio_debug_section(py_proc_t* self, void* pMapping, void* base) {
+    IMAGE_DOS_HEADER*     dos_hdr = (IMAGE_DOS_HEADER*)pMapping;
+    IMAGE_NT_HEADERS*     nt_hdr  = (IMAGE_NT_HEADERS*)(pMapping + dos_hdr->e_lfanew);
+    IMAGE_SECTION_HEADER* s_hdr   = (IMAGE_SECTION_HEADER*)(pMapping + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
+
+    if (nt_hdr->Signature != IMAGE_NT_SIGNATURE)
+        return;
+
+    for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
+        if (strncmp((const char*)s_hdr[i].Name, "AsyncioD", IMAGE_SIZEOF_SHORT_NAME) == 0) {
+            self->map.asyncio_debug.base = base + s_hdr[i].VirtualAddress;
+            self->map.asyncio_debug.size = s_hdr[i].Misc.VirtualSize;
+            return;
+        }
+    }
+} // _py_proc__find_asyncio_debug_section
+
+// ----------------------------------------------------------------------------
+// Map one already-located module by path and analyse it for the
+// AsyncioDebug section. Deliberately NOT _py_proc__analyze_pe: that also
+// resolves exports and hard-fails if none are found, which is never true for
+// an extension module like _asyncio.
+static void
+_py_proc__scan_module_for_asyncio(py_proc_t* self, char* path, void* base) {
+    cu_HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        log_d("Cannot open %s", path);
+        return;
+    }
+
+    cu_HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READONLY, 0, 0, 0);
+    if (!isvalid(hMapping)) {
+        log_d("Cannot create file mapping for %s", path);
+        return;
+    }
+
+    cu_VOF pMapping = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
+    if (!isvalid(pMapping)) {
+        log_d("Cannot map %s", path);
+        return;
+    }
+
+    _py_proc__find_asyncio_debug_section(self, pMapping, base);
+} // _py_proc__scan_module_for_asyncio
+
+// ----------------------------------------------------------------------------
+// Look for the AsyncioDebug section in the _asyncio module and, if it's
+// built straight into the main executable or the Python library instead
+// (some 3.14+ builds), fall back to those.
+static void
+_py_proc__scan_for_asyncio(py_proc_t* self) {
+    if (isvalid(self->map.asyncio_debug.base))
+        return;
+
+    cu_HANDLE mod_hdl = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, self->pid);
+    if (mod_hdl == INVALID_HANDLE_VALUE)
+        return;
+
+    MODULEENTRY32 module;
+    module.dwSize = sizeof(module);
+
+    if (!Module32First(mod_hdl, &module))
+        return;
+
+    do {
+        bool is_candidate = isvalid(strstr(module.szExePath, "_asyncio"))
+                         || (isvalid(self->bin_path) && strcmp(module.szExePath, self->bin_path) == 0)
+                         || (isvalid(self->lib_path) && strcmp(module.szExePath, self->lib_path) == 0);
+        if (!is_candidate)
+            continue;
+
+        _py_proc__scan_module_for_asyncio(self, module.szExePath, (void*)module.modBaseAddr);
+        if (isvalid(self->map.asyncio_debug.base))
+            return;
+    } while (Module32Next(mod_hdl, &module));
+} // _py_proc__scan_for_asyncio
+
+// ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t* self) {
     if (!isvalid(self)) {

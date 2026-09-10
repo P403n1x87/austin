@@ -5,7 +5,7 @@ from itertools import chain
 
 import numpy as np
 from austin.format.mojo import MojoStreamReader
-from austin.events import AustinSample, AustinFrame
+from austin.events import AustinSample, AustinFrame, AustinTask
 from scipy.stats import f
 
 Stack = tuple[str, float]  # (stack frames, metric)
@@ -79,9 +79,34 @@ class AustinFlameGraph(dict):
                 )
             )
 
+        def task_stacks(
+            tasks: t.Tuple[AustinTask, ...], prefix: str = "TASK"
+        ) -> "AustinFlameGraph":
+            # Key = parent's key + own frames, so the awaiting chain is part
+            # of the string, not just each task's own shape -- otherwise two
+            # tasks with the same frames but different parents would collide.
+            # "<active>" stands in for a task never seen suspended.
+            delta = cls()
+            for task in tasks:
+                own = (
+                    ";".join(serialize(f) for f in task.frames)
+                    if task.frames
+                    else "<active>"
+                )
+                stack = f"{prefix};{own}"
+                if task.frames and task.elapsed:
+                    delta += cls({stack: task.elapsed})
+                delta += task_stacks(task.awaiting, prefix=stack)
+            return delta
+
         for e in MojoStreamReader(BytesIO(data)):
-            if isinstance(e, AustinSample) and e.frames:
-                fg += cls({";".join(serialize(f) for f in e.frames): e.metrics.time})
+            if isinstance(e, AustinSample):
+                if e.frames:
+                    fg += cls(
+                        {";".join(serialize(f) for f in e.frames): e.metrics.time}
+                    )
+                if e.tasks:
+                    fg += task_stacks(e.tasks)
 
         return fg
 

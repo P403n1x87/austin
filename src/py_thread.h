@@ -33,8 +33,11 @@
 #include "stats.h"
 #include "thread_tracker.h"
 
-#define MAXLEN         1024
-#define MAX_STACK_SIZE 2048
+#define MAXLEN              1024
+#define MAX_STACK_SIZE      2048
+// A coroutine chain never comes close to an OS thread's frame depth, hence the
+// much smaller size for _task_stack (see stack.h) than MAX_STACK_SIZE above.
+#define MAX_TASK_STACK_SIZE 128
 
 typedef struct thread {
     py_proc_t* proc;
@@ -100,6 +103,20 @@ py_thread__next(py_thread_t*, thread_tracker_t*);
  */
 void
 py_thread__unwind(py_thread_t*);
+
+/**
+ * Resolve whatever raw frames have been accumulated on _task_stack (e.g. via
+ * direct task_stack_py_push calls -- see py_asyncio.c's _py_asyncio__unwind_
+ * coro_chain) into cached frame_t* pointers. Callers are responsible for
+ * calling task_stack_reset() themselves before accumulating, exactly once
+ * per logical unwind (one task's coroutine chain).
+ *
+ * @param  py_thread_t  self.
+ *
+ * @return SUCCESS or FAIL.
+ */
+int
+py_thread__resolve_task_stack(py_thread_t*);
 
 /**
  * Allocate memory for dumping the thread data.

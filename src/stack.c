@@ -68,3 +68,34 @@ stack_deallocate(void) {
 
     free(_stack);
 }
+
+int
+task_stack_allocate(size_t size) {
+    if (isvalid(_task_stack))
+        SUCCESS; // GCOV_EXCL_LINE
+
+    _task_stack = (stack_dt*)calloc(1, sizeof(stack_dt));
+    if (!isvalid(_task_stack)) { // GCOV_EXCL_START
+        set_error(MALLOC, "Cannot allocate buffer for task stack");
+        FAIL;
+    } // GCOV_EXCL_STOP
+
+    // native_base/kernel_base stay NULL: a coroutine chain is pure Python
+    // state, never interleaved with native or kernel frames.
+    _task_stack->size    = size;
+    _task_stack->base    = (frame_t**)calloc(size, sizeof(frame_t*));
+    _task_stack->py_base = (py_frame_t*)calloc(size, sizeof(py_frame_t));
+
+    SUCCESS;
+}
+
+void
+task_stack_deallocate(void) {
+    if (!isvalid(_task_stack)) // GCOV_EXCL_LINE
+        return;                // GCOV_EXCL_LINE
+
+    free(_task_stack->base);
+    free(_task_stack->py_base);
+
+    free(_task_stack);
+}
