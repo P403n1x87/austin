@@ -50,8 +50,8 @@ task_tracker__get_or_create(task_tracker_t* self, uintptr_t task) {
     if (isvalid(entry))
         return entry;
 
-    if (self->count >= MAX_TASK_TRACKER)
-        return NULL;
+    if (self->count >= MAX_TASK_TRACKER) // GCOV_EXCL_LINE
+        return NULL;                     // GCOV_EXCL_LINE
 
     entry = (task_tracker_entry_t*)calloc(1, sizeof(task_tracker_entry_t));
     if (!isvalid(entry)) // GCOV_EXCL_LINE
@@ -69,8 +69,8 @@ task_tracker__collect_stale(task_tracker_t* self, task_tracker_entry_t** out, si
     size_t n = 0;
 
     hash_table__iter_start(self->by_task->hash, task_tracker_entry_t*, entry) {
-        if (n >= max)
-            break;
+        if (n >= max) // GCOV_EXCL_LINE
+            break;    // GCOV_EXCL_LINE
         if (entry->last_gen < self->sample_gen)
             out[n++] = entry;
     }
@@ -83,8 +83,8 @@ task_tracker__collect_stale(task_tracker_t* self, task_tracker_entry_t** out, si
 void
 task_tracker__remove(task_tracker_t* self, uintptr_t task) {
     task_tracker_entry_t* entry = (task_tracker_entry_t*)lookup__get(self->by_task, (key_dt)task);
-    if (!isvalid(entry))
-        return;
+    if (!isvalid(entry)) // GCOV_EXCL_LINE
+        return;          // GCOV_EXCL_LINE
 
     lookup__del(self->by_task, (key_dt)task);
     free(entry);

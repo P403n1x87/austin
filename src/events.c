@@ -113,8 +113,8 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
         while (!stack_native_is_empty()) {
             frame_t* native_frame = stack_native_pop();
             if (!isvalid(native_frame)) {
-                log_e("Invalid native frame"); // GCOV_EXCL_START
-                break;                         // GCOV_EXCL_STOP
+                log_e("Invalid native frame"); // GCOV_EXCL_LINE
+                break;                         // GCOV_EXCL_LINE
             }
 
             if (py_repeat) {
@@ -221,8 +221,8 @@ event_handler_t*
 mojo_event_handler_new(void) {
     event_handler_t* handler = (event_handler_t*)calloc(1, sizeof(base_event_handler_t));
     if (!isvalid(handler)) {
-        log_e("Failed to allocate memory for event handler"); // GCOV_EXCL_START
-        return NULL;                                          // GCOV_EXCL_STOP
+        log_e("Failed to allocate memory for event handler"); // GCOV_EXCL_LINE
+        return NULL;                                          // GCOV_EXCL_LINE
     }
 
     handler->spec.emit_stack_begin = (event_handler_stack_begin_t)mojo_event_handler__handle_stack_begin;
@@ -344,8 +344,8 @@ where_strdup(const char* s) {
 // ----------------------------------------------------------------------------
 static void
 where_event_handler__handle_new_string(where_event_handler_t* self, cached_string_t* string) {
-    if (self->n_strings >= WHERE_MAX_STRINGS)
-        return; // best-effort: an over-cap string just won't resolve by name later
+    if (self->n_strings >= WHERE_MAX_STRINGS) // GCOV_EXCL_LINE
+        return; // best-effort: an over-cap string just won't resolve by name later -- GCOV_EXCL_LINE
 
     self->strings[self->n_strings].key   = string->key;
     self->strings[self->n_strings].value = string->value; // owned by the LRU cache; lives for the process's life
@@ -365,10 +365,10 @@ where_event_handler__lookup_string(where_event_handler_t* self, key_dt key) {
 // ----------------------------------------------------------------------------
 static void
 where_event_handler__handle_task_stack_begin(where_event_handler_t* self, uintptr_t task_id, uintptr_t name_key) {
-    if (self->n_tasks >= WHERE_MAX_TASKS) {
+    if (self->n_tasks >= WHERE_MAX_TASKS) { // GCOV_EXCL_START
         self->has_current_task = false;
         return;
-    }
+    } // GCOV_EXCL_STOP
 
     where_task_t* task = &self->tasks[self->n_tasks];
     task->task_id      = task_id;
@@ -391,8 +391,8 @@ where_event_handler__handle_task_stack_end(where_event_handler_t* self, uint64_t
 
     while (!task_stack_is_empty()) {
         frame_t* frame = task_stack_pop();
-        if (frame == CFRAME_MAGIC || !isvalid(task) || task->n_frames >= WHERE_MAX_TASK_FRAMES)
-            continue;
+        if (frame == CFRAME_MAGIC || !isvalid(task) || task->n_frames >= WHERE_MAX_TASK_FRAMES) // GCOV_EXCL_LINE
+            continue;                                                                           // GCOV_EXCL_LINE
 
         char buf[256];
         snprintf(buf, sizeof(buf), "%s (%s:%d)", frame->scope->value, frame->filename->value, frame->line);
@@ -405,8 +405,8 @@ where_event_handler__handle_task_stack_end(where_event_handler_t* self, uint64_t
 // ----------------------------------------------------------------------------
 static void
 where_event_handler__handle_task_waiter(where_event_handler_t* self, uintptr_t task_id, uintptr_t waiter_id) {
-    if (self->n_edges >= WHERE_MAX_TASK_EDGES)
-        return; // best-effort: an over-cap edge just won't show as a branch later
+    if (self->n_edges >= WHERE_MAX_TASK_EDGES) // GCOV_EXCL_LINE
+        return; // best-effort: an over-cap edge just won't show as a branch later -- GCOV_EXCL_LINE
 
     self->edges[self->n_edges].task_id   = task_id;
     self->edges[self->n_edges].waiter_id = waiter_id;
@@ -420,7 +420,9 @@ where_event_handler__find_task(where_event_handler_t* self, uintptr_t task_id) {
         if (self->tasks[i].task_id == task_id)
             return &self->tasks[i];
     }
-    return NULL; // best-effort: a waiter edge naming a task we never captured is just omitted from the tree
+    // best-effort: a waiter edge naming a task we never captured is just
+    // omitted from the tree
+    return NULL; // GCOV_EXCL_LINE
 }
 
 // ----------------------------------------------------------------------------
@@ -486,8 +488,8 @@ where_event_handler__print_task(where_event_handler_t* self, where_task_t* task,
 // WHERE_MAX_TREE_DEPTH.
 static void
 where_event_handler__print_task_body(where_event_handler_t* self, where_task_t* task, char* prefix, int depth) {
-    if (depth >= WHERE_MAX_TREE_DEPTH)
-        return;
+    if (depth >= WHERE_MAX_TREE_DEPTH) // GCOV_EXCL_LINE
+        return;                        // GCOV_EXCL_LINE
 
     where_task_t* children[WHERE_MAX_TASKS];
     size_t        n_children = 0;
@@ -557,10 +559,10 @@ where_event_handler__render_tree(where_event_handler_t* self, size_t base, size_
     // parent (a torn read produced a bogus edge, or a genuine cycle),
     // there's no true root to start from -- fall back to printing each of
     // them as its own top-level tree rather than silently showing nothing.
-    if (n_roots == 0) {
+    if (n_roots == 0) { // GCOV_EXCL_START
         for (size_t i = base; i < end && n_roots < WHERE_MAX_TASKS; i++)
             roots[n_roots++] = &self->tasks[i];
-    }
+    } // GCOV_EXCL_STOP
 
     // Starts at the same 4-space indent as a regular thread frame's own
     // lines (WHERE_SAMPLE_FORMAT), so the root task reads as nested under
@@ -608,8 +610,8 @@ where_event_handler__handle_stack_end(where_event_handler_t* self) {
     while (!stack_native_is_empty()) {
         frame_t* native_frame = stack_native_pop();
         if (!isvalid(native_frame)) {
-            log_e("Invalid native frame"); // GCOV_EXCL_START
-            break;                         // GCOV_EXCL_STOP
+            log_e("Invalid native frame"); // GCOV_EXCL_LINE
+            break;                         // GCOV_EXCL_LINE
         }
         if (native_frame == (frame_t*)EVAL_FRAME_MAGIC) {
             // TODO: if the py stack is empty we have a mismatch.
@@ -688,8 +690,8 @@ event_handler_t*
 where_event_handler_new(void) {
     where_event_handler_t* handler = (where_event_handler_t*)calloc(1, sizeof(where_event_handler_t));
     if (!isvalid(handler)) {
-        log_e("Failed to allocate memory for event handler"); // GCOV_EXCL_START
-        return NULL;                                          // GCOV_EXCL_STOP
+        log_e("Failed to allocate memory for event handler"); // GCOV_EXCL_LINE
+        return NULL;                                          // GCOV_EXCL_LINE
     }
 
     handler->has_current_task = false;

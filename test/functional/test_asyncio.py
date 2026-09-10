@@ -118,6 +118,37 @@ def test_where_asyncio_multiloop(py):
         assert "loop0-worker-1" not in loop1_text
 
 
+@requires_sudo
+@allpythons(min=(3, 14))
+def test_where_asyncio_fan_in(py):
+    """Two independent tasks directly awaiting the same third task at once
+    forces CPython to represent that task's task_awaited_by as a SET rather than
+    a single reference -- the only way to exercise Austin's waiter-set walk, as
+    opposed to the single-waiter fast path every other asyncio test target
+    exercises. Rendered as a tree, a task with two waiters necessarily shows up
+    twice (once nested under each waiter, since a fan-in can't be flattened into
+    a single-parent tree) -- that duplication is the signal that both waiter
+    edges from the set were actually walked and emitted."""
+    with run_python(py, target("target_asyncio_fanin.py")) as p:
+        expected = ("shared_worker", "fan-in-0", "fan-in-1")
+        result = retry_where(
+            p.pid,
+            lambda out: (
+                all(s in out for s in expected) and out.count("shared_worker") >= 2
+            ),
+        )
+        assert result.returncode == 0
+
+        out = result.stdout
+
+        assert "fan-in-0" in out
+        assert "fan-in-1" in out
+        # shared_worker must appear once per waiter -- if the waiter set was
+        # only partially walked (or treated as a single reference), it would
+        # show up just once.
+        assert out.count("shared_worker") >= 2, out
+
+
 @flaky
 @requires_sudo
 @allpythons(min=(3, 14))
@@ -141,11 +172,16 @@ def test_where_asyncio_orphaned_task(py):
 def test_asyncio_mojo_smoke(py, tmp_path: Path):
     """Continuous MOJO-format sampling with asyncio task scanning active
     completes cleanly and produces non-empty output. See the module
-    docstring for why this doesn't assert on the task events themselves."""
+    docstring for why this doesn't assert on the task events themselves.
+
+    Runs with -P (pipe mode) so a task-stack event's own extra fflush (see
+    mojo_event_handler__handle_task_stack_end in events.c) actually fires at
+    least once -- every other asyncio test target uses plain file output,
+    which never takes that branch."""
     datafile = tmp_path / "test_asyncio_mojo.austin"
 
     result = austin(
-        "-i", "1000", "-o", str(datafile), *python(py), target("target_asyncio.py")
+        "-i", "1000", "-P", "-o", str(datafile), *python(py), target("target_asyncio.py")
     )
     assert result.returncode == 0, result.stderr or result.stdout
 

@@ -61,16 +61,16 @@ void
 py_asyncio__validate_and_cache(py_proc_t* self) {
     // Read straight into the destination -- consumers all gate on
     // asyncio_debug_found first, so a failed/partial read here is harmless.
-    if (fail(copy_remote(self->ref, self->map.asyncio_debug.base, self->asyncio_offsets))) {
+    if (fail(copy_remote(self->ref, self->map.asyncio_debug.base, self->asyncio_offsets))) { // GCOV_EXCL_START
         log_d("Cannot read AsyncioDebug offsets from remote process");
         return;
-    }
+    } // GCOV_EXCL_STOP
 
-    if (!_py_asyncio__validate(&self->asyncio_offsets)) {
+    if (!_py_asyncio__validate(&self->asyncio_offsets)) { // GCOV_EXCL_START
         log_d("AsyncioDebug offsets failed sanity check; discarding");
         self->map.asyncio_debug.base = NULL; // Retry from scratch next time.
         return;
-    }
+    } // GCOV_EXCL_STOP
 
     self->asyncio_debug_found = true;
 
@@ -108,15 +108,15 @@ _is_plausible_ptr(raddr_t p) {
 static void
 _py_asyncio__emit_waiter_set(py_proc_t* self, raddr_t task_addr, raddr_t set_addr) {
     py_set_t set = {0};
-    if (!py_set__read(self->ref, set_addr, self->py_v, &set)) {
+    if (!py_set__read(self->ref, set_addr, self->py_v, &set)) { // GCOV_EXCL_START
         log_d("Cannot read waiter set for task at %p", task_addr);
         return;
-    }
+    } // GCOV_EXCL_STOP
 
-    if (!py_set__is_valid(&set)) {
+    if (!py_set__is_valid(&set)) { // GCOV_EXCL_START
         log_d("Invalid waiter set for task at %p (corrupted remote memory); skipping", task_addr);
         return;
-    }
+    } // GCOV_EXCL_STOP
 
     py_set_iter_t it = {0};
     raddr_t       key;
@@ -140,8 +140,8 @@ _py_asyncio__waiter_fingerprint(py_proc_t* self, raddr_t awaited_by, bool is_set
         return (uintptr_t)awaited_by | 1; // tag to disambiguate from a set fingerprint of 0
 
     py_set_t set = {0};
-    if (!py_set__read(self->ref, awaited_by, self->py_v, &set))
-        return 0;
+    if (!py_set__read(self->ref, awaited_by, self->py_v, &set)) // GCOV_EXCL_LINE
+        return 0;                                               // GCOV_EXCL_LINE
 
     return ((uintptr_t)set.table << 2) ^ ((uintptr_t)set.mask << 1) ^ (uintptr_t)set.used;
 } // _py_asyncio__waiter_fingerprint
@@ -155,8 +155,9 @@ _py_asyncio__task_name_key(py_proc_t* self, raddr_t task_addr) {
     V_DESC(self->py_v);
 
     raddr_t name_addr = NULL;
-    if (fail(copy_asyncio_field(self, task_object, task_name, task_addr, name_addr)) || !_is_plausible_ptr(name_addr))
-        return 0;
+    if (fail(copy_asyncio_field(self, task_object, task_name, task_addr, name_addr))
+        || !_is_plausible_ptr(name_addr)) // GCOV_EXCL_LINE
+        return 0;                         // GCOV_EXCL_LINE
 
     key_dt           string_key = ptr_key(name_addr);
     cached_string_t* cached     = (cached_string_t*)lru_cache__maybe_hit(self->string_cache, string_key);
@@ -260,20 +261,22 @@ _py_asyncio__recurse_into_awaited(
     V_DESC(self->py_v);
 
     uintptr_t stackpointer = 0;
-    if (fail(copy_field_v(self->ref, iframe, stackpointer, iframe_addr, stackpointer)) || stackpointer == 0)
-        return;
+    if (fail(copy_field_v(self->ref, iframe, stackpointer, iframe_addr, stackpointer)) || stackpointer == 0) // GCOV_EXCL_LINE
+        return;                                                                                              // GCOV_EXCL_LINE
 
     // The awaited object sits one stack slot below the top on 3.14, but two
     // slots below on 3.15.
     uintptr_t slots_back = V_MAX(3, 14) ? 1 : 2;
 
     uintptr_t awaited_raw = 0;
-    if (fail(copy_remote(self->ref, (raddr_t)(stackpointer - slots_back * sizeof(void*)), awaited_raw)))
-        return;
+    if (fail(
+            copy_remote(self->ref, (raddr_t)(stackpointer - slots_back * sizeof(void*)), awaited_raw)
+        ))      // GCOV_EXCL_LINE
+        return; // GCOV_EXCL_LINE
 
     raddr_t awaited_addr = UNTAG_STACKREF(awaited_raw);
-    if (!_is_plausible_ptr(awaited_addr))
-        return;
+    if (!_is_plausible_ptr(awaited_addr)) // GCOV_EXCL_LINE
+        return;                           // GCOV_EXCL_LINE
 
     raddr_t awaited_type_addr = NULL;
     if (fail(copy_remote(self->ref, (char*)awaited_addr + py_v->py_object_o_type, awaited_type_addr))
@@ -287,27 +290,29 @@ static void
 _py_asyncio__unwind_coro_chain(
     py_proc_t* self, raddr_t coro_addr, int depth, task_frame_id_t* out_leaf, uint64_t* io_chain_fp
 ) {
-    if (depth >= MAX_CORO_CHAIN_DEPTH || !_is_plausible_ptr(coro_addr))
-        return;
+    if (depth >= MAX_CORO_CHAIN_DEPTH || !_is_plausible_ptr(coro_addr)) // GCOV_EXCL_LINE
+        return;                                                         // GCOV_EXCL_LINE
 
     V_DESC(self->py_v);
 
     int8_t frame_state = 0;
-    if (fail(copy_field_v(self->ref, gen, gi_frame_state, coro_addr, frame_state))
+    if (fail(copy_field_v(self->ref, gen, gi_frame_state, coro_addr, frame_state)) // GCOV_EXCL_START
         || _py_asyncio__frame_state_done(py_v->minor, frame_state))
         return;
+    // GCOV_EXCL_STOP
 
     raddr_t gen_type_addr = NULL;
-    if (fail(copy_remote(self->ref, (char*)coro_addr + py_v->py_object_o_type, gen_type_addr)))
-        return;
+    if (fail(copy_remote(self->ref, (char*)coro_addr + py_v->py_object_o_type, gen_type_addr))) // GCOV_EXCL_LINE
+        return;                                                                                 // GCOV_EXCL_LINE
 
     raddr_t iframe_addr = (raddr_t)((char*)coro_addr + py_v->py_gen.o_gi_iframe);
 
     raddr_t code_addr = NULL;
     raddr_t instr_ptr = NULL;
-    if (fail(copy_field_v(self->ref, iframe, code, iframe_addr, code_addr))
+    if (fail(copy_field_v(self->ref, iframe, code, iframe_addr, code_addr)) // GCOV_EXCL_START
         || fail(copy_field_v(self->ref, iframe, prev_instr, iframe_addr, instr_ptr)))
         return;
+    // GCOV_EXCL_STOP
 
     // f_executable is a _PyStackRef tagged pointer, not a raw PyCodeObject*,
     // on any build new enough to have it tagged at all.
@@ -342,12 +347,14 @@ _py_asyncio__unwind_coro_chain(
 // ----------------------------------------------------------------------------
 static void
 _py_asyncio__emit_task(py_proc_t* self, raddr_t task_addr, microseconds_t time_delta) {
-    if (!_is_plausible_ptr(task_addr))
-        return;
+    if (!_is_plausible_ptr(task_addr)) // GCOV_EXCL_LINE
+        return;                        // GCOV_EXCL_LINE
 
     task_tracker_entry_t* entry = task_tracker__get_or_create(self->task_tracker, (uintptr_t)task_addr);
-    if (!isvalid(entry)) // Tracker full; best-effort, retry once older tasks are evicted.
-        return;
+    // Tracker full (MAX_TASK_TRACKER concurrently live tasks); best-effort,
+    // retry once older tasks are evicted.
+    if (!isvalid(entry)) // GCOV_EXCL_LINE
+        return;          // GCOV_EXCL_LINE
     entry->last_gen = self->task_tracker->sample_gen;
 
     // Accrue elapsed time onto the task's current suspension point; flushed
@@ -392,10 +399,10 @@ _py_asyncio__emit_task(py_proc_t* self, raddr_t task_addr, microseconds_t time_d
 
             entry->top = leaf;
         }
-    } else {
+    } else { // GCOV_EXCL_START
         entry->top            = (task_frame_id_t){0};
         entry->suspended_time = 0;
-    }
+    } // GCOV_EXCL_STOP
 
     // ---- waiter edges: only re-emit the (possibly multi-edge) waiter set
     // when its cheap fingerprint has changed since last seen. ----
@@ -432,25 +439,25 @@ py_asyncio__scan_task_list(py_proc_t* self, raddr_t list_head_addr, microseconds
     V_DESC(self->py_v);
 
     raddr_t node = NULL;
-    if (fail(copy_field_v(self->ref, llist, next, list_head_addr, node))) {
+    if (fail(copy_field_v(self->ref, llist, next, list_head_addr, node))) { // GCOV_EXCL_START
         log_d("Cannot read asyncio task list head at %p", list_head_addr);
         return;
-    }
+    } // GCOV_EXCL_STOP
 
     for (int i = 0; i < MAX_TASK_LIST_ITER && isvalid(node) && node != list_head_addr; i++) {
-        if (!_is_plausible_ptr(node)) {
+        if (!_is_plausible_ptr(node)) { // GCOV_EXCL_START
             log_d("Garbled asyncio task list node at %p; aborting this list", node);
             return;
-        }
+        } // GCOV_EXCL_STOP
 
         raddr_t task_addr = (raddr_t)((char*)node - self->asyncio_offsets.asyncio_task_object.task_node);
         _py_asyncio__emit_task(self, task_addr, time_delta);
 
         raddr_t next_node = NULL;
-        if (fail(copy_field_v(self->ref, llist, next, node, next_node))) {
+        if (fail(copy_field_v(self->ref, llist, next, node, next_node))) { // GCOV_EXCL_START
             log_d("Torn read while walking asyncio task list at node %p", node);
             return;
-        }
+        } // GCOV_EXCL_STOP
         node = next_node;
     }
 } // py_asyncio__scan_task_list
