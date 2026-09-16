@@ -180,25 +180,26 @@ _py_asyncio__task_name_key(py_proc_t* self, raddr_t task_addr) {
     return string_key;
 } // _py_asyncio__task_name_key
 
-// PyFrameState's numbering (pycore_frame.h) isn't stable across minor
-// versions:
-//   3.14.x:  CREATED=-3, SUSPENDED=-2, SUSPENDED_YIELD_FROM=-1, EXECUTING=0,
-//            COMPLETED=1, CLEARED=4 (no distinct "locked" variant)
-//   3.15+:   CREATED=0, SUSPENDED=1, SUSPENDED_YIELD_FROM=2,
-//            SUSPENDED_YIELD_FROM_LOCKED=3, EXECUTING=4, CLEARED=5
-// Hence these two helpers keyed off py_v->minor, rather than a hardcoded
-// constant that would misclassify states on whichever version it wasn't
-// written for.
+// _PyFrameState's numbering isn't stable across minor versions -- see the
+// FRAME_*_3_14/FRAME_*_3_15 constants in python/iframe.h -- hence these
+// helpers keyed off py_v->minor rather than a single hardcoded constant.
 static inline bool
 _py_asyncio__frame_state_done(int minor, int8_t frame_state) {
-    // 3.14: FRAME_STATE_FINISHED(S) is (S) >= FRAME_COMPLETED(1).
-    // 3.15+: only FRAME_CLEARED(5) means "don't touch this frame again".
-    return minor <= 14 ? frame_state >= 1 : frame_state == 5;
+    // 3.14: FRAME_STATE_FINISHED(S) is (S) >= FRAME_COMPLETED.
+    // 3.15+: only FRAME_CLEARED means "don't touch this frame again".
+    return minor <= 14 ? frame_state >= FRAME_COMPLETED_3_14 : frame_state == FRAME_CLEARED_3_15;
 }
 
 static inline bool
 _py_asyncio__frame_state_yield_from(int minor, int8_t frame_state) {
-    return minor <= 14 ? frame_state == -1 : (frame_state == 2 || frame_state == 3);
+    return minor <= 14 ? frame_state == FRAME_SUSPENDED_YIELD_FROM_3_14
+                        : (frame_state == FRAME_SUSPENDED_YIELD_FROM_3_15
+                           || frame_state == FRAME_SUSPENDED_YIELD_FROM_LOCKED_3_15);
+}
+
+static inline bool
+_py_asyncio__frame_state_executing(int minor, int8_t frame_state) {
+    return minor <= 14 ? frame_state == FRAME_EXECUTING_3_14 : frame_state == FRAME_EXECUTING_3_15;
 }
 
 // Safety valve against a corrupted or cyclic await chain -- a real chain is
@@ -346,7 +347,10 @@ _py_asyncio__unwind_coro_chain(
 
 // ----------------------------------------------------------------------------
 static void
-_py_asyncio__emit_task(py_proc_t* self, raddr_t task_addr, microseconds_t time_delta) {
+_py_asyncio__emit_task(
+    py_proc_t* self, py_thread_t* thread, raddr_t task_addr, microseconds_t time_delta,
+    raddr_t* out_executing_boundary
+) {
     if (!_is_plausible_ptr(task_addr)) // GCOV_EXCL_LINE
         return;                        // GCOV_EXCL_LINE
 
@@ -357,47 +361,90 @@ _py_asyncio__emit_task(py_proc_t* self, raddr_t task_addr, microseconds_t time_d
         return;          // GCOV_EXCL_LINE
     entry->last_gen = self->task_tracker->sample_gen;
 
-    // Accrue elapsed time onto the task's current suspension point; flushed
-    // once that point changes (attributed to the old frame), or discarded on
-    // a torn/failed coroutine read (no frame left to attribute it to).
-    entry->suspended_time += time_delta;
+    // Dwell accrued at the PREVIOUS position, before this tick's own
+    // contribution is decided below -- kept separate so an executing tick
+    // can close it out without folding in the current (EXECUTING) tick.
+    uint64_t prior_suspended_time = entry->suspended_time;
 
-    // ---- coroutine stack: walk the whole chain every scan (cheap raw
-    // pointer reads, no name resolution) for the leaf's identity and a
-    // fingerprint of the chain above it -- the leaf alone can look unchanged
-    // while the task still progresses (see task_frame_id_t in
-    // task_tracker.h). Only resolve/emit when the fingerprint changes. ----
+    // ---- coroutine stack ----
     raddr_t coro_addr = NULL;
     if (success(copy_asyncio_field(self, task_object, task_coro, task_addr, coro_addr))
         && _is_plausible_ptr(coro_addr)) {
-        py_thread_t     coro_thread = py_thread__init(self);
-        task_frame_id_t leaf        = {0};
-        uint64_t        chain_fp    = 14695981039346656037ull; // FNV-1a offset basis
+        V_DESC(self->py_v);
 
-        task_stack_reset();
-        _py_asyncio__unwind_coro_chain(self, coro_addr, 0, &leaf, &chain_fp);
+        int8_t frame_state    = 0;
+        bool   is_executing
+            = isvalid(thread) && success(copy_field_v(self->ref, gen, gi_frame_state, coro_addr, frame_state))
+              && _py_asyncio__frame_state_executing(py_v->minor, frame_state);
 
-        bool has_prior_frame = isvalid(entry->top.frame);
-        bool changed         = !has_prior_frame || entry->top.chain_fp != leaf.chain_fp;
+        if (is_executing) {
+            // `thread` is actively running this task's own coroutine right
+            // now -- its (possibly deeper, synchronous) call chain is part
+            // of `thread`'s live frame chain, not reachable via the
+            // async/await-hop walk used for the suspended case below.
+            if (isvalid(entry->top.frame) && prior_suspended_time > 0) {
+                // Close the old suspended position (empty frames -- see
+                // py_asyncio__scan_tasks_end's own closing-flush pattern).
+                task_stack_reset();
+                event_handler__emit_task_stack_begin((uintptr_t)task_addr, (uintptr_t)entry->name_key);
+                event_handler__emit_task_stack_end(prior_suspended_time);
+            }
 
-        if (changed && isvalid(leaf.frame)) {
-            // First-ever sighting has no prior frame to attribute time to --
-            // discard rather than credit an unobserved frame.
-            uint64_t elapsed = has_prior_frame ? entry->suspended_time : 0;
+            raddr_t     task_iframe = (raddr_t)((char*)coro_addr + py_v->py_gen.o_gi_iframe);
+            py_thread_t coro_thread = py_thread__init(self);
 
-            if (success(py_thread__resolve_task_stack(&coro_thread))) {
+            task_stack_reset();
+            if (success(py_thread__unwind_task_iframe_stack(thread, thread->top_frame, task_iframe))
+                && success(py_thread__resolve_task_stack(&coro_thread))) {
                 key_dt name_key = _py_asyncio__task_name_key(self, task_addr);
-                // Keep the last known-good name rather than clobbering it
-                // with 0, so a transient failure doesn't erase the eviction
-                // fallback.
                 if (name_key != 0)
                     entry->name_key = (uintptr_t)name_key;
                 event_handler__emit_task_stack_begin((uintptr_t)task_addr, (uintptr_t)name_key);
-                event_handler__emit_task_stack_end(elapsed);
-                entry->suspended_time = 0;
+                event_handler__emit_task_stack_end(time_delta);
+
+                // Lets the caller trim `thread`'s own already-unwound
+                // regular sample at this boundary -- see
+                // py_thread__truncate_stack_at.
+                if (isvalid(out_executing_boundary))
+                    *out_executing_boundary = task_iframe;
             }
 
-            entry->top = leaf;
+            // Forces the next SUSPENDED sighting to be treated as fresh
+            // rather than compared against this now-stale position.
+            entry->top             = (task_frame_id_t){0};
+            entry->suspended_time  = 0;
+        } else {
+            entry->suspended_time = prior_suspended_time + time_delta;
+
+            py_thread_t     coro_thread = py_thread__init(self);
+            task_frame_id_t leaf        = {0};
+            uint64_t        chain_fp    = 14695981039346656037ull; // FNV-1a offset basis
+
+            task_stack_reset();
+            _py_asyncio__unwind_coro_chain(self, coro_addr, 0, &leaf, &chain_fp);
+
+            bool has_prior_frame = isvalid(entry->top.frame);
+            bool changed         = !has_prior_frame || entry->top.chain_fp != leaf.chain_fp;
+
+            if (changed && isvalid(leaf.frame)) {
+                // First-ever sighting has no prior frame to attribute time
+                // to -- discard rather than credit an unobserved frame.
+                uint64_t elapsed = has_prior_frame ? entry->suspended_time : 0;
+
+                if (success(py_thread__resolve_task_stack(&coro_thread))) {
+                    key_dt name_key = _py_asyncio__task_name_key(self, task_addr);
+                    // Keep the last known-good name rather than clobbering
+                    // it with 0, so a transient failure doesn't erase the
+                    // eviction fallback.
+                    if (name_key != 0)
+                        entry->name_key = (uintptr_t)name_key;
+                    event_handler__emit_task_stack_begin((uintptr_t)task_addr, (uintptr_t)name_key);
+                    event_handler__emit_task_stack_end(elapsed);
+                    entry->suspended_time = 0;
+                }
+
+                entry->top = leaf;
+            }
         }
     } else { // GCOV_EXCL_START
         entry->top            = (task_frame_id_t){0};
@@ -435,7 +482,10 @@ py_asyncio__scan_tasks_begin(py_proc_t* self) {
 
 // ----------------------------------------------------------------------------
 void
-py_asyncio__scan_task_list(py_proc_t* self, raddr_t list_head_addr, microseconds_t time_delta) {
+py_asyncio__scan_task_list(
+    py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr, microseconds_t time_delta,
+    raddr_t* out_executing_boundary
+) {
     V_DESC(self->py_v);
 
     raddr_t node = NULL;
@@ -451,7 +501,7 @@ py_asyncio__scan_task_list(py_proc_t* self, raddr_t list_head_addr, microseconds
         } // GCOV_EXCL_STOP
 
         raddr_t task_addr = (raddr_t)((char*)node - self->asyncio_offsets.asyncio_task_object.task_node);
-        _py_asyncio__emit_task(self, task_addr, time_delta);
+        _py_asyncio__emit_task(self, thread, task_addr, time_delta, out_executing_boundary);
 
         raddr_t next_node = NULL;
         if (fail(copy_field_v(self->ref, llist, next, node, next_node))) { // GCOV_EXCL_START

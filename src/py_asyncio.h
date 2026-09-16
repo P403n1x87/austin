@@ -28,6 +28,7 @@
 #pragma once
 
 #include "py_proc.h"
+#include "py_thread.h"
 
 // The _asyncio module is loaded lazily (on `import asyncio`), so the
 // platform's debug-section scan is retried on a Fibonacci backoff: fast at
@@ -99,16 +100,27 @@ py_asyncio__scan_tasks_begin(py_proc_t* self);
  * cyclic remote list can't hang or crash the sampler.
  *
  * @param self           the process object.
+ * @param thread         the py_thread_t that owns this list (already
+ *                       unwound this sample), or NULL for the
+ *                       interpreter-wide orphan list (no live owning
+ *                       thread, so never has an EXECUTING task).
  * @param list_head_addr the remote address of the list's llist_node
  *                       sentinel (see py_asyncio__interp_task_list_head/
  *                       py_asyncio__thread_task_list_head below).
- * @param time_delta     elapsed time since the previous sample, in the
- *                       same unit and mode (wall/CPU) as the rest of
- *                       Austin's sampling loop; credited to a task's dwell
- *                       time at its current frame.
+ * @param time_delta     elapsed time since the previous sample; credited to
+ *                       a task's dwell time at its current frame, suspended
+ *                       or (thread non-NULL) EXECUTING alike.
+ * @param out_executing_boundary
+ *                       written (at most once) to the executing task's own
+ *                       top-level coroutine frame address, if found on this
+ *                       list; untouched otherwise. Pass NULL for the orphan
+ *                       list. See py_thread__truncate_stack_at.
  */
 void
-py_asyncio__scan_task_list(py_proc_t* self, raddr_t list_head_addr, microseconds_t time_delta);
+py_asyncio__scan_task_list(
+    py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr, microseconds_t time_delta,
+    raddr_t* out_executing_boundary
+);
 
 /**
  * End a Phase-2 task-population scan, evicting tasks that disappeared.

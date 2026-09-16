@@ -448,6 +448,42 @@ _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
 }
 
 // ----------------------------------------------------------------------------
+// Walks `previous` from top_frame upward onto whatever _stack currently
+// points at, stopping once stop_at is pushed (inclusive) -- see
+// py_thread__unwind_task_iframe_stack. No up-stack repeat optimisation:
+// that's keyed off self->prev_top, the thread's own identity, unrelated to
+// this task-scoped, boundary-limited walk.
+static inline int
+_py_thread__unwind_bounded_iframe_stack(py_thread_t* self, raddr_t top_frame, raddr_t stop_at) {
+    raddr_t curr = top_frame;
+
+    while (isvalid(curr)) {
+        raddr_t this_frame = curr;
+        if (fail(_py_thread__push_iframe(self, &curr))) {
+            log_d("Failed to retrieve iframe #%d while walking to task boundary", stack_pointer());
+            FAIL;
+        }
+
+        if (stack_full()) { // GCOV_EXCL_START
+            log_w("Invalid frame stack: too tall");
+            FAIL;
+        } // GCOV_EXCL_STOP
+
+        if (stack_has_cycle()) {
+            log_d("Circular frame reference detected while walking to task boundary");
+            FAIL;
+        }
+
+        if (this_frame == stop_at)
+            SUCCESS;
+    }
+
+    // stop_at never found -- torn read, or the task stopped executing
+    // since we observed it. Best-effort: fail, try again next scan.
+    FAIL;
+}
+
+// ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_cframe_stack(py_thread_t* self) {
     PyCFrame cframe;
@@ -707,6 +743,79 @@ py_thread__unwind(py_thread_t* self) {
 int
 py_thread__resolve_task_stack(py_thread_t* self) {
     return fail(_py_thread__resolve_task_py_stack(self));
+}
+
+// ----------------------------------------------------------------------------
+// Unwinds a task's own ordinary call chain when its top-level coroutine is
+// caught EXECUTING: top_frame is the thread's live top frame, stop_at is
+// the task's own gi_iframe. top_frame down to (inclusive of) stop_at is the
+// task's own chain -- a suspended coroutine never has live nested calls
+// here, see _py_asyncio__unwind_coro_chain. Beyond stop_at is the
+// surrounding thread/event-loop context; see py_thread__truncate_stack_at
+// for how the thread's own report is kept from also including this part.
+//
+// Reuses _py_thread__push_iframe (same frame-reading logic as the regular
+// unwind) by temporarily retargeting _stack at _task_stack; always restored
+// before returning.
+//
+// @return SUCCESS if stop_at was reached, FAIL otherwise (best-effort).
+int
+py_thread__unwind_task_iframe_stack(py_thread_t* self, raddr_t top_frame, raddr_t stop_at) {
+    stack_dt* saved_stack = _stack;
+    _stack                = _task_stack;
+
+    int result = _py_thread__unwind_bounded_iframe_stack(self, top_frame, stop_at);
+
+    _stack = saved_stack;
+
+    return result;
+}
+
+// ----------------------------------------------------------------------------
+// Removes every frame from the leaf up to and including the one at
+// `boundary` from self's already-unwound _stack (identity and resolved
+// arrays alike), shifting the remaining outer frames down to index 0.
+//
+// Used when a task on this thread was found EXECUTING: its own portion of
+// the chain is reported separately (py_thread__unwind_task_iframe_stack),
+// so the thread's own report must not also include it, or a merged view
+// would count the interval twice. Ordinary flame-graph self-time (value
+// minus children) only cancels that once the thread's report stops exactly
+// where the task's report picks up.
+//
+// Index 0 is always the leaf (see _py_thread__unwind_iframe_stack), so
+// `boundary` and everything closer to it is always a prefix of the array.
+//
+// @param  py_thread_t  self -- the thread whose _stack was just unwound.
+// @param  raddr_t      boundary -- the executing task's own top-level
+//                       coroutine frame; removed along with everything
+//                       leaf-ward of it.
+//
+// @return true if boundary was found and removed, false otherwise
+//         (best-effort -- the stack is left untouched).
+bool
+py_thread__truncate_stack_at(py_thread_t* self, raddr_t boundary) {
+    (void)self; // _stack is that thread's own -- nothing else needed here
+
+    ssize_t cut = -1;
+    for (ssize_t i = 0; i < _stack->pointer; i++) {
+        if (_stack->py_base[i].origin == boundary) {
+            cut = i;
+            break;
+        }
+    }
+
+    if (cut < 0)
+        return false;
+
+    ssize_t remaining = _stack->pointer - cut - 1;
+    if (remaining > 0) {
+        memmove(_stack->py_base, _stack->py_base + cut + 1, (size_t)remaining * sizeof(*_stack->py_base));
+        memmove(_stack->base, _stack->base + cut + 1, (size_t)remaining * sizeof(*_stack->base));
+    }
+    _stack->pointer = remaining;
+
+    return true;
 }
 
 // ----------------------------------------------------------------------------

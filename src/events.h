@@ -167,17 +167,19 @@ event_handler__emit_task_stack_begin(uintptr_t task_id, uintptr_t name_key) {
         handler(event_handler, task_id, name_key);
 }
 
-// elapsed is the wall/CPU time (same unit and mode as sample_t.time) the task
-// spent at the coroutine frame it just left, accumulated across every scan
-// since that frame was first observed; 0 on the task's first-ever sighting,
-// when there is no prior frame to attribute time to.
+// elapsed is how long the task's top-level coroutine dwelled at the
+// frame(s) it just left, whether suspended or EXECUTING (see
+// _py_asyncio__emit_task) -- both count the same way. 0 on first sighting.
 //
-// This is always one step behind the frames emitted between emit_task_stack_
-// begin and this call: those frames are the task's brand new position, just
-// unwound THIS scan, because that's what triggered this emission in the
-// first place; elapsed describes how long the task dwelled at its PREVIOUS
-// position, ending exactly now, which is the earliest point that duration
-// could possibly be known. The two are never describing the same frames.
+// SUSPENDED: one step behind -- frames are the new position, elapsed is the
+// PREVIOUS one. EXECUTING: no such lag -- frames and elapsed both describe
+// this same tick.
+//
+// The owning thread's own regular sample is trimmed to stop at this task's
+// boundary frame (see py_thread__truncate_stack_at) so it never also
+// reports these frames -- with that, ordinary flame-graph self-time (value
+// minus children) nets out the overlap once a merged view attaches this
+// task as that frame's child.
 static inline void
 event_handler__emit_task_stack_end(uint64_t elapsed) {
     if (!isvalid(event_handler))
