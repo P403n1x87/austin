@@ -24,6 +24,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "cache.h"
 #include "frame.h"
@@ -149,6 +150,105 @@ task_stack_py_push(raddr_t origin, raddr_t code, int lasti) {
 #define stack_kernel_full()     (_stack->kernel_pointer >= _stack->size)
 #define stack_kernel_reset()        \
     { _stack->kernel_pointer = 0; }
+
+// Index of the Python frame whose raw origin address is `origin`, or -1
+// (e.g. a repeat sample, which only has PYSTACK_REPEAT_MAGIC, never matches).
+static inline ssize_t
+stack_py_find_origin(raddr_t origin) {
+    for (ssize_t i = 0; i < _stack->pointer; i++) {
+        if (_stack->py_base[i].origin == origin)
+            return i;
+    }
+    return -1;
+}
+
+// ----------------------------------------------------------------------------
+// Cursor over the root-to-leaf interleave of _stack/_stack_native -- the
+// same native/Python pairing mojo_event_handler__handle_stack_end (events.c)
+// uses to drain a native-mode sample, exposed here so code that needs to
+// locate a Python frame within that sequence (not just drain it) reuses the
+// one pairing implementation instead of re-deriving EVAL_FRAME_MAGIC/
+// CFRAME_MAGIC handling by hand -- see py_thread__split_task_stack_at.
+typedef struct {
+    ssize_t native_ptr;
+    ssize_t py_ptr;
+    bool    has_cframes;
+} stack_interleave_t;
+
+// Starts a walk over the current (full) _stack/_stack_native.
+static inline stack_interleave_t
+stack_interleave_begin(void) {
+    ssize_t py_ptr      = _stack->pointer;
+    bool    has_cframes = py_ptr > 0 && _stack->base[py_ptr - 1] == (frame_t*)CFRAME_MAGIC;
+    if (has_cframes)
+        py_ptr--;
+    return (stack_interleave_t){.native_ptr = _stack->native_pointer, .py_ptr = py_ptr, .has_cframes = has_cframes};
+}
+
+// Pops the next unit from `it`: a plain native frame, or (for an
+// EVAL_FRAME_MAGIC) the Python frame(s) it pairs with -- one, normally, or a
+// whole has_cframes-terminated run when the root-most frame is a
+// CSTACK-owned shim (any eval-loop reentry from C, not just 3.11/3.12 -- the
+// common case). Calls visit(ctx, py_index, frame) per real frame, root-to-
+// leaf (py_index is -1 for a plain native frame); a CFRAME_MAGIC terminator
+// is consumed but not visited. Returns false once _stack_native is exhausted.
+static inline bool
+stack_interleave_next(stack_interleave_t* it, void (*visit)(void*, ssize_t, frame_t*), void* ctx) {
+    if (it->native_ptr <= 0)
+        return false;
+
+    frame_t* native_frame = _stack->native_base[--it->native_ptr];
+    if (!isvalid(native_frame)) // GCOV_EXCL_START
+        return false;
+    // GCOV_EXCL_STOP
+
+    if (native_frame != (frame_t*)EVAL_FRAME_MAGIC) {
+        visit(ctx, -1, native_frame);
+        return true;
+    }
+
+    if (it->py_ptr <= 0)
+        return true; // Python side exhausted -- this pairing is skipped, not the whole walk.
+
+    it->py_ptr--;
+    frame_t* frame = _stack->base[it->py_ptr];
+    if (frame != (frame_t*)CFRAME_MAGIC)
+        visit(ctx, it->py_ptr, frame);
+
+    if (it->has_cframes) {
+        while (frame != (frame_t*)CFRAME_MAGIC && it->py_ptr > 0) {
+            it->py_ptr--;
+            frame = _stack->base[it->py_ptr];
+            if (frame != (frame_t*)CFRAME_MAGIC)
+                visit(ctx, it->py_ptr, frame);
+        }
+    }
+
+    return true;
+}
+
+// Drops indices [0, cut] from _stack's identity and resolved arrays alike,
+// shifting the remainder down to index 0. memmove, not memcpy: the ranges
+// commonly overlap (a short shift over a long remainder).
+static inline void
+stack_py_shift_left(ssize_t cut) {
+    ssize_t remaining = _stack->pointer - cut - 1;
+    if (remaining > 0) {
+        memmove(_stack->py_base, _stack->py_base + cut + 1, (size_t)remaining * sizeof(*_stack->py_base));
+        memmove(_stack->base, _stack->base + cut + 1, (size_t)remaining * sizeof(*_stack->base));
+    }
+    _stack->pointer = remaining;
+}
+
+// Same as stack_py_shift_left, but for _stack_native.
+static inline void
+stack_native_shift_left(ssize_t cut) {
+    ssize_t remaining = _stack->native_pointer - cut - 1;
+    if (remaining > 0) {
+        memmove(_stack->native_base, _stack->native_base + cut + 1, (size_t)remaining * sizeof(*_stack->native_base));
+    }
+    _stack->native_pointer = remaining;
+}
 
 // ----------------------------------------------------------------------------
 

@@ -119,42 +119,29 @@ int
 py_thread__resolve_task_stack(py_thread_t*);
 
 /**
- * Unwind an asyncio task's own call chain onto _task_stack when its
- * top-level coroutine is caught EXECUTING rather than suspended. top_frame
- * is the thread's own live top frame; stop_at is the task's own gi_iframe.
- * Covers top_frame down to (inclusive of) stop_at -- the portion of the
- * thread's live chain that belongs to the task. Caller must call
- * task_stack_reset() first, as with py_thread__resolve_task_stack.
- *
- * @param  py_thread_t  self -- the thread top_frame/stop_at belong to.
- * @param  raddr_t      top_frame -- the thread's own live top frame.
- * @param  raddr_t      stop_at -- the task's own coroutine's gi_iframe.
- *
- * @return SUCCESS if stop_at was reached, FAIL otherwise (best-effort).
- */
-int
-py_thread__unwind_task_iframe_stack(py_thread_t*, raddr_t, raddr_t);
-
-/**
- * Remove every frame from the leaf up to and including `boundary` from
- * self's already-unwound regular stack, shifting the remaining outer
- * frames down to index 0.
+ * Split off the leaf-ward portion of self's already-unwound stack (native
+ * frames included, when in native mode) into _task_stack, from index 0 up
+ * to and including the frame at `boundary`, shifting whatever remains down
+ * to index 0.
  *
  * Used when a task on this thread was found EXECUTING: its own portion of
- * the chain is reported separately (see py_thread__unwind_task_iframe_
- * stack), so the thread's own report must not also include it -- see
- * py_thread.c for why that avoids double-counting once a consumer attaches
- * the task's report as this frame's child.
+ * the thread's live chain (top_frame down to its own top-level coroutine frame)
+ * belongs to the task, not the thread. Reuses the thread's own already-unwound
+ * stack rather than a second, separate walk, which is what lets this include
+ * native frames for free in native mode.
+ *
+ * Caller must call task_stack_reset() first.
  *
  * @param  py_thread_t  self -- the thread whose stack was just unwound.
  * @param  raddr_t      boundary -- the executing task's own top-level
- *                       coroutine frame address.
+ *                       coroutine frame; moved along with everything
+ *                       leaf-ward of it.
  *
- * @return true if boundary was found and removed, false otherwise
- *         (best-effort -- the stack is left untouched).
+ * @return true if boundary was found and the split performed, false
+ *         otherwise (best-effort -- both stacks are left untouched).
  */
 bool
-py_thread__truncate_stack_at(py_thread_t*, raddr_t);
+py_thread__split_task_stack_at(py_thread_t*, raddr_t);
 
 /**
  * Allocate memory for dumping the thread data.

@@ -193,8 +193,8 @@ _py_asyncio__frame_state_done(int minor, int8_t frame_state) {
 static inline bool
 _py_asyncio__frame_state_yield_from(int minor, int8_t frame_state) {
     return minor <= 14 ? frame_state == FRAME_SUSPENDED_YIELD_FROM_3_14
-                        : (frame_state == FRAME_SUSPENDED_YIELD_FROM_3_15
-                           || frame_state == FRAME_SUSPENDED_YIELD_FROM_LOCKED_3_15);
+                       : (frame_state == FRAME_SUSPENDED_YIELD_FROM_3_15
+                          || frame_state == FRAME_SUSPENDED_YIELD_FROM_LOCKED_3_15);
 }
 
 static inline bool
@@ -262,8 +262,9 @@ _py_asyncio__recurse_into_awaited(
     V_DESC(self->py_v);
 
     uintptr_t stackpointer = 0;
-    if (fail(copy_field_v(self->ref, iframe, stackpointer, iframe_addr, stackpointer)) || stackpointer == 0) // GCOV_EXCL_LINE
-        return;                                                                                              // GCOV_EXCL_LINE
+    if (fail(copy_field_v(self->ref, iframe, stackpointer, iframe_addr, stackpointer))
+        || stackpointer == 0) // GCOV_EXCL_LINE
+        return;               // GCOV_EXCL_LINE
 
     // The awaited object sits one stack slot below the top on 3.14, but two
     // slots below on 3.15.
@@ -347,10 +348,7 @@ _py_asyncio__unwind_coro_chain(
 
 // ----------------------------------------------------------------------------
 static void
-_py_asyncio__emit_task(
-    py_proc_t* self, py_thread_t* thread, raddr_t task_addr, microseconds_t time_delta,
-    raddr_t* out_executing_boundary
-) {
+_py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, microseconds_t time_delta) {
     if (!_is_plausible_ptr(task_addr)) // GCOV_EXCL_LINE
         return;                        // GCOV_EXCL_LINE
 
@@ -372,10 +370,10 @@ _py_asyncio__emit_task(
         && _is_plausible_ptr(coro_addr)) {
         V_DESC(self->py_v);
 
-        int8_t frame_state    = 0;
-        bool   is_executing
-            = isvalid(thread) && success(copy_field_v(self->ref, gen, gi_frame_state, coro_addr, frame_state))
-              && _py_asyncio__frame_state_executing(py_v->minor, frame_state);
+        int8_t frame_state  = 0;
+        bool   is_executing = isvalid(thread)
+                           && success(copy_field_v(self->ref, gen, gi_frame_state, coro_addr, frame_state))
+                           && _py_asyncio__frame_state_executing(py_v->minor, frame_state);
 
         if (is_executing) {
             // `thread` is actively running this task's own coroutine right
@@ -390,29 +388,21 @@ _py_asyncio__emit_task(
                 event_handler__emit_task_stack_end(prior_suspended_time);
             }
 
-            raddr_t     task_iframe = (raddr_t)((char*)coro_addr + py_v->py_gen.o_gi_iframe);
-            py_thread_t coro_thread = py_thread__init(self);
+            raddr_t task_iframe = (raddr_t)((char*)coro_addr + py_v->py_gen.o_gi_iframe);
 
             task_stack_reset();
-            if (success(py_thread__unwind_task_iframe_stack(thread, thread->top_frame, task_iframe))
-                && success(py_thread__resolve_task_stack(&coro_thread))) {
+            if (py_thread__split_task_stack_at(thread, task_iframe)) {
                 key_dt name_key = _py_asyncio__task_name_key(self, task_addr);
                 if (name_key != 0)
                     entry->name_key = (uintptr_t)name_key;
                 event_handler__emit_task_stack_begin((uintptr_t)task_addr, (uintptr_t)name_key);
                 event_handler__emit_task_stack_end(time_delta);
-
-                // Lets the caller trim `thread`'s own already-unwound
-                // regular sample at this boundary -- see
-                // py_thread__truncate_stack_at.
-                if (isvalid(out_executing_boundary))
-                    *out_executing_boundary = task_iframe;
             }
 
             // Forces the next SUSPENDED sighting to be treated as fresh
             // rather than compared against this now-stale position.
-            entry->top             = (task_frame_id_t){0};
-            entry->suspended_time  = 0;
+            entry->top            = (task_frame_id_t){0};
+            entry->suspended_time = 0;
         } else {
             entry->suspended_time = prior_suspended_time + time_delta;
 
@@ -482,10 +472,7 @@ py_asyncio__scan_tasks_begin(py_proc_t* self) {
 
 // ----------------------------------------------------------------------------
 void
-py_asyncio__scan_task_list(
-    py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr, microseconds_t time_delta,
-    raddr_t* out_executing_boundary
-) {
+py_asyncio__scan_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr, microseconds_t time_delta) {
     V_DESC(self->py_v);
 
     raddr_t node = NULL;
@@ -501,7 +488,7 @@ py_asyncio__scan_task_list(
         } // GCOV_EXCL_STOP
 
         raddr_t task_addr = (raddr_t)((char*)node - self->asyncio_offsets.asyncio_task_object.task_node);
-        _py_asyncio__emit_task(self, thread, task_addr, time_delta, out_executing_boundary);
+        _py_asyncio__emit_task(self, thread, task_addr, time_delta);
 
         raddr_t next_node = NULL;
         if (fail(copy_field_v(self->ref, llist, next, node, next_node))) { // GCOV_EXCL_START

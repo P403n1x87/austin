@@ -110,17 +110,9 @@ py_asyncio__scan_tasks_begin(py_proc_t* self);
  * @param time_delta     elapsed time since the previous sample; credited to
  *                       a task's dwell time at its current frame, suspended
  *                       or (thread non-NULL) EXECUTING alike.
- * @param out_executing_boundary
- *                       written (at most once) to the executing task's own
- *                       top-level coroutine frame address, if found on this
- *                       list; untouched otherwise. Pass NULL for the orphan
- *                       list. See py_thread__truncate_stack_at.
  */
 void
-py_asyncio__scan_task_list(
-    py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr, microseconds_t time_delta,
-    raddr_t* out_executing_boundary
-);
+py_asyncio__scan_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr, microseconds_t time_delta);
 
 /**
  * End a Phase-2 task-population scan, evicting tasks that disappeared.

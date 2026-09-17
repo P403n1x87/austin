@@ -95,6 +95,13 @@ mojo_event_handler__handle_new_frame(base_event_handler_t* self, frame_t* frame)
     mojo_integer(frame->column_end, 0);
 }
 
+static void
+_mojo_stack_end_visit(void* ctx, ssize_t py_index, frame_t* frame) {
+    (void)ctx;
+    (void)py_index;
+    mojo_frame_ref(frame);
+}
+
 static inline void
 mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
     bool py_repeat = stack_top() == PYSTACK_REPEAT_MAGIC;
@@ -103,53 +110,14 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
         mojo_stack_repeat();
     }
 
-    bool has_cframes = false;
-    if (stack_top() == CFRAME_MAGIC) {
-        has_cframes = true;
-        (void)stack_pop();
-    }
-
     if (pargs_native) {
-        while (!stack_native_is_empty()) {
-            frame_t* native_frame = stack_native_pop();
-            if (!isvalid(native_frame)) {
-                log_e("Invalid native frame"); // GCOV_EXCL_LINE
-                break;                         // GCOV_EXCL_LINE
-            }
-
-            if (py_repeat) {
-                // Python stack is repeated; native frames above the eval boundary
-                // are always emitted unconditionally.
-                mojo_frame_ref(native_frame);
-                continue;
-            }
-
-            if (native_frame == (frame_t*)EVAL_FRAME_MAGIC) {
-                if (!stack_is_empty()) {
-                    frame_t* frame = stack_pop();
-                    if (has_cframes) {
-                        while (frame != CFRAME_MAGIC) {
-                            mojo_frame_ref(frame);
-
-                            if (stack_is_empty())
-                                break;
-
-                            frame = stack_pop();
-                        }
-                    } else {
-                        if (frame != CFRAME_MAGIC) {
-                            mojo_frame_ref(frame);
-                        }
-                    }
-                }
-            } else {
-                mojo_frame_ref(native_frame);
-            }
-        }
+        stack_interleave_t it = stack_interleave_begin();
+        while (stack_interleave_next(&it, _mojo_stack_end_visit, NULL))
+            ;
 
 #ifdef DEBUG
-        if (!stack_is_empty()) {
-            log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
+        if (it.py_ptr > 0) {
+            log_d("Stack mismatch: left with %d Python frames after interleaving", (int)it.py_ptr);
         }
 #endif
         while (!stack_kernel_is_empty()) {
@@ -599,46 +567,21 @@ where_event_handler__handle_stack_begin(where_event_handler_t* self, sample_t* s
     fprintfp(pargs.output_file, WHERE_HEAD_FORMAT, sample->pid, sample->iid, tname, sample->is_idle ? "💤" : "🚀");
 }
 
+static void
+_where_stack_end_visit(void* ctx, ssize_t py_index, frame_t* frame) {
+    (void)ctx;
+    format_frame_ref(py_index < 0 ? WHERE_SAMPLE_FORMAT_NATIVE : WHERE_SAMPLE_FORMAT, frame);
+}
+
 void
 where_event_handler__handle_stack_end(where_event_handler_t* self) {
-    bool has_cframes = false;
-    if (stack_top() == CFRAME_MAGIC) {
-        has_cframes = true;
-        (void)stack_pop();
-    }
-
-    while (!stack_native_is_empty()) {
-        frame_t* native_frame = stack_native_pop();
-        if (!isvalid(native_frame)) {
-            log_e("Invalid native frame"); // GCOV_EXCL_LINE
-            break;                         // GCOV_EXCL_LINE
-        }
-        if (native_frame == (frame_t*)EVAL_FRAME_MAGIC) {
-            // TODO: if the py stack is empty we have a mismatch.
-            if (!stack_is_empty()) {
-                frame_t* frame = stack_pop();
-                if (has_cframes) {
-                    while (frame != CFRAME_MAGIC) {
-                        format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
-
-                        if (stack_is_empty())
-                            break;
-
-                        frame = stack_pop();
-                    }
-                } else {
-                    if (frame != CFRAME_MAGIC) {
-                        format_frame_ref(WHERE_SAMPLE_FORMAT, frame);
-                    }
-                }
-            }
-        } else {
-            format_frame_ref(WHERE_SAMPLE_FORMAT_NATIVE, native_frame);
-        }
-    }
+    stack_interleave_t it = stack_interleave_begin();
+    while (stack_interleave_next(&it, _where_stack_end_visit, NULL))
+        ;
 
     // In non-native mode the native stack is always empty so the interleaving
-    // loop above never runs.  Drain Python frames directly in that case.
+    // loop above never runs (it only ever touches a local cursor, not
+    // _stack itself).  Drain Python frames directly in that case.
     if (!pargs_native) {
         while (!stack_is_empty()) {
             frame_t* frame = stack_pop();
@@ -648,8 +591,11 @@ where_event_handler__handle_stack_end(where_event_handler_t* self) {
         }
     }
 #ifdef DEBUG
-    if (!stack_is_empty()) {
-        log_d("Stack mismatch: left with %d Python frames after interleaving", stack_pointer());
+    if (pargs_native ? it.py_ptr > 0 : !stack_is_empty()) {
+        log_d(
+            "Stack mismatch: left with %d Python frames after interleaving",
+            pargs_native ? (int)it.py_ptr : stack_pointer()
+        );
     }
 #endif
     while (!stack_kernel_is_empty()) {

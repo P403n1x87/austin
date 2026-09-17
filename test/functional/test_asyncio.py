@@ -20,8 +20,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+from functools import partial
 from pathlib import Path
-from test.utils import allpythons
+from test.utils import allpythons as _allpythons
 from test.utils import austin
 from test.utils import python
 from test.utils import requires_sudo
@@ -31,9 +32,12 @@ from test.utils import target
 
 from flaky import flaky
 
+# Every test in this module is asyncio task-graph introspection, 3.14+ only.
+allpythons = partial(_allpythons, min=(3, 14))
+
 
 @requires_sudo
-@allpythons(min=(3, 14))
+@allpythons()
 def test_where_asyncio_task_tree(py):
     with run_python(py, target("target_asyncio.py")) as p:
         expected = (
@@ -66,7 +70,7 @@ def test_where_asyncio_task_tree(py):
 
 
 @requires_sudo
-@allpythons(min=(3, 14))
+@allpythons()
 def test_where_asyncio_multiloop(py):
     """Each thread's own event loop shows only its own tasks.
 
@@ -119,7 +123,7 @@ def test_where_asyncio_multiloop(py):
 
 
 @requires_sudo
-@allpythons(min=(3, 14))
+@allpythons()
 def test_where_asyncio_fan_in(py):
     """Two independent tasks directly awaiting the same third task at once
     forces CPython to represent that task's task_awaited_by as a SET rather than
@@ -151,7 +155,7 @@ def test_where_asyncio_fan_in(py):
 
 @flaky
 @requires_sudo
-@allpythons(min=(3, 14))
+@allpythons()
 def test_where_asyncio_orphaned_task(py):
     """A task whose owning thread died while it was still referenced shows
     up in the "Orphaned task tree" fallback section rather than being
@@ -168,7 +172,7 @@ def test_where_asyncio_orphaned_task(py):
         assert "stuck_worker" in out
 
 
-@allpythons(min=(3, 14))
+@allpythons()
 def test_asyncio_mojo_smoke(py, tmp_path: Path):
     """Continuous MOJO-format sampling with asyncio task scanning active
     completes cleanly and produces non-empty output. See the module
@@ -181,8 +185,99 @@ def test_asyncio_mojo_smoke(py, tmp_path: Path):
     datafile = tmp_path / "test_asyncio_mojo.austin"
 
     result = austin(
-        "-i", "1000", "-P", "-o", str(datafile), *python(py), target("target_asyncio.py")
+        "-i",
+        "1000",
+        "-P",
+        "-o",
+        str(datafile),
+        *python(py),
+        target("target_asyncio.py"),
     )
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert datafile.stat().st_size > 0
+
+
+def _iter_tasks(tasks):
+    """Flatten a sample's task tree (each AustinTask nests the tasks it
+    awaits under .awaiting -- see austin.format.mojo's get_tasks) into a
+    single, order-agnostic iterator over every task node."""
+    for task in tasks or ():
+        yield task
+        yield from _iter_tasks(task.awaiting)
+
+
+@allpythons()
+def test_native_asyncio_mojo_smoke(py, save_mojo):
+    """Native-mode (-n) sampling with asyncio task scanning active completes
+    cleanly and captures both native frames and task data.
+
+    target_asyncio_cpu.py alternates CPU bursts with asyncio.sleep(0) so its
+    tasks stay on-CPU and get caught EXECUTING (see its own module
+    docstring), which is what exercises py_thread__split_task_stack_at's
+    native-mode path at all."""
+    result = austin("-n", "-i", "1000", *python(py), target("target_asyncio_cpu.py"))
+    save_mojo(result.stdout)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    assert any(
+        frame.line == 0 for sample in result.samples for frame in (sample.frames or ())
+    ), "Expected at least one native frame"
+
+    assert any(
+        sample.tasks for sample in result.samples
+    ), "Expected at least one sample to carry task data"
+
+
+@allpythons(max=(3, 14))
+def test_native_asyncio_no_double_counting(py, save_mojo):
+    """An executing task's own frames must not also appear in its thread's
+    regular sample -- the double-counting py_thread__split_task_stack_at
+    exists to prevent, now checked in native mode specifically (see
+    py_thread.c: the native/Python interleave made this a materially
+    different, easier-to-get-wrong code path than the non-native case).
+
+    max=(3, 14): on 3.15, the native unwinder itself emits fewer
+    EVAL_FRAME_MAGIC markers for this same call chain than on 3.14 (a real
+    CPython interpreter-loop difference, not an austin bug), so
+    py_thread__split_task_stack_at's native/Python pairing can't be
+    reconciled and it safely bails -- falling back to the pre-existing
+    double-counting this test exists to catch. Tracked as a known gap
+    rather than xfail'd, since 3.15 isn't final yet and this may resolve
+    or need a version-specific pairing strategy once it does."""
+    result = austin("-n", "-i", "1000", *python(py), target("target_asyncio_cpu.py"))
+    save_mojo(result.stdout)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    checked = 0
+    for sample in result.samples:
+        for task in _iter_tasks(sample.tasks):
+            if not any(frame.function == "cpu_burst" for frame in (task.frames or ())):
+                continue
+            checked += 1
+            assert not any(
+                frame.function == "cpu_burst" for frame in (sample.frames or ())
+            ), f"cpu_burst double-counted in thread {sample.thread}: {sample.frames}"
+
+    assert checked > 0, "Expected at least one executing-task sample with cpu_burst"
+
+
+@allpythons(max=(3, 14))
+def test_native_asyncio_task_frames_include_native(py, save_mojo):
+    """An executing task's own report includes native (non-Python) frames in
+    native mode -- previously impossible: task stacks were unwound
+    separately from the thread's own native-aware unwind, so a task's own
+    call chain never had native frames attached at all, in any mode.
+
+    max=(3, 14): see test_native_asyncio_no_double_counting -- on 3.15 the
+    split never activates, so no task ever gets native frames attached."""
+    result = austin("-n", "-i", "1000", *python(py), target("target_asyncio_cpu.py"))
+    save_mojo(result.stdout)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    assert any(
+        frame.line == 0
+        for sample in result.samples
+        for task in _iter_tasks(sample.tasks)
+        for frame in (task.frames or ())
+    ), "Expected at least one task-stack frame to be native"

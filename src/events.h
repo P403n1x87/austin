@@ -176,7 +176,7 @@ event_handler__emit_task_stack_begin(uintptr_t task_id, uintptr_t name_key) {
 // this same tick.
 //
 // The owning thread's own regular sample is trimmed to stop at this task's
-// boundary frame (see py_thread__truncate_stack_at) so it never also
+// boundary frame (see py_thread__split_task_stack_at) so it never also
 // reports these frames -- with that, ordinary flame-graph self-time (value
 // minus children) nets out the overlap once a merged view attaches this
 // task as that frame's child.

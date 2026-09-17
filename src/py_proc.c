@@ -1215,9 +1215,7 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
         // snapshot (to show it existed at that instant), not for ongoing
         // sampling.
         if (pargs.where)
-            py_asyncio__scan_task_list(
-                self, NULL, py_asyncio__interp_task_list_head(self, interp), time_delta, NULL
-            );
+            py_asyncio__scan_task_list(self, NULL, py_asyncio__interp_task_list_head(self, interp), time_delta);
     }
 
     V_DESC(self->py_v);
@@ -1374,19 +1372,14 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
         }
 
         // Scan for thread-owned asyncio tasks. If one is caught EXECUTING,
-        // its own portion of py_thread's already-unwound stack is reported
-        // separately (see py_asyncio__emit_task) and must be trimmed here
-        // so it isn't also reported as this thread's own.
-        raddr_t executing_task_boundary = NULL;
-        if (self->asyncio_debug_found) {
+        // py_asyncio__emit_task (via py_thread__split_task_stack_at) moves
+        // its own portion of py_thread's already-unwound stack (native
+        // frames included, in native mode) out to a separate task-stack
+        // report, so it isn't also reported as this thread's own.
+        if (self->asyncio_debug_found)
             py_asyncio__scan_task_list(
-                self, &py_thread, py_asyncio__thread_task_list_head(self, py_thread.addr), time_delta,
-                &executing_task_boundary
+                self, &py_thread, py_asyncio__thread_task_list_head(self, py_thread.addr), time_delta
             );
-
-            if (isvalid(executing_task_boundary))
-                py_thread__truncate_stack_at(&py_thread, executing_task_boundary);
-        }
 
         event_handler__emit_stack_end();
 
