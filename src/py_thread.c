@@ -80,21 +80,21 @@ static char _native_buf[MAXLEN];
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_thread__resolve_py_stack(py_thread_t* self) {
+_py_thread__resolve_py_stack(py_thread_t* self, stack_dt* stack) {
     lru_cache_t* cache = self->proc->frame_cache;
 
-    for (int i = 0; i < stack_pointer(); i++) {
-        py_frame_t py_frame = stack_py_get(i);
+    for (int i = 0; i < stack->pointer; i++) {
+        py_frame_t py_frame = stack->py_base[i];
 
         // TODO: we can avoid this branching by checking the top of the stack
         // beforehand.
         if (py_frame.origin == PYSTACK_REPEAT_MAGIC) {
-            stack_set(i, PYSTACK_REPEAT_MAGIC);
+            stack->base[i] = (frame_t*)PYSTACK_REPEAT_MAGIC;
             break;
         }
 
         if (py_frame.origin == CFRAME_MAGIC) {
-            stack_set(i, CFRAME_MAGIC);
+            stack->base[i] = (frame_t*)CFRAME_MAGIC;
             continue;
         }
 
@@ -106,7 +106,7 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
             frame = _frame_remote(self->proc, py_frame.code, lasti);
             if (!isvalid(frame)) {
                 // Truncate the stack to the point where we have successfully resolved.
-                _stack->pointer = i;
+                stack->pointer = i;
                 FAIL;
             }
             lru_cache__store(cache, frame_key, frame);
@@ -114,10 +114,22 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
             event_handler__emit_new_frame(frame);
         }
 
-        stack_set(i, frame);
+        stack->base[i] = frame;
     }
 
     SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__resolve_thread_py_stack(py_thread_t* self) {
+    return _py_thread__resolve_py_stack(self, _stack);
+}
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__resolve_task_py_stack(py_thread_t* self) {
+    return _py_thread__resolve_py_stack(self, _task_stack);
 }
 
 // ----------------------------------------------------------------------------
@@ -306,7 +318,7 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
         }
     }
 
-    lasti = (((int)(instr_ptr - code_raddr)) - (int)py_v->py_code.o_code) / (int)sizeof(_Py_CODEUNIT);
+    lasti = V_LASTI(instr_ptr, code_raddr);
 
 push_frame:
     stack_py_push(origin, code_raddr, lasti);
@@ -683,7 +695,7 @@ py_thread__unwind(py_thread_t* self) {
         }
     }
 
-    if (fail(_py_thread__resolve_py_stack(self))) {
+    if (fail(_py_thread__resolve_thread_py_stack(self))) {
         error = true;
     }
 
@@ -693,11 +705,54 @@ py_thread__unwind(py_thread_t* self) {
 
 // ----------------------------------------------------------------------------
 int
+py_thread__resolve_task_stack(py_thread_t* self) {
+    return fail(_py_thread__resolve_task_py_stack(self));
+}
+
+// ----------------------------------------------------------------------------
+// Moves the leaf-ward prefix of self's already-unwound _stack, from index 0
+// up to and including `boundary`, into _task_stack, shifting the rest down
+// to index 0.
+//
+// Used when a task on this thread is caught EXECUTING: its own portion of
+// the thread's live chain belongs to the task, not the thread (see
+// py_asyncio.c's is_executing branch).
+//
+// Python-only: never called in native mode, since asyncio_debug_found is never
+// set while pargs_native -- native mode's own EVAL_FRAME_MAGIC/CFRAME_MAGIC
+// pairing isn't reliable enough on every build to trust a split derived from
+// it.
+//
+// @return true if boundary was found and the split performed, false
+//         otherwise (best-effort -- the stack is left untouched).
+bool
+py_thread__split_task_stack_at(py_thread_t* self, raddr_t boundary) {
+    (void)self; // _stack is that thread's own -- nothing else needed here
+
+    ssize_t stack_cut = stack_py_find_origin(boundary);
+    if (stack_cut < 0)
+        return false;
+
+    for (ssize_t i = 0; i <= stack_cut; i++)
+        if (!task_stack_full())
+            _task_stack->base[_task_stack->pointer++] = _stack->base[i];
+
+    stack_py_shift_left(stack_cut);
+
+    return true;
+}
+
+// ----------------------------------------------------------------------------
+int
 py_thread_allocate(void) {
     if (isvalid(_stack)) // GCOV_EXCL_LINE
         SUCCESS;         // GCOV_EXCL_LINE
 
     if (fail(stack_allocate(MAX_STACK_SIZE))) { // GCOV_EXCL_START
+        FAIL;
+    } // GCOV_EXCL_STOP
+
+    if (fail(task_stack_allocate(MAX_TASK_STACK_SIZE))) { // GCOV_EXCL_START
         FAIL;
     } // GCOV_EXCL_STOP
 
@@ -722,6 +777,7 @@ py_thread_free(void) {
 #endif
 
     stack_deallocate();
+    task_stack_deallocate();
 
     _py_thread_free_native();
 }

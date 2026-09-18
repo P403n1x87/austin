@@ -271,6 +271,18 @@ SCENARIOS: t.List[Scenario] = [
         )
         for i in (100, 1000, 10000)
     ],
+    *[
+        Scenario(
+            group="Asyncio wall time",
+            title=f"Asyncio wall time [sampling interval: {i}]",
+            # Three threads, each driving its own event loop with several
+            # tasks -- the per-thread asyncio task scan (3.14+ only) runs
+            # once per thread per sample, so this is where its overhead, if
+            # any, would actually show up.
+            args=["-i", str(i), sys.executable, target("target_asyncio_multiloop.py")],
+        )
+        for i in (1, 10, 100, 1000)
+    ],
     *(
         [
             *[

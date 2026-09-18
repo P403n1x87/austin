@@ -59,9 +59,11 @@ austin_SOURCES = \
   stack.c        \
   stats.c        \
   platform.c     \
+  py_asyncio.c   \
   py_proc_list.c \
   py_proc.c      \
   py_thread.c    \
+  task_tracker.c \
   thread_tracker.c
 
 

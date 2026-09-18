@@ -57,6 +57,24 @@ typedef struct _PyInterpreterFrame3_11 {
 
 #define FRAME_OWNED_BY_CSTACK 3
 
+// _PyFrameState (Include/internal/pycore_frame.h) -- numbering changed
+// between 3.14 and 3.15 (3.15 adds a distinct "locked" yield-from variant
+// for free-threading), so every value needs a version-suffixed name; there
+// is no single FRAME_EXECUTING etc. that would be correct for both.
+#define FRAME_CREATED_3_14              (-3)
+#define FRAME_SUSPENDED_3_14            (-2)
+#define FRAME_SUSPENDED_YIELD_FROM_3_14 (-1)
+#define FRAME_EXECUTING_3_14            (0)
+#define FRAME_COMPLETED_3_14            (1)
+#define FRAME_CLEARED_3_14              (4)
+
+#define FRAME_CREATED_3_15                     (0)
+#define FRAME_SUSPENDED_3_15                   (1)
+#define FRAME_SUSPENDED_YIELD_FROM_3_15        (2)
+#define FRAME_SUSPENDED_YIELD_FROM_LOCKED_3_15 (3)
+#define FRAME_EXECUTING_3_15                   (4)
+#define FRAME_CLEARED_3_15                     (5)
+
 typedef struct _PyInterpreterFrame3_12 {
     PyCodeObject*                   f_code; /* Strong reference */
     struct _PyInterpreterFrame3_12* previous;
