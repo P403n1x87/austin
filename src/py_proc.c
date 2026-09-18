@@ -1543,6 +1543,11 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
 // (there's no meaningful per-task memory delta to report).
 static inline void
 _py_proc__maybe_discover_asyncio(py_proc_t* self) {
+    // Native mode is tricky across CPython builds (task frame attribution) so
+    // we disable asyncio support in native mode.
+    if (pargs_native)
+        return;
+
     V_DESC(self->py_v);
 
     if (self->asyncio_debug_found || !isvalid(py_v) || !V_MIN(3, 14) || (pargs.memory && !pargs.full))

@@ -198,86 +198,45 @@ def test_asyncio_mojo_smoke(py, tmp_path: Path):
     assert datafile.stat().st_size > 0
 
 
-def _iter_tasks(tasks):
-    """Flatten a sample's task tree (each AustinTask nests the tasks it
-    awaits under .awaiting -- see austin.format.mojo's get_tasks) into a
-    single, order-agnostic iterator over every task node."""
-    for task in tasks or ():
-        yield task
-        yield from _iter_tasks(task.awaiting)
-
-
 @allpythons()
-def test_native_asyncio_mojo_smoke(py, save_mojo):
-    """Native-mode (-n) sampling with asyncio task scanning active completes
-    cleanly and captures both native frames and task data.
+def test_native_asyncio_disabled(py, save_mojo):
+    """Asyncio task-graph scanning is disabled outright in native mode (-n).
 
-    target_asyncio_cpu.py alternates CPU bursts with asyncio.sleep(0) so its
-    tasks stay on-CPU and get caught EXECUTING (see its own module
-    docstring), which is what exercises py_thread__split_task_stack_at's
-    native-mode path at all."""
+    On at least one real-world build (GitHub Actions' hosted CPython 3.14.7,
+    GCC 13.3.0), py_thread__split_task_stack_at's native-mode EVAL_FRAME_MAGIC/
+    CFRAME_MAGIC pairing didn't just fail to activate -- it found a
+    plausible-looking but WRONG split point, moving the thread's own frames
+    into a task's report and corrupting the thread's own remainder. That's
+    silent data corruption, not a missed enhancement, so
+    _py_proc__maybe_discover_asyncio (py_proc.c) never even looks for the
+    AsyncioDebug section while pargs_native, which keeps self->
+    asyncio_debug_found false and every task-graph call site in
+    _py_proc__sample_threads a no-op. See project_py315_support.md.
+
+    Confirms no task data is ever emitted in native mode, and that we're
+    still getting real, sensible stacks from the target script otherwise --
+    but deliberately checks Handle._run, not cpu_burst. cpu_burst sits
+    right after the point where task-stepping crosses into a
+    contextvars.Context.run() call, and that crossing is a separate,
+    pre-existing, general native-mode limitation independent of task-graph
+    scanning: it reproduces even with scanning fully disabled (as here),
+    and on builds that never touched py_thread__split_task_stack_at's logic
+    at all -- e.g. free-threaded 3.14t on real Linux CI hardware, no
+    emulation involved. Matches the "nested eval loops (context_run)
+    exhaust the Python stack at the wrong sentinel" issue already tracked
+    in project_py315_support.md, now confirmed to also affect non-3.15
+    builds. Handle._run is the last frame *before* that crossing, so it's
+    unaffected and still a meaningful check that sampling is working."""
     result = austin("-n", "-i", "1000", *python(py), target("target_asyncio_cpu.py"))
     save_mojo(result.stdout)
     assert result.returncode == 0, result.stderr or result.stdout
 
-    assert any(
-        frame.line == 0 for sample in result.samples for frame in (sample.frames or ())
-    ), "Expected at least one native frame"
-
-    assert any(
+    assert not any(
         sample.tasks for sample in result.samples
-    ), "Expected at least one sample to carry task data"
-
-
-@allpythons(max=(3, 14))
-def test_native_asyncio_no_double_counting(py, save_mojo):
-    """An executing task's own frames must not also appear in its thread's
-    regular sample -- the double-counting py_thread__split_task_stack_at
-    exists to prevent, now checked in native mode specifically (see
-    py_thread.c: the native/Python interleave made this a materially
-    different, easier-to-get-wrong code path than the non-native case).
-
-    max=(3, 14): on 3.15, the native unwinder itself emits fewer
-    EVAL_FRAME_MAGIC markers for this same call chain than on 3.14 (a real
-    CPython interpreter-loop difference, not an austin bug), so
-    py_thread__split_task_stack_at's native/Python pairing can't be
-    reconciled and it safely bails -- falling back to the pre-existing
-    double-counting this test exists to catch. Tracked as a known gap
-    rather than xfail'd, since 3.15 isn't final yet and this may resolve
-    or need a version-specific pairing strategy once it does."""
-    result = austin("-n", "-i", "1000", *python(py), target("target_asyncio_cpu.py"))
-    save_mojo(result.stdout)
-    assert result.returncode == 0, result.stderr or result.stdout
-
-    checked = 0
-    for sample in result.samples:
-        for task in _iter_tasks(sample.tasks):
-            if not any(frame.function == "cpu_burst" for frame in (task.frames or ())):
-                continue
-            checked += 1
-            assert not any(
-                frame.function == "cpu_burst" for frame in (sample.frames or ())
-            ), f"cpu_burst double-counted in thread {sample.thread}: {sample.frames}"
-
-    assert checked > 0, "Expected at least one executing-task sample with cpu_burst"
-
-
-@allpythons(max=(3, 14))
-def test_native_asyncio_task_frames_include_native(py, save_mojo):
-    """An executing task's own report includes native (non-Python) frames in
-    native mode -- previously impossible: task stacks were unwound
-    separately from the thread's own native-aware unwind, so a task's own
-    call chain never had native frames attached at all, in any mode.
-
-    max=(3, 14): see test_native_asyncio_no_double_counting -- on 3.15 the
-    split never activates, so no task ever gets native frames attached."""
-    result = austin("-n", "-i", "1000", *python(py), target("target_asyncio_cpu.py"))
-    save_mojo(result.stdout)
-    assert result.returncode == 0, result.stderr or result.stdout
+    ), "Expected no task data in native mode"
 
     assert any(
-        frame.line == 0
+        frame.function == "Handle._run"
         for sample in result.samples
-        for task in _iter_tasks(sample.tasks)
-        for frame in (task.frames or ())
-    ), "Expected at least one task-stack frame to be native"
+        for frame in (sample.frames or ())
+    ), "Expected Handle._run in the thread's own frames"

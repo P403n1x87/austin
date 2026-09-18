@@ -240,16 +240,6 @@ stack_py_shift_left(ssize_t cut) {
     _stack->pointer = remaining;
 }
 
-// Same as stack_py_shift_left, but for _stack_native.
-static inline void
-stack_native_shift_left(ssize_t cut) {
-    ssize_t remaining = _stack->native_pointer - cut - 1;
-    if (remaining > 0) {
-        memmove(_stack->native_base, _stack->native_base + cut + 1, (size_t)remaining * sizeof(*_stack->native_base));
-    }
-    _stack->native_pointer = remaining;
-}
-
 // ----------------------------------------------------------------------------
 
 // Support for datastack_chunk. This thread data was introduced in CPython 3.11

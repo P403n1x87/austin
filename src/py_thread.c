@@ -709,129 +709,35 @@ py_thread__resolve_task_stack(py_thread_t* self) {
     return fail(_py_thread__resolve_task_py_stack(self));
 }
 
-// ---- py_thread__split_task_stack_at helpers --------------------------------
-
-// Search-pass visitor: notes whether stack_cut appeared in this unit, and
-// whether it was the unit's own root-most (first-visited) frame.
-typedef struct {
-    ssize_t stack_cut;
-    ssize_t seen;
-    bool    matched;
-    bool    matched_first;
-} _split_find_ctx_t;
-
-static void
-_split_find_visit(void* ctx_, ssize_t py_index, frame_t* frame) {
-    (void)frame;
-    _split_find_ctx_t* ctx       = (_split_find_ctx_t*)ctx_;
-    bool               was_first = ctx->seen == 0;
-    ctx->seen++;
-    if (py_index == ctx->stack_cut) {
-        ctx->matched       = true;
-        ctx->matched_first = was_first;
-    }
-}
-
-// Collection-pass visitor: appends every visited frame to buf, root-to-leaf.
-typedef struct {
-    frame_t* buf[MAX_TASK_STACK_SIZE];
-    ssize_t  n;
-} _split_collect_ctx_t;
-
-static void
-_split_collect_visit(void* ctx_, ssize_t py_index, frame_t* frame) {
-    (void)py_index;
-    _split_collect_ctx_t* ctx = (_split_collect_ctx_t*)ctx_;
-    if (ctx->n < MAX_TASK_STACK_SIZE)
-        ctx->buf[ctx->n++] = frame;
-}
-
-static void
-_split_noop_visit(void* ctx, ssize_t py_index, frame_t* frame) {
-    (void)ctx;
-    (void)py_index;
-    (void)frame;
-}
-
 // ----------------------------------------------------------------------------
-// Moves the leaf-ward prefix of self's already-unwound _stack (and, in
-// native mode, _stack_native) up to and including `boundary` into
-// _task_stack, shifting the rest down to index 0.
+// Moves the leaf-ward prefix of self's already-unwound _stack, from index 0
+// up to and including `boundary`, into _task_stack, shifting the rest down
+// to index 0.
 //
 // Used when a task on this thread is caught EXECUTING: its own portion of
 // the thread's live chain belongs to the task, not the thread (see
-// py_asyncio.c's is_executing branch). Reusing the thread's own already-
-// unwound stack, rather than a second walk, is what gives this native
-// frames for free: py_thread__unwind fills both stacks before any
-// task-graph scan runs.
+// py_asyncio.c's is_executing branch).
+//
+// Python-only: never called in native mode, since asyncio_debug_found is never
+// set while pargs_native -- native mode's own EVAL_FRAME_MAGIC/CFRAME_MAGIC
+// pairing isn't reliable enough on every build to trust a split derived from
+// it.
 //
 // @return true if boundary was found and the split performed, false
-//         otherwise (best-effort -- both stacks left untouched).
+//         otherwise (best-effort -- the stack is left untouched).
 bool
 py_thread__split_task_stack_at(py_thread_t* self, raddr_t boundary) {
-    (void)self; // _stack/_stack_native are that thread's own -- nothing else needed here
+    (void)self; // _stack is that thread's own -- nothing else needed here
 
     ssize_t stack_cut = stack_py_find_origin(boundary);
     if (stack_cut < 0)
         return false;
 
-    if (!pargs_native) {
-        for (ssize_t i = 0; i <= stack_cut; i++)
-            if (!task_stack_full())
-                _task_stack->base[_task_stack->pointer++] = _stack->base[i];
-
-        stack_py_shift_left(stack_cut);
-
-        return true;
-    }
-
-    // ---- Native mode ----
-
-    // Find which unit contains stack_cut, and where its own EVAL_FRAME_MAGIC
-    // sits in _stack_native.
-    stack_interleave_t it         = stack_interleave_begin();
-    ssize_t            native_cut = -1;
-
-    for (;;) {
-        _split_find_ctx_t ctx = {.stack_cut = stack_cut};
-        if (!stack_interleave_next(&it, _split_find_visit, &ctx))
-            break; // Exhausted -- native_cut stays -1.
-
-        if (ctx.matched) {
-            // Not the unit's root-most frame: its other, thread-owned
-            // members would lose their native pairing if we split here. A
-            // task's own coroutine frame is always freshly entered via
-            // coro.send(), so shouldn't happen; bail rather than risk it.
-            if (!ctx.matched_first) // GCOV_EXCL_LINE
-                return false;       // GCOV_EXCL_LINE
-
-            native_cut = it.native_ptr;
-            break;
-        }
-    }
-
-    if (native_cut < 0) // GCOV_EXCL_START
-        return false;   // Native/Python frame counts disagree -- bail safely.
-    // GCOV_EXCL_STOP
-
-    // Walk again, collecting only units at or below native_cut (the task's
-    // own portion) into buf -- root-of-subset-first, leaf-last -- then
-    // reversed into _task_stack so index 0 is the leaf.
-    stack_interleave_t   it2         = stack_interleave_begin();
-    _split_collect_ctx_t collect_ctx = {.n = 0};
-
-    while (it2.native_ptr > 0) {
-        bool in_task_range = (it2.native_ptr - 1) <= native_cut;
-        if (!stack_interleave_next(&it2, in_task_range ? _split_collect_visit : _split_noop_visit, &collect_ctx))
-            break; // GCOV_EXCL_LINE
-    }
-
-    for (ssize_t i = collect_ctx.n - 1; i >= 0; i--)
+    for (ssize_t i = 0; i <= stack_cut; i++)
         if (!task_stack_full())
-            _task_stack->base[_task_stack->pointer++] = collect_ctx.buf[i];
+            _task_stack->base[_task_stack->pointer++] = _stack->base[i];
 
     stack_py_shift_left(stack_cut);
-    stack_native_shift_left(native_cut);
 
     return true;
 }
