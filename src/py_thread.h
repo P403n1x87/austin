@@ -119,16 +119,17 @@ int
 py_thread__resolve_task_stack(py_thread_t*);
 
 /**
- * Split off the leaf-ward portion of self's already-unwound stack (native
- * frames included, when in native mode) into _task_stack, from index 0 up
- * to and including the frame at `boundary`, shifting whatever remains down
- * to index 0.
+ * Split off the leaf-ward portion of self's already-unwound Python stack
+ * into _task_stack, from index 0 up to and including the frame at
+ * `boundary`, shifting whatever remains down to index 0.
  *
  * Used when a task on this thread was found EXECUTING: its own portion of
  * the thread's live chain (top_frame down to its own top-level coroutine frame)
  * belongs to the task, not the thread. Reuses the thread's own already-unwound
- * stack rather than a second, separate walk, which is what lets this include
- * native frames for free in native mode.
+ * stack rather than a second, separate walk.
+ *
+ * Python-only: never called in native mode, since asyncio_debug_found is
+ * never set while pargs_native.
  *
  * Caller must call task_stack_reset() first.
  *

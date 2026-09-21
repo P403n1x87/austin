@@ -124,8 +124,7 @@ task_stack_py_push(raddr_t origin, raddr_t code, int lasti) {
     _task_stack->py_base[_task_stack->pointer++] = (py_frame_t){.origin = origin, .code = code, .lasti = lasti};
 }
 
-#define task_stack_pointer() (_task_stack->pointer)
-#define task_stack_pop()     (_task_stack->base[--_task_stack->pointer])
+#define task_stack_pop() (_task_stack->base[--_task_stack->pointer])
 #define task_stack_reset()        \
     { _task_stack->pointer = 0; }
 #define task_stack_is_empty() (_task_stack->pointer == 0)

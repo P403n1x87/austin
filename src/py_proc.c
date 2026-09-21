@@ -1372,10 +1372,12 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
         }
 
         // Scan for thread-owned asyncio tasks. If one is caught EXECUTING,
-        // py_asyncio__emit_task (via py_thread__split_task_stack_at) moves
-        // its own portion of py_thread's already-unwound stack (native
-        // frames included, in native mode) out to a separate task-stack
-        // report, so it isn't also reported as this thread's own.
+        // py_asyncio__emit_task moves its own portion of py_thread's
+        // already-unwound Python stack out to a separate task-stack report, so
+        // it isn't also reported as this thread's own. Never reached in native
+        // mode: self->asyncio_debug_found is only ever set by
+        // _py_proc__maybe_discover_asyncio, which returns immediately when
+        // pargs_native.
         if (self->asyncio_debug_found)
             py_asyncio__scan_task_list(
                 self, &py_thread, py_asyncio__thread_task_list_head(self, py_thread.addr), time_delta

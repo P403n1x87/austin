@@ -275,7 +275,7 @@ SCENARIOS: t.List[Scenario] = [
         Scenario(
             group="Asyncio wall time",
             title=f"Asyncio wall time [sampling interval: {i}]",
-            # Three threads, each driving its own event loop with several
+            # Two threads, each driving its own event loop with several
             # tasks -- the per-thread asyncio task scan (3.14+ only) runs
             # once per thread per sample, so this is where its overhead, if
             # any, would actually show up.
@@ -799,9 +799,7 @@ def render(reports: t.List[PlatformReport], opts: ArgumentParser) -> None:
         multi_metrics = len(by_metrics) > 1
         for metrics_class, group in by_metrics.items():
             if multi_metrics:
-                renderer.render_header(
-                    metrics_class.__name__, level=platform_level + 1
-                )
+                renderer.render_header(metrics_class.__name__, level=platform_level + 1)
             for entry in group:
                 renderer.render_scenario(entry.title, entry.table)
 

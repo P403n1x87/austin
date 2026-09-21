@@ -408,9 +408,13 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
                 task_stack_reset();
                 if (py_thread__split_task_stack_at(thread, task_iframe)) {
                     key_dt name_key = _py_asyncio__task_name_key(self, task_addr);
+                    // Keep the last known-good name rather than clobbering
+                    // it with 0, and emit THAT (not the possibly-just-failed
+                    // fresh read) so a transient failure doesn't blank out
+                    // an otherwise perfectly good name for this tick.
                     if (name_key != 0)
                         entry->name_key = (uintptr_t)name_key;
-                    event_handler__emit_task_stack_begin((uintptr_t)task_addr, (uintptr_t)name_key);
+                    event_handler__emit_task_stack_begin((uintptr_t)task_addr, entry->name_key);
                     event_handler__emit_task_stack_end(accumulated_executing_time);
                     entry->executing_time = 0;
                 } else {
@@ -447,11 +451,12 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
                 if (success(py_thread__resolve_task_stack(&coro_thread))) {
                     key_dt name_key = _py_asyncio__task_name_key(self, task_addr);
                     // Keep the last known-good name rather than clobbering
-                    // it with 0, so a transient failure doesn't erase the
-                    // eviction fallback.
+                    // it with 0, and emit THAT (not the possibly-just-failed
+                    // fresh read) so a transient failure doesn't blank out
+                    // an otherwise perfectly good name for this tick.
                     if (name_key != 0)
                         entry->name_key = (uintptr_t)name_key;
-                    event_handler__emit_task_stack_begin((uintptr_t)task_addr, (uintptr_t)name_key);
+                    event_handler__emit_task_stack_begin((uintptr_t)task_addr, entry->name_key);
                     event_handler__emit_task_stack_end(elapsed);
                     entry->suspended_time = 0;
                 }

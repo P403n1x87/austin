@@ -638,7 +638,7 @@ _py_proc__get_maps(py_proc_t* self) {
 // Look for a mapped image belonging to the _asyncio extension module and, if
 // found, analyse it for the AsyncioDebug section. Unlike the main binary and
 // libpython, _asyncio is loaded lazily on `import asyncio`, so this is called
-// on a throttled retry (see py_asyncio.c) rather than once at attach time.
+// on a throttled retry rather than once at attach time.
 static void
 _py_proc__scan_for_asyncio(py_proc_t* self) {
     if (isvalid(self->map.asyncio_debug.base))
