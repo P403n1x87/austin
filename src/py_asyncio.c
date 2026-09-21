@@ -388,15 +388,38 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
                 event_handler__emit_task_stack_end(prior_suspended_time);
             }
 
-            raddr_t task_iframe = (raddr_t)((char*)coro_addr + py_v->py_gen.o_gi_iframe);
+            // Dwell accrued while EXECUTING but not yet split off and
+            // emitted (see task_tracker.h's doc comment on executing_time).
+            uint64_t accumulated_executing_time = entry->executing_time + time_delta;
 
-            task_stack_reset();
-            if (py_thread__split_task_stack_at(thread, task_iframe)) {
-                key_dt name_key = _py_asyncio__task_name_key(self, task_addr);
-                if (name_key != 0)
-                    entry->name_key = (uintptr_t)name_key;
-                event_handler__emit_task_stack_begin((uintptr_t)task_addr, (uintptr_t)name_key);
-                event_handler__emit_task_stack_end(time_delta);
+            // On a repeat sample, `thread`'s own stack holds nothing but the
+            // PYSTACK_REPEAT_MAGIC sentinel -- the split can never succeed, so
+            // skip it rather than pay for a doomed scan. `thread` is the very
+            // thread running this task's coroutine right now, so its
+            // top-of-stack repeat signal doubles as this task's own repeat
+            // signal. Keep accumulating rather than dropping the tick, so a
+            // long repeat stretch still gets its full dwell time attributed in
+            // one shot once the position finally changes.
+            if (thread->is_repeat) {
+                entry->executing_time = accumulated_executing_time;
+            } else {
+                raddr_t task_iframe = (raddr_t)((char*)coro_addr + py_v->py_gen.o_gi_iframe);
+
+                task_stack_reset();
+                if (py_thread__split_task_stack_at(thread, task_iframe)) {
+                    key_dt name_key = _py_asyncio__task_name_key(self, task_addr);
+                    if (name_key != 0)
+                        entry->name_key = (uintptr_t)name_key;
+                    event_handler__emit_task_stack_begin((uintptr_t)task_addr, (uintptr_t)name_key);
+                    event_handler__emit_task_stack_end(accumulated_executing_time);
+                    entry->executing_time = 0;
+                } else {
+                    // Split failed for a reason other than a repeat sample
+                    // (e.g. a torn remote read) -- best-effort, keep the
+                    // accrued time and retry the split next tick rather
+                    // than losing it.
+                    entry->executing_time = accumulated_executing_time;
+                }
             }
 
             // Forces the next SUSPENDED sighting to be treated as fresh
@@ -519,6 +542,12 @@ py_asyncio__scan_tasks_end(py_proc_t* self) {
             task_stack_reset();
             event_handler__emit_task_stack_begin((uintptr_t)entry->task, entry->name_key);
             event_handler__emit_task_stack_end(entry->suspended_time);
+        }
+        // Same, for dwell accrued while EXECUTING but never split off.
+        if (entry->executing_time > 0) {
+            task_stack_reset();
+            event_handler__emit_task_stack_begin((uintptr_t)entry->task, entry->name_key);
+            event_handler__emit_task_stack_end(entry->executing_time);
         }
         task_tracker__remove(tracker, entry->task);
     }

@@ -70,6 +70,15 @@ typedef struct {
     // `top` is next observed to change (see _py_asyncio__emit_task) -- it
     // then describes how long the task dwelled at the frame it just left.
     uint64_t        suspended_time;
+    // Wall/CPU time accumulated across EXECUTING ticks that couldn't be
+    // split off and emitted (thread->is_repeat -- the top-of-thread-stack
+    // frame this task is running in didn't change, so there's nothing to
+    // split against; or any other transient split failure). Flushed and
+    // reset to 0 as soon as a split finally succeeds, so a long
+    // synchronous/CPU-bound stretch inside a coroutine (which naturally
+    // produces many repeat samples) still gets its full dwell time
+    // attributed in one shot, rather than losing every repeated tick.
+    uint64_t        executing_time;
     // Cached MOJO_TASK_STACK name key from the last successful resolution (0
     // = never resolved), so that flushing suspended_time on eviction (the
     // task has disappeared from the list, e.g. it completed) never needs to

@@ -240,3 +240,68 @@ def test_native_asyncio_disabled(py, save_mojo):
         for sample in result.samples
         for frame in (sample.frames or ())
     ), "Expected Handle._run in the thread's own frames"
+
+
+def _iter_tasks(tasks):
+    for t in tasks:
+        yield t
+        yield from _iter_tasks(t.awaiting)
+
+
+@allpythons()
+def test_asyncio_executing_task_survives_repeat_samples(py, save_mojo):
+    """An EXECUTING task's dwell time is never dropped just because the
+    thread running it produced repeat samples (top frame/code/lasti
+    unchanged since the last tick -- see stack_py_find_origin's own doc
+    comment on PYSTACK_REPEAT_MAGIC).
+
+    _py_asyncio__emit_task (py_asyncio.c) splits a task's frames off its
+    owning thread's stack every tick it's caught EXECUTING. A repeat
+    sample's stack holds nothing but the REPEAT sentinel, so the split can
+    never succeed -- it used to just silently drop that tick's sample. A
+    long synchronous/CPU-bound stretch inside a coroutine produces many
+    repeat samples in a row (that's exactly what "repeat" means: nothing
+    about the top frame changed between ticks), so this could lose a large
+    fraction of a task's true on-CPU time with no signal anything was
+    wrong. Fixed via task_tracker_entry_t.executing_time, which accumulates
+    dwell time across repeat ticks and flushes it in one shot once the
+    position finally changes. See project_asyncio_task_split_repeat.md.
+
+    target_asyncio_blocked.py uses a real time.sleep() rather than a CPU
+    loop to make repeat samples certain rather than merely likely: a
+    blocking call freezes the calling frame's code+lasti for its whole
+    duration, deterministically, on any machine at any speed -- unlike a
+    CPU-bound loop, which only makes repeats statistically probable and
+    would make this test flaky. Its second call (marker_call) exists purely
+    to force a state change that flushes the first call's accumulated
+    time while austin is still actively sampling, rather than relying on
+    the process happening to exit at just the right moment.
+
+    Asserts on the accumulated elapsed time of the flush that follows the
+    long repeat stretch: at most a couple of milliseconds if ticks are
+    still being dropped (the pre-fix behaviour), several hundred
+    milliseconds if they're correctly accumulated (the fix). 200ms is a
+    threshold with a wide margin on both sides of that gap, chosen well
+    below the real ~500ms dwell so ordinary CI scheduling variance can't
+    flip the result -- this doesn't depend on how many samples land during
+    the sleep, only on the wall-clock duration of the sleep itself, which
+    is fixed regardless of machine speed."""
+    result = austin("-i", "1000", *python(py), target("target_asyncio_blocked.py"))
+    save_mojo(result.stdout)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    max_elapsed = max(
+        (
+            task.elapsed or 0
+            for sample in result.samples
+            for task in _iter_tasks(sample.tasks or ())
+        ),
+        default=0,
+    )
+
+    assert max_elapsed > 200_000, (
+        "Expected a task's accumulated EXECUTING dwell time across a long "
+        "repeat-sample stretch to be flushed in one shot (>200ms); got at "
+        f"most {max_elapsed}us -- repeat-sample ticks may be getting "
+        "silently dropped again (see project_asyncio_task_split_repeat.md)"
+    )
