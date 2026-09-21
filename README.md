@@ -449,6 +449,25 @@ not.
 *Since Austin 3.3.0*.
 
 
+## Asyncio Support
+
+For applications running on CPython 3.14 or later, Austin can also track the
+`asyncio` task graph: each event loop's own tasks, the coroutine chain each
+task is currently suspended at or executing, and the await relationships
+between tasks.
+
+With `-w/--where`, tasks are rendered as a tree nested under the thread whose
+event loop owns them, so you can see at a glance which coroutines each task
+is waiting on. Tasks whose owning thread has since terminated are listed
+separately as orphaned.
+
+> [!NOTE]
+> Asyncio task tracking is not currently available in native mode
+> (`-n/--native`).
+
+*Since Austin 4.1.0*.
+
+
 ## Sampling Accuracy
 
 Austin can sample stacks very rapidly, guaranteeing high accuracy, as well as
