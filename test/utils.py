@@ -44,6 +44,7 @@ from test import _ver_tuple
 from time import sleep
 from types import FrameType
 from types import ModuleType
+from typing import Callable
 from typing import Dict
 from typing import Iterator
 from typing import List
@@ -436,6 +437,38 @@ def run_python(
         sleep(sleep_after)
 
     return result
+
+
+def retry_where(
+    pid: int,
+    predicate: Callable[[str], bool],
+    attempts: int = 15,
+    interval: float = 0.15,
+) -> CompletedProcess:
+    """
+    Repeatedly samples `pid` with ``austin -w`` until
+    ``predicate(result.stdout)`` is true, instead of a single snapshot after a
+    fixed sleep.
+    """
+    if attempts < 1:
+        raise ValueError("attempts must be at least 1")
+
+    # The final attempt is unguarded, outside the loop: whatever it does --
+    # raise or return a result predicate still doesn't match -- is the real
+    # answer once retries are exhausted, not something to swallow.
+    for _ in range(attempts - 1):
+        try:
+            result = austin("-w", str(pid))
+        except RuntimeError:
+            sleep(interval)
+            continue
+
+        if predicate(result.stdout):
+            return result
+
+        sleep(interval)
+
+    return austin("-w", str(pid))
 
 
 T = TypeVar("T")

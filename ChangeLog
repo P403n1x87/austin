@@ -1,6 +1,8 @@
 2026-**-** v4.1.0
 
   Added support for free-threaded CPython builds.
+
+  Added asyncio support for CPython 3.14 and above.
   
   Improved support for Linux containers.
 

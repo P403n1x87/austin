@@ -35,8 +35,10 @@
 #endif
 #endif
 #include "platform.h"
+#include "python/asyncio.h"
 #include "python/symbols.h"
 #include "stats.h"
+#include "task_tracker.h"
 #include "version.h"
 
 typedef struct {
@@ -49,7 +51,8 @@ typedef struct {
     proc_vm_map_block_t exe;
     proc_vm_map_block_t dynsym;
     proc_vm_map_block_t rodata;
-    proc_vm_map_block_t runtime; // Added in Python 3.11
+    proc_vm_map_block_t runtime;       // Added in Python 3.11
+    proc_vm_map_block_t asyncio_debug; // AsyncioDebug section in the _asyncio module, 3.14+
 } proc_vm_map_t;
 
 typedef struct {
@@ -107,6 +110,22 @@ typedef struct {
     int            non_python_n;
 
     uint64_t tlbc_generation; // current interpreter tlbc_generation (3.14+ FT)
+
+    // Asyncio introspection support (3.14+).
+    //
+    // The _asyncio extension module is loaded lazily (on `import asyncio`),
+    // so its AsyncioDebug section may not be mapped yet at attach time. We
+    // retry the scan on a Fibonacci backoff (see ASYNCIO_SCAN_BACKOFF_* in
+    // py_asyncio.h) until it is found, or until asyncio_scan_started_at is
+    // old enough that we fall back to a sparse indefinite poll instead of
+    // giving up outright. Once found, no further scanning is needed.
+    bool           asyncio_debug_found;
+    microseconds_t asyncio_scan_deadline;      // next allowed scan attempt
+    microseconds_t asyncio_scan_started_at;    // when discovery began; 0 == not started yet
+    microseconds_t asyncio_scan_interval;      // current backoff interval (the one just used)
+    microseconds_t asyncio_scan_prev_interval; // previous backoff interval, for computing the next Fibonacci step
+    Py_AsyncioModuleDebugOffsets asyncio_offsets;
+    task_tracker_t*              task_tracker; // per-task identity cache; see task_tracker.h
 
 #ifdef PL_LINUX
 #ifdef AUSTINP
