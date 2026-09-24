@@ -305,3 +305,208 @@ def test_asyncio_executing_task_survives_repeat_samples(py, save_mojo):
         f"most {max_elapsed}us -- repeat-sample ticks may be getting "
         "silently dropped again (see project_asyncio_task_split_repeat.md)"
     )
+
+
+def _iter_task_stack_blocks(data: bytes):
+    """Yield (task_id, is_closing) for every MOJO_TASK_STACK block, in wire
+    order. is_closing is True iff the block carried zero frames (Austin's
+    "this task is gone" signal). Deliberately independent of AustinTask/
+    AustinSample: those collapse a closing block into an elapsed-time
+    update on the existing task, with no trace of how many closing blocks
+    were seen or where -- exactly the distinction the test below needs.
+
+    A minimal, full walk of every MOJO event type is needed (not just the
+    ones directly relevant here) since each carries a different,
+    fixed-shape payload that must be skipped correctly to stay aligned --
+    getting even one wrong (e.g. MOJO_STRING_REF's own varint) desyncs
+    everything that follows."""
+    (
+        METADATA,
+        STACK,
+        FRAME,
+        FRAME_INVALID,
+        FRAME_REF,
+        FRAME_KERNEL,
+        GC,
+        IDLE,
+        METRIC_TIME,
+        METRIC_MEMORY,
+        STRING,
+        STRING_REF,
+        STACK_REPEAT,
+        TASK_STACK,
+        TASK_WAITER,
+    ) = range(1, 16)
+
+    pos = 3
+    pos += _varint_len(data, pos)  # header varint, value unused here
+
+    in_block = False
+    frame_count = 0
+    task_id = None
+
+    while pos < len(data):
+        ev = data[pos]
+        pos += 1
+        if ev == METADATA:
+            pos = data.index(b"\0", pos) + 1
+            pos = data.index(b"\0", pos) + 1
+        elif ev == STACK:
+            in_block = False
+            for _ in range(2):
+                pos += _varint_len(data, pos)
+            pos = data.index(b"\0", pos) + 1
+        elif ev == FRAME:
+            _, n = _varint(data, pos)  # key, unused here
+            pos += n
+            for _ in range(6):  # fk, sk, line, line_end, column, column_end
+                pos += _varint_len(data, pos)
+            if in_block:
+                frame_count += 1
+        elif ev == FRAME_REF:
+            pos += _varint_len(data, pos)
+            if in_block:
+                frame_count += 1
+        elif ev == FRAME_KERNEL:
+            pos = data.index(b"\0", pos) + 1
+        elif ev in (FRAME_INVALID, GC, IDLE):
+            pass
+        elif ev == METRIC_TIME:
+            pos += _varint_len(data, pos)
+            if in_block:
+                yield (task_id, frame_count == 0)
+                in_block = False
+        elif ev == METRIC_MEMORY:
+            pos += _varint_len(data, pos)
+        elif ev == STRING:
+            pos += _varint_len(data, pos)
+            pos = data.index(b"\0", pos) + 1
+        elif ev == STRING_REF:
+            pos += _varint_len(data, pos)
+        elif ev == STACK_REPEAT:
+            in_block = False
+        elif ev == TASK_STACK:
+            task_id, n = _varint(data, pos)
+            pos += n
+            pos += _varint_len(data, pos)  # name_key, unused here
+            in_block = True
+            frame_count = 0
+        elif ev == TASK_WAITER:
+            for _ in range(2):
+                pos += _varint_len(data, pos)
+        else:
+            raise ValueError(f"Unknown MOJO event {ev} at offset {pos - 1}")
+
+
+def _varint(data: bytes, pos: int):
+    """Decode one MOJO varint at pos; return (value, bytes_consumed)."""
+    b0 = data[pos]
+    value = b0 & 0x3F
+    shift = 6
+    n = 1
+    cont = (b0 >> 7) & 1
+    while cont:
+        b = data[pos + n]
+        value |= (b & 0x7F) << shift
+        shift += 7
+        n += 1
+        cont = (b >> 7) & 1
+    return value, n
+
+
+def _varint_len(data: bytes, pos: int) -> int:
+    return _varint(data, pos)[1]
+
+
+def _iter_tasks_flat(tasks):
+    for t in tasks:
+        yield t
+        yield from _iter_tasks_flat(t.awaiting)
+
+
+@allpythons()
+def test_asyncio_no_ambiguous_task_close_signal(py, save_mojo):
+    """A task's dwell time while briefly caught EXECUTING mid-await is
+    folded into its own accumulator (see task_tracker.h's executing_time)
+    rather than flushed as a standalone empty-frame MOJO_TASK_STACK -- the
+    wire's only "this task is gone" signal, otherwise indistinguishable
+    from _py_asyncio__emit_task's real end-of-life eviction flush (see
+    py_asyncio__scan_tasks_end and its own merged single-flush fix).
+
+    A consumer using that signal to track task identity/generations (a
+    reasonable thing to do -- it's the only "this position is done" signal
+    the wire gives) would misread an ordinary mid-life SUSPENDED->EXECUTING
+    ->SUSPENDED transition as the task dying, fragmenting one real,
+    continuously-alive task into several apparent ones. Confirmed exactly
+    this way against austin-vscode: a single root task appeared as several
+    unrelated "root" tasks after being caught executing partway through its
+    own await chain.
+
+    target_asyncio_pyramids.py's own outer task (driving pyramid_loop)
+    reliably gets caught EXECUTING at least once per round -- unlike the
+    address-reuse race in project_asyncio_task_split_repeat.md, this isn't
+    a rare timing coincidence: every round does real, non-trivial work
+    (asyncio.create_task(...) plus bookkeeping) synchronously between two
+    awaits, and 1ms sampling over that reliably catches it.
+
+    Two complementary checks against a single real capture:
+
+    - Real, decoded data (the same AustinTask/AustinSample model every
+      other test in this file uses): the pyramid's own shape has exactly
+      one true root (main's implicit task; every subtask is directly
+      awaited by something) and exactly 29 tasks total -- 1 root + 4
+      depth-2 round subtasks (ROUNDS) + 8 depth-1 children (ROUNDS *
+      SUB_ROUNDS) + 16 depth-0 leaves (ROUNDS * SUB_ROUNDS * SUB_ROUNDS --
+      depth-1 tasks also each spawn SUB_ROUNDS children of their own, they
+      just don't recurse further since depth 0 returns immediately).
+      Fragmenting one task into several apparent ones from either bug this
+      test guards -- the ambiguous close signal above, or the address-reuse
+      id collision in task_tracker.h's epoch -- would inflate one or both
+      of these counts.
+
+    - The raw wire (see _iter_task_stack_blocks): AustinTask collapses a
+      closing (empty-frame) block into an elapsed-time update with no
+      trace of how many were seen, so it can't see the specific defect
+      fixed here -- a task evicted with both suspended and executing dwell
+      pending used to flush TWO closing blocks back to back. For every
+      task id, an empty-frame block may only be the LAST block."""
+    result = austin("-i", "1000", *python(py), target("target_asyncio_pyramids.py"))
+    save_mojo(result.stdout)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    all_tasks = [
+        t for sample in result.samples for t in _iter_tasks_flat(sample.tasks or ())
+    ]
+    distinct_ids = {t.task_id for t in all_tasks}
+    assert len(distinct_ids) == 29, (
+        f"Expected exactly 29 distinct tasks (1 root + 4 depth-2 + 8 depth-1 "
+        f"+ 16 depth-0); got {len(distinct_ids)}: {sorted(distinct_ids)} "
+        "-- extra ids mean a task got fragmented into several apparent ones"
+    )
+
+    root_ids = {t.task_id for sample in result.samples for t in (sample.tasks or ())}
+    assert len(root_ids) == 1, (
+        f"Expected a single root task throughout the whole capture; got "
+        f"{len(root_ids)}: {sorted(root_ids)} -- a spurious extra root means "
+        "a mid-life transition was mistaken for that task dying"
+    )
+
+    raw = (
+        result.stdout
+        if isinstance(result.stdout, (bytes, bytearray))
+        else result.stdout.encode()
+    )
+
+    last_was_closing = {}
+    violations = []
+    for task_id, is_closing in _iter_task_stack_blocks(raw):
+        if last_was_closing.get(task_id):
+            violations.append(task_id)
+        last_was_closing[task_id] = is_closing
+
+    assert violations == [], (
+        "Expected an empty-frame (closing) MOJO_TASK_STACK to only ever be "
+        f"the LAST block for its task id; task id(s) {sorted(set(violations))} "
+        "had another block follow a closing one, meaning a single task's "
+        "end-of-life dwell was split across more than one closing signal"
+    )

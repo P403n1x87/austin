@@ -84,6 +84,23 @@ typedef struct {
     // task has disappeared from the list, e.g. it completed) never needs to
     // re-read the TaskObj's name -- by then it may already be freed.
     uintptr_t       name_key;
+    // TaskObj's task_coro as of the last touch (0 = never touched). `task`
+    // (the lookup key) only identifies reliably as long as its memory isn't
+    // reused -- eviction runs at end-of-tick, so a freed Task replaced at
+    // the same address within the same tick makes get_or_create hand back
+    // THIS entry. A coro mismatch signals every other cached field
+    // (waiter_fp above all) is stale and must be reset before use.
+    uintptr_t       identity_coro;
+    // Assigned once, from task_tracker_t.next_epoch, when this entry is
+    // first allocated -- never touched again. `task` alone isn't a safe
+    // wire identity: pymalloc reusing a freed TaskObj's address for an
+    // unrelated Task is routine, and mojo_ref truncates it to 27 bits
+    // (mojo.h), so two different tasks can share a wire id. epoch folded
+    // into the wire id (_py_asyncio__emit_task) fixes this with a plain
+    // counter uncorrelated with allocator reuse -- unlike an XOR-with-
+    // task_coro attempt tried first: Task and Coroutine are allocated
+    // together, so pymalloc can hand the same pair to the next Task too.
+    unsigned int    epoch;
 } task_tracker_entry_t;
 
 typedef struct {
@@ -91,6 +108,10 @@ typedef struct {
     size_t       count;   // live entry count; tracked here so MAX_TASK_TRACKER
                           // can be enforced without reaching into lookup_t
     unsigned int sample_gen;
+    // Next value to assign to a freshly allocated entry's `epoch` (see its
+    // doc comment) -- shared across every address so two entries never
+    // coincidentally get the same one.
+    unsigned int next_epoch;
 } task_tracker_t;
 
 /**
