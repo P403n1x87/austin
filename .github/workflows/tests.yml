@@ -416,8 +416,22 @@ jobs:
 
       - name: Remove signature from the Python binary
         run: |
-          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/bin/python3 || true
-          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/Resources/Python.app/Contents/MacOS/Python || true
+          version="${{ matrix.python-version }}"
+          base="${version%t}"
+          framework="Python.framework"
+          binary="python3"
+          app_binary="Python"
+          if [[ "$version" == *t ]]; then
+            # Free-threaded builds install into a separate PythonT.framework
+            # (not a "t"-suffixed Versions dir under Python.framework), whose
+            # bin/ directory ships the interpreter as python<version>t and
+            # whose bundled launcher app binary is named PythonT.
+            framework="PythonT.framework"
+            binary="python${version}"
+            app_binary="PythonT"
+          fi
+          codesign --remove-signature "/Library/Frameworks/${framework}/Versions/${base}/bin/${binary}" || true
+          codesign --remove-signature "/Library/Frameworks/${framework}/Versions/${base}/Resources/Python.app/Contents/MacOS/${app_binary}" || true
 
       - name: Install test dependencies
         run: |
