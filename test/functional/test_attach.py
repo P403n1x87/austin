@@ -32,6 +32,7 @@ from test.utils import austin
 from test.utils import austinp
 from test.utils import has_frame
 from test.utils import requires_sudo
+from test.utils import retry_until
 from test.utils import run_python
 from test.utils import sum_metrics
 from test.utils import target
@@ -169,9 +170,15 @@ def test_where_kernel_austinp(py):
 @allpythons()
 def test_attach_thread_names(py):
     with run_python(py, target("target34.py")) as p:
-        sleep(0.5)
-
-        result = austin("-i", "1ms", "-p", str(p.pid))
+        # A fixed sleep before the one-shot sample raced SecondThread's
+        # startup under load (worse on free-threaded builds, where thread
+        # creation does more work) -- poll instead, taking a fresh sample
+        # each time, until both threads have actually shown up.
+        result = retry_until(
+            lambda: austin("-i", "1ms", "-p", str(p.pid)),
+            lambda r: {t for _, t, _ in threads(r.samples)}
+            == {"MainThread", "SecondThread"},
+        )
         assert result.returncode == 0, result.stderr or result.stdout
 
         ts = {thread for _, thread, _ in threads(result.samples)}
