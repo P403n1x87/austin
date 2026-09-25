@@ -29,11 +29,11 @@ from test.utils import austin
 from test.utils import has_frame
 from test.utils import python
 from test.utils import requires_sudo
+from test.utils import retry_until
 from test.utils import run_python
 from test.utils import sum_metrics
 from test.utils import target
 from test.utils import threads
-from time import sleep
 
 import pytest
 
@@ -203,8 +203,14 @@ def test_native_interleaved(py, save_mojo):
 def test_native_attach(py, save_mojo):
     """Native mode works when attaching to an already-running process."""
     with run_python(py, target("sleepy.py"), "2") as p:
-        sleep(0.5)
-        result = austin("-n", "-i", "2ms", "-p", str(p.pid))
+        # A fixed sleep before the one-shot sample could still catch the
+        # interpreter mid-startup (native unwinding has its own symbol/
+        # unwind-table setup cost too) -- poll until a real user frame
+        # shows up instead of trusting a single delayed snapshot.
+        result = retry_until(
+            lambda: austin("-n", "-i", "2ms", "-p", str(p.pid)),
+            lambda r: has_frame(r.samples, filename="sleepy.py", function="<module>"),
+        )
     save_mojo(result.stdout)
     assert result.returncode == 0, result.stderr or result.stdout
 
@@ -230,8 +236,10 @@ def test_native_attach(py, save_mojo):
 def test_native_where(py):
     """--where output must include Python source information in native mode."""
     with run_python(py, target("sleepy.py"), "2") as p:
-        sleep(0.5)
-        result = austin("-n", "-w", str(p.pid))
+        result = retry_until(
+            lambda: austin("-n", "-w", str(p.pid)),
+            lambda r: "sleepy.py" in r.stdout and "<module>" in r.stdout,
+        )
     assert result.returncode == 0, result.stderr or result.stdout
 
     assert "sleepy.py" in result.stdout, result.stdout

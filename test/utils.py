@@ -439,6 +439,40 @@ def run_python(
     return result
 
 
+def retry_until(
+    run: Callable[[], CompletedProcess],
+    predicate: Callable[[CompletedProcess], bool],
+    attempts: int = 15,
+    interval: float = 0.15,
+) -> CompletedProcess:
+    """
+    Repeatedly calls `run` (an austin invocation) until `predicate(result)`
+    is true, instead of a single snapshot after a fixed sleep -- e.g. a
+    freshly-spawned process's second thread, or a native-mode unwind
+    reaching real user code, isn't guaranteed to exist yet after any fixed
+    delay on a loaded CI runner.
+    """
+    if attempts < 1:
+        raise ValueError("attempts must be at least 1")
+
+    # The final attempt is unguarded, outside the loop: whatever it does --
+    # raise or return a result predicate still doesn't match -- is the real
+    # answer once retries are exhausted, not something to swallow.
+    for _ in range(attempts - 1):
+        try:
+            result = run()
+        except RuntimeError:
+            sleep(interval)
+            continue
+
+        if predicate(result):
+            return result
+
+        sleep(interval)
+
+    return run()
+
+
 def retry_where(
     pid: int,
     predicate: Callable[[str], bool],
@@ -450,25 +484,12 @@ def retry_where(
     ``predicate(result.stdout)`` is true, instead of a single snapshot after a
     fixed sleep.
     """
-    if attempts < 1:
-        raise ValueError("attempts must be at least 1")
-
-    # The final attempt is unguarded, outside the loop: whatever it does --
-    # raise or return a result predicate still doesn't match -- is the real
-    # answer once retries are exhausted, not something to swallow.
-    for _ in range(attempts - 1):
-        try:
-            result = austin("-w", str(pid))
-        except RuntimeError:
-            sleep(interval)
-            continue
-
-        if predicate(result.stdout):
-            return result
-
-        sleep(interval)
-
-    return austin("-w", str(pid))
+    return retry_until(
+        lambda: austin("-w", str(pid)),
+        lambda result: predicate(result.stdout),
+        attempts=attempts,
+        interval=interval,
+    )
 
 
 T = TypeVar("T")
