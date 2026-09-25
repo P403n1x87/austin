@@ -105,8 +105,22 @@ _is_plausible_ptr(raddr_t p) {
 }
 
 // ----------------------------------------------------------------------------
+// Task identity computation to avoid address-reuse collisions.
+static uintptr_t
+_py_asyncio__task_identity(py_proc_t* self, raddr_t addr) {
+    if (!_is_plausible_ptr(addr))
+        return (uintptr_t)addr;
+
+    task_tracker_entry_t* entry = task_tracker__get_or_create(self->task_tracker, (uintptr_t)addr);
+    if (isvalid(entry))
+        return (uintptr_t)addr ^ ((uintptr_t)entry->epoch << PTR_ALIGN_SHIFT);
+
+    return (uintptr_t)addr;
+} // _py_asyncio__task_identity
+
+// ----------------------------------------------------------------------------
 static void
-_py_asyncio__emit_waiter_set(py_proc_t* self, raddr_t task_addr, raddr_t set_addr) {
+_py_asyncio__emit_waiter_set(py_proc_t* self, raddr_t task_addr, uintptr_t task_id, raddr_t set_addr) {
     py_set_t set = {0};
     if (!py_set__read(self->ref, set_addr, self->py_v, &set)) { // GCOV_EXCL_START
         log_d("Cannot read waiter set for task at %p", task_addr);
@@ -121,7 +135,7 @@ _py_asyncio__emit_waiter_set(py_proc_t* self, raddr_t task_addr, raddr_t set_add
     py_set_iter_t it = {0};
     raddr_t       key;
     while (py_set__next(self->ref, &set, &it, &key))
-        event_handler__emit_task_waiter((uintptr_t)task_addr, (uintptr_t)key);
+        event_handler__emit_task_waiter(task_id, _py_asyncio__task_identity(self, key));
 
     if (it.seen < set.used)
         log_d("Torn read while walking waiter set for task at %p", task_addr);
@@ -359,15 +373,36 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
         return;          // GCOV_EXCL_LINE
     entry->last_gen = self->task_tracker->sample_gen;
 
+    // ---- detect task_addr reused by a *different* logical Task ----
+    // Eviction runs at end-of-tick, so a Task freed and replaced at the
+    // same address within the same tick makes get_or_create above hand
+    // back the OLD entry.
+    raddr_t coro_addr    = NULL;
+    bool    coro_read_ok = success(copy_asyncio_field(self, task_object, task_coro, task_addr, coro_addr))
+                        && _is_plausible_ptr(coro_addr);
+    if (coro_read_ok) {
+        if (entry->identity_coro != 0 && entry->identity_coro != (uintptr_t)coro_addr) {
+            entry->waiter_fp      = 0;
+            entry->top            = (task_frame_id_t){0};
+            entry->suspended_time = 0;
+            entry->executing_time = 0;
+            entry->name_key       = 0;
+        }
+        entry->identity_coro = (uintptr_t)coro_addr;
+    }
+
+    // Wire identity for this task -- see _py_asyncio__task_identity and
+    // epoch's doc comment in task_tracker.h. No remote read needed.
+    uintptr_t task_id = (uintptr_t)task_addr ^ ((uintptr_t)entry->epoch << PTR_ALIGN_SHIFT);
+
     // Dwell accrued at the PREVIOUS position, before this tick's own
     // contribution is decided below -- kept separate so an executing tick
-    // can close it out without folding in the current (EXECUTING) tick.
+    // can fold it into its own accumulator without conflating it with the
+    // current (EXECUTING) tick's own delta.
     uint64_t prior_suspended_time = entry->suspended_time;
 
     // ---- coroutine stack ----
-    raddr_t coro_addr = NULL;
-    if (success(copy_asyncio_field(self, task_object, task_coro, task_addr, coro_addr))
-        && _is_plausible_ptr(coro_addr)) {
+    if (coro_read_ok) {
         V_DESC(self->py_v);
 
         int8_t frame_state  = 0;
@@ -380,17 +415,7 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
             // now -- its (possibly deeper, synchronous) call chain is part
             // of `thread`'s live frame chain, not reachable via the
             // async/await-hop walk used for the suspended case below.
-            if (isvalid(entry->top.frame) && prior_suspended_time > 0) {
-                // Close the old suspended position (empty frames -- see
-                // py_asyncio__scan_tasks_end's own closing-flush pattern).
-                task_stack_reset();
-                event_handler__emit_task_stack_begin((uintptr_t)task_addr, (uintptr_t)entry->name_key);
-                event_handler__emit_task_stack_end(prior_suspended_time);
-            }
-
-            // Dwell accrued while EXECUTING but not yet split off and
-            // emitted (see task_tracker.h's doc comment on executing_time).
-            uint64_t accumulated_executing_time = entry->executing_time + time_delta;
+            uint64_t accumulated_executing_time = entry->executing_time + prior_suspended_time + time_delta;
 
             // On a repeat sample, `thread`'s own stack holds nothing but the
             // PYSTACK_REPEAT_MAGIC sentinel -- the split can never succeed, so
@@ -414,7 +439,7 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
                     // an otherwise perfectly good name for this tick.
                     if (name_key != 0)
                         entry->name_key = (uintptr_t)name_key;
-                    event_handler__emit_task_stack_begin((uintptr_t)task_addr, entry->name_key);
+                    event_handler__emit_task_stack_begin(task_id, entry->name_key);
                     event_handler__emit_task_stack_end(accumulated_executing_time);
                     entry->executing_time = 0;
                 } else {
@@ -456,7 +481,7 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
                     // an otherwise perfectly good name for this tick.
                     if (name_key != 0)
                         entry->name_key = (uintptr_t)name_key;
-                    event_handler__emit_task_stack_begin((uintptr_t)task_addr, entry->name_key);
+                    event_handler__emit_task_stack_begin(task_id, entry->name_key);
                     event_handler__emit_task_stack_end(elapsed);
                     entry->suspended_time = 0;
                 }
@@ -482,9 +507,9 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
 
             if (isvalid(awaited_by)) {
                 if (awaited_by_set)
-                    _py_asyncio__emit_waiter_set(self, task_addr, awaited_by);
+                    _py_asyncio__emit_waiter_set(self, task_addr, task_id, awaited_by);
                 else
-                    event_handler__emit_task_waiter((uintptr_t)task_addr, (uintptr_t)awaited_by);
+                    event_handler__emit_task_waiter(task_id, _py_asyncio__task_identity(self, awaited_by));
             }
             // fp == 0 (no waiters): nothing to emit; consumers infer the loss
             // of a waiter edge from the waiter task's own disappearance.
@@ -538,21 +563,24 @@ py_asyncio__scan_tasks_end(py_proc_t* self) {
     for (size_t i = 0; i < n; i++) {
         task_tracker_entry_t* entry = stale[i];
 
+        // Same combined identity as the live path -- epoch was fixed at
+        // entry creation, so no remote read is needed even though the
+        // TaskObj may already be freed by now.
+        uintptr_t task_id = entry->task ^ ((uintptr_t)entry->epoch << PTR_ALIGN_SHIFT);
+
         // Task is gone from the list -- flush its accrued dwell time
         // before discarding rather than losing it silently. No remote
         // reads needed (frame/name already cached), safe even if the
-        // TaskObj has since been freed. Empty frame sequence signals a
-        // closing metric only, no new stack content.
-        if (isvalid(entry->top.frame) && entry->suspended_time > 0) {
+        // TaskObj has since been freed. Empty frames signal a closing
+        // metric only, no new stack content.
+        //
+        // Summed into ONE flush rather than two (suspended + executing
+        // dwell can both be nonzero).
+        uint64_t final_dwell = entry->suspended_time + entry->executing_time;
+        if (final_dwell > 0) {
             task_stack_reset();
-            event_handler__emit_task_stack_begin((uintptr_t)entry->task, entry->name_key);
-            event_handler__emit_task_stack_end(entry->suspended_time);
-        }
-        // Same, for dwell accrued while EXECUTING but never split off.
-        if (entry->executing_time > 0) {
-            task_stack_reset();
-            event_handler__emit_task_stack_begin((uintptr_t)entry->task, entry->name_key);
-            event_handler__emit_task_stack_end(entry->executing_time);
+            event_handler__emit_task_stack_begin(task_id, entry->name_key);
+            event_handler__emit_task_stack_end(final_dwell);
         }
         task_tracker__remove(tracker, entry->task);
     }

@@ -57,7 +57,8 @@ task_tracker__get_or_create(task_tracker_t* self, uintptr_t task) {
     if (!isvalid(entry)) // GCOV_EXCL_LINE
         return NULL;     // GCOV_EXCL_LINE
 
-    entry->task = task;
+    entry->task  = task;
+    entry->epoch = self->next_epoch++;
     lookup__set(self->by_task, (key_dt)task, (value_t)entry);
     self->count++;
     return entry;
