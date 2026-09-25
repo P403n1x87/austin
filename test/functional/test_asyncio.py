@@ -424,6 +424,17 @@ def _iter_tasks_flat(tasks):
         yield from _iter_tasks_flat(t.awaiting)
 
 
+def _is_asyncio_shutdown_task(t):
+    """True for the transient task asyncio.run() schedules for its own
+    post-main() cleanup (BaseEventLoop.shutdown_asyncgens) -- a real,
+    separate task unrelated to the pyramid's own intentional structure.
+    A long enough sampling window's tail occasionally catches it for a
+    sample or two once main() has already returned, which is not a
+    fragmentation bug: exclude it so the task count isn't sensitive to
+    exactly when sampling stops relative to interpreter shutdown."""
+    return bool(t.frames) and t.frames[0].function == "BaseEventLoop.shutdown_asyncgens"
+
+
 @allpythons()
 def test_asyncio_no_ambiguous_task_close_signal(py, save_mojo):
     """A task's dwell time while briefly caught EXECUTING mid-await is
@@ -448,6 +459,13 @@ def test_asyncio_no_ambiguous_task_close_signal(py, save_mojo):
     a rare timing coincidence: every round does real, non-trivial work
     (asyncio.create_task(...) plus bookkeeping) synchronously between two
     awaits, and 1ms sampling over that reliably catches it.
+
+    _is_asyncio_shutdown_task filters out BaseEventLoop.shutdown_asyncgens
+    -- a real, separate task asyncio.run() schedules for its own cleanup
+    once main() returns, which a long enough sampling window's tail can
+    occasionally catch. Confirmed by decoding real CI captures where the
+    count came back 30: the extra id was always this exact task, appearing
+    only in the last handful of samples -- not a fragmented pyramid task.
 
     Two complementary checks against a single real capture:
 
@@ -475,7 +493,10 @@ def test_asyncio_no_ambiguous_task_close_signal(py, save_mojo):
     assert result.returncode == 0, result.stderr or result.stdout
 
     all_tasks = [
-        t for sample in result.samples for t in _iter_tasks_flat(sample.tasks or ())
+        t
+        for sample in result.samples
+        for t in _iter_tasks_flat(sample.tasks or ())
+        if not _is_asyncio_shutdown_task(t)
     ]
     distinct_ids = {t.task_id for t in all_tasks}
     assert len(distinct_ids) == 29, (
@@ -484,7 +505,12 @@ def test_asyncio_no_ambiguous_task_close_signal(py, save_mojo):
         "-- extra ids mean a task got fragmented into several apparent ones"
     )
 
-    root_ids = {t.task_id for sample in result.samples for t in (sample.tasks or ())}
+    root_ids = {
+        t.task_id
+        for sample in result.samples
+        for t in (sample.tasks or ())
+        if not _is_asyncio_shutdown_task(t)
+    }
     assert len(root_ids) == 1, (
         f"Expected a single root task throughout the whole capture; got "
         f"{len(root_ids)}: {sorted(root_ids)} -- a spurious extra root means "
