@@ -419,8 +419,8 @@ _py_proc__is_running(py_proc_t* self) {
     if (proc_pidinfo(self->pid, PROC_PIDTBSDINFO, 0, &info, PROC_PIDTBSDINFO_SIZE) != PROC_PIDTBSDINFO_SIZE)
         return false;
 
-    // SIDL: process is being created; SZOMB: exited, awaiting reap.
-    if (info.pbi_status == SIDL || info.pbi_status == SZOMB || info.pbi_status == 32767)
+    // SZOMB: exited, awaiting reap.
+    if (info.pbi_status == SZOMB || info.pbi_status == 32767)
         return false;
 
     uint64_t start = ((uint64_t)info.pbi_start_tvsec * 1000000ull) + info.pbi_start_tvusec;
