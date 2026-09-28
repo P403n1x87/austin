@@ -383,6 +383,11 @@ _py_proc__analyze_macho(py_proc_t* self, char* path, void* base, mach_vm_size_t 
     return 0;
 } // _py_proc__analyze_macho
 
+// pbi_status sentinel for "status could not be determined" -- not one of the
+// real process states from <sys/proc.h> (SIDL/SRUN/SSLEEP/SSTOP/SZOMB, all
+// small values), so this can never legitimately match a live process.
+#define PROC_STATUS_UNKNOWN 32767
+
 // ----------------------------------------------------------------------------
 static int
 check_pid(pid_t pid) {
@@ -398,7 +403,7 @@ check_pid(pid_t pid) {
 
     log_t("check_pid :: %d", proc.pbi_status);
 
-    if (proc.pbi_status == SIDL || proc.pbi_status == 32767) {
+    if (proc.pbi_status == PROC_STATUS_UNKNOWN) {
         set_error(OS, "Process has unexpected status");
         FAIL;
     }
@@ -420,7 +425,7 @@ _py_proc__is_running(py_proc_t* self) {
         return false;
 
     // SZOMB: exited, awaiting reap.
-    if (info.pbi_status == SZOMB || info.pbi_status == 32767)
+    if (info.pbi_status == SZOMB || info.pbi_status == PROC_STATUS_UNKNOWN)
         return false;
 
     uint64_t start = ((uint64_t)info.pbi_start_tvsec * 1000000ull) + info.pbi_start_tvusec;
