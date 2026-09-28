@@ -1,5 +1,4 @@
 import os
-import socket
 import sys
 from contextlib import contextmanager
 from pathlib import Path
@@ -14,9 +13,8 @@ from test.utils import has_frame
 from test.utils import requires_sudo
 from test.utils import run_python
 from test.utils import threads
+from test.utils import wait_for_port
 from threading import Thread
-from time import monotonic
-from time import sleep
 
 import psutil
 import pytest
@@ -27,31 +25,6 @@ pytestmark = pytest.mark.skipif(
 )
 
 UWSGI = Path(__file__).parent / "uwsgi"
-
-
-def _wait_for_port(
-    host: str, port: int, timeout: float = 10.0, interval: float = 0.1
-) -> None:
-    """Poll a TCP port until something is listening on it.
-
-    uWSGI's startup (Python interpreter init, WSGI app import, worker
-    fork) can take longer than a fixed sleep on a loaded CI runner. A raw
-    connect() succeeding is a much more direct "is uwsgi actually up"
-    signal than guessing a fixed delay -- and, unlike an HTTP-level
-    readiness probe, it doesn't have to wait through the test app's own
-    sleep(2) on every request just to check whether the server is there.
-    """
-    deadline = monotonic() + timeout
-    while True:
-        try:
-            with socket.create_connection((host, port), timeout=interval):
-                return
-        except OSError:
-            if monotonic() >= deadline:
-                raise TimeoutError(
-                    f"uwsgi did not start listening on {host}:{port} within {timeout}s"
-                )
-            sleep(interval)
 
 
 @contextmanager
@@ -69,7 +42,7 @@ def uwsgi(app="app.py", port=9090, args=[], env=None):
         stderr=PIPE,
         env=env or os.environ,
     ) as uw:
-        _wait_for_port("localhost", port)
+        wait_for_port("localhost", port)
 
         assert uw.poll() is None, uw.stderr.read().decode()
 
