@@ -124,19 +124,48 @@ _py_proc__analyze_pe(py_proc_t* self, char* path, void* base) {
 }
 
 // ----------------------------------------------------------------------------
+// Cheap pre-check for "does self->pid have any children yet". If self->pid
+// was launched by us (not attached to), py_proc__start assigned it to a Job
+// Object, and Windows automatically keeps descendant processes in that same
+// job unless they explicitly request to break away -- which an ordinary
+// CreateProcess call, like a "py.exe" launcher spawning the real
+// interpreter, never does.
+static bool
+_py_proc__job_confirmed_no_children(py_proc_t* self) {
+    if (!isvalid(self->extra->h_job))
+        return false;
+
+    JOBOBJECT_BASIC_PROCESS_ID_LIST info = {0};
+    if (!QueryInformationJobObject(self->extra->h_job, JobObjectBasicProcessIdList, &info, sizeof(info), NULL))
+        return false;
+
+    return info.NumberOfProcessIdsInList <= 1;
+}
+
+// ----------------------------------------------------------------------------
 // On Windows, if we fail with the parent process we look if it has a single
 // child and try to attach to that instead. We keep going until we either find
 // a single Python process or more or less than a single child.
 static int
 _py_proc__try_child_proc(py_proc_t* self) {
-    cu_HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (h == INVALID_HANDLE_VALUE) {
-        set_error(OS, "Failed to create process snapshot");
+    if (_py_proc__job_confirmed_no_children(self)) {
+        // Nothing has changed yet at this point, so there's nothing for the
+        // rollback label below to undo -- fail directly rather than jumping
+        // into a scope where the (not yet declared) snapshot handle's
+        // cleanup attribute would run on an uninitialised value.
+        log_d("Process has no children (job object)");
+        set_error(OS, "Failed to find a single Python child process");
         FAIL;
     }
 
     HANDLE orig_hproc = self->ref;
     pid_t  orig_pid   = self->pid;
+
+    cu_HANDLE h = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (h == INVALID_HANDLE_VALUE) {
+        set_error(OS, "Failed to create process snapshot");
+        FAIL;
+    }
 
     for (;;) {
         pid_t parent_pid = self->pid;
