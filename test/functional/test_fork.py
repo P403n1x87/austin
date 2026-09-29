@@ -28,6 +28,7 @@ from pathlib import Path
 from test.utils import allpythons
 from test.utils import austin
 from test.utils import parse_mojo
+from test.utils import get_free_port
 from test.utils import has_frame
 from test.utils import maps
 from test.utils import version_in
@@ -38,6 +39,8 @@ from test.utils import sum_metrics
 from test.utils import target
 from test.utils import threads
 from test.utils import variants
+from test.utils import wait_for_port
+from threading import Thread
 from time import sleep
 
 import pytest
@@ -334,7 +337,21 @@ def test_fork_int_signal(py):
 @allpythons()
 @variants
 def test_fork_exec(austin, py, children):
-    result = austin("-i", "1ms", *children, *python(py), target("target_exec.py"))
+    port = get_free_port()
+
+    # target_exec.py blocks on accept() until we connect -- the connection
+    # itself is what lets it proceed to exec(), so there's no fixed delay
+    # to guess and nothing to race against austin's own initial attach.
+    # This runs in the background because austin(...) below is a single
+    # blocking call for the whole capture.
+    trigger = Thread(target=wait_for_port, args=("localhost", port))
+    trigger.start()
+
+    result = austin(
+        "-i", "1ms", *children, *python(py), target("target_exec.py"), str(port)
+    )
+    trigger.join()
+
     assert version_in(py, result.stderr or result.stdout), (
         result.stderr or result.stdout
     )

@@ -23,6 +23,7 @@
 import importlib
 import os
 import platform
+import socket
 import sys
 from asyncio.subprocess import STDOUT
 from collections import Counter
@@ -41,6 +42,7 @@ from subprocess import check_output
 from tempfile import gettempdir
 from test import PYTHON_VERSIONS
 from test import _ver_tuple
+from time import monotonic
 from time import sleep
 from types import FrameType
 from types import ModuleType
@@ -490,6 +492,36 @@ def retry_where(
         attempts=attempts,
         interval=interval,
     )
+
+
+def get_free_port() -> int:
+    """Ask the OS for an unused TCP port on localhost."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("localhost", 0))
+        return s.getsockname()[1]
+
+
+def wait_for_port(
+    host: str, port: int, timeout: float = 10.0, interval: float = 0.1
+) -> None:
+    """Poll a TCP port until something is listening on it.
+
+    A raw connect() succeeding is a much more direct "is the server actually
+    up" signal than guessing a fixed delay -- and, when the server on the
+    other end blocks on accept() as its own synchronisation point, this
+    connection is also what lets it proceed.
+    """
+    deadline = monotonic() + timeout
+    while True:
+        try:
+            with socket.create_connection((host, port), timeout=interval):
+                return
+        except OSError:
+            if monotonic() >= deadline:
+                raise TimeoutError(
+                    f"nothing started listening on {host}:{port} within {timeout}s"
+                )
+            sleep(interval)
 
 
 T = TypeVar("T")
