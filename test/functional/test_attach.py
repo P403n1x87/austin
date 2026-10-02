@@ -236,17 +236,30 @@ def test_attach_container_like(py, tmp_path, prefix):
     env = os.environ.copy()
     env["LD_LIBRARY_PATH"] = str(venv_path / "lib")
     env["PATH"] = str(venv_path / "bin") + os.pathsep + env["PATH"]
+    # Give the target enough lifetime (sleepy.py sleeps `interval` seconds
+    # twice) that a successful attach -- which then blocks sampling until
+    # the target exits, since "-Cp" has no exposure limit -- has real time
+    # left to collect a useful sample, rather than attaching moments before
+    # the target's natural death and coming back empty.
     with run_python(
-        py, target("sleepy.py"), "3", env=env, prefix=prefix, sleep_after=0.5
+        py, target("sleepy.py"), "10", env=env, prefix=prefix, sleep_after=0.5
     ) as p:
         rmtree(venv_path)
-        sleep(0.5)
 
-        result = austin("-Cp", str(p.pid))
-        assert result.returncode == 0
+        # With a prefix like "unshare -p -f -r", the PID we attach to is the
+        # launcher, not the exec'd Python interpreter -- austin's own "-C"
+        # fallback needs that child to have actually forked+exec'd by the
+        # time it scans for it. A failed attach returns fast (no child
+        # found yet), so retry_until gets several real attempts cheaply;
+        # poll instead of trusting a single fixed-delay snapshot.
+        result = retry_until(
+            lambda: austin("-Cp", str(p.pid)),
+            lambda r: has_frame(r.samples, filename="sleepy.py", function="<module>"),
+        )
+        assert result.returncode == 0, result.stderr or result.stdout
 
         ts = threads(result.samples)
-        assert len(ts) == 1
+        assert len(ts) == 1, result.stderr or result.stdout
 
         assert has_frame(result.samples, filename="sleepy.py", function="<module>")
 
