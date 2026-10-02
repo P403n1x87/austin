@@ -377,9 +377,12 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
     // Eviction runs at end-of-tick, so a Task freed and replaced at the
     // same address within the same tick makes get_or_create above hand
     // back the OLD entry.
-    raddr_t coro_addr    = NULL;
-    bool    coro_read_ok = success(copy_asyncio_field(self, task_object, task_coro, task_addr, coro_addr))
-                        && _is_plausible_ptr(coro_addr);
+    raddr_t coro_addr         = NULL;
+    bool    coro_read_ok      = success(copy_asyncio_field(self, task_object, task_coro, task_addr, coro_addr))
+                             && _is_plausible_ptr(coro_addr);
+    // This task's very first sighting (nothing cached yet) -- see the
+    // waiter-edge read below, which retries only in this case.
+    bool    is_first_sighting = coro_read_ok && entry->identity_coro == 0;
     if (coro_read_ok) {
         if (entry->identity_coro != 0 && entry->identity_coro != (uintptr_t)coro_addr) {
             entry->waiter_fp      = 0;
@@ -498,8 +501,18 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
     // when its cheap fingerprint has changed since last seen. ----
     raddr_t awaited_by     = NULL;
     char    awaited_by_set = 0;
-    if (success(copy_asyncio_field(self, task_object, task_awaited_by, task_addr, awaited_by))
-        && success(copy_asyncio_field(self, task_object, task_awaited_by_is_set, task_addr, awaited_by_set))) {
+    bool    waiter_read_ok = false;
+    // On first sighting, a torn read here leaves this task's identity on
+    // the wire with no waiter edge, which a tree-building consumer reads
+    // as a spurious root until a later tick's read succeeds. Retry a few
+    // times now instead -- cheap, since every later tick (the common
+    // case) still takes one attempt, same as before.
+    for (int attempt = 0; attempt < (is_first_sighting ? 4 : 1) && !waiter_read_ok; attempt++) {
+        waiter_read_ok
+            = success(copy_asyncio_field(self, task_object, task_awaited_by, task_addr, awaited_by))
+           && success(copy_asyncio_field(self, task_object, task_awaited_by_is_set, task_addr, awaited_by_set));
+    }
+    if (waiter_read_ok) {
         uintptr_t fp = _py_asyncio__waiter_fingerprint(self, awaited_by, awaited_by_set);
 
         if (fp != entry->waiter_fp) {
