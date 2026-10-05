@@ -1492,25 +1492,39 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
     if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, tstate_head))) // GCOV_EXCL_LINE
         FAIL;                                                                                // GCOV_EXCL_LINE
 
-    if (!isvalid(tstate_head))
-        // Interpreter state is in an invalid state.  The caller will retry
-        // on the next sample unless there is a fatal error.
-        SUCCESS;
-
     // In native mode, interrupt (seize + suspend) every thread before
-    // sampling so we get a consistent snapshot of the whole process.
+    // sampling so we get a consistent snapshot of the whole process. This
+    // runs even when tstate_head is momentarily invalid (e.g. right after
+    // the process execs in place: the new interpreter hasn't initialized
+    // far enough yet for tstate_head to resolve). A thread seized on a
+    // previous sample may be sitting in an unconsumed ptrace-stop -- the
+    // kernel's mandatory post-exec stop -- that nothing else will ever
+    // clear; skipping this step whenever tstate_head can't be read would
+    // abandon that thread in ptrace-stop forever, since nothing would ever
+    // call back into the suspend/resume machinery for it again.
     if (pargs_native) {
-        if (fail(_py_proc__interrupt_threads(self, tstate_head))) { // GCOV_EXCL_LINE
-            py_thread__resume_all_interrupted();                    // GCOV_EXCL_LINE
-            FAIL;                                                   // GCOV_EXCL_LINE
+        if (isvalid(tstate_head) && fail(_py_proc__interrupt_threads(self, tstate_head))) { // GCOV_EXCL_LINE
+            py_thread__resume_all_interrupted();                                            // GCOV_EXCL_LINE
+            FAIL;                                                                           // GCOV_EXCL_LINE
         }
         // Extend the snapshot to non-Python OS threads (best-effort).
         // The full OS enumeration runs only when the deadline fires (every
         // 100 ms).  Between deadline ticks, known non-Python TIDs are
         // re-interrupted directly from the cache — no OS-wide scan needed.
+        // This also doubles as the mechanism that pumps a thread stuck in
+        // the post-exec stop described above: the OS-wide scan walks
+        // /proc/<pid>/task regardless of interpreter state and will pick it
+        // back up within one scan window.
         microseconds_t now = gettime();
         if (now >= self->non_python_scan_deadline) {
-            py_thread__interrupt_os_threads(self);
+            // Skip the scan outright once the process is confirmed dead: a
+            // zombie can still answer PTRACE_SEIZE (its task_struct hasn't
+            // been reclaimed yet) but will never produce another ptrace-stop
+            // for wait_thread_stop to wait for. That call now enforces its
+            // own hard deadline regardless, so this is purely to avoid
+            // paying for one needlessly.
+            if (py_proc__is_running(self))
+                py_thread__interrupt_os_threads(self);
             self->non_python_scan_deadline = now + NON_PYTHON_SCAN_WINDOW_US;
             scan_non_python                = true;
         } else if (self->non_python_n > 0) {
@@ -1521,6 +1535,15 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
             }
             scan_non_python = true;
         }
+    }
+
+    if (!isvalid(tstate_head)) {
+        // Interpreter state is in an invalid state.  The caller will retry
+        // on the next sample unless there is a fatal error. Any threads
+        // interrupted above (non-Python pump) still need to be resumed.
+        if (pargs_native)
+            py_thread__resume_all_interrupted();
+        SUCCESS;
     }
 
     int result = _py_proc__sample_threads(self, interp, tstate_head, time_delta);
@@ -1606,8 +1629,30 @@ py_proc__sample(py_proc_t* self) {
     microseconds_t time_delta = gettime() - self->timestamp;
 
     do {
-        if (fail(_py_proc__prefetch_interpreter_state(self, current_interp))) // GCOV_EXCL_LINE
-            FAIL;                                                             // GCOV_EXCL_LINE
+        if (fail(_py_proc__prefetch_interpreter_state(self, current_interp))) {
+            // The cached interpreter address itself is unreadable -- most
+            // likely the process execd in place and istate_raddr still
+            // points into the old, now-replaced image (which, unlike a
+            // momentarily-invalid-but-still-mapped read, can fail outright
+            // once the new image's ASLR base no longer overlaps it at all).
+            // We are about to give up on sampling entirely this tick, so
+            // _py_proc__sample_interpreter below -- and with it, the native
+            // thread pump that would otherwise consume a pending ptrace-stop
+            // on an already-seized thread -- never runs. Do it here instead:
+            // a thread parked in the kernel's mandatory post-exec stop gets
+            // nothing else to resume it once this address stops resolving.
+            //
+            // Guarded on liveness: this failure is just as often the process
+            // having exited (prefetching from a torn-down address space
+            // fails the same way as from a stale pre-exec one) as it is an
+            // in-place exec -- see the matching guard in
+            // _py_proc__sample_interpreter for why that matters here too.
+            if (pargs_native && py_proc__is_running(self)) {
+                py_thread__interrupt_os_threads(self);
+                py_thread__resume_all_interrupted();
+            }
+            FAIL;
+        }
 
         int result = _py_proc__sample_interpreter(self, current_interp, time_delta);
 
@@ -1617,6 +1662,18 @@ py_proc__sample(py_proc_t* self) {
         if (fail(_py_proc__get_interpreter_state_field(self, current_interp, next, current_interp))) // GCOV_EXCL_LINE
             FAIL;                                                                                    // GCOV_EXCL_LINE
     } while (isvalid(current_interp));
+
+    if (self->exec_seen) {
+        // A thread reported the kernel's mandatory post-exec ptrace stop
+        // while we were sampling above. The process now runs a different
+        // image with a fresh ASLR base, so istate_raddr and every cached
+        // symbol/path we hold are stale -- carrying on would mean reading
+        // whatever garbage now happens to live at the old addresses
+        // forever. Ask the caller to re-run full process discovery instead.
+        self->exec_seen = false;
+        set_error(OS, "Process exec'd in place; requesting re-attach");
+        FAIL;
+    }
 
     // In non-native mode, advance the timestamp by the measured delta so that
     // the next time_delta captures the full interval (sample work + sleep).
