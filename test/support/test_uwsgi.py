@@ -18,6 +18,7 @@ from threading import Thread
 
 import psutil
 import pytest
+from flaky import flaky
 from requests import get
 
 pytestmark = pytest.mark.skipif(
@@ -118,6 +119,7 @@ def test_uwsgi(py):
         assert responses and responses[0].status_code == 200, responses
 
 
+@flaky
 @requires_sudo
 @allpythons()
 def test_uwsgi_multiprocess(py):

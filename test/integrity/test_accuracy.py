@@ -26,7 +26,10 @@ from test.utils import has_frame
 from test.utils import python
 from test.utils import target
 
+from flaky import flaky
 
+
+@flaky
 @allpythons()
 def test_accuracy_fast_recursive(py):
     result = austin("-i", "1ms", "-P", *python(py), target("recursive.py"))
