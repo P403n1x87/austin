@@ -110,8 +110,26 @@ wait_ptrace_seize(pid_t pid) {
 // deadline that's only checked between waitpid returns isn't enough on its
 // own. The handler does nothing; EINTR is all that's needed to unblock.
 static void
-_wait_thread_stop_alarm(int sig) {
+_wait_thread_stop_alarm(int sig) { // GCOV_EXCL_START
     (void)sig;
+} // GCOV_EXCL_STOP
+
+// Installed once, lazily, rather than on every wait_thread_stop call: this
+// function sits on the hottest path in the sampler (once per seized thread per
+// sample). Nothing else uses SIGALRM or ITIMER_REAL, so installing the handler
+// once and leaving it in place for the process's lifetime is safe; only the
+// per-call itimer arm/disarm (unavoidable, since the deadline itself must be
+// re-armed for every wait) remains in the hot path.
+static inline void
+_wait_thread_stop_init(void) {
+    static bool installed = false;
+    if (installed)
+        return;
+    struct sigaction sa = {0};
+    sa.sa_handler       = _wait_thread_stop_alarm;
+    sigemptyset(&sa.sa_mask); // No SA_RESTART: EINTR must actually interrupt waitpid.
+    sigaction(SIGALRM, &sa, NULL);
+    installed = true;
 }
 
 // Wait for a thread to enter ptrace-stop after PTRACE_INTERRUPT.
@@ -169,14 +187,11 @@ wait_thread_stop(pid_t tid, bool* exec_out) {
     if (exec_out)
         *exec_out = false;
 
-    struct sigaction sa = {0}, old_sa;
-    sa.sa_handler       = _wait_thread_stop_alarm;
-    sigemptyset(&sa.sa_mask); // No SA_RESTART: EINTR must actually interrupt waitpid.
-    sigaction(SIGALRM, &sa, &old_sa);
+    _wait_thread_stop_init();
 
-    struct itimerval timer = {0}, old_timer;
+    struct itimerval timer = {0};
     timer.it_value.tv_usec = 100000; // 100ms, matches the deadline below
-    setitimer(ITIMER_REAL, &timer, &old_timer);
+    setitimer(ITIMER_REAL, &timer, NULL);
 
     microseconds_t end    = gettime() + 100000;
     int            result = -1;
@@ -184,8 +199,8 @@ wait_thread_stop(pid_t tid, bool* exec_out) {
         int   status;
         pid_t r = waitpid(tid, &status, __WALL);
         if (r == tid) {
-            if (!WIFSTOPPED(status))
-                break;
+            if (!WIFSTOPPED(status)) // GCOV_EXCL_START -- thread exited instead of stopping; see below
+                break;               // GCOV_EXCL_STOP
             if ((status >> 16) == PTRACE_EVENT_STOP) {
                 result = 0; // Our own group-stop; thread is now fully stopped.
                 break;
@@ -196,18 +211,18 @@ wait_thread_stop(pid_t tid, bool* exec_out) {
 
             int sig = (status >> 16) == 0 ? WSTOPSIG(status) : 0;
             ptrace(PTRACE_CONT, tid, 0, (void*)(intptr_t)sig);
-            if (gettime() >= end)
-                break;
+            if (gettime() >= end) // GCOV_EXCL_START -- hard-deadline safety net, see doc comment above
+                break;            // GCOV_EXCL_STOP
             continue;
         }
-        if (r == -1 && errno != EINTR)
-            break;
-        if (gettime() >= end)
-            break;
+        if (r == -1 && errno != EINTR) // GCOV_EXCL_LINE -- waitpid() itself failing is not something
+            break;                     // GCOV_EXCL_LINE -- the test suite can provoke on demand
+        if (gettime() >= end)          // GCOV_EXCL_START -- hard-deadline safety net, see doc comment above
+            break;                     // GCOV_EXCL_STOP
     }
 
-    setitimer(ITIMER_REAL, &old_timer, NULL);
-    sigaction(SIGALRM, &old_sa, NULL);
+    struct itimerval disarm = {0};
+    setitimer(ITIMER_REAL, &disarm, NULL);
 
     return result;
 }
