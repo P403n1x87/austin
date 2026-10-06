@@ -24,11 +24,13 @@
 
 #include <inttypes.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/ptrace.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 
 #include "../error.h"
 #include "../hints.h"
@@ -73,12 +75,20 @@ wait_ptrace(int request, pid_t pid, void* addr, void* data) {
 // PTRACE_SEIZE wrapper that retries briefly on ESRCH. A thread that was just
 // created may be momentarily invisible to ptrace while the kernel is setting up
 // its task struct, so a short retry is warranted here (and only here).
+//
+// PTRACE_O_TRACEEXEC: without it, a successful execve(2) by the tracee still
+// stops it (the kernel does this unconditionally), but as a *plain*
+// signal-delivery-stop indistinguishable from a real, unrelated SIGTRAP --
+// see wait_thread_stop's own doc comment for why that ambiguity matters.
+// With it set, the same stop instead carries PTRACE_EVENT_EXEC in the status
+// word's event field, so it can be told apart from everything else without
+// guessing.
 static inline int
 wait_ptrace_seize(pid_t pid) {
     int            outcome = 0;
     microseconds_t end     = gettime() + 100000; // 100ms
 
-    while (gettime() < end && (outcome = ptrace(PTRACE_SEIZE, pid, 0, 0)) && errno == ESRCH)
+    while (gettime() < end && (outcome = ptrace(PTRACE_SEIZE, pid, 0, PTRACE_O_TRACEEXEC)) && errno == ESRCH)
         sched_yield();
 
 #ifdef DEBUG
@@ -95,6 +105,33 @@ wait_ptrace_seize(pid_t pid) {
     SUCCESS;
 }
 
+// One-shot SIGALRM used solely to put a hard ceiling on the blocking waitpid
+// in wait_thread_stop below -- see that function's own doc comment for why a
+// deadline that's only checked between waitpid returns isn't enough on its
+// own. The handler does nothing; EINTR is all that's needed to unblock.
+static void
+_wait_thread_stop_alarm(int sig) { // GCOV_EXCL_START
+    (void)sig;
+} // GCOV_EXCL_STOP
+
+// Installed once, lazily, rather than on every wait_thread_stop call: this
+// function sits on the hottest path in the sampler (once per seized thread per
+// sample). Nothing else uses SIGALRM or ITIMER_REAL, so installing the handler
+// once and leaving it in place for the process's lifetime is safe; only the
+// per-call itimer arm/disarm (unavoidable, since the deadline itself must be
+// re-armed for every wait) remains in the hot path.
+static inline void
+_wait_thread_stop_init(void) {
+    static bool installed = false;
+    if (installed)
+        return;
+    struct sigaction sa = {0};
+    sa.sa_handler       = _wait_thread_stop_alarm;
+    sigemptyset(&sa.sa_mask); // No SA_RESTART: EINTR must actually interrupt waitpid.
+    sigaction(SIGALRM, &sa, NULL);
+    installed = true;
+}
+
 // Wait for a thread to enter ptrace-stop after PTRACE_INTERRUPT.
 // PTRACE_INTERRUPT is asynchronous: it only queues the stop request; the thread
 // enters ptrace-stop at the next safe point. The kernel delivers this as a
@@ -104,21 +141,90 @@ wait_ptrace_seize(pid_t pid) {
 // Blocking waitpid: PTRACE_INTERRUPT is documented to interrupt blocking
 // syscalls, so the stop arrives in microseconds on any working kernel and the
 // kernel wakes us directly rather than us spinning on WNOHANG+sched_yield.
-// The 100 ms deadline only bounds the EINTR-retry path (signal storm); with
-// the default SA_RESTART behaviour of signal() it is effectively dead code.
+//
+// Hard deadline via SIGALRM: the 100 ms deadline below is only ever checked
+// *between* waitpid calls, which isn't enough by itself -- a specific thread
+// (identified by this exact tid) can be torn down as part of whole-process
+// exit without the kernel ever delivering a wait-visible status for that one
+// tid (only a process-wide/wildcard wait is guaranteed to see it), so a
+// blocking, single-tid waitpid can have nothing left to ever wake it. This
+// is indistinguishable up front from a thread that just hasn't stopped yet,
+// so an independent timeout that fires regardless of what waitpid does is
+// the only way to bound this call. The alarm is purely to generate EINTR;
+// the actual deadline enforcement is still the gettime() check below.
+//
+// A ptrace-stop can also arrive for a reason that has nothing to do with our
+// own PTRACE_INTERRUPT: an exec-in-place target can stop the thread with a
+// kernel-generated exec notification independently of our sampling cycle
+// (wait_ptrace_seize sets PTRACE_O_TRACEEXEC so this one is unambiguous --
+// see its own doc comment), or, in principle, a genuine unrelated signal
+// could. Mistaking either for the response to *our* PTRACE_INTERRUPT (or
+// vice versa) would permanently desync the two: whichever goes
+// unacknowledged leaves the thread parked in ptrace-stop forever, waiting
+// for a PTRACE_CONT that nothing will ever issue.
+//
+// Empirically confirmed (see the three stop kinds a tracee can report,
+// distinguished by the event field at status>>16 -- WSTOPSIG(status) alone
+// is not enough, since it reports SIGTRAP for both our own stop and an exec
+// notification):
+//   our own PTRACE_INTERRUPT-stop: WSTOPSIG==SIGTRAP, event==PTRACE_EVENT_STOP
+//   exec notification (PTRACE_O_TRACEEXEC): WSTOPSIG==SIGTRAP, event==PTRACE_EVENT_EXEC
+//   a genuine unrelated signal:              WSTOPSIG==<that signal>, event==0
+// Only the first is ours to consume here; anything else is acknowledged
+// (forwarding the real signal if there is one -- an exec notification has
+// none to forward) and the wait resumes.
+//
+// exec_out: when non-NULL, set to true if an exec notification was observed
+// along the way. The caller uses this to tell its own process-level state
+// (istate_raddr, bin_path, cached symbols, ...) to be re-derived from
+// scratch: an in-place exec gives the new image a fresh ASLR base, so none
+// of it is valid anymore, even though a stale thread-state head can easily
+// still look like a plausible (non-NULL) pointer rather than failing
+// outright -- relying on sampling to notice the data is wrong is not
+// reliable, but the kernel's own exec notification is.
 static inline int
-wait_thread_stop(pid_t tid) {
-    int            status;
-    microseconds_t end = gettime() + 100000;
+wait_thread_stop(pid_t tid, bool* exec_out) {
+    if (exec_out)
+        *exec_out = false;
+
+    _wait_thread_stop_init();
+
+    struct itimerval timer = {0};
+    timer.it_value.tv_usec = 100000; // 100ms, matches the deadline below
+    setitimer(ITIMER_REAL, &timer, NULL);
+
+    microseconds_t end    = gettime() + 100000;
+    int            result = -1;
     for (;;) {
+        int   status;
         pid_t r = waitpid(tid, &status, __WALL);
-        if (r == tid)
-            return WIFSTOPPED(status) ? 0 : -1;
-        if (r == -1 && errno != EINTR)
-            return -1;
-        if (gettime() >= end)
-            return -1;
+        if (r == tid) {
+            if (!WIFSTOPPED(status)) // GCOV_EXCL_START -- thread exited instead of stopping; see below
+                break;               // GCOV_EXCL_STOP
+            if ((status >> 16) == PTRACE_EVENT_STOP) {
+                result = 0; // Our own group-stop; thread is now fully stopped.
+                break;
+            }
+
+            if ((status >> 16) == PTRACE_EVENT_EXEC && exec_out)
+                *exec_out = true;
+
+            int sig = (status >> 16) == 0 ? WSTOPSIG(status) : 0;
+            ptrace(PTRACE_CONT, tid, 0, (void*)(intptr_t)sig);
+            if (gettime() >= end) // GCOV_EXCL_START -- hard-deadline safety net, see doc comment above
+                break;            // GCOV_EXCL_STOP
+            continue;
+        }
+        if (r == -1 && errno != EINTR) // GCOV_EXCL_LINE -- waitpid() itself failing is not something
+            break;                     // GCOV_EXCL_LINE -- the test suite can provoke on demand
+        if (gettime() >= end)          // GCOV_EXCL_START -- hard-deadline safety net, see doc comment above
+            break;                     // GCOV_EXCL_STOP
     }
+
+    struct itimerval disarm = {0};
+    setitimer(ITIMER_REAL, &disarm, NULL);
+
+    return result;
 }
 
 // ----------------------------------------------------------------------------

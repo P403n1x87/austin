@@ -174,12 +174,18 @@ _py_thread__suspend(py_thread_t* self) {
 
     // Consume the ptrace-stop notification so that the thread is fully
     // stopped before reading its registers or unwinding its stack.
-    if (fail(wait_thread_stop(self->tid))) {
+    // wait_thread_stop itself acknowledges and skips past any unrelated
+    // stop (e.g. an exec notification) first, so by the time it returns
+    // successfully there is nothing left pending.
+    bool exec_seen = false;
+    if (fail(wait_thread_stop(self->tid, &exec_seen))) {
         log_d("ptrace: thread %" PRIuPTR " did not stop in time, resuming", self->tid);
         ptrace(PTRACE_CONT, self->tid, 0, 0);
         set_error(OS, "Thread did not stop in time");
         FAIL;
     }
+    if (exec_seen)
+        self->proc->exec_seen = true;
     SUCCESS;
 }
 

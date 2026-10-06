@@ -111,6 +111,18 @@ typedef struct {
 
     uint64_t tlbc_generation; // current interpreter tlbc_generation (3.14+ FT)
 
+    // Set by the platform thread-suspend code (Linux: _py_thread__suspend)
+    // the moment it observes a thread report the kernel's mandatory
+    // post-exec ptrace stop. A process that execs in place gets a fresh
+    // ASLR base, so every cached address we hold (istate_raddr, bin_path,
+    // symbols, ...) is now wrong -- but that doesn't make sampling fail
+    // outright, since the stale thread-state head can easily still look
+    // like a plausible (non-NULL) pointer and simply walk into garbage.
+    // py_proc__sample checks and clears this flag once per call to force
+    // full re-discovery (py_proc__init) as soon as an exec is observed,
+    // rather than trying to infer staleness from the data it produces.
+    bool exec_seen;
+
     // Asyncio introspection support (3.14+).
     //
     // The _asyncio extension module is loaded lazily (on `import asyncio`),
