@@ -99,6 +99,9 @@ typedef struct {
 
     bool free_threaded;
 
+    // Whether we have already warned about memory mode with the GIL disabled.
+    bool gil_disabled_warned;
+
     // Non-Python thread sampling.
     //
     // The full OS thread enumeration (e.g. CreateToolhelp32Snapshot on Windows)

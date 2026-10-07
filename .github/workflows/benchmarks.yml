@@ -189,15 +189,25 @@ jobs:
         with:
           path: austin
 
-      - name: Install Python 3.13
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
+      # The order of these two steps matters. Each setup-python step prepends
+      # its own bin/ directory to PATH, so the last one installed wins for any
+      # executable name that both provide. The free-threaded build ships not
+      # only python3.13t but also python3.13, python3 and python. Installing it
+      # last would make python3.13 (and hence the venv below, and every
+      # "normal" benchmark scenario) resolve to the free-threaded interpreter.
+      # Installing it first puts the default (GIL) build ahead on PATH, so that
+      # python3.13 is the GIL build, while python3.13t is only provided by the
+      # free-threaded bin/ directory and is still found there. The benchmark
+      # script looks up the free-threaded interpreter explicitly as python3.13t.
       - name: Install free-threaded Python 3.13
         uses: actions/setup-python@v5
         with:
           python-version: "3.13t"
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
 
       - uses: actions/download-artifact@v4
         with:

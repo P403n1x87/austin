@@ -118,12 +118,12 @@ def test_fork_cpu_time_idle(py, austin):
 @pytest.mark.parametrize("args", ("-m", "-cm"))
 @allpythons()
 def test_fork_memory(py, args):
-    if py.endswith("t"):
-        pytest.skip(
-            "Memory mode requires the GIL; not supported for free-threaded Python"
-        )
     result = austin(args, "-i", "1ms", *python(py), target("target34.py"))
     assert result.returncode == 0, result.stderr or result.stdout
+
+    # With the GIL disabled, memory deltas are split across running threads,
+    # so we expect a warning about possibly inaccurate results.
+    assert ("requires Python with the GIL" in result.stderr) == py.endswith("t")
 
     assert has_frame(result.samples, "target34.py", "keep_cpu_busy", 32)
 
@@ -138,7 +138,12 @@ def test_fork_memory(py, args):
     alloc = sum(_ for _ in ms if _ > 0)
     dealloc = sum(-_ for _ in ms if _ < 0)
 
-    assert alloc * dealloc
+    if py.endswith("t"):
+        # Free-threaded builds use mimalloc, which might hold on to freed pages,
+        # so the RSS is not guaranteed to drop during the run.
+        assert alloc
+    else:
+        assert alloc * dealloc
 
 
 @allpythons()
@@ -206,8 +211,11 @@ def test_fork_full_metrics(py):
 
     assert 0 < 0.9 * d < wall < 2.1 * d
     assert 0 < cpu <= wall
-    if not py.endswith("t"):
-        # Memory tracking requires the GIL; free-threaded Python always yields 0 deltas.
+    if py.endswith("t"):
+        # Free-threaded builds use mimalloc, which might hold on to freed pages,
+        # so the RSS is not guaranteed to drop during the run.
+        assert alloc
+    else:
         assert alloc * dealloc
 
 

@@ -1159,6 +1159,57 @@ _py_proc__get_memory_delta(py_proc_t* self) {
 }
 
 // ----------------------------------------------------------------------------
+// Snapshot of the thread states and their idle state, used to split a process
+// memory delta across the running threads when the GIL is disabled. The idle
+// state is reused by the sampling loop, so that we query it only once per
+// thread per sample.
+typedef struct {
+    raddr_t addrs[MAX_THREAD_TRACKER];
+    bool    idle[MAX_THREAD_TRACKER];
+    int     n;
+    int     running;
+    int     cursor;
+} _mem_threads_t;
+
+// ----------------------------------------------------------------------------
+static inline void
+_py_proc__collect_mem_threads(py_proc_t* self, raddr_t tstate_head, _mem_threads_t* threads) {
+    threads->n       = 0;
+    threads->running = 0;
+    threads->cursor  = 0;
+
+    py_thread_t py_thread = py_thread__init(self);
+    if (fail(py_thread__read_remote(&py_thread, tstate_head))) // GCOV_EXCL_LINE
+        return;                                                // GCOV_EXCL_LINE
+
+    do {
+        bool idle = py_thread__is_idle(&py_thread);
+
+        threads->addrs[threads->n] = py_thread.addr;
+        threads->idle[threads->n]  = idle;
+        threads->n++;
+        if (!idle)
+            threads->running++;
+    } while (threads->n < MAX_THREAD_TRACKER && success(py_thread__next(&py_thread, NULL)));
+}
+
+// ----------------------------------------------------------------------------
+// Find the thread state in the snapshot. The sampling loop visits the threads
+// in the same order, so we start the search from where the last one ended.
+static inline int
+_mem_threads__find(_mem_threads_t* threads, raddr_t addr) {
+    for (int i = 0; i < threads->n; i++) {
+        int j = (threads->cursor + i) % threads->n;
+        if (threads->addrs[j] == addr) {
+            threads->cursor = j + 1;
+            return j;
+        }
+    }
+
+    return -1;
+}
+
+// ----------------------------------------------------------------------------
 int
 py_proc__get_gc_state(py_proc_t* self) {
     if (!isvalid(self->gc_state_raddr))
@@ -1201,6 +1252,15 @@ static inline int
 _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, microseconds_t time_delta) {
     ssize_t mem_delta      = 0;
     raddr_t current_thread = NULL;
+
+    // With the GIL disabled, the process memory delta is split evenly across
+    // the running threads. These track the part that is still to be assigned.
+    bool           split_mem  = false;
+    ssize_t        mem_left   = 0;
+    int            mem_shares = 0;
+    int            mem_index  = -1;
+    _mem_threads_t mem_threads;
+    mem_threads.n = 0;
 
     self->thread_tracker->sample_gen++;
 
@@ -1301,11 +1361,40 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
             if (!isvalid(gil_state_raddr)) // GCOV_EXCL_LINE
                 SUCCESS;                   // GCOV_EXCL_LINE
 
-            gil_state_t gil_state = {0};
-            if (fail(copy_datatype(self->ref, gil_state_raddr, gil_state))) // GCOV_EXCL_LINE
-                FAIL;                                                       // GCOV_EXCL_LINE
+            if (self->free_threaded) {
+                gil_state_ft_t gil_state = {0};
+                if (fail(copy_datatype(self->ref, gil_state_raddr, gil_state))) // GCOV_EXCL_LINE
+                    FAIL;                                                       // GCOV_EXCL_LINE
 
-            current_thread = (raddr_t)gil_state.last_holder._value;
+                if (gil_state.enabled) {
+                    current_thread = (raddr_t)gil_state.last_holder._value;
+                } else {
+                    // With the GIL disabled there is no single thread
+                    // manipulating memory, so the best we can do is to split
+                    // the process memory delta across the running threads.
+                    if (!self->gil_disabled_warned) {
+                        log_w("Memory mode with the GIL disabled; splitting memory deltas across running threads");
+                        log_m("");
+                        log_m(
+                            "⚠️  " BOLD "Memory mode" CRESET " requires Python with the GIL. With the GIL disabled, "
+                            "memory deltas are split across running threads and results might not be accurate."
+                        );
+                        self->gil_disabled_warned = true;
+                    }
+                    split_mem = true;
+                    _py_proc__collect_mem_threads(self, tstate_head, &mem_threads);
+                    // If no thread is running, split across all of them, so
+                    // that the memory delta is not lost.
+                    mem_shares = mem_threads.running ? mem_threads.running : mem_threads.n;
+                    mem_left   = _py_proc__get_memory_delta(self);
+                }
+            } else {
+                gil_state_t gil_state = {0};
+                if (fail(copy_datatype(self->ref, gil_state_raddr, gil_state))) // GCOV_EXCL_LINE
+                    FAIL;                                                       // GCOV_EXCL_LINE
+
+                current_thread = (raddr_t)gil_state.last_holder._value;
+            }
         } else
             current_thread = _py_proc__current_thread_state(self);
     }
@@ -1313,15 +1402,25 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
     do {
         if (pargs.memory) {
             mem_delta = 0;
-            if (V_MAX(3, 11) && self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void*)-1) {
-                if (_py_proc__find_current_thread_offset(self, py_thread.addr))
-                    continue;
-                else
-                    current_thread = _py_proc__current_thread_state(self);
-            }
-            if (py_thread.addr == current_thread) {
-                mem_delta = _py_proc__get_memory_delta(self);
-                log_t("Thread %lx holds the GIL", py_thread.tid);
+            if (split_mem) {
+                mem_index = _mem_threads__find(&mem_threads, py_thread.addr);
+                if (mem_shares > 0 && mem_index >= 0 && (!mem_threads.running || !mem_threads.idle[mem_index])) {
+                    // Hand out the remainder too, so that the shares add up to
+                    // the total delta.
+                    mem_delta  = mem_left / mem_shares--;
+                    mem_left  -= mem_delta;
+                }
+            } else {
+                if (V_MAX(3, 11) && self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void*)-1) {
+                    if (_py_proc__find_current_thread_offset(self, py_thread.addr))
+                        continue;
+                    else
+                        current_thread = _py_proc__current_thread_state(self);
+                }
+                if (py_thread.addr == current_thread) {
+                    mem_delta = _py_proc__get_memory_delta(self);
+                    log_t("Thread %lx holds the GIL", py_thread.tid);
+                }
             }
             if (!pargs.full && mem_delta == 0)
                 continue;
@@ -1332,7 +1431,7 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
 
         bool is_idle = false;
         if (pargs.full || pargs.cpu || unlikely(pargs.where)) {
-            is_idle = py_thread__is_idle(&py_thread);
+            is_idle = mem_index >= 0 ? mem_threads.idle[mem_index] : py_thread__is_idle(&py_thread);
             if (!pargs.full && is_idle && pargs.cpu) {
                 continue;
             }
