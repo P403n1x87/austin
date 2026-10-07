@@ -842,6 +842,9 @@ py_proc_new(bool child) {
         set_error(MALLOC, "Cannot allocate memory for process extra info");
         FAIL_GOTO(error);
     } // GCOV_EXCL_STOP
+#ifdef PL_LINUX
+    py_proc->extra->statm_fd = -1;
+#endif
 
     return py_proc;
 
@@ -1159,57 +1162,6 @@ _py_proc__get_memory_delta(py_proc_t* self) {
 }
 
 // ----------------------------------------------------------------------------
-// Snapshot of the thread states and their idle state, used to split a process
-// memory delta across the running threads when the GIL is disabled. The idle
-// state is reused by the sampling loop, so that we query it only once per
-// thread per sample.
-typedef struct {
-    raddr_t addrs[MAX_THREAD_TRACKER];
-    bool    idle[MAX_THREAD_TRACKER];
-    int     n;
-    int     running;
-    int     cursor;
-} _mem_threads_t;
-
-// ----------------------------------------------------------------------------
-static inline void
-_py_proc__collect_mem_threads(py_proc_t* self, raddr_t tstate_head, _mem_threads_t* threads) {
-    threads->n       = 0;
-    threads->running = 0;
-    threads->cursor  = 0;
-
-    py_thread_t py_thread = py_thread__init(self);
-    if (fail(py_thread__read_remote(&py_thread, tstate_head))) // GCOV_EXCL_LINE
-        return;                                                // GCOV_EXCL_LINE
-
-    do {
-        bool idle = py_thread__is_idle(&py_thread);
-
-        threads->addrs[threads->n] = py_thread.addr;
-        threads->idle[threads->n]  = idle;
-        threads->n++;
-        if (!idle)
-            threads->running++;
-    } while (threads->n < MAX_THREAD_TRACKER && success(py_thread__next(&py_thread, NULL)));
-}
-
-// ----------------------------------------------------------------------------
-// Find the thread state in the snapshot. The sampling loop visits the threads
-// in the same order, so we start the search from where the last one ended.
-static inline int
-_mem_threads__find(_mem_threads_t* threads, raddr_t addr) {
-    for (int i = 0; i < threads->n; i++) {
-        int j = (threads->cursor + i) % threads->n;
-        if (threads->addrs[j] == addr) {
-            threads->cursor = j + 1;
-            return j;
-        }
-    }
-
-    return -1;
-}
-
-// ----------------------------------------------------------------------------
 int
 py_proc__get_gc_state(py_proc_t* self) {
     if (!isvalid(self->gc_state_raddr))
@@ -1255,12 +1207,12 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
 
     // With the GIL disabled, the process memory delta is split evenly across
     // the running threads. These track the part that is still to be assigned.
-    bool           split_mem  = false;
-    ssize_t        mem_left   = 0;
-    int            mem_shares = 0;
-    int            mem_index  = -1;
-    _mem_threads_t mem_threads;
-    mem_threads.n = 0;
+    bool    split_mem   = false;
+    bool    split_all   = false;
+    ssize_t mem_left    = 0;
+    int     mem_shares  = 0;
+    int     mem_threads = 0;
+    int     mem_running = 0;
 
     self->thread_tracker->sample_gen++;
 
@@ -1381,11 +1333,15 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
                         );
                         self->gil_disabled_warned = true;
                     }
-                    split_mem = true;
-                    _py_proc__collect_mem_threads(self, tstate_head, &mem_threads);
-                    // If no thread is running, split across all of them, so
-                    // that the memory delta is not lost.
-                    mem_shares = mem_threads.running ? mem_threads.running : mem_threads.n;
+                    // We only know how many threads are running once we have
+                    // seen them all, so we use the counts from the previous
+                    // sample as the number of shares. If no thread was
+                    // running, we split across all of them, so that the delta
+                    // is not lost. Whatever is not handed out is carried over
+                    // to the next sample.
+                    split_mem  = true;
+                    split_all  = self->mem_split_running == 0;
+                    mem_shares = split_all ? self->mem_split_threads : self->mem_split_running;
                     mem_left   = _py_proc__get_memory_delta(self);
                 }
             } else {
@@ -1400,14 +1356,23 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
     }
 
     do {
+        bool is_idle    = false;
+        bool idle_known = false;
+
         if (pargs.memory) {
             mem_delta = 0;
             if (split_mem) {
-                mem_index = _mem_threads__find(&mem_threads, py_thread.addr);
-                if (mem_shares > 0 && mem_index >= 0 && (!mem_threads.running || !mem_threads.idle[mem_index])) {
-                    // Hand out the remainder too, so that the shares add up to
-                    // the total delta.
-                    mem_delta  = mem_left / mem_shares--;
+                is_idle    = py_thread__is_idle(&py_thread);
+                idle_known = true;
+
+                mem_threads++;
+                if (!is_idle)
+                    mem_running++;
+
+                if (split_all || !is_idle) {
+                    // The last share takes the remainder too, so that the
+                    // shares add up to the total delta.
+                    mem_delta  = mem_shares > 1 ? mem_left / mem_shares-- : mem_left;
                     mem_left  -= mem_delta;
                 }
             } else {
@@ -1429,9 +1394,9 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
         if (mem_delta == 0 && time_delta == 0) // GCOV_EXCL_LINE
             continue;                          // GCOV_EXCL_LINE
 
-        bool is_idle = false;
         if (pargs.full || pargs.cpu || unlikely(pargs.where)) {
-            is_idle = mem_index >= 0 ? mem_threads.idle[mem_index] : py_thread__is_idle(&py_thread);
+            if (!idle_known)
+                is_idle = py_thread__is_idle(&py_thread);
             if (!pargs.full && is_idle && pargs.cpu) {
                 continue;
             }
@@ -1486,6 +1451,13 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
 
         stats_count_sample();
     } while (success(py_thread__next(&py_thread, self->thread_tracker)));
+
+    if (split_mem) {
+        self->mem_split_threads     = mem_threads;
+        self->mem_split_running     = mem_running;
+        // Carry over what we could not hand out to the next sample.
+        self->last_resident_memory -= mem_left;
+    }
 
     // Evict cache entries for threads that disappeared this sweep.
     thread_tracker__evict_stale(self->thread_tracker);
@@ -1879,6 +1851,8 @@ py_proc__destroy(py_proc_t* self) {
     unw_destroy_addr_space(self->unwind.as);
 #endif
     vm_range_tree__destroy(self->maps_tree);
+    if (isvalid(self->extra) && self->extra->statm_fd >= 0)
+        close(self->extra->statm_fd);
 #endif
 
 #if defined PL_MACOS

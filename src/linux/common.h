@@ -42,6 +42,9 @@
 struct _proc_extra_info {
     unsigned int       page_size;
     char               statm_file[24];
+    // Kept open across samples and re-read with pread, so that memory mode
+    // does not pay for an open/close on every sample. -1 when not open.
+    int                statm_fd;
     pthread_t          wait_thread_id;
     unsigned int       pthread_tid_offset;
     // Process creation time in clock ticks since boot (field 22 of
