@@ -21,15 +21,17 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Install Python 3.13
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-
+      # Install the free-threaded build first so that python3.13 resolves to
+      # the default (GIL) build. See the comment in the benchmark job below.
       - name: Install free-threaded Python 3.13
         uses: actions/setup-python@v5
         with:
           python-version: "3.13t"
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
 
       - name: Install system dependencies
         run: sudo apt-get install -y libopenblas-dev
