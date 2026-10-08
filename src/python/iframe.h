@@ -55,7 +55,11 @@ typedef struct _PyInterpreterFrame3_11 {
     PyObject*                       localsplus[1];
 } _PyInterpreterFrame3_11;
 
-#define FRAME_OWNED_BY_CSTACK 3
+// Owners at or above this value mark non-Python shim/entry frames:
+//   3.12-3.13: FRAME_OWNED_BY_CSTACK = 3
+//   3.14:      FRAME_OWNED_BY_INTERPRETER = 3, FRAME_OWNED_BY_CSTACK = 4
+//   3.15+:     FRAME_OWNED_BY_INTERPRETER = 3
+#define FRAME_OWNED_BY_SHIM 3
 
 // _PyFrameState (Include/internal/pycore_frame.h) -- numbering changed
 // between 3.14 and 3.15 (3.15 adds a distinct "locked" yield-from variant

@@ -632,19 +632,33 @@ _py_proc__inspect_vm_maps(py_proc_t* self) {
 // ----------------------------------------------------------------------------
 static ssize_t
 _py_proc__get_resident_memory(py_proc_t* self) {
-    cu_FILE* statm = fopen(self->extra->statm_file, "rb");
-    if (statm == NULL) { // GCOV_EXCL_START
-        set_error(IO, "Cannot open statm file");
+    proc_extra_info* extra = self->extra;
+
+    if (extra->statm_fd < 0) {
+        extra->statm_fd = open(extra->statm_file, O_RDONLY | O_CLOEXEC);
+        if (extra->statm_fd < 0) { // GCOV_EXCL_START
+            set_error(IO, "Cannot open statm file");
+            FAIL_INT;
+        } // GCOV_EXCL_STOP
+    }
+
+    // Procfs regenerates the content on every read from offset 0.
+    char    buffer[128];
+    ssize_t n = pread(extra->statm_fd, buffer, sizeof(buffer) - 1, 0);
+    if (n <= 0) { // GCOV_EXCL_START
+        set_error(IO, "Cannot read statm file");
+        FAIL_INT;
+    } // GCOV_EXCL_STOP
+    buffer[n] = '\0';
+
+    // The first field is the total size; the second is the resident set size.
+    char* p = strchr(buffer, ' ');
+    if (!isvalid(p)) { // GCOV_EXCL_START
+        set_error(OS, "Failed to parse statm file");
         FAIL_INT;
     } // GCOV_EXCL_STOP
 
-    ssize_t size, resident;
-    if (fscanf(statm, "%zd %zd", &size, &resident) != 2) { // GCOV_EXCL_START
-        set_error(OS, "Failed to parse statm file");
-        FAIL_INT; // cppcheck-suppress [resourceLeak]
-    } // GCOV_EXCL_STOP
-
-    return resident * self->extra->page_size; // cppcheck-suppress [resourceLeak]
+    return strtoll(p + 1, NULL, 10) * extra->page_size;
 } /* _py_proc__get_resident_memory */
 
 // ----------------------------------------------------------------------------
@@ -864,6 +878,12 @@ _py_proc__init(py_proc_t* self) {
     self->extra->page_size = get_page_size();
     log_d("Page size: %u", self->extra->page_size);
 
+    // The PID does not change on exec, but a re-init must not leak the
+    // descriptor of a previous initialisation.
+    if (self->extra->statm_fd >= 0) {
+        close(self->extra->statm_fd);
+        self->extra->statm_fd = -1;
+    }
     sprintf(self->extra->statm_file, "/proc/%d/statm", self->pid);
 
     self->last_resident_memory = _py_proc__get_resident_memory(self);

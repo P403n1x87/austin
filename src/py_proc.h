@@ -93,11 +93,18 @@ typedef struct {
 
     // Memory profiling support
     ssize_t last_resident_memory;
+    // Thread counts from the last sample that split the memory delta across
+    // threads (GIL disabled).
+    int     mem_split_threads;
+    int     mem_split_running;
 
     // Offset of the tstate_current field within the _PyRuntimeState structure
     unsigned int tstate_current_offset;
 
     bool free_threaded;
+
+    // Whether we have already warned about memory mode with the GIL disabled.
+    bool gil_disabled_warned;
 
     // Non-Python thread sampling.
     //

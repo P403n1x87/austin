@@ -236,7 +236,7 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
         FAIL;
     }
 
-    if (V_MIN(3, 12) && V_FIELD_PTR(char, iframe, py_iframe, o_owner) == FRAME_OWNED_BY_CSTACK) {
+    if (V_MIN(3, 12) && V_FIELD_PTR(char, iframe, py_iframe, o_owner) >= FRAME_OWNED_BY_SHIM) {
         // In 3.15+, contextvars.Context.run() creates a nested _PyEval_EvalFrameDefault
         // call, producing intermediate entry frames whose `previous` links back to the
         // outer eval loop's Python frame (e.g. Thread._bootstrap_inner). Skip these

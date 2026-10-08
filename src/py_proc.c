@@ -842,6 +842,9 @@ py_proc_new(bool child) {
         set_error(MALLOC, "Cannot allocate memory for process extra info");
         FAIL_GOTO(error);
     } // GCOV_EXCL_STOP
+#ifdef PL_LINUX
+    py_proc->extra->statm_fd = -1;
+#endif
 
     return py_proc;
 
@@ -1202,6 +1205,15 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
     ssize_t mem_delta      = 0;
     raddr_t current_thread = NULL;
 
+    // With the GIL disabled, the process memory delta is split evenly across
+    // the running threads. These track the part that is still to be assigned.
+    bool    split_mem   = false;
+    bool    split_all   = false;
+    ssize_t mem_left    = 0;
+    int     mem_shares  = 0;
+    int     mem_threads = 0;
+    int     mem_running = 0;
+
     self->thread_tracker->sample_gen++;
 
     if (self->asyncio_debug_found) {
@@ -1301,27 +1313,79 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
             if (!isvalid(gil_state_raddr)) // GCOV_EXCL_LINE
                 SUCCESS;                   // GCOV_EXCL_LINE
 
-            gil_state_t gil_state = {0};
-            if (fail(copy_datatype(self->ref, gil_state_raddr, gil_state))) // GCOV_EXCL_LINE
-                FAIL;                                                       // GCOV_EXCL_LINE
+            if (self->free_threaded) {
+                gil_state_ft_t gil_state = {0};
+                if (fail(copy_datatype(self->ref, gil_state_raddr, gil_state))) // GCOV_EXCL_LINE
+                    FAIL;                                                       // GCOV_EXCL_LINE
 
-            current_thread = (raddr_t)gil_state.last_holder._value;
+                if (gil_state.enabled) {
+                    current_thread = (raddr_t)gil_state.last_holder._value;
+                } else {
+                    // With the GIL disabled there is no single thread
+                    // manipulating memory, so the best we can do is to split
+                    // the process memory delta across the running threads.
+                    if (!self->gil_disabled_warned) {
+                        log_w("Memory mode with the GIL disabled; splitting memory deltas across running threads");
+                        log_m("");
+                        log_m(
+                            "⚠️  " BOLD "Memory mode" CRESET " requires Python with the GIL. With the GIL disabled, "
+                            "memory deltas are split across running threads and results might not be accurate."
+                        );
+                        self->gil_disabled_warned = true;
+                    }
+                    // We only know how many threads are running once we have
+                    // seen them all, so we use the counts from the previous
+                    // sample as the number of shares. If no thread was
+                    // running, we split across all of them, so that the delta
+                    // is not lost. Whatever is not handed out is carried over
+                    // to the next sample.
+                    split_mem  = true;
+                    split_all  = self->mem_split_running == 0;
+                    mem_shares = split_all ? self->mem_split_threads : self->mem_split_running;
+                    mem_left   = _py_proc__get_memory_delta(self);
+                }
+            } else {
+                gil_state_t gil_state = {0};
+                if (fail(copy_datatype(self->ref, gil_state_raddr, gil_state))) // GCOV_EXCL_LINE
+                    FAIL;                                                       // GCOV_EXCL_LINE
+
+                current_thread = (raddr_t)gil_state.last_holder._value;
+            }
         } else
             current_thread = _py_proc__current_thread_state(self);
     }
 
     do {
+        bool is_idle    = false;
+        bool idle_known = false;
+
         if (pargs.memory) {
             mem_delta = 0;
-            if (V_MAX(3, 11) && self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void*)-1) {
-                if (_py_proc__find_current_thread_offset(self, py_thread.addr))
-                    continue;
-                else
-                    current_thread = _py_proc__current_thread_state(self);
-            }
-            if (py_thread.addr == current_thread) {
-                mem_delta = _py_proc__get_memory_delta(self);
-                log_t("Thread %lx holds the GIL", py_thread.tid);
+            if (split_mem) {
+                is_idle    = py_thread__is_idle(&py_thread);
+                idle_known = true;
+
+                mem_threads++;
+                if (!is_idle)
+                    mem_running++;
+
+                if (split_all || !is_idle) {
+                    // The last share takes the remainder too, so that the
+                    // shares add up to the total delta.
+                    mem_delta  = mem_shares > 1 ? mem_left / mem_shares-- : mem_left;
+                    mem_left  -= mem_delta;
+                }
+            } else {
+                if (V_MAX(3, 11) && self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void*)-1) {
+                    if (_py_proc__find_current_thread_offset(self, py_thread.addr))
+                        continue;
+                    else
+                        current_thread = _py_proc__current_thread_state(self);
+                }
+                if (py_thread.addr == current_thread) {
+                    mem_delta = _py_proc__get_memory_delta(self);
+                    log_t("Thread %lx holds the GIL", py_thread.tid);
+                }
             }
             if (!pargs.full && mem_delta == 0)
                 continue;
@@ -1330,9 +1394,9 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
         if (mem_delta == 0 && time_delta == 0) // GCOV_EXCL_LINE
             continue;                          // GCOV_EXCL_LINE
 
-        bool is_idle = false;
         if (pargs.full || pargs.cpu || unlikely(pargs.where)) {
-            is_idle = py_thread__is_idle(&py_thread);
+            if (!idle_known)
+                is_idle = py_thread__is_idle(&py_thread);
             if (!pargs.full && is_idle && pargs.cpu) {
                 continue;
             }
@@ -1387,6 +1451,13 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
 
         stats_count_sample();
     } while (success(py_thread__next(&py_thread, self->thread_tracker)));
+
+    if (split_mem) {
+        self->mem_split_threads     = mem_threads;
+        self->mem_split_running     = mem_running;
+        // Carry over what we could not hand out to the next sample.
+        self->last_resident_memory -= mem_left;
+    }
 
     // Evict cache entries for threads that disappeared this sweep.
     thread_tracker__evict_stale(self->thread_tracker);
@@ -1780,6 +1851,8 @@ py_proc__destroy(py_proc_t* self) {
     unw_destroy_addr_space(self->unwind.as);
 #endif
     vm_range_tree__destroy(self->maps_tree);
+    if (isvalid(self->extra) && self->extra->statm_fd >= 0)
+        close(self->extra->statm_fd);
 #endif
 
 #if defined PL_MACOS
