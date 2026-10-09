@@ -1810,29 +1810,34 @@ py_proc__log_paths(py_proc_t* self) {
     cu_char* cwd        = _py_proc__get_cwd(self);
     size_t   env_size   = 0;
     cu_char* env_block  = _py_proc__get_environ(self, &env_size);
-    cu_char* venv       = isvalid(env_block) ? env_lookup(env_block, env_size, "VIRTUAL_ENV") : NULL;
-    cu_char* pythonpath = isvalid(env_block) ? env_lookup(env_block, env_size, "PYTHONPATH") : NULL;
+    cu_char* venv       = NULL;
+    cu_char* pythonpath = NULL;
+
+    if (isvalid(env_block)) { // GCOV_EXCL_BR_LINE
+        venv       = env_lookup(env_block, env_size, "VIRTUAL_ENV");
+        pythonpath = env_lookup(env_block, env_size, "PYTHONPATH");
+    }
 
     // If we spawned the process, it inherited our working directory and
     // environment, so we can use our own if we failed to read the process'.
     if (pargs.attach_pid == 0) {
-        if (!isvalid(cwd)) {
+        if (!isvalid(cwd)) { // GCOV_EXCL_START
             cwd = (char*)calloc(PATH_MAX + 1, sizeof(char));
             if (isvalid(cwd) && !isvalid(getcwd(cwd, PATH_MAX))) {
                 free(cwd);
                 cwd = NULL;
             }
-        }
-        if (!isvalid(env_block)) {
+        } // GCOV_EXCL_STOP
+        if (!isvalid(env_block)) { // GCOV_EXCL_START
             venv       = env_get("VIRTUAL_ENV");
             pythonpath = env_get("PYTHONPATH");
-        }
+        } // GCOV_EXCL_STOP
     }
 
     austin_errno     = saved_errno;
     austin_error_msg = saved_msg;
 
-    if (isvalid(cwd))
+    if (isvalid(cwd)) // GCOV_EXCL_BR_LINE
         event_handler__emit_metadata("cwd", "%s", cwd);
     if (isvalid(venv))
         event_handler__emit_metadata("venv", "%s", venv);

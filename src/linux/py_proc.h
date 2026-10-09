@@ -670,12 +670,16 @@ _py_proc__get_cwd(py_proc_t* self) {
     char link[32];
     sprintf(link, "/proc/%d/cwd", self->pid);
 
-    char*   cwd = (char*)calloc(PATH_MAX + 1, sizeof(char));
-    ssize_t n   = isvalid(cwd) ? readlink(link, cwd, PATH_MAX) : -1;
-    if (n <= 0) {
+    char* cwd = (char*)calloc(PATH_MAX + 1, sizeof(char));
+    if (!isvalid(cwd)) { // GCOV_EXCL_START
+        return NULL;
+    } // GCOV_EXCL_STOP
+
+    ssize_t n = readlink(link, cwd, PATH_MAX);
+    if (n <= 0) { // GCOV_EXCL_START
         free(cwd);
         return NULL;
-    }
+    } // GCOV_EXCL_STOP
 
     cwd[n] = '\0';
     return cwd;
@@ -690,19 +694,23 @@ _py_proc__get_environ(py_proc_t* self, size_t* size) {
     sprintf(file, "/proc/%d/environ", self->pid);
 
     cu_fd fd = open(file, O_RDONLY | O_CLOEXEC);
-    if (fd < 0)
+    if (fd < 0) { // GCOV_EXCL_START
         return NULL;
+    } // GCOV_EXCL_STOP
 
     size_t cap   = 4096;
     size_t len   = 0;
     char*  block = (char*)malloc(cap + 1);
+    if (!isvalid(block)) { // GCOV_EXCL_START
+        return NULL;
+    } // GCOV_EXCL_STOP
 
-    while (isvalid(block)) {
+    for (;;) {
         ssize_t n = read(fd, block + len, cap - len);
-        if (n < 0) {
+        if (n < 0) { // GCOV_EXCL_START
             free(block);
             return NULL;
-        }
+        } // GCOV_EXCL_STOP
         if (n == 0)
             break;
 
@@ -710,14 +718,13 @@ _py_proc__get_environ(py_proc_t* self, size_t* size) {
         if (len == cap) {
             cap             <<= 1;
             char* new_block   = (char*)realloc(block, cap + 1);
-            if (!isvalid(new_block))
+            if (!isvalid(new_block)) { // GCOV_EXCL_START
                 free(block);
+                return NULL;
+            } // GCOV_EXCL_STOP
             block = new_block;
         }
     }
-
-    if (!isvalid(block))
-        return NULL;
 
     block[len] = '\0';
     *size      = len;

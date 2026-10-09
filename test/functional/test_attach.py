@@ -176,8 +176,9 @@ def test_attach_thread_names(py):
         # each time, until both threads have actually shown up.
         result = retry_until(
             lambda: austin("-i", "1ms", "-p", str(p.pid)),
-            lambda r: {t for _, t, _ in threads(r.samples)}
-            == {"MainThread", "SecondThread"},
+            lambda r: (
+                {t for _, t, _ in threads(r.samples)} == {"MainThread", "SecondThread"}
+            ),
         )
         assert result.returncode == 0, result.stderr or result.stdout
 
@@ -280,7 +281,13 @@ def test_attach_path_metadata(py, tmp_path, monkeypatch):
 
     venv = os.path.join("some", "venv")
     pythonpath = os.pathsep.join(["foo", "bar"])
-    env = dict(os.environ, VIRTUAL_ENV=venv, PYTHONPATH=pythonpath)
+    # Pad the environment to exercise reading large environment blocks.
+    env = dict(
+        os.environ,
+        VIRTUAL_ENV=venv,
+        PYTHONPATH=pythonpath,
+        AUSTIN_TEST_PADDING="x" * 16384,
+    )
 
     with run_python(py, target("sleepy.py"), "2", env=env, cwd=tmp_path) as p:
         sleep(0.5)
@@ -293,3 +300,22 @@ def test_attach_path_metadata(py, tmp_path, monkeypatch):
         assert os.path.samefile(meta["cwd"], tmp_path), meta
         assert meta["venv"] == venv, meta
         assert meta["pythonpath"] == pythonpath, meta
+
+
+@requires_sudo
+@allpythons()
+def test_attach_path_metadata_unset(py, monkeypatch):
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+
+    with run_python(py, target("sleepy.py"), "2") as p:
+        sleep(0.5)
+
+        result = austin("-i", "10ms", "-p", str(p.pid))
+        assert result.returncode == 0
+
+        meta = result.metadata
+
+        assert "cwd" in meta, meta
+        assert "venv" not in meta, meta
+        assert "pythonpath" not in meta, meta
