@@ -22,9 +22,11 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "env.h"
 #include "hints.h"
+#include "platform.h"
 
 // Globals for command line arguments
 parsed_env_t env = {
@@ -79,4 +81,30 @@ parse_env() {
     env.page_size_cap = (size_t)page_size_cap;
 
     SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+char*
+env_get(const char* name) {
+    const char* value = getenv(name);
+    return isvalid(value) && *value != '\0' ? strdup(value) : NULL;
+}
+
+// ----------------------------------------------------------------------------
+char*
+env_lookup(const char* block, size_t size, const char* name) {
+    size_t      len = strlen(name);
+    const char* end = block + size;
+
+    for (const char* entry = block; entry < end && *entry != '\0'; entry += strlen(entry) + 1) {
+#if defined PL_WIN
+        // Environment variable names are case-insensitive on Windows.
+        if (_strnicmp(entry, name, len) == 0 && entry[len] == '=')
+#else
+        if (strncmp(entry, name, len) == 0 && entry[len] == '=')
+#endif
+            return entry[len + 1] != '\0' ? strdup(entry + len + 1) : NULL;
+    }
+
+    return NULL;
 }

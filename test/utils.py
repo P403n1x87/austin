@@ -422,18 +422,24 @@ austin = Variant("austin")
 austinp = Variant("austinp")
 
 
-def run_async(command: list[str], *args: str, env: dict | None = None) -> Popen:
-    return Popen(command + list(args), stdout=PIPE, stderr=PIPE, env=env)
+def run_async(
+    command: list[str],
+    *args: str,
+    env: dict | None = None,
+    cwd: str | Path | None = None,
+) -> Popen:
+    return Popen(command + list(args), stdout=PIPE, stderr=PIPE, env=env, cwd=cwd)
 
 
 def run_python(
     version,
     *args: str,
     env: dict | None = None,
+    cwd: str | Path | None = None,
     prefix: list[str] = [],
     sleep_after: float | None = None,
 ) -> Popen:
-    result = run_async(prefix + python(version), *args, env=env)
+    result = run_async(prefix + python(version), *args, env=env, cwd=cwd)
 
     if sleep_after is not None:
         sleep(sleep_after)

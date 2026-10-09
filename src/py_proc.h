@@ -300,6 +300,14 @@ void
 py_proc__log_version(py_proc_t*, bool);
 
 /**
+ * Log the working directory, virtual environment and Python path of the
+ * process as metadata.
+ * @param self  the process object.
+ */
+void
+py_proc__log_paths(py_proc_t*);
+
+/**
  * Send a signal to the process.
  *
  * @param py_proc_t * the process object.
