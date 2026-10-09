@@ -95,6 +95,7 @@ do_single_process(py_proc_t* py_proc) {
     log_meta_header();
 
     py_proc__log_version(py_proc, /*is_parent*/ true);
+    py_proc__log_paths(py_proc);
 
     pacer_t pacer;
     pacer_init(&pacer);
@@ -192,6 +193,10 @@ do_child_processes(py_proc_t* py_proc) {
     if (!isvalid(list)) { // GCOV_EXCL_START
         FAIL;
     } // GCOV_EXCL_STOP
+
+    // Children inherit the working directory and environment of the parent
+    // process, so we log the parent's even when it is not a Python process.
+    py_proc__log_paths(py_proc);
 
     // If the parent process is not a Python process, its children might be, so
     // we attempt to attach Austin to them.

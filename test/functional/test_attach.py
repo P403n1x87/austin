@@ -269,3 +269,27 @@ def test_attach_container_like(py, tmp_path, prefix):
         d = int(meta["duration"])
 
         assert abs(a - d) <= (a + d) * 0.25
+
+
+@requires_sudo
+@allpythons()
+def test_attach_path_metadata(py, tmp_path, monkeypatch):
+    # Make sure that Austin cannot get the values from its own environment.
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+
+    venv = os.path.join("some", "venv")
+    pythonpath = os.pathsep.join(["foo", "bar"])
+    env = dict(os.environ, VIRTUAL_ENV=venv, PYTHONPATH=pythonpath)
+
+    with run_python(py, target("sleepy.py"), "2", env=env, cwd=tmp_path) as p:
+        sleep(0.5)
+
+        result = austin("-i", "10ms", "-p", str(p.pid))
+        assert result.returncode == 0
+
+        meta = result.metadata
+
+        assert os.path.samefile(meta["cwd"], tmp_path), meta
+        assert meta["venv"] == venv, meta
+        assert meta["pythonpath"] == pythonpath, meta
