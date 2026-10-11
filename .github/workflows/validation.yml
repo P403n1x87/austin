@@ -29,23 +29,23 @@ jobs:
     name: Data validation with Python ${{ matrix.python-version }}
     steps:
       - name: Install Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}-dev
 
       - name: Install Python 3.12
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
       - name: Check out the base branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.base_ref }}
           path: austin-base
 
       - name: Check out the PR branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           path: austin
 
@@ -91,7 +91,7 @@ jobs:
         if: always()
 
       - name: Upload profiles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: data-validation-profiles-${{ matrix.python-version }}
           path: "austin/*.mojo"
@@ -99,7 +99,7 @@ jobs:
         if: always()
 
       - name: Upload data validation results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: data-validation-results-${{ matrix.python-version }}
           path: "austin/results*.txt"
@@ -115,10 +115,10 @@ jobs:
     name: Data validation report
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Download data validation results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.2
         with:
           pattern: data-validation-results-*
           merge-multiple: true

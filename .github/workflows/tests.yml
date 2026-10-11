@@ -26,7 +26,7 @@ jobs:
     runs-on: ubuntu-24.04    
     name: Build Austin on Linux
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Install build dependencies
         run: |
@@ -39,7 +39,7 @@ jobs:
           ./configure --enable-debug
           make
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: austin-binaries-${{ runner.os }}
           overwrite: true
@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-24.04    
     name: Build Austin on Linux (musl)
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Install build dependencies
         run: |
@@ -62,7 +62,7 @@ jobs:
         run: |
           musl-gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austin.musl -D__MUSL__
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: austin-binaries-${{ runner.os }}-musl
           overwrite: true
@@ -84,9 +84,9 @@ jobs:
     
     name: Tests on Linux with Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: austin-binaries-${{ runner.os }}
           path: src
@@ -101,12 +101,12 @@ jobs:
             gdb
 
       - name: Install Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}-dev
 
       - name: Install Python 3.10
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: "3.10"
       - name: Install test dependencies
@@ -187,14 +187,14 @@ jobs:
 
     name: Build Linux wheels
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: austin-binaries-${{ runner.os }}
           path: src
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: austin-binaries-${{ runner.os }}-musl
           path: src
@@ -202,7 +202,7 @@ jobs:
       - run: chmod +x src/austin && chmod +x src/austinp
 
       - name: Install Python 3.10
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: "3.10"
 
@@ -232,12 +232,12 @@ jobs:
 
     name: Build Austin on macOS (gcc)
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Compile Austin
         run: gcc-12 -Wall -Werror -O3 -g src/*.c -o src/austin
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: austin-binary-${{ runner.os }}
           overwrite: true
@@ -249,7 +249,7 @@ jobs:
 
     name: Build Austin on macOS (clang)
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
       
       - name: Install automake
         run: brew install automake
@@ -274,9 +274,9 @@ jobs:
 
     name: Tests on macOS with Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: austin-binary-${{ runner.os }}
           path: src
@@ -284,12 +284,12 @@ jobs:
       - run: chmod +x src/austin
 
       - name: Install Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}-dev
 
       - name: Install Python 3.10
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: "3.10"
 
@@ -343,9 +343,9 @@ jobs:
 
     name: Build macOS wheels
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: austin-binary-${{ runner.os }}
           path: src
@@ -353,7 +353,7 @@ jobs:
       - run: chmod +x src/austin
 
       - name: Install Python 3.10
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: "3.10"
 
@@ -378,7 +378,7 @@ jobs:
 
     name: Build Austin on Windows
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Compile Austin
         run: |
@@ -386,7 +386,7 @@ jobs:
           gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Werror -DDEBUG
           src\austin.exe --help
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: austin-binary-${{ runner.os }}
           overwrite: true
@@ -408,19 +408,19 @@ jobs:
     
     name: Tests on Windows with Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: austin-binary-${{ runner.os }}
           path: src
 
       - name: Install Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}-dev
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v7
         name: Install Python 3.10
         with:
           python-version: '3.10'
@@ -456,7 +456,7 @@ jobs:
         if: failure()
 
       - name: Store dumps
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: dumps-${{ runner.os }}-${{ matrix.python-version }}
           path: ${{ github.workspace }}\dumps
@@ -469,14 +469,14 @@ jobs:
 
     name: Build Windows wheels
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: austin-binary-${{ runner.os }}
           path: src
 
-      - uses: actions/setup-python@v4
+      - uses: actions/setup-python@v7
         name: Install Python 3.10
         with:
           python-version: '3.10'
