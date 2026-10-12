@@ -6,6 +6,9 @@
   
   Improved support for Linux containers.
 
+  Added the cwd, venv and pythonpath metadata fields to help tools resolve
+  file paths.
+
   Bugfix: improved CPython detection on MacOS.
 
 

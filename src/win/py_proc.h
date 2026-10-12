@@ -25,6 +25,7 @@
 #include <psapi.h>
 #include <string.h>
 #include <tlhelp32.h>
+#include <winternl.h>
 
 #include "../py_proc.h"
 #include "../py_thread.h"
@@ -343,6 +344,128 @@ _py_proc__get_resident_memory(py_proc_t* self) {
     PROCESS_MEMORY_COUNTERS mem_info;
 
     return GetProcessMemoryInfo(self->ref, &mem_info, sizeof(mem_info)) ? mem_info.WorkingSetSize : -1;
+}
+
+// ----------------------------------------------------------------------------
+// The leading part of the (undocumented) RTL_USER_PROCESS_PARAMETERS structure,
+// up to the environment block pointer. The definition in winternl.h is opaque.
+typedef struct {
+    ULONG          MaximumLength;
+    ULONG          Length;
+    ULONG          Flags;
+    ULONG          DebugFlags;
+    HANDLE         ConsoleHandle;
+    ULONG          ConsoleFlags;
+    HANDLE         StandardInput;
+    HANDLE         StandardOutput;
+    HANDLE         StandardError;
+    UNICODE_STRING CurrentDirectoryPath;
+    HANDLE         CurrentDirectoryHandle;
+    UNICODE_STRING DllPath;
+    UNICODE_STRING ImagePathName;
+    UNICODE_STRING CommandLine;
+    PVOID          Environment;
+} process_parameters_t;
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__get_process_parameters(py_proc_t* self, process_parameters_t* params) {
+    PROCESS_BASIC_INFORMATION pbi;
+    ULONG                     n = 0;
+
+    if (NtQueryInformationProcess(self->ref, ProcessBasicInformation, &pbi, sizeof(pbi), &n) < 0)
+        FAIL;
+
+    PVOID params_addr = NULL;
+    if (fail(copy_datatype(self->ref, (raddr_t)pbi.PebBaseAddress + offsetof(PEB, ProcessParameters), params_addr)))
+        FAIL;
+
+    if (fail(copy_memory(self->ref, (raddr_t)params_addr, sizeof(process_parameters_t), params)))
+        FAIL;
+
+    SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+// Convert a wide string of the given length (in characters) to a newly
+// allocated, NUL-terminated UTF-8 string.
+static char*
+_wide_to_utf8(const WCHAR* wide, int wlen, size_t* size) {
+    int len = WideCharToMultiByte(CP_UTF8, 0, wide, wlen, NULL, 0, NULL, NULL);
+    if (len <= 0)
+        return NULL;
+
+    char* utf8 = (char*)malloc(len + 1);
+    if (!isvalid(utf8))
+        return NULL;
+
+    WideCharToMultiByte(CP_UTF8, 0, wide, wlen, utf8, len, NULL, NULL);
+    utf8[len] = '\0';
+    if (isvalid(size))
+        *size = len;
+
+    return utf8;
+}
+
+// ----------------------------------------------------------------------------
+// Return the current working directory of the process. The returned string must
+// be freed by the caller.
+static char*
+_py_proc__get_cwd(py_proc_t* self) {
+    process_parameters_t params;
+    if (fail(_py_proc__get_process_parameters(self, &params)))
+        return NULL;
+
+    USHORT wlen = params.CurrentDirectoryPath.Length / sizeof(WCHAR);
+    if (wlen == 0)
+        return NULL;
+
+    cu_void* wide = calloc(wlen, sizeof(WCHAR));
+    if (!isvalid(wide)
+        || fail(copy_memory(
+            self->ref, (raddr_t)params.CurrentDirectoryPath.Buffer, params.CurrentDirectoryPath.Length, wide
+        )))
+        return NULL;
+
+    // The current directory carries a trailing separator, unless it is a
+    // drive root (e.g. C:\), which we strip to match getcwd.
+    if (wlen > 3 && ((WCHAR*)wide)[wlen - 1] == L'\\')
+        wlen--;
+
+    return _wide_to_utf8((WCHAR*)wide, wlen, NULL);
+}
+
+// ----------------------------------------------------------------------------
+// Return the NUL-separated environment block of the process, as UTF-8. The
+// block is always NUL-terminated and must be freed by the caller.
+static char*
+_py_proc__get_environ(py_proc_t* self, size_t* size) {
+    process_parameters_t params;
+    if (fail(_py_proc__get_process_parameters(self, &params)) || !isvalid(params.Environment))
+        return NULL;
+
+    // The environment block has no explicit size, so we read up to the end of
+    // the memory region that contains it, and then look for the terminator.
+    MEMORY_BASIC_INFORMATION mbi;
+    if (VirtualQueryEx(self->ref, params.Environment, &mbi, sizeof(mbi)) == 0)
+        return NULL;
+
+    size_t region_size = (size_t)((char*)mbi.BaseAddress + mbi.RegionSize - (char*)params.Environment);
+    if (region_size > (1 << 20))
+        region_size = 1 << 20;
+
+    cu_void* wide = malloc(region_size);
+    if (!isvalid(wide) || fail(copy_memory(self->ref, (raddr_t)params.Environment, region_size, wide)))
+        return NULL;
+
+    // Find the double NUL that terminates the block.
+    WCHAR* w    = (WCHAR*)wide;
+    size_t wlen = region_size / sizeof(WCHAR);
+    size_t i    = 0;
+    while (i + 1 < wlen && !(w[i] == L'\0' && w[i + 1] == L'\0'))
+        i++;
+
+    return i == 0 ? NULL : _wide_to_utf8(w, (int)i + 1, size);
 }
 
 // ----------------------------------------------------------------------------

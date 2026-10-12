@@ -20,7 +20,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import os
 from itertools import takewhile
+from pathlib import Path
 from subprocess import check_output
 from test.utils import allpythons
 from test.utils import austin
@@ -125,3 +127,18 @@ def test_python_version(py):
 
 
 # TODO: Test TTY behaviour
+
+
+@allpythons()
+def test_pipe_path_metadata(py, monkeypatch):
+    monkeypatch.setenv("VIRTUAL_ENV", venv := str(Path("some") / "venv"))
+    monkeypatch.setenv("PYTHONPATH", pythonpath := os.pathsep.join(["foo", "bar"]))
+
+    result = austin("-Pi", "10ms", *python(py), target())
+    assert result.returncode == 0
+
+    meta = result.metadata
+
+    assert os.path.samefile(meta["cwd"], os.getcwd()), meta
+    assert meta["venv"] == venv, meta
+    assert meta["pythonpath"] == pythonpath, meta

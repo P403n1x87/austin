@@ -695,6 +695,82 @@ _py_proc__get_resident_memory(py_proc_t* self) {
 } // _py_proc__get_resident_memory
 
 // ----------------------------------------------------------------------------
+// Return the current working directory of the process. The returned string must
+// be freed by the caller.
+static char*
+_py_proc__get_cwd(py_proc_t* self) {
+    struct proc_vnodepathinfo vpi;
+
+    if (proc_pidinfo(self->pid, PROC_PIDVNODEPATHINFO, 0, &vpi, sizeof(vpi)) != sizeof(vpi))
+        return NULL;
+
+    return *vpi.pvi_cdir.vip_path ? strdup(vpi.pvi_cdir.vip_path) : NULL;
+} // _py_proc__get_cwd
+
+// ----------------------------------------------------------------------------
+// Return the NUL-separated environment block of the process, as it was at
+// exec time. The block is always NUL-terminated and must be freed by the caller.
+static char*
+_py_proc__get_environ(py_proc_t* self, size_t* size) {
+    int    mib[3]  = {CTL_KERN, KERN_ARGMAX, 0};
+    int    arg_max = 0;
+    size_t len     = sizeof(arg_max);
+
+    if (sysctl(mib, 2, &arg_max, &len, NULL, 0) != 0 || arg_max <= 0)
+        return NULL;
+
+    cu_char* args = (char*)malloc(arg_max);
+    if (!isvalid(args))
+        return NULL;
+
+    // The KERN_PROCARGS2 buffer has the following layout:
+    //
+    //   int argc | exec_path \0 | \0... | argv[0] \0 ... argv[argc-1] \0 |
+    //   env[0] \0 ... env[n-1] \0 | \0 | apple strings ...
+    mib[1] = KERN_PROCARGS2;
+    mib[2] = self->pid;
+    len    = (size_t)arg_max;
+    if (sysctl(mib, 3, args, &len, NULL, 0) != 0 || len <= sizeof(int))
+        return NULL;
+
+    char* end  = args + len;
+    int   argc = *(int*)args;
+    char* p    = args + sizeof(int);
+
+    // Skip the executable path and the NUL padding that follows it.
+    while (p < end && *p != '\0')
+        p++;
+    while (p < end && *p == '\0')
+        p++;
+
+    // Skip the arguments.
+    for (int i = 0; i < argc && p < end; i++)
+        p += strnlen(p, end - p) + 1;
+
+    if (p >= end)
+        return NULL;
+
+    // The environment ends at the first empty string.
+    char* env = p;
+    while (p < end && *p != '\0')
+        p += strnlen(p, end - p) + 1;
+
+    if (p > end)
+        p = end;
+
+    size_t env_size = p - env;
+    char*  block    = (char*)malloc(env_size + 1);
+    if (!isvalid(block))
+        return NULL;
+
+    memcpy(block, env, env_size);
+    block[env_size] = '\0';
+    *size           = env_size;
+
+    return block;
+} // _py_proc__get_environ
+
+// ----------------------------------------------------------------------------
 static int
 _py_proc__init(py_proc_t* self) {
     log_t("macOS: py_proc init");

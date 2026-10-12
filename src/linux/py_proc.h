@@ -24,6 +24,7 @@
 
 #include <elf.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -660,6 +661,75 @@ _py_proc__get_resident_memory(py_proc_t* self) {
 
     return strtoll(p + 1, NULL, 10) * extra->page_size;
 } /* _py_proc__get_resident_memory */
+
+// ----------------------------------------------------------------------------
+// Return the current working directory of the process, as seen from within its
+// own mount namespace. The returned string must be freed by the caller.
+static char*
+_py_proc__get_cwd(py_proc_t* self) {
+    char link[32];
+    sprintf(link, "/proc/%d/cwd", self->pid);
+
+    char* cwd = (char*)calloc(PATH_MAX + 1, sizeof(char));
+    if (!isvalid(cwd)) { // GCOV_EXCL_START
+        return NULL;
+    } // GCOV_EXCL_STOP
+
+    ssize_t n = readlink(link, cwd, PATH_MAX);
+    if (n <= 0) { // GCOV_EXCL_START
+        free(cwd);
+        return NULL;
+    } // GCOV_EXCL_STOP
+
+    cwd[n] = '\0';
+    return cwd;
+} /* _py_proc__get_cwd */
+
+// ----------------------------------------------------------------------------
+// Return the NUL-separated environment block of the process, as it was at
+// exec time. The block is always NUL-terminated and must be freed by the caller.
+static char*
+_py_proc__get_environ(py_proc_t* self, size_t* size) {
+    char file[32];
+    sprintf(file, "/proc/%d/environ", self->pid);
+
+    cu_fd fd = open(file, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) { // GCOV_EXCL_START
+        return NULL;
+    } // GCOV_EXCL_STOP
+
+    size_t cap   = 4096;
+    size_t len   = 0;
+    char*  block = (char*)malloc(cap + 1);
+    if (!isvalid(block)) { // GCOV_EXCL_START
+        return NULL;
+    } // GCOV_EXCL_STOP
+
+    for (;;) {
+        ssize_t n = read(fd, block + len, cap - len);
+        if (n < 0) { // GCOV_EXCL_START
+            free(block);
+            return NULL;
+        } // GCOV_EXCL_STOP
+        if (n == 0)
+            break;
+
+        len += n;
+        if (len == cap) {
+            cap             <<= 1;
+            char* new_block   = (char*)realloc(block, cap + 1);
+            if (!isvalid(new_block)) { // GCOV_EXCL_START
+                free(block);
+                return NULL;
+            } // GCOV_EXCL_STOP
+            block = new_block;
+        }
+    }
+
+    block[len] = '\0';
+    *size      = len;
+    return block;
+} /* _py_proc__get_environ */
 
 // ----------------------------------------------------------------------------
 #define RANGES_MAX 256
