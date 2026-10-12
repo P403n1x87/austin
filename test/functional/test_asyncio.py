@@ -22,6 +22,9 @@
 
 from functools import partial
 from pathlib import Path
+from typing import NamedTuple
+from typing import Optional
+from typing import Tuple
 from test.utils import allpythons as _allpythons
 from test.utils import austin
 from test.utils import python
@@ -307,13 +310,22 @@ def test_asyncio_executing_task_survives_repeat_samples(py, save_mojo):
     )
 
 
+class TaskStackBlock(NamedTuple):
+    task_id: int
+    name: Optional[str]
+    scopes: Tuple[str, ...]  # empty for a closing block
+    elapsed: int  # time at this task's PREVIOUS position (the lag rule)
+
+
 def _iter_task_stack_blocks(data: bytes):
-    """Yield (task_id, is_closing) for every MOJO_TASK_STACK block, in wire
-    order. is_closing is True iff the block carried zero frames (Austin's
-    "this task is gone" signal). Deliberately independent of AustinTask/
-    AustinSample: those collapse a closing block into an elapsed-time
-    update on the existing task, with no trace of how many closing blocks
-    were seen or where -- exactly the distinction the test below needs.
+    """Yield a TaskStackBlock for every MOJO_TASK_STACK block, in wire order.
+    A block with no frames is Austin's "this task is gone" signal.
+    Deliberately independent of AustinTask/AustinSample: those collapse a
+    closing block into an elapsed-time update on the existing task, with no
+    trace of how many closing blocks were seen or where, and only keep the
+    latest position of each task, so the elapsed time of a report can't be
+    paired with the position it describes -- the distinctions the tests
+    below need.
 
     A minimal, full walk of every MOJO event type is needed (not just the
     ones directly relevant here) since each carries a different,
@@ -341,9 +353,13 @@ def _iter_task_stack_blocks(data: bytes):
     pos = 3
     pos += _varint_len(data, pos)  # header varint, value unused here
 
+    strings = {}
+    frame_scopes = {}
+
     in_block = False
-    frame_count = 0
+    scopes = []
     task_id = None
+    name_key = 0
 
     while pos < len(data):
         ev = data[pos]
@@ -357,30 +373,40 @@ def _iter_task_stack_blocks(data: bytes):
                 pos += _varint_len(data, pos)
             pos = data.index(b"\0", pos) + 1
         elif ev == FRAME:
-            _, n = _varint(data, pos)  # key, unused here
+            key, n = _varint(data, pos)
             pos += n
-            for _ in range(6):  # fk, sk, line, line_end, column, column_end
+            pos += _varint_len(data, pos)  # filename key, unused here
+            scope_key, n = _varint(data, pos)
+            pos += n
+            for _ in range(4):  # line, line_end, column, column_end
                 pos += _varint_len(data, pos)
+            frame_scopes[key] = strings.get(scope_key)
             if in_block:
-                frame_count += 1
+                scopes.append(frame_scopes[key])
         elif ev == FRAME_REF:
-            pos += _varint_len(data, pos)
+            key, n = _varint(data, pos)
+            pos += n
             if in_block:
-                frame_count += 1
+                scopes.append(frame_scopes.get(key))
         elif ev == FRAME_KERNEL:
             pos = data.index(b"\0", pos) + 1
         elif ev in (FRAME_INVALID, GC, IDLE):
             pass
         elif ev == METRIC_TIME:
-            pos += _varint_len(data, pos)
+            elapsed, n = _varint(data, pos)
+            pos += n
             if in_block:
-                yield (task_id, frame_count == 0)
+                name = strings.get(name_key) if name_key else None
+                yield TaskStackBlock(task_id, name, tuple(scopes), elapsed)
                 in_block = False
         elif ev == METRIC_MEMORY:
             pos += _varint_len(data, pos)
         elif ev == STRING:
-            pos += _varint_len(data, pos)
-            pos = data.index(b"\0", pos) + 1
+            key, n = _varint(data, pos)
+            pos += n
+            end = data.index(b"\0", pos)
+            strings[key] = data[pos:end].decode()
+            pos = end + 1
         elif ev == STRING_REF:
             pos += _varint_len(data, pos)
         elif ev == STACK_REPEAT:
@@ -388,9 +414,10 @@ def _iter_task_stack_blocks(data: bytes):
         elif ev == TASK_STACK:
             task_id, n = _varint(data, pos)
             pos += n
-            pos += _varint_len(data, pos)  # name_key, unused here
+            name_key, n = _varint(data, pos)
+            pos += n
             in_block = True
-            frame_count = 0
+            scopes = []
         elif ev == TASK_WAITER:
             for _ in range(2):
                 pos += _varint_len(data, pos)
@@ -416,6 +443,14 @@ def _varint(data: bytes, pos: int):
 
 def _varint_len(data: bytes, pos: int) -> int:
     return _varint(data, pos)[1]
+
+
+def _raw_mojo(result) -> bytes:
+    return (
+        result.stdout
+        if isinstance(result.stdout, (bytes, bytearray))
+        else result.stdout.encode()
+    )
 
 
 def _iter_tasks_flat(tasks):
@@ -560,7 +595,7 @@ def test_asyncio_no_ambiguous_task_close_signal(py, save_mojo):
       just don't recurse further since depth 0 returns immediately).
       Fragmenting one task into several apparent ones from either bug this
       test guards -- the ambiguous close signal above, or the address-reuse
-      id collision in task_tracker.h's epoch -- would inflate one or both
+      id collision fixed by task_tracker.h's id -- would inflate one or both
       of these counts.
 
     - The raw wire (see _iter_task_stack_blocks): AustinTask collapses a
@@ -606,22 +641,151 @@ def test_asyncio_no_ambiguous_task_close_signal(py, save_mojo):
         "for that task dying"
     )
 
-    raw = (
-        result.stdout
-        if isinstance(result.stdout, (bytes, bytearray))
-        else result.stdout.encode()
-    )
-
     last_was_closing = {}
     violations = []
-    for task_id, is_closing in _iter_task_stack_blocks(raw):
-        if last_was_closing.get(task_id):
-            violations.append(task_id)
-        last_was_closing[task_id] = is_closing
+    for block in _iter_task_stack_blocks(_raw_mojo(result)):
+        if last_was_closing.get(block.task_id):
+            violations.append(block.task_id)
+        last_was_closing[block.task_id] = not block.scopes
 
     assert violations == [], (
         "Expected an empty-frame (closing) MOJO_TASK_STACK to only ever be "
         f"the LAST block for its task id; task id(s) {sorted(set(violations))} "
         "had another block follow a closing one, meaning a single task's "
         "end-of-life dwell was split across more than one closing signal"
+    )
+
+
+@allpythons()
+def test_asyncio_running_position_time_not_dropped(py, save_mojo):
+    """The time a task spends at a position it was caught EXECUTING at is
+    credited by the task's next report, even when that next report is a
+    SUSPENDED one.
+
+    Under the lag rule (see AustinTask's docstring), a report's elapsed
+    time belongs to the task's previous position. _py_asyncio__emit_task
+    clears entry->top after every EXECUTING report so the next suspended
+    sighting counts as a change; it used to also make that sighting look
+    like the task's first, which always carries 0 elapsed time. So every
+    running -> suspended transition (here, the end of every cpu_burst
+    before its asyncio.sleep(0)) silently dropped the running position's
+    time. The first-sighting rule now lives in entry->reported instead.
+
+    Paired on the raw wire, since AustinTask only keeps each task's latest
+    position. Exact rather than threshold-based: a report following a
+    cpu_burst position used to carry exactly 0 once per burst, and no
+    sampling interval is ever 0."""
+    result = austin("-i", "1000", *python(py), target("target_asyncio_cpu.py"))
+    save_mojo(result.stdout)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    last_scopes = {}
+    credited = []
+    for block in _iter_task_stack_blocks(_raw_mojo(result)):
+        previous = last_scopes.get(block.task_id)
+        if previous is not None and "cpu_burst" in previous:
+            credited.append(block.elapsed)
+        if block.scopes:
+            last_scopes[block.task_id] = block.scopes
+
+    assert credited, "Expected some task reports at a cpu_burst position"
+
+    dropped = sum(1 for elapsed in credited if elapsed == 0)
+    assert dropped == 0, (
+        f"{dropped} of {len(credited)} reports credited 0 time to the "
+        "cpu_burst position before them -- the running position's time is "
+        "being dropped on a running -> suspended transition again"
+    )
+
+
+@allpythons()
+def test_asyncio_cpu_mode_idle_thread_keeps_tasks(py, save_mojo):
+    """In CPU mode (-c), a task keeps a single wire identity while its event
+    loop thread goes idle and is skipped.
+
+    _py_proc__sample_threads skips idle threads in CPU mode before their
+    task list is scanned. Their tasks then looked gone to
+    py_asyncio__scan_tasks_end, which evicted them with a closing flush,
+    and the next non-idle sample tracked them again from scratch, under a
+    new task id. target_asyncio_idle.py's loop goes idle
+    between every burst, so each worker used to show up under several ids.
+    Skipped threads now keep their tasks alive instead
+    (py_asyncio__keep_task_list_alive)."""
+    result = austin("-c", "-i", "1000", *python(py), target("target_asyncio_idle.py"))
+    save_mojo(result.stdout)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    ids_by_name = {}
+    for block in _iter_task_stack_blocks(_raw_mojo(result)):
+        if block.name and block.name.startswith("worker-"):
+            ids_by_name.setdefault(block.name, set()).add(block.task_id)
+
+    assert ids_by_name, "Expected task reports for the worker tasks"
+
+    fragmented = {name: ids for name, ids in ids_by_name.items() if len(ids) > 1}
+    assert not fragmented, (
+        f"Expected one task id per worker; got {fragmented} -- tasks of a "
+        "thread skipped as idle are being evicted and re-tracked"
+    )
+
+
+@allpythons()
+def test_asyncio_task_address_reuse_gets_new_identity(py, save_mojo):
+    """A task found at the address of a task Austin was already tracking
+    gets its own wire identity, rather than inheriting the old one.
+
+    Eviction runs at the end of a tick, so when a task completes and the
+    allocator hands its memory to a new task within the same tick,
+    _py_asyncio__emit_task gets the old entry back for the new task. It
+    used to reset the entry but keep its id, so the new task was reported
+    under the old task's id (and the old task's pending time was dropped
+    without a closing flush). The entry is now flushed and renewed with a
+    fresh id (task_tracker__renew).
+
+    Ids also used to be derived from the task's address, XORed with a
+    counter. Allocators hand out nearby addresses while the counter takes
+    small values, so different tasks often ended up with the same id --
+    on free-threaded builds especially. Ids are now just the counter.
+
+    Telling the two tasks apart is the hard part: the allocator often
+    reuses the Task and its coroutine together, so a changed coroutine
+    address alone misses many replacements. A changed name catches those
+    as long as the tasks have distinct names, which is what this test can
+    rely on. Two unnamed tasks replacing each other within one sample are
+    indistinguishable by pointers alone and aren't covered.
+
+    A task's name str is just as short-lived, and its memory is just as
+    routinely reused by the next task's name. Names used to be cached by
+    the str's address alone, so a new task could be reported with the name
+    of an earlier one (see _py_asyncio__resolve_task_name). Redefining a
+    name key on reuse is only safe because nothing refers to a name once
+    its task is gone: closing flushes carry no name.
+
+    target_asyncio_reuse.py runs many tasks back to back, each with its own
+    name, so address reuse is routine. A task id showing up with more than
+    one name means two tasks shared it; a name showing up with more than
+    one id means a stale name was reported."""
+    result = austin("-i", "1000", *python(py), target("target_asyncio_reuse.py"))
+    save_mojo(result.stdout)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    names_by_id = {}
+    ids_by_name = {}
+    for block in _iter_task_stack_blocks(_raw_mojo(result)):
+        if block.name is not None:
+            names_by_id.setdefault(block.task_id, set()).add(block.name)
+            ids_by_name.setdefault(block.name, set()).add(block.task_id)
+
+    assert names_by_id, "Expected named task reports"
+
+    shared = {i: names for i, names in names_by_id.items() if len(names) > 1}
+    assert not shared, (
+        f"Expected one task per id; {len(shared)} id(s) were shared by "
+        f"different tasks, e.g. {next(iter(shared.values()))}"
+    )
+
+    stale = {name: ids for name, ids in ids_by_name.items() if len(ids) > 1}
+    assert not stale, (
+        f"Expected one id per task name; {len(stale)} name(s) were reported "
+        f"for different tasks, e.g. {sorted(stale)[:5]}"
     )

@@ -70,6 +70,8 @@ py_asyncio__validate_and_cache(py_proc_t* self);
 //   1. py_asyncio__scan_tasks_begin, once, before any list is walked.
 //   2. py_asyncio__scan_task_list, once per list (see the two head-address
 //      helpers below for the lists a sample may need to walk).
+//      A thread skipped this sample takes py_asyncio__keep_task_list_alive
+//      instead, so its tasks aren't evicted as gone in step 3.
 //   3. py_asyncio__scan_tasks_end, once, after every list has been walked.
 //
 // Best-effort throughout: bounded iteration counts and pointer sanity checks
@@ -113,6 +115,22 @@ py_asyncio__scan_tasks_begin(py_proc_t* self);
  */
 void
 py_asyncio__scan_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr, microseconds_t time_delta);
+
+/**
+ * Keep the tasks on one asyncio task list alive without scanning them.
+ *
+ * For a thread that is skipped this sample (e.g. idle in CPU mode, or with
+ * no memory delta in memory mode), so py_asyncio__scan_tasks_end doesn't
+ * mistake its tasks for gone. Only refreshes tasks that are already
+ * tracked: nothing is emitted, no time is credited, and tasks seen for the
+ * first time are left for the next sample that actually scans the list.
+ *
+ * @param self           the process object.
+ * @param list_head_addr the remote address of the list's llist_node
+ *                       sentinel (see py_asyncio__thread_task_list_head).
+ */
+void
+py_asyncio__keep_task_list_alive(py_proc_t* self, raddr_t list_head_addr);
 
 /**
  * End a Phase-2 task-population scan, evicting tasks that disappeared.

@@ -25,6 +25,9 @@
 
 #include "task_tracker.h"
 
+// Source of task_tracker_entry_t.id -- see its doc comment. 0 is never used.
+static unsigned int _next_task_id = 1;
+
 // ----------------------------------------------------------------------------
 task_tracker_t*
 task_tracker_new(void) {
@@ -57,11 +60,32 @@ task_tracker__get_or_create(task_tracker_t* self, uintptr_t task) {
     if (!isvalid(entry)) // GCOV_EXCL_LINE
         return NULL;     // GCOV_EXCL_LINE
 
-    entry->task  = task;
-    entry->epoch = self->next_epoch++;
+    entry->task = task;
+    entry->id   = _next_task_id++;
     lookup__set(self->by_task, (key_dt)task, (value_t)entry);
     self->count++;
     return entry;
+}
+
+// ----------------------------------------------------------------------------
+void
+task_tracker__renew(task_tracker_t* self, task_tracker_entry_t* entry) {
+    uintptr_t    task     = entry->task;
+    unsigned int last_gen = entry->last_gen;
+
+    memset(entry, 0, sizeof(task_tracker_entry_t));
+
+    entry->task     = task;
+    entry->last_gen = last_gen;
+    entry->id       = _next_task_id++;
+}
+
+// ----------------------------------------------------------------------------
+void
+task_tracker__keep_alive(task_tracker_t* self, uintptr_t task) {
+    task_tracker_entry_t* entry = (task_tracker_entry_t*)lookup__get(self->by_task, (key_dt)task);
+    if (isvalid(entry))
+        entry->last_gen = self->sample_gen;
 }
 
 // ----------------------------------------------------------------------------

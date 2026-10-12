@@ -1198,6 +1198,17 @@ _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
 }
 
 // ----------------------------------------------------------------------------
+// A thread skipped this sample still owns its asyncio tasks: keep them alive
+// so py_asyncio__scan_tasks_end doesn't evict them as gone, which would emit
+// spurious closing flushes and give them fresh wire identities once the
+// thread is sampled again.
+static inline void
+_py_proc__skip_thread_tasks(py_proc_t* self, py_thread_t* py_thread) {
+    if (self->asyncio_debug_found)
+        py_asyncio__keep_task_list_alive(self, py_asyncio__thread_task_list_head(self, py_thread->addr));
+}
+
+// ----------------------------------------------------------------------------
 // Walk the thread linked list starting from tstate_head, emitting a sample
 // for each thread.  All threads must already be suspended if in native mode.
 static inline int
@@ -1377,9 +1388,10 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
                 }
             } else {
                 if (V_MAX(3, 11) && self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void*)-1) {
-                    if (_py_proc__find_current_thread_offset(self, py_thread.addr))
+                    if (_py_proc__find_current_thread_offset(self, py_thread.addr)) {
+                        _py_proc__skip_thread_tasks(self, &py_thread);
                         continue;
-                    else
+                    } else
                         current_thread = _py_proc__current_thread_state(self);
                 }
                 if (py_thread.addr == current_thread) {
@@ -1387,17 +1399,22 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
                     log_t("Thread %lx holds the GIL", py_thread.tid);
                 }
             }
-            if (!pargs.full && mem_delta == 0)
+            if (!pargs.full && mem_delta == 0) {
+                _py_proc__skip_thread_tasks(self, &py_thread);
                 continue;
+            }
         }
 
-        if (mem_delta == 0 && time_delta == 0) // GCOV_EXCL_LINE
-            continue;                          // GCOV_EXCL_LINE
+        if (mem_delta == 0 && time_delta == 0) { // GCOV_EXCL_START
+            _py_proc__skip_thread_tasks(self, &py_thread);
+            continue;
+        } // GCOV_EXCL_STOP
 
         if (pargs.full || pargs.cpu || unlikely(pargs.where)) {
             if (!idle_known)
                 is_idle = py_thread__is_idle(&py_thread);
             if (!pargs.full && is_idle && pargs.cpu) {
+                _py_proc__skip_thread_tasks(self, &py_thread);
                 continue;
             }
         }

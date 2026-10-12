@@ -53,7 +53,7 @@
 #define MAX_TASK_TRACKER 1024
 
 typedef struct {
-    void*     frame; // remote address of the coroutine's leaf iframe (NULL = no prior emit)
+    void*     frame; // remote address of the coroutine's leaf iframe (NULL = nothing to compare against)
     void*     code;  // code object at frame
     uintptr_t lasti;
     uint64_t  chain_fp; // fingerprint of the whole await chain from root to this leaf; see comment above
@@ -84,6 +84,10 @@ typedef struct {
     // task has disappeared from the list, e.g. it completed) never needs to
     // re-read the TaskObj's name -- by then it may already be freed.
     uintptr_t       name_key;
+    // Remote address of the str name_key was resolved from, so that the
+    // name of a live task (which keeps its str alive) isn't re-read every
+    // time it's reported. See _py_asyncio__resolve_task_name.
+    uintptr_t       name_addr;
     // TaskObj's task_coro as of the last touch (0 = never touched). `task`
     // (the lookup key) only identifies reliably as long as its memory isn't
     // reused -- eviction runs at end-of-tick, so a freed Task replaced at
@@ -91,16 +95,31 @@ typedef struct {
     // THIS entry. A coro mismatch signals every other cached field
     // (waiter_fp above all) is stale and must be reset before use.
     uintptr_t       identity_coro;
-    // Assigned once, from task_tracker_t.next_epoch, when this entry is
-    // first allocated -- never touched again. `task` alone isn't a safe
-    // wire identity: pymalloc reusing a freed TaskObj's address for an
-    // unrelated Task is routine, and mojo_ref truncates it to 27 bits
-    // (mojo.h), so two different tasks can share a wire id. epoch folded
-    // into the wire id (_py_asyncio__emit_task) fixes this with a plain
-    // counter uncorrelated with allocator reuse -- unlike an XOR-with-
-    // task_coro attempt tried first: Task and Coroutine are allocated
-    // together, so pymalloc can hand the same pair to the next Task too.
-    unsigned int    epoch;
+    // TaskObj's task_name as of the last touch. The coro alone misses a
+    // replacement whose coroutine also landed at the old one's address --
+    // pymalloc often hands out a Task/coroutine pair together. A change of
+    // name away from one already resolved as a str catches most of those
+    // (see _py_asyncio__emit_task).
+    uintptr_t       identity_name;
+    // The task's wire identity: a sequential number, assigned when this
+    // entry is first allocated, and again by task_tracker__renew when a
+    // different task turns out to live at the same address. Nothing derived
+    // from `task` is safe here: pymalloc reusing a freed TaskObj's address
+    // for an unrelated Task is routine, and mojo_ref truncates to 27 bits
+    // (mojo.h). Folding a counter into the address (by XOR) still collided,
+    // since allocators hand out nearby addresses while the counter takes
+    // small values. Drawn from a single counter shared by every tracker, so
+    // ids are also unique across the processes of a multiprocess session,
+    // until the counter wraps at 2^27 tasks.
+    unsigned int    id;
+    // Whether this task has been emitted at least once, running or
+    // suspended. Decides the first-sighting rule (a task's very first report
+    // has no previous position to credit, so it carries 0 elapsed time) and
+    // nothing else. `top` can't double as this signal: it is also cleared
+    // after every EXECUTING report, purely to force the next SUSPENDED
+    // sighting to count as a change, which would otherwise make that
+    // sighting look like a first one and drop the running position's time.
+    bool            reported;
 } task_tracker_entry_t;
 
 typedef struct {
@@ -108,10 +127,6 @@ typedef struct {
     size_t       count;   // live entry count; tracked here so MAX_TASK_TRACKER
                           // can be enforced without reaching into lookup_t
     unsigned int sample_gen;
-    // Next value to assign to a freshly allocated entry's `epoch` (see its
-    // doc comment) -- shared across every address so two entries never
-    // coincidentally get the same one.
-    unsigned int next_epoch;
 } task_tracker_t;
 
 /**
@@ -129,6 +144,24 @@ task_tracker_new(void);
  */
 task_tracker_entry_t*
 task_tracker__get_or_create(task_tracker_t*, uintptr_t task);
+
+/**
+ * Reset `entry` for a different task found at the same address (see
+ * identity_coro), keeping only its key and liveness, and assign it a fresh
+ * id so the new task gets its own wire identity instead of inheriting the
+ * old one's.
+ */
+void
+task_tracker__renew(task_tracker_t*, task_tracker_entry_t* entry);
+
+/**
+ * Mark the existing entry for `task`, if any, as seen in the current sample
+ * generation, without creating one, so task_tracker__collect_stale doesn't
+ * evict it. For tasks whose owning thread was skipped this sample (e.g. idle
+ * in CPU mode): they are still alive, they just weren't scanned.
+ */
+void
+task_tracker__keep_alive(task_tracker_t*, uintptr_t task);
 
 /**
  * Collect up to `max` entries whose last_gen is older than the tracker's
