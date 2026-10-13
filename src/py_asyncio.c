@@ -106,16 +106,46 @@ _is_plausible_ptr(raddr_t p) {
 
 // ----------------------------------------------------------------------------
 // Task identity computation to avoid address-reuse collisions.
+static inline uintptr_t
+_py_asyncio__entry_id(task_tracker_entry_t* entry) {
+    return entry->id;
+} // _py_asyncio__entry_id
+
+// ----------------------------------------------------------------------------
+// Flush whatever dwell time a task that is going away had accrued at its last
+// known position, rather than losing it silently. No remote reads needed
+// (name already cached), so this is safe even if the TaskObj has since been
+// freed. Empty frames signal a closing metric only, no new stack content.
+// Summed into ONE flush rather than two (suspended + executing dwell can both
+// be nonzero).
+static void
+_py_asyncio__flush_task(task_tracker_entry_t* entry) {
+    uint64_t final_dwell = entry->suspended_time + entry->executing_time;
+    if (final_dwell == 0)
+        return;
+
+    // No name: readers already know it from the task's earlier reports, and
+    // the cached name_key may have been redefined by now (see
+    // _py_asyncio__resolve_task_name), since the str it was resolved from
+    // is likely gone along with the task.
+    task_stack_reset();
+    event_handler__emit_task_stack_begin(_py_asyncio__entry_id(entry), 0);
+    event_handler__emit_task_stack_end(final_dwell);
+} // _py_asyncio__flush_task
+
+// ----------------------------------------------------------------------------
+// Wire identity of the task (or future) at addr, e.g. a waiter. 0 if it can't
+// be tracked, which readers see as a task they know nothing about.
 static uintptr_t
 _py_asyncio__task_identity(py_proc_t* self, raddr_t addr) {
     if (!_is_plausible_ptr(addr))
-        return (uintptr_t)addr;
+        return 0;
 
     task_tracker_entry_t* entry = task_tracker__get_or_create(self->task_tracker, (uintptr_t)addr);
     if (isvalid(entry))
-        return (uintptr_t)addr ^ ((uintptr_t)entry->epoch << PTR_ALIGN_SHIFT);
+        return _py_asyncio__entry_id(entry);
 
-    return (uintptr_t)addr;
+    return 0; // GCOV_EXCL_LINE
 } // _py_asyncio__task_identity
 
 // ----------------------------------------------------------------------------
@@ -161,38 +191,60 @@ _py_asyncio__waiter_fingerprint(py_proc_t* self, raddr_t awaited_by, bool is_set
 } // _py_asyncio__waiter_fingerprint
 
 // ----------------------------------------------------------------------------
-// Resolve and cache a task's name (TaskObj.task_name, a plain str -- no
-// threading._active-style indirection needed). Reuses string_cache and
-// emit_new_string like code.h's filename/scope caching.
-static key_dt
-_py_asyncio__task_name_key(py_proc_t* self, raddr_t task_addr) {
+// Resolve a task's name (TaskObj.task_name, a plain str -- no
+// threading._active-style indirection needed) into entry->name_key. Reuses
+// string_cache and emit_new_string like code.h's filename/scope caching.
+//
+// The cache is keyed by the str's remote address, which is only safe for as
+// long as the str is alive. That holds for the name a task still refers to,
+// so a name object already resolved for this entry is reused as is. A new one
+// may sit at the address of a since-freed name of another task though --
+// routine for short-lived tasks -- so its contents are checked against the
+// cached ones, and the key is redefined on a mismatch rather than reporting
+// the old task's name.
+//
+// On failure, the last known-good name is kept rather than clobbered with 0,
+// so a transient failure doesn't blank out an otherwise perfectly good name.
+static void
+_py_asyncio__resolve_task_name(py_proc_t* self, raddr_t task_addr, task_tracker_entry_t* entry) {
     V_DESC(self->py_v);
 
     raddr_t name_addr = NULL;
     if (fail(copy_asyncio_field(self, task_object, task_name, task_addr, name_addr))
         || !_is_plausible_ptr(name_addr)) // GCOV_EXCL_LINE
-        return 0;                         // GCOV_EXCL_LINE
+        return;                           // GCOV_EXCL_LINE
 
-    key_dt           string_key = ptr_key(name_addr);
-    cached_string_t* cached     = (cached_string_t*)lru_cache__maybe_hit(self->string_cache, string_key);
-    if (isvalid(cached))
-        return string_key;
+    if (entry->name_key != 0 && entry->name_addr == (uintptr_t)name_addr)
+        return;
 
     char* name_value = _string_remote(self->ref, name_addr, py_v);
     if (!isvalid(name_value))
-        return 0;
+        return;
 
-    cached_string_t* new_string = cached_string_new(string_key, name_value);
-    if (!isvalid(new_string)) { // GCOV_EXCL_START
-        free(name_value);
-        return 0;
-    } // GCOV_EXCL_STOP
+    key_dt           string_key = ptr_key(name_addr);
+    cached_string_t* cached     = (cached_string_t*)lru_cache__maybe_hit(self->string_cache, string_key);
+    if (isvalid(cached)) {
+        if (strcmp(cached->value, name_value) == 0) {
+            free(name_value);
+        } else {
+            free(cached->value);
+            cached->value = name_value;
+            event_handler__emit_new_string(cached);
+        }
+    } else {
+        cached_string_t* new_string = cached_string_new(string_key, name_value);
+        if (!isvalid(new_string)) { // GCOV_EXCL_START
+            free(name_value);
+            return;
+        } // GCOV_EXCL_STOP
 
-    lru_cache__store(self->string_cache, string_key, new_string);
-    event_handler__emit_new_string(new_string);
+        lru_cache__store(self->string_cache, string_key, new_string);
+        event_handler__emit_new_string(new_string);
+    }
 
-    return string_key;
-} // _py_asyncio__task_name_key
+    entry->name_key  = (uintptr_t)string_key;
+    entry->name_addr = (uintptr_t)name_addr;
+} // _py_asyncio__resolve_task_name
 
 // _PyFrameState's numbering isn't stable across minor versions -- see the
 // FRAME_*_3_14/FRAME_*_3_15 constants in python/iframe.h -- hence these
@@ -361,6 +413,28 @@ _py_asyncio__unwind_coro_chain(
 } // _py_asyncio__unwind_coro_chain
 
 // ----------------------------------------------------------------------------
+// Read a TaskObj's task_coro and task_name, the two pointers its identity is
+// checked against every sample. They are adjacent in TaskObj, so one read
+// normally covers both.
+static bool
+_py_asyncio__read_task_identity(py_proc_t* self, raddr_t task_addr, raddr_t* coro_addr, raddr_t* name_addr) {
+    uint64_t o_coro = self->asyncio_offsets.asyncio_task_object.task_coro;
+    uint64_t o_name = self->asyncio_offsets.asyncio_task_object.task_name;
+
+    if (o_name == o_coro + sizeof(raddr_t)) {
+        raddr_t pair[2];
+        if (fail(copy_memory(self->ref, (char*)task_addr + o_coro, sizeof(pair), pair)))
+            return false;
+        *coro_addr = pair[0];
+        *name_addr = pair[1];
+        return true;
+    }
+
+    return success(copy_asyncio_field(self, task_object, task_coro, task_addr, *coro_addr))  // GCOV_EXCL_LINE
+        && success(copy_asyncio_field(self, task_object, task_name, task_addr, *name_addr)); // GCOV_EXCL_LINE
+} // _py_asyncio__read_task_identity
+
+// ----------------------------------------------------------------------------
 static void
 _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, microseconds_t time_delta) {
     if (!_is_plausible_ptr(task_addr)) // GCOV_EXCL_LINE
@@ -377,26 +451,40 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
     // Eviction runs at end-of-tick, so a Task freed and replaced at the
     // same address within the same tick makes get_or_create above hand
     // back the OLD entry.
-    raddr_t coro_addr         = NULL;
-    bool    coro_read_ok      = success(copy_asyncio_field(self, task_object, task_coro, task_addr, coro_addr))
-                             && _is_plausible_ptr(coro_addr);
+    raddr_t coro_addr = NULL;
+    raddr_t name_addr = NULL;
+    bool    coro_read_ok
+        = _py_asyncio__read_task_identity(self, task_addr, &coro_addr, &name_addr) && _is_plausible_ptr(coro_addr);
     // This task's very first sighting (nothing cached yet) -- see the
     // waiter-edge read below, which retries only in this case.
-    bool    is_first_sighting = coro_read_ok && entry->identity_coro == 0;
+    bool is_first_sighting = coro_read_ok && entry->identity_coro == 0;
     if (coro_read_ok) {
-        if (entry->identity_coro != 0 && entry->identity_coro != (uintptr_t)coro_addr) {
-            entry->waiter_fp      = 0;
-            entry->top            = (task_frame_id_t){0};
-            entry->suspended_time = 0;
-            entry->executing_time = 0;
-            entry->name_key       = 0;
+        bool coro_changed = entry->identity_coro != 0 && entry->identity_coro != (uintptr_t)coro_addr;
+        // A live task's name changes in two ways: an unnamed task's lazy
+        // name (a PyLong counter, never resolved as a str) becoming
+        // "Task-<n>" on first get_name(), which is still the same task; and
+        // set_name(), which is rare. So a change away from a name already
+        // resolved as a str is taken to mean a different task, at the cost
+        // of set_name() starting a new identity. Two unnamed tasks reusing
+        // the same Task/coroutine pair within one sample still go unnoticed.
+        bool name_changed = entry->identity_name != (uintptr_t)name_addr && entry->name_key != 0
+                         && entry->name_addr == entry->identity_name;
+
+        // The old task is gone just as surely as if it had been evicted:
+        // close it out under its own identity, then start the new one under
+        // a fresh one rather than letting it inherit the old wire id.
+        if (coro_changed || name_changed) {
+            _py_asyncio__flush_task(entry);
+            task_tracker__renew(self->task_tracker, entry);
+            is_first_sighting = true;
         }
         entry->identity_coro = (uintptr_t)coro_addr;
+        entry->identity_name = (uintptr_t)name_addr;
     }
 
-    // Wire identity for this task -- see _py_asyncio__task_identity and
-    // epoch's doc comment in task_tracker.h. No remote read needed.
-    uintptr_t task_id = (uintptr_t)task_addr ^ ((uintptr_t)entry->epoch << PTR_ALIGN_SHIFT);
+    // Wire identity for this task -- see the id doc comment in
+    // task_tracker.h. No remote read needed.
+    uintptr_t task_id = _py_asyncio__entry_id(entry);
 
     // Dwell accrued at the PREVIOUS position, before this tick's own
     // contribution is decided below -- kept separate so an executing tick
@@ -435,16 +523,13 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
 
                 task_stack_reset();
                 if (py_thread__split_task_stack_at(thread, task_iframe)) {
-                    key_dt name_key = _py_asyncio__task_name_key(self, task_addr);
-                    // Keep the last known-good name rather than clobbering
-                    // it with 0, and emit THAT (not the possibly-just-failed
-                    // fresh read) so a transient failure doesn't blank out
-                    // an otherwise perfectly good name for this tick.
-                    if (name_key != 0)
-                        entry->name_key = (uintptr_t)name_key;
+                    _py_asyncio__resolve_task_name(self, task_addr, entry);
+                    // First-ever report has no prior position to credit --
+                    // same rule as the suspended branch below.
                     event_handler__emit_task_stack_begin(task_id, entry->name_key);
-                    event_handler__emit_task_stack_end(accumulated_executing_time);
+                    event_handler__emit_task_stack_end(entry->reported ? accumulated_executing_time : 0);
                     entry->executing_time = 0;
+                    entry->reported       = true;
                 } else {
                     // Split failed for a reason other than a repeat sample
                     // (e.g. a torn remote read) -- best-effort, keep the
@@ -454,8 +539,11 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
                 }
             }
 
-            // Forces the next SUSPENDED sighting to be treated as fresh
-            // rather than compared against this now-stale position.
+            // Forces the next SUSPENDED sighting to count as a change rather
+            // than be compared against a now-stale position, even if it is
+            // back at the very same chain. It is NOT a first sighting though:
+            // that is entry->reported's job, so the time spent at this
+            // running position is still credited by that next report.
             entry->top            = (task_frame_id_t){0};
             entry->suspended_time = 0;
         } else {
@@ -468,25 +556,19 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
             task_stack_reset();
             _py_asyncio__unwind_coro_chain(self, coro_addr, 0, &leaf, &chain_fp);
 
-            bool has_prior_frame = isvalid(entry->top.frame);
-            bool changed         = !has_prior_frame || entry->top.chain_fp != leaf.chain_fp;
+            bool changed = !isvalid(entry->top.frame) || entry->top.chain_fp != leaf.chain_fp;
 
             if (changed && isvalid(leaf.frame)) {
-                // First-ever sighting has no prior frame to attribute time
-                // to -- discard rather than credit an unobserved frame.
-                uint64_t elapsed = has_prior_frame ? entry->suspended_time : 0;
+                // First-ever sighting has no prior position to attribute time
+                // to -- discard rather than credit an unobserved one.
+                uint64_t elapsed = entry->reported ? entry->suspended_time : 0;
 
                 if (success(py_thread__resolve_task_stack(&coro_thread))) {
-                    key_dt name_key = _py_asyncio__task_name_key(self, task_addr);
-                    // Keep the last known-good name rather than clobbering
-                    // it with 0, and emit THAT (not the possibly-just-failed
-                    // fresh read) so a transient failure doesn't blank out
-                    // an otherwise perfectly good name for this tick.
-                    if (name_key != 0)
-                        entry->name_key = (uintptr_t)name_key;
+                    _py_asyncio__resolve_task_name(self, task_addr, entry);
                     event_handler__emit_task_stack_begin(task_id, entry->name_key);
                     event_handler__emit_task_stack_end(elapsed);
                     entry->suspended_time = 0;
+                    entry->reported       = true;
                 }
 
                 entry->top = leaf;
@@ -537,8 +619,12 @@ py_asyncio__scan_tasks_begin(py_proc_t* self) {
 } // py_asyncio__scan_tasks_begin
 
 // ----------------------------------------------------------------------------
-void
-py_asyncio__scan_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr, microseconds_t time_delta) {
+typedef void (*task_visitor_t)(py_proc_t*, py_thread_t*, raddr_t, microseconds_t);
+
+static void
+_py_asyncio__walk_task_list(
+    py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr, microseconds_t time_delta, task_visitor_t visit
+) {
     V_DESC(self->py_v);
 
     raddr_t node = NULL;
@@ -554,7 +640,7 @@ py_asyncio__scan_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_he
         } // GCOV_EXCL_STOP
 
         raddr_t task_addr = (raddr_t)((char*)node - self->asyncio_offsets.asyncio_task_object.task_node);
-        _py_asyncio__emit_task(self, thread, task_addr, time_delta);
+        visit(self, thread, task_addr, time_delta);
 
         raddr_t next_node = NULL;
         if (fail(copy_field_v(self->ref, llist, next, node, next_node))) { // GCOV_EXCL_START
@@ -563,7 +649,27 @@ py_asyncio__scan_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_he
         } // GCOV_EXCL_STOP
         node = next_node;
     }
+} // _py_asyncio__walk_task_list
+
+// ----------------------------------------------------------------------------
+void
+py_asyncio__scan_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr, microseconds_t time_delta) {
+    _py_asyncio__walk_task_list(self, thread, list_head_addr, time_delta, _py_asyncio__emit_task);
 } // py_asyncio__scan_task_list
+
+// ----------------------------------------------------------------------------
+static void
+_py_asyncio__keep_task_alive(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, microseconds_t time_delta) {
+    (void)thread;
+    (void)time_delta;
+    task_tracker__keep_alive(self->task_tracker, (uintptr_t)task_addr);
+} // _py_asyncio__keep_task_alive
+
+// ----------------------------------------------------------------------------
+void
+py_asyncio__keep_task_list_alive(py_proc_t* self, raddr_t list_head_addr) {
+    _py_asyncio__walk_task_list(self, NULL, list_head_addr, 0, _py_asyncio__keep_task_alive);
+} // py_asyncio__keep_task_list_alive
 
 // ----------------------------------------------------------------------------
 void
@@ -576,25 +682,8 @@ py_asyncio__scan_tasks_end(py_proc_t* self) {
     for (size_t i = 0; i < n; i++) {
         task_tracker_entry_t* entry = stale[i];
 
-        // Same combined identity as the live path -- epoch was fixed at
-        // entry creation, so no remote read is needed even though the
-        // TaskObj may already be freed by now.
-        uintptr_t task_id = entry->task ^ ((uintptr_t)entry->epoch << PTR_ALIGN_SHIFT);
-
-        // Task is gone from the list -- flush its accrued dwell time
-        // before discarding rather than losing it silently. No remote
-        // reads needed (frame/name already cached), safe even if the
-        // TaskObj has since been freed. Empty frames signal a closing
-        // metric only, no new stack content.
-        //
-        // Summed into ONE flush rather than two (suspended + executing
-        // dwell can both be nonzero).
-        uint64_t final_dwell = entry->suspended_time + entry->executing_time;
-        if (final_dwell > 0) {
-            task_stack_reset();
-            event_handler__emit_task_stack_begin(task_id, entry->name_key);
-            event_handler__emit_task_stack_end(final_dwell);
-        }
+        // Task is gone from the list -- flush before discarding.
+        _py_asyncio__flush_task(entry);
         task_tracker__remove(tracker, entry->task);
     }
 } // py_asyncio__scan_tasks_end
