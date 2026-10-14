@@ -110,8 +110,9 @@ py_asyncio__scan_tasks_begin(py_proc_t* self);
  *                       sentinel (see py_asyncio__interp_task_list_head/
  *                       py_asyncio__thread_task_list_head below).
  * @param time_delta     elapsed time since the previous sample; credited to
- *                       a task's dwell time at its current frame, suspended
- *                       or (thread non-NULL) EXECUTING alike.
+ *                       a task's time at its position, suspended or (thread
+ *                       non-NULL) running alike, except that in CPU mode
+ *                       only the running task accrues it.
  */
 void
 py_asyncio__scan_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr, microseconds_t time_delta);
@@ -136,7 +137,9 @@ py_asyncio__keep_task_list_alive(py_proc_t* self, raddr_t list_head_addr);
  * End a Phase-2 task-population scan, evicting tasks that disappeared.
  *
  * Evicts every tracked task not seen in this sample's scan (completed, or
- * otherwise removed from the interpreter's task population). Before
+ * otherwise removed from the interpreter's task population). Skipped if a
+ * list walk was cut short, since the tasks it didn't reach weren't seen
+ * either. Before
  * dropping one, flushes whatever dwell time it had accrued at its last
  * known frame as a closing metric with an empty frame sequence, so that
  * time isn't silently lost; a task with nothing accrued is just dropped.

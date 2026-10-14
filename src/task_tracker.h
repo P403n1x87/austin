@@ -64,23 +64,17 @@ typedef struct {
     task_frame_id_t top;       // pre-unwind coroutine frame identity
     uintptr_t       waiter_fp; // cheap fingerprint of task_awaited_by; 0 = no waiters
     unsigned int    last_gen;
-    // Wall/CPU time (same unit as sample_t.time) accumulated across scans
-    // while `top` stayed unchanged, i.e. how long the task has been sitting
-    // at its current suspension point. Flushed and reset to 0 as soon as
-    // `top` is next observed to change (see _py_asyncio__emit_task) -- it
-    // then describes how long the task dwelled at the frame it just left.
-    uint64_t        suspended_time;
-    // Wall/CPU time accumulated across EXECUTING ticks that couldn't be
-    // split off and emitted (thread->is_repeat -- the top-of-thread-stack
-    // frame this task is running in didn't change, so there's nothing to
-    // split against; or any other transient split failure). Flushed and
-    // reset to 0 as soon as a split finally succeeds, so a long
-    // synchronous/CPU-bound stretch inside a coroutine (which naturally
-    // produces many repeat samples) still gets its full dwell time
-    // attributed in one shot, rather than losing every repeated tick.
-    uint64_t        executing_time;
+    // Time (same unit as sample_t.time) accrued since this task's last
+    // report, i.e. at the position that report showed. The next report
+    // carries it and resets it (see _py_asyncio__emit_task), whether the
+    // task is then running or suspended. Running samples that can't be
+    // reported (a repeat sample, which has nothing to split against, or a
+    // failed split) keep adding to it, so a long synchronous stretch inside
+    // a coroutine is still credited in full once it ends. In CPU mode it
+    // only grows while the task is running.
+    uint64_t        pending_time;
     // Cached MOJO_TASK_STACK name key from the last successful resolution (0
-    // = never resolved), so that flushing suspended_time on eviction (the
+    // = never resolved), so that flushing pending_time on eviction (the
     // task has disappeared from the list, e.g. it completed) never needs to
     // re-read the TaskObj's name -- by then it may already be freed.
     uintptr_t       name_key;
@@ -127,6 +121,10 @@ typedef struct {
     size_t       count;   // live entry count; tracked here so MAX_TASK_TRACKER
                           // can be enforced without reaching into lookup_t
     unsigned int sample_gen;
+    // Whether every task list walked this sweep was walked in full. A walk
+    // cut short (e.g. by a node being unlinked as it is read) doesn't touch
+    // the tasks it didn't reach, which must not be taken for gone.
+    bool         scan_complete;
 } task_tracker_t;
 
 /**

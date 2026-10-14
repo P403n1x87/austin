@@ -25,7 +25,7 @@
 # arithmetic loop, which merely makes repeat samples *likely*, this makes
 # them certain, on any machine at any speed. That determinism is the point:
 # it reliably exercises the EXECUTING-task-on-a-repeat-sample path (see
-# task_tracker.h's executing_time doc comment) without depending on
+# task_tracker.h's pending_time doc comment) without depending on
 # statistical luck, so a test built on this target can't flake.
 #
 # blocked_call and marker_call are two distinct functions so that the
