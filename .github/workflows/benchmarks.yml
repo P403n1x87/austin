@@ -71,7 +71,7 @@ jobs:
           cd -
 
       - name: Post results on PR
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
         with:
           header: benchmarks
           path: ${{ github.workspace}}/comment.txt
