@@ -24,7 +24,7 @@ jobs:
       fail-fast: false
     name: Build on ${{ matrix.arch }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         name: Checkout sources
 
       - uses: uraimo/run-on-arch-action@v3
@@ -40,7 +40,7 @@ jobs:
           run: ARCH=${{ matrix.arch }} bash scripts/build_arch.sh
 
       - name: Install Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: '3.10'
 

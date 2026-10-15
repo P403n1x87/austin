@@ -18,11 +18,11 @@ jobs:
           sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           path: austin-base
@@ -35,7 +35,7 @@ jobs:
           make
           cd -
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           path: austin
 
@@ -71,7 +71,7 @@ jobs:
           cd -
 
       - name: Post results on PR
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
         with:
           header: benchmarks
           path: ${{ github.workspace}}/comment.txt

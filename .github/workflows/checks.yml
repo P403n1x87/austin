@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-24.04
     name: Check docs
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Install build dependencies
         run: |
@@ -40,7 +40,7 @@ jobs:
       cppcheck-version: 2.10.3
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Install cppcheck
         run: |
@@ -54,7 +54,7 @@ jobs:
     name: Static code analysis (macOS)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
       
       - name: Install cppcheck
         run: brew install cppcheck
@@ -66,9 +66,9 @@ jobs:
     runs-on: ubuntu-24.04
     name: Codespell
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: "actions/setup-python@v4"
+      - uses: "actions/setup-python@v7"
         with:
           python-version: "3.9"
 
@@ -82,7 +82,7 @@ jobs:
     runs-on: ubuntu-24.04
     name: Formatting (sources)
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Install clang-format
         run: pip install clang-format
@@ -94,9 +94,9 @@ jobs:
     runs-on: ubuntu-24.04
     name: Formatting (tests)
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: "actions/setup-python@v4"
+      - uses: "actions/setup-python@v7"
         with:
           python-version: "3.10"
 
@@ -110,9 +110,9 @@ jobs:
     runs-on: ubuntu-24.04
     name: Linting (tests)
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: "actions/setup-python@v4"
+      - uses: "actions/setup-python@v7"
         with:
           python-version: "3.10"
 
@@ -126,7 +126,7 @@ jobs:
     runs-on: ubuntu-24.04
     name: Code coverage
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Install build dependencies
         run: |
@@ -165,7 +165,7 @@ jobs:
         run: gcovr --xml ./cobertura.xml -r src/
 
       - name: Upload report to Codecov
-        uses: codecov/codecov-action@v2
+        uses: codecov/codecov-action@v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./cobertura.xml
@@ -175,7 +175,7 @@ jobs:
     runs-on: ubuntu-24.04
     name: Check cog output
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Install cog
         run: pip install cogapp
