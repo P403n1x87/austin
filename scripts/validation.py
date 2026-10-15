@@ -74,7 +74,8 @@ def validate(scenario: Scenario, runs: int = 10) -> t.Union[float, object]:
         return _NOT_APPLICABLE
 
     # threshold=runs keeps only the stacks that are present in all runs
-    return compare(x=base_results, y=dev_results, threshold=runs)
+    p = compare(x=base_results, y=dev_results, threshold=runs)
+    return _NOT_APPLICABLE if p is None else p
 
 
 def generate_markdown_report(
@@ -97,7 +98,7 @@ def generate_markdown_report(
     if skipped:
         output += (
             "\n\n⚪ The following scenarios were skipped"
-            " (base produced no data; PR profiles collected for manual validation):\n\n"
+            " (no data to compare; PR profiles collected for manual validation):\n\n"
         )
         for scenario in skipped:
             output += f"- {scenario.title}\n"
@@ -242,7 +243,7 @@ def main(opts) -> None:
         if p is _NOT_APPLICABLE:
             skipped.append(scenario)
             print(
-                "⚪ (not applicable — base produced no data; PR profiles collected)",
+                "⚪ (not applicable — no data to compare; PR profiles collected)",
                 file=sys.stderr,
             )
             continue

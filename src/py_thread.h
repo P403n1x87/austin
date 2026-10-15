@@ -59,6 +59,8 @@ typedef struct thread {
 
     bool          is_repeat; // true when top_frame+code+lasti matches the previous sample
     py_frame_id_t prev_top;  // previous sample's top frame identity (for partial repeat detection)
+
+    raddr_t asyncio_task; // the asyncio task this thread is running, if any (see py_asyncio__scan_task_list)
 } py_thread_t;
 
 #define py_thread__init(_proc) {.proc = _proc}

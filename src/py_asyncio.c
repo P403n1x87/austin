@@ -22,6 +22,8 @@
 
 #include "py_asyncio.h"
 
+#include "argparse.h"
+
 #include "events.h"
 #include "logging.h"
 #include "mem.h"
@@ -120,7 +122,7 @@ _py_asyncio__entry_id(task_tracker_entry_t* entry) {
 // be nonzero).
 static void
 _py_asyncio__flush_task(task_tracker_entry_t* entry) {
-    uint64_t final_dwell = entry->suspended_time + entry->executing_time;
+    uint64_t final_dwell = entry->pending_time;
     if (final_dwell == 0)
         return;
 
@@ -261,11 +263,6 @@ _py_asyncio__frame_state_yield_from(int minor, int8_t frame_state) {
     return minor <= 14 ? frame_state == FRAME_SUSPENDED_YIELD_FROM_3_14
                        : (frame_state == FRAME_SUSPENDED_YIELD_FROM_3_15
                           || frame_state == FRAME_SUSPENDED_YIELD_FROM_LOCKED_3_15);
-}
-
-static inline bool
-_py_asyncio__frame_state_executing(int minor, int8_t frame_state) {
-    return minor <= 14 ? frame_state == FRAME_EXECUTING_3_14 : frame_state == FRAME_EXECUTING_3_15;
 }
 
 // Safety valve against a corrupted or cyclic await chain -- a real chain is
@@ -486,39 +483,43 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
     // task_tracker.h. No remote read needed.
     uintptr_t task_id = _py_asyncio__entry_id(entry);
 
-    // Dwell accrued at the PREVIOUS position, before this tick's own
-    // contribution is decided below -- kept separate so an executing tick
-    // can fold it into its own accumulator without conflating it with the
-    // current (EXECUTING) tick's own delta.
-    uint64_t prior_suspended_time = entry->suspended_time;
+    // Which position this sample's time belongs to. In wall time, to the
+    // position the task held until now: a report is only emitted on a change,
+    // so the sample that detects one also closes the previous position, and
+    // the report it emits carries that position's time. In CPU time, to the
+    // position the task is running at now, since that is the code the thread
+    // is on-CPU for; a suspended task isn't using the CPU, whatever its thread
+    // is doing (most likely running another task), so it accrues nothing.
+    bool cpu_time = pargs.cpu && !pargs.full;
 
     // ---- coroutine stack ----
     if (coro_read_ok) {
         V_DESC(self->py_v);
 
-        int8_t frame_state  = 0;
-        bool   is_executing = isvalid(thread)
-                           && success(copy_field_v(self->ref, gen, gi_frame_state, coro_addr, frame_state))
-                           && _py_asyncio__frame_state_executing(py_v->minor, frame_state);
+        // The thread's current task, as asyncio itself tracks it -- the one
+        // whose code it is running. Not the coroutine frame state: an eager
+        // task starts running inside its creator's create_task call, so both
+        // coroutines are executing at once, while the current task is the
+        // inner one only.
+        bool is_running = isvalid(thread) && task_addr == thread->asyncio_task;
 
-        if (is_executing) {
+        if (is_running) {
             // `thread` is actively running this task's own coroutine right
             // now -- its (possibly deeper, synchronous) call chain is part
             // of `thread`'s live frame chain, not reachable via the
             // async/await-hop walk used for the suspended case below.
-            uint64_t accumulated_executing_time = entry->executing_time + prior_suspended_time + time_delta;
+            if (!cpu_time)
+                entry->pending_time += time_delta;
 
             // On a repeat sample, `thread`'s own stack holds nothing but the
             // PYSTACK_REPEAT_MAGIC sentinel -- the split can never succeed, so
             // skip it rather than pay for a doomed scan. `thread` is the very
             // thread running this task's coroutine right now, so its
             // top-of-stack repeat signal doubles as this task's own repeat
-            // signal. Keep accumulating rather than dropping the tick, so a
-            // long repeat stretch still gets its full dwell time attributed in
-            // one shot once the position finally changes.
-            if (thread->is_repeat) {
-                entry->executing_time = accumulated_executing_time;
-            } else {
+            // signal: the task is still at the same position, so its time
+            // keeps adding up until a later sample can report it. A failed
+            // split (e.g. a torn remote read) is retried next sample likewise.
+            if (!thread->is_repeat) {
                 raddr_t task_iframe = (raddr_t)((char*)coro_addr + py_v->py_gen.o_gi_iframe);
 
                 task_stack_reset();
@@ -527,27 +528,24 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
                     // First-ever report has no prior position to credit --
                     // same rule as the suspended branch below.
                     event_handler__emit_task_stack_begin(task_id, entry->name_key);
-                    event_handler__emit_task_stack_end(entry->reported ? accumulated_executing_time : 0);
-                    entry->executing_time = 0;
-                    entry->reported       = true;
-                } else {
-                    // Split failed for a reason other than a repeat sample
-                    // (e.g. a torn remote read) -- best-effort, keep the
-                    // accrued time and retry the split next tick rather
-                    // than losing it.
-                    entry->executing_time = accumulated_executing_time;
+                    event_handler__emit_task_stack_end(entry->reported ? entry->pending_time : 0);
+                    entry->pending_time = 0;
+                    entry->reported     = true;
                 }
             }
+
+            if (cpu_time)
+                entry->pending_time += time_delta;
 
             // Forces the next SUSPENDED sighting to count as a change rather
             // than be compared against a now-stale position, even if it is
             // back at the very same chain. It is NOT a first sighting though:
             // that is entry->reported's job, so the time spent at this
             // running position is still credited by that next report.
-            entry->top            = (task_frame_id_t){0};
-            entry->suspended_time = 0;
+            entry->top = (task_frame_id_t){0};
         } else {
-            entry->suspended_time = prior_suspended_time + time_delta;
+            if (!cpu_time)
+                entry->pending_time += time_delta;
 
             py_thread_t     coro_thread = py_thread__init(self);
             task_frame_id_t leaf        = {0};
@@ -561,22 +559,21 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
             if (changed && isvalid(leaf.frame)) {
                 // First-ever sighting has no prior position to attribute time
                 // to -- discard rather than credit an unobserved one.
-                uint64_t elapsed = entry->reported ? entry->suspended_time : 0;
+                uint64_t elapsed = entry->reported ? entry->pending_time : 0;
 
                 if (success(py_thread__resolve_task_stack(&coro_thread))) {
                     _py_asyncio__resolve_task_name(self, task_addr, entry);
                     event_handler__emit_task_stack_begin(task_id, entry->name_key);
                     event_handler__emit_task_stack_end(elapsed);
-                    entry->suspended_time = 0;
-                    entry->reported       = true;
+                    entry->pending_time = 0;
+                    entry->reported     = true;
                 }
 
                 entry->top = leaf;
             }
         }
     } else { // GCOV_EXCL_START
-        entry->top            = (task_frame_id_t){0};
-        entry->suspended_time = 0;
+        entry->top = (task_frame_id_t){0};
     } // GCOV_EXCL_STOP
 
     // ---- waiter edges: only re-emit the (possibly multi-edge) waiter set
@@ -616,10 +613,18 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr, 
 void
 py_asyncio__scan_tasks_begin(py_proc_t* self) {
     self->task_tracker->sample_gen++;
+    self->task_tracker->scan_complete = true;
 } // py_asyncio__scan_tasks_begin
 
 // ----------------------------------------------------------------------------
 typedef void (*task_visitor_t)(py_proc_t*, py_thread_t*, raddr_t, microseconds_t);
+
+// The tasks a walk didn't reach weren't seen, but they aren't gone either:
+// keep py_asyncio__scan_tasks_end from evicting them this sweep.
+static inline void
+_py_asyncio__walk_cut_short(py_proc_t* self) {
+    self->task_tracker->scan_complete = false;
+}
 
 static void
 _py_asyncio__walk_task_list(
@@ -630,12 +635,14 @@ _py_asyncio__walk_task_list(
     raddr_t node = NULL;
     if (fail(copy_field_v(self->ref, llist, next, list_head_addr, node))) { // GCOV_EXCL_START
         log_d("Cannot read asyncio task list head at %p", list_head_addr);
+        _py_asyncio__walk_cut_short(self);
         return;
     } // GCOV_EXCL_STOP
 
     for (int i = 0; i < MAX_TASK_LIST_ITER && isvalid(node) && node != list_head_addr; i++) {
         if (!_is_plausible_ptr(node)) { // GCOV_EXCL_START
             log_d("Garbled asyncio task list node at %p; aborting this list", node);
+            _py_asyncio__walk_cut_short(self);
             return;
         } // GCOV_EXCL_STOP
 
@@ -645,15 +652,34 @@ _py_asyncio__walk_task_list(
         raddr_t next_node = NULL;
         if (fail(copy_field_v(self->ref, llist, next, node, next_node))) { // GCOV_EXCL_START
             log_d("Torn read while walking asyncio task list at node %p", node);
+            _py_asyncio__walk_cut_short(self);
             return;
         } // GCOV_EXCL_STOP
         node = next_node;
+    }
+
+    // Anything but the head means the walk didn't go all the way round: most
+    // likely a NULL next, which is what a node unlinked while being read
+    // (e.g. a task completing) leaves behind.
+    if (node != list_head_addr) {
+        log_d("Asyncio task list at %p walked only in part", list_head_addr);
+        _py_asyncio__walk_cut_short(self);
     }
 } // _py_asyncio__walk_task_list
 
 // ----------------------------------------------------------------------------
 void
 py_asyncio__scan_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr, microseconds_t time_delta) {
+    if (isvalid(thread)) {
+        // One read per thread tells which of its tasks is running. If it
+        // fails, every task is treated as suspended for this sample.
+        raddr_t running_task_addr
+            = (raddr_t)((char*)thread->addr + self->asyncio_offsets.asyncio_thread_state.asyncio_running_task);
+        thread->asyncio_task = NULL;
+        if (fail(copy_datatype(self->ref, running_task_addr, thread->asyncio_task))) // GCOV_EXCL_LINE
+            thread->asyncio_task = NULL;                                             // GCOV_EXCL_LINE
+    }
+
     _py_asyncio__walk_task_list(self, thread, list_head_addr, time_delta, _py_asyncio__emit_task);
 } // py_asyncio__scan_task_list
 
@@ -675,6 +701,12 @@ py_asyncio__keep_task_list_alive(py_proc_t* self, raddr_t list_head_addr) {
 void
 py_asyncio__scan_tasks_end(py_proc_t* self) {
     task_tracker_t* tracker = self->task_tracker;
+
+    // Tasks a walk didn't reach would look gone. Leave eviction to the next
+    // sweep that sees every list in full; a task that really is gone will
+    // still be missing then.
+    if (!tracker->scan_complete)
+        return;
 
     task_tracker_entry_t* stale[MAX_TASK_TRACKER];
     size_t                n = task_tracker__collect_stale(tracker, stale, MAX_TASK_TRACKER);
