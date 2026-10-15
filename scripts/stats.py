@@ -4,8 +4,12 @@ from io import BytesIO
 from itertools import chain
 
 import numpy as np
+from austin.format.mojo import MojoFrameReference
+from austin.format.mojo import MojoMetric
+from austin.format.mojo import MojoMetricType
 from austin.format.mojo import MojoStreamReader
-from austin.events import AustinSample, AustinFrame, AustinTask
+from austin.format.mojo import MojoTaskStack
+from austin.events import AustinSample
 from scipy.stats import f
 
 Stack = tuple[str, float]  # (stack frames, metric)
@@ -67,48 +71,71 @@ class AustinFlameGraph(dict):
     def from_mojo(cls, data: bytes) -> "AustinFlameGraph":
         fg = cls()
 
-        def serialize(frame: AustinFrame) -> str:
-            return ":".join(
-                (
-                    frame.filename,
-                    frame.function,
-                    str(frame.line),
-                    str(frame.line_end),
-                    str(frame.column),
-                    str(frame.column_end),
-                )
-            )
-
-        def task_stacks(
-            tasks: t.Tuple[AustinTask, ...], prefix: str = "TASK"
-        ) -> "AustinFlameGraph":
-            # Key = parent's key + own frames, so the awaiting chain is part
-            # of the string, not just each task's own shape -- otherwise two
-            # tasks with the same frames but different parents would collide.
-            # "<active>" stands in for a task never seen suspended.
-            delta = cls()
-            for task in tasks:
-                own = (
-                    ";".join(serialize(f) for f in task.frames)
-                    if task.frames
-                    else "<active>"
-                )
-                stack = f"{prefix};{own}"
-                if task.frames and task.elapsed:
-                    delta += cls({stack: task.elapsed})
-                delta += task_stacks(task.awaiting, prefix=stack)
-            return delta
-
         for e in MojoStreamReader(BytesIO(data)):
-            if isinstance(e, AustinSample):
-                if e.frames:
-                    fg += cls(
-                        {";".join(serialize(f) for f in e.frames): e.metrics.time}
+            if isinstance(e, AustinSample) and e.frames:
+                fg += cls(
+                    {
+                        ";".join(
+                            _serialize(
+                                f.filename,
+                                f.function,
+                                f.line,
+                                f.line_end,
+                                f.column,
+                                f.column_end,
+                            )
+                            for f in e.frames
+                        ): e.metrics.time
+                    }
+                )
+
+        return fg + cls._task_stacks(data)
+
+    @classmethod
+    def _task_stacks(cls, data: bytes) -> "AustinFlameGraph":
+        # Every task report counted once. AustinSample.tasks won't do: it is a
+        # snapshot of every task known at that sample, so the same report
+        # would be counted again at every sample that follows. A report's time
+        # is how long the task spent at its previous position, so it goes to
+        # the frames of the task's previous report: a task's first report has
+        # nothing to credit, and one with no frames closes the task.
+        fg = cls()
+        last: t.Dict[int, str] = {}
+        task_id: t.Optional[int] = None
+        frames: t.List[str] = []
+
+        for e in MojoStreamReader(BytesIO(data)).parse():
+            if isinstance(e, MojoTaskStack):
+                task_id, frames = e.task_id, []
+            elif task_id is None:
+                continue
+            elif isinstance(e, MojoFrameReference):
+                f = e.frame
+                frames.append(
+                    _serialize(
+                        f.filename.value,
+                        f.scope.value,
+                        f.line,
+                        f.line_end,
+                        f.column,
+                        f.column_end,
                     )
-                if e.tasks:
-                    fg += task_stacks(e.tasks)
+                )
+            elif isinstance(e, MojoMetric) and e.metric_type == MojoMetricType.TIME:
+                previous = last.pop(task_id, None)
+                if previous is not None and e.value:
+                    fg += cls({previous: e.value})
+                if frames:
+                    last[task_id] = "TASK;" + ";".join(frames)
+                task_id = None
 
         return fg
+
+
+def _serialize(filename, function, line, line_end, column, column_end) -> str:
+    return ":".join(
+        str(_) for _ in (filename, function, line, line_end, column, column_end)
+    )
 
 
 def hotelling_two_sample_test(X, Y) -> float:
@@ -144,7 +171,7 @@ def compare(
     x: t.List[AustinFlameGraph],
     y: t.List[AustinFlameGraph],
     threshold: t.Optional[float] = None,
-) -> float:
+) -> t.Optional[float]:
     domain = list(set().union(*(_.supp() for _ in chain(x, y))))
 
     if threshold is not None:
@@ -165,7 +192,11 @@ def compare(
                 c.update(_.supp())
         domain = [k for k, _ in c.most_common(max_p)]
 
-    X = np.array([f.to_list(domain) for f in x], dtype=np.int32)
-    Y = np.array([f.to_list(domain) for f in y], dtype=np.int32)
+    # Nothing to compare, e.g. no stack shows up in every run.
+    if not domain:
+        return None
+
+    X = np.array([f.to_list(domain) for f in x], dtype=np.int64)
+    Y = np.array([f.to_list(domain) for f in y], dtype=np.int64)
 
     return hotelling_two_sample_test(X, Y)
