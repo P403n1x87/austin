@@ -1238,7 +1238,7 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
         // snapshot (to show it existed at that instant), not for ongoing
         // sampling.
         if (pargs.where)
-            py_asyncio__scan_task_list(self, NULL, py_asyncio__interp_task_list_head(self, interp), time_delta);
+            py_asyncio__scan_task_list(self, NULL, py_asyncio__interp_task_list_head(self, interp));
     }
 
     V_DESC(self->py_v);
@@ -1460,9 +1460,7 @@ _py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, m
         // _py_proc__maybe_discover_asyncio, which returns immediately when
         // pargs_native.
         if (self->asyncio_debug_found)
-            py_asyncio__scan_task_list(
-                self, &py_thread, py_asyncio__thread_task_list_head(self, py_thread.addr), time_delta
-            );
+            py_asyncio__scan_task_list(self, &py_thread, py_asyncio__thread_task_list_head(self, py_thread.addr));
 
         event_handler__emit_stack_end();
 

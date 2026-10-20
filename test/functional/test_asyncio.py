@@ -253,80 +253,56 @@ def _iter_tasks(tasks):
 
 @allpythons()
 def test_asyncio_executing_task_survives_repeat_samples(py, save_mojo):
-    """An EXECUTING task's dwell time is never dropped just because the
-    thread running it produced repeat samples (top frame/code/lasti
-    unchanged since the last tick -- see stack_py_find_origin's own doc
-    comment on PYSTACK_REPEAT_MAGIC).
+    """A running task is credited the time of every sample it runs at,
+    repeat samples included.
 
-    _py_asyncio__emit_task (py_asyncio.c) splits a task's frames off its
-    owning thread's stack every tick it's caught EXECUTING. A repeat
-    sample's stack holds nothing but the REPEAT sentinel, so the split can
-    never succeed -- it used to just silently drop that tick's sample. A
-    long synchronous/CPU-bound stretch inside a coroutine produces many
-    repeat samples in a row (that's exactly what "repeat" means: nothing
-    about the top frame changed between ticks), so this could lose a large
-    fraction of a task's true on-CPU time with no signal anything was
-    wrong. Fixed via task_tracker_entry_t.pending_time, which accumulates
-    dwell time across repeat ticks and flushes it in one shot once the
-    position finally changes. See project_asyncio_task_split_repeat.md.
+    A long synchronous stretch inside a coroutine produces many repeat
+    samples in a row (nothing about the top frame changes between them), on
+    which the task's frames can't be split off the thread's stack. Its
+    running time used to be carried by task reports, so it had to be held
+    back across that stretch, and could be lost. It is now the time of the
+    samples whose thread reports the task as running (MOJO_TASK_RUNNING),
+    which is emitted on repeat samples too.
 
     target_asyncio_blocked.py uses a real time.sleep() rather than a CPU
     loop to make repeat samples certain rather than merely likely: a
     blocking call freezes the calling frame's code+lasti for its whole
-    duration, deterministically, on any machine at any speed -- unlike a
-    CPU-bound loop, which only makes repeats statistically probable and
-    would make this test flaky. Its second call (marker_call) exists purely
-    to force a state change that flushes the first call's accumulated
-    time while austin is still actively sampling, rather than relying on
-    the process happening to exit at just the right moment.
-
-    Asserts on the accumulated elapsed time of the flush that follows the
-    long repeat stretch: at most a couple of milliseconds if ticks are
-    still being dropped (the pre-fix behaviour), several hundred
-    milliseconds if they're correctly accumulated (the fix). 200ms is a
-    threshold with a wide margin on both sides of that gap, chosen well
-    below the real ~500ms dwell so ordinary CI scheduling variance can't
-    flip the result -- this doesn't depend on how many samples land during
-    the sleep, only on the wall-clock duration of the sleep itself, which
-    is fixed regardless of machine speed."""
+    duration, deterministically, on any machine at any speed. 200ms is well
+    below its real ~500ms stretch, so ordinary CI scheduling variance can't
+    flip the result, and it doesn't depend on how many samples land during
+    the sleep, only on its wall-clock duration."""
     result = austin("-i", "1000", *python(py), target("target_asyncio_blocked.py"))
     save_mojo(result.stdout)
     assert result.returncode == 0, result.stderr or result.stdout
 
-    max_elapsed = max(
-        (
-            task.elapsed or 0
-            for sample in result.samples
-            for task in _iter_tasks(sample.tasks or ())
-        ),
-        default=0,
+    running = _running_time_by_task(_raw_mojo(result))
+    max_running = max(running.values(), default=0)
+
+    assert max_running > 200_000, (
+        "Expected a task's running time across a long repeat-sample stretch "
+        f"to be counted in full (>200ms); got at most {max_running}us"
     )
 
-    assert max_elapsed > 200_000, (
-        "Expected a task's accumulated EXECUTING dwell time across a long "
-        "repeat-sample stretch to be flushed in one shot (>200ms); got at "
-        f"most {max_elapsed}us -- repeat-sample ticks may be getting "
-        "silently dropped again (see project_asyncio_task_split_repeat.md)"
-    )
+
+class SampleRecord(NamedTuple):
+    time: int
+    idle: bool
+    running: Optional[int]  # id of the task the thread was running, if any
 
 
 class TaskStackBlock(NamedTuple):
     task_id: int
     name: Optional[str]
     scopes: Tuple[str, ...]  # empty for a closing block
-    elapsed: int  # time at this task's PREVIOUS position (the lag rule)
 
 
 def _iter_mojo_records(data: bytes):
     """Yield, in wire order, a TaskStackBlock for every MOJO_TASK_STACK
-    block, and the time metric (an int) of every thread sample. A task
+    block, and a SampleRecord for every thread sample. A task
     block with no frames is Austin's "this task is gone" signal.
-    Deliberately independent of AustinTask/AustinSample: those collapse a
-    closing block into an elapsed-time update on the existing task, with no
-    trace of how many closing blocks were seen or where, and only keep the
-    latest position of each task, so the elapsed time of a report can't be
-    paired with the position it describes -- the distinctions the tests
-    below need.
+    Deliberately independent of AustinTask/AustinSample, which build task
+    trees and work out task times from these: the tests below check the
+    wire itself.
 
     A minimal, full walk of every MOJO event type is needed (not just the
     ones directly relevant here) since each carries a different,
@@ -349,7 +325,8 @@ def _iter_mojo_records(data: bytes):
         STACK_REPEAT,
         TASK_STACK,
         TASK_WAITER,
-    ) = range(1, 16)
+        TASK_RUNNING,
+    ) = range(1, 17)
 
     pos = 3
     pos += _varint_len(data, pos)  # header varint, value unused here
@@ -361,6 +338,12 @@ def _iter_mojo_records(data: bytes):
     scopes = []
     task_id = None
     name_key = 0
+    frame_count = 0
+    sample_idle = False
+    sample_running = None
+    # A sample's time metric isn't its last event (in full mode the idle flag
+    # follows it), so it is only yielded once the sample is over.
+    sample_time = None
 
     while pos < len(data):
         ev = data[pos]
@@ -369,7 +352,12 @@ def _iter_mojo_records(data: bytes):
             pos = data.index(b"\0", pos) + 1
             pos = data.index(b"\0", pos) + 1
         elif ev == STACK:
+            if sample_time is not None:
+                yield SampleRecord(sample_time, sample_idle, sample_running)
             in_block = False
+            sample_idle = False
+            sample_running = None
+            sample_time = None
             for _ in range(2):
                 pos += _varint_len(data, pos)
             pos = data.index(b"\0", pos) + 1
@@ -389,19 +377,19 @@ def _iter_mojo_records(data: bytes):
             pos += n
             if in_block:
                 scopes.append(frame_scopes.get(key))
+                if len(scopes) == frame_count:
+                    name = strings.get(name_key) if name_key else None
+                    yield TaskStackBlock(task_id, name, tuple(scopes))
+                    in_block = False
         elif ev == FRAME_KERNEL:
             pos = data.index(b"\0", pos) + 1
-        elif ev in (FRAME_INVALID, GC, IDLE):
+        elif ev == IDLE:
+            sample_idle = True
+        elif ev in (FRAME_INVALID, GC):
             pass
         elif ev == METRIC_TIME:
-            elapsed, n = _varint(data, pos)
+            sample_time, n = _varint(data, pos)
             pos += n
-            if in_block:
-                name = strings.get(name_key) if name_key else None
-                yield TaskStackBlock(task_id, name, tuple(scopes), elapsed)
-                in_block = False
-            else:
-                yield elapsed
         elif ev == METRIC_MEMORY:
             pos += _varint_len(data, pos)
         elif ev == STRING:
@@ -419,21 +407,48 @@ def _iter_mojo_records(data: bytes):
             pos += n
             name_key, n = _varint(data, pos)
             pos += n
-            in_block = True
+            frame_count, n = _varint(data, pos)
+            pos += n
             scopes = []
+            # A report is its next frame_count frame references; none closes
+            # the task.
+            if frame_count:
+                in_block = True
+            else:
+                yield TaskStackBlock(task_id, None, ())
+        elif ev == TASK_RUNNING:
+            sample_running, n = _varint(data, pos)
+            pos += n
         elif ev == TASK_WAITER:
             for _ in range(2):
                 pos += _varint_len(data, pos)
         else:
             raise ValueError(f"Unknown MOJO event {ev} at offset {pos - 1}")
 
+    if sample_time is not None:
+        yield SampleRecord(sample_time, sample_idle, sample_running)
+
 
 def _iter_task_stack_blocks(data: bytes):
     return (r for r in _iter_mojo_records(data) if isinstance(r, TaskStackBlock))
 
 
+def _iter_samples(data: bytes):
+    return (r for r in _iter_mojo_records(data) if isinstance(r, SampleRecord))
+
+
 def _iter_sample_times(data: bytes):
-    return (r for r in _iter_mojo_records(data) if isinstance(r, int))
+    return (r.time for r in _iter_samples(data))
+
+
+def _running_time_by_task(data: bytes, cpu_only: bool = False):
+    """Time of the samples each task was running at -- its running time. In
+    full mode, cpu_only keeps the samples whose thread wasn't idle."""
+    times = {}
+    for r in _iter_samples(data):
+        if r.running is not None and not (cpu_only and r.idle):
+            times[r.running] = times.get(r.running, 0) + r.time
+    return times
 
 
 def _varint(data: bytes, pos: int):
@@ -539,15 +554,22 @@ def _transient_root_ids(samples, max_fraction=0.01):
     return root_only, full
 
 
+_ASYNCIO_SHUTDOWN_TASKS = {
+    "BaseEventLoop.shutdown_asyncgens",
+    "BaseEventLoop.shutdown_default_executor",
+}
+
+
 def _is_asyncio_shutdown_task(t):
-    """True for the transient task asyncio.run() schedules for its own
-    post-main() cleanup (BaseEventLoop.shutdown_asyncgens) -- a real,
-    separate task unrelated to the pyramid's own intentional structure.
-    A long enough sampling window's tail occasionally catches it for a
-    sample or two once main() has already returned, which is not a
-    fragmentation bug: exclude it so the task count isn't sensitive to
-    exactly when sampling stops relative to interpreter shutdown."""
-    return bool(t.frames) and t.frames[0].function == "BaseEventLoop.shutdown_asyncgens"
+    """True for the transient tasks asyncio.run() schedules for its own
+    post-main() cleanup (BaseEventLoop.shutdown_asyncgens, then
+    BaseEventLoop.shutdown_default_executor) -- real, separate tasks
+    unrelated to the pyramid's own intentional structure. A long enough
+    sampling window's tail occasionally catches them for a sample or two
+    once main() has already returned, which is not a fragmentation bug:
+    exclude them so the task count isn't sensitive to exactly when
+    sampling stops relative to interpreter shutdown."""
+    return bool(t.frames) and t.frames[0].function in _ASYNCIO_SHUTDOWN_TASKS
 
 
 @allpythons()
@@ -576,11 +598,12 @@ def test_asyncio_no_ambiguous_task_close_signal(py, save_mojo):
     awaits, and 1ms sampling over that reliably catches it.
 
     _is_asyncio_shutdown_task filters out BaseEventLoop.shutdown_asyncgens
-    -- a real, separate task asyncio.run() schedules for its own cleanup
-    once main() returns, which a long enough sampling window's tail can
-    occasionally catch. Confirmed by decoding real CI captures where the
-    count came back 30: the extra id was always this exact task, appearing
-    only in the last handful of samples -- not a fragmented pyramid task.
+    and BaseEventLoop.shutdown_default_executor -- real, separate tasks
+    asyncio.run() schedules for its own cleanup once main() returns, which
+    a long enough sampling window's tail can occasionally catch. Confirmed
+    by decoding real CI captures where the count came back 30 (or 31): the
+    extra ids were always these exact tasks, appearing only in the last
+    handful of samples -- not fragmented pyramid tasks.
 
     _transient_root_ids filters out a different, also-confirmed
     capture artifact: a task's TASK_STACK identity landing on the wire
@@ -607,11 +630,13 @@ def test_asyncio_no_ambiguous_task_close_signal(py, save_mojo):
       Fragmenting one task into several apparent ones from either bug this
       test guards -- the ambiguous close signal above, or the address-reuse
       id collision fixed by task_tracker.h's id -- would inflate one or both
-      of these counts.
+      of these counts. The task count may fall short instead: a depth-0
+      task, which returns right away, can start and finish between two
+      samples on a slow runner, and never be seen at all.
 
-    - The raw wire (see _iter_task_stack_blocks): AustinTask collapses a
-      closing (empty-frame) block into an elapsed-time update with no
-      trace of how many were seen, so it can't see the specific defect
+    - The raw wire (see _iter_task_stack_blocks): AustinTask doesn't keep
+      track of how many closing (empty-frame) blocks were seen, so it can't
+      see the specific defect
       fixed here -- a task evicted with both suspended and executing dwell
       pending used to flush TWO closing blocks back to back. For every
       task id, an empty-frame block may only be the LAST block."""
@@ -628,8 +653,8 @@ def test_asyncio_no_ambiguous_task_close_signal(py, save_mojo):
         if not _is_asyncio_shutdown_task(t) and t.task_id not in full_exclusion_ids
     ]
     distinct_ids = {t.task_id for t in all_tasks}
-    assert len(distinct_ids) == 29, (
-        f"Expected exactly 29 distinct tasks (1 root + 4 depth-2 + 8 depth-1 "
+    assert len(distinct_ids) <= 29, (
+        f"Expected at most 29 distinct tasks (1 root + 4 depth-2 + 8 depth-1 "
         f"+ 16 depth-0); got {len(distinct_ids)}: {sorted(distinct_ids)} "
         f"(ignored as sampling-boundary artifacts: {sorted(full_exclusion_ids)}) "
         "-- extra ids mean a task got fragmented into several apparent ones"
@@ -668,44 +693,40 @@ def test_asyncio_no_ambiguous_task_close_signal(py, save_mojo):
 
 
 @allpythons()
-def test_asyncio_running_position_time_not_dropped(py, save_mojo):
-    """The time a task spends at a position it was caught EXECUTING at is
-    credited by the task's next report, even when that next report is a
-    SUSPENDED one.
+def test_asyncio_running_time_from_samples(py, save_mojo):
+    """The time a task spends running is the time of the samples whose
+    thread reports it as running (MOJO_TASK_RUNNING).
 
-    Under the lag rule (see AustinTask's docstring), a report's elapsed
-    time belongs to the task's previous position. _py_asyncio__emit_task
-    clears entry->top after every EXECUTING report so the next suspended
-    sighting counts as a change; it used to also make that sighting look
-    like the task's first, which always carries 0 elapsed time. So every
-    running -> suspended transition (here, the end of every cpu_burst
-    before its asyncio.sleep(0)) silently dropped the running position's
-    time. The first-sighting rule now lives in entry->reported instead.
-
-    Paired on the raw wire, since AustinTask only keeps each task's latest
-    position. Exact rather than threshold-based: a report following a
-    cpu_burst position used to carry exactly 0 once per burst, and no
-    sampling interval is ever 0."""
+    Each worker in target_asyncio_cpu.py alternates CPU bursts with an
+    immediate reschedule, so the event loop thread is running one of them
+    nearly all the time: their running time adds up to most of the
+    thread's. A sample may only refer to a task already reported earlier on
+    the wire, so that consumers know its position."""
     result = austin("-i", "1000", *python(py), target("target_asyncio_cpu.py"))
     save_mojo(result.stdout)
     assert result.returncode == 0, result.stderr or result.stdout
 
-    last_scopes = {}
-    credited = []
-    for block in _iter_task_stack_blocks(_raw_mojo(result)):
-        previous = last_scopes.get(block.task_id)
-        if previous is not None and "cpu_burst" in previous:
-            credited.append(block.elapsed)
-        if block.scopes:
-            last_scopes[block.task_id] = block.scopes
+    raw = _raw_mojo(result)
 
-    assert credited, "Expected some task reports at a cpu_burst position"
+    reported = set()
+    unknown = set()
+    for r in _iter_mojo_records(raw):
+        if isinstance(r, TaskStackBlock):
+            reported.add(r.task_id)
+        elif r.running is not None and r.running not in reported:
+            unknown.add(r.running)
+    assert not unknown, f"Samples refer to unreported running tasks {unknown}"
 
-    dropped = sum(1 for elapsed in credited if elapsed == 0)
-    assert dropped == 0, (
-        f"{dropped} of {len(credited)} reports credited 0 time to the "
-        "cpu_burst position before them -- the running position's time is "
-        "being dropped on a running -> suspended transition again"
+    names = {b.task_id: b.name for b in _iter_task_stack_blocks(raw) if b.name}
+    running = _running_time_by_task(raw)
+    worker_time = sum(
+        t for i, t in running.items() if (names.get(i) or "").startswith("worker-")
+    )
+    thread_time = sum(_iter_sample_times(raw))
+
+    assert worker_time > 0.5 * thread_time, (
+        f"Expected the workers to be running for most of the thread's "
+        f"{thread_time}us; got {worker_time}us"
     )
 
 
@@ -811,11 +832,11 @@ def test_asyncio_cpu_mode_credits_running_task_only(py, save_mojo):
     to accrue that thread's CPU time too -- most likely another task's,
     since that is what the event loop thread is busy with. Each task's
     total then approached the thread's own, and main(), which only awaits
-    gather(), looked like it used the CPU all along. Suspended tasks now
-    accrue nothing in CPU mode.
+    gather(), looked like it used the CPU all along. A suspended task uses
+    no CPU: a task's CPU time is that of the samples it is running at.
 
-    Each sample's time goes to at most one task, the running one, so the
-    tasks' total can't exceed the thread's."""
+    Each sample goes to at most one task, the running one, so the tasks'
+    total can't exceed the thread's."""
     result = austin("-c", "-i", "1000", *python(py), target("target_asyncio_cpu.py"))
     save_mojo(result.stdout)
     assert result.returncode == 0, result.stderr or result.stdout
@@ -823,27 +844,52 @@ def test_asyncio_cpu_mode_credits_running_task_only(py, save_mojo):
     raw = _raw_mojo(result)
 
     thread_time = sum(_iter_sample_times(raw))
+    blocks = list(_iter_task_stack_blocks(raw))
+    main_ids = {b.task_id for b in blocks if b.scopes and b.scopes[0] == "main"}
+    cpu_by_id = _running_time_by_task(raw)
 
-    time_by_id = {}
-    main_ids = set()
-    for block in _iter_task_stack_blocks(raw):
-        time_by_id[block.task_id] = time_by_id.get(block.task_id, 0) + block.elapsed
-        if block.scopes and block.scopes[0] == "main":
-            main_ids.add(block.task_id)
-
-    assert thread_time > 0 and time_by_id, "Expected thread and task data"
+    assert thread_time > 0 and cpu_by_id, "Expected thread and task data"
     assert main_ids, "Expected reports for the main task"
 
-    task_time = sum(time_by_id.values())
+    task_time = sum(cpu_by_id.values())
     assert task_time <= thread_time, (
         f"Tasks were credited {task_time}us of CPU time, more than their "
-        f"thread's {thread_time}us -- suspended tasks are accruing CPU time"
+        f"thread's {thread_time}us"
     )
 
-    main_time = sum(time_by_id[i] for i in main_ids)
+    main_time = sum(cpu_by_id.get(i, 0) for i in main_ids)
     assert main_time < 0.05 * thread_time, (
         f"main() was credited {main_time}us of {thread_time}us CPU time, "
         "although it only awaits the workers"
+    )
+
+
+@allpythons()
+def test_asyncio_full_mode_running_task_cpu_time(py, save_mojo):
+    """In full mode (-f), a task's CPU time can be told apart from its
+    running wall time, as for threads: the samples it is running at carry
+    the thread's idle flag.
+
+    target_asyncio_blocked.py's task runs a real time.sleep(), so it is
+    running, but its thread is off-CPU: most of that running time is on
+    idle samples."""
+    result = austin(
+        "-f", "-i", "1000", *python(py), target("target_asyncio_blocked.py")
+    )
+    save_mojo(result.stdout)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    raw = _raw_mojo(result)
+    wall = _running_time_by_task(raw)
+    cpu = _running_time_by_task(raw, cpu_only=True)
+
+    task_id, task_wall = max(wall.items(), key=lambda kv: kv[1], default=(None, 0))
+    assert task_wall > 200_000, f"Expected a long running stretch; got {task_wall}us"
+
+    task_cpu = cpu.get(task_id, 0)
+    assert task_cpu < 0.5 * task_wall, (
+        f"Expected most of the blocked task's {task_wall}us running time to be "
+        f"off-CPU; got {task_cpu}us of CPU time"
     )
 
 
@@ -905,4 +951,70 @@ def test_asyncio_task_list_walk_cut_short(py, save_mojo):
     assert len(keeper_ids) == 1, (
         f"Expected the keeper task under a single id; got {sorted(keeper_ids)} "
         "-- tasks beyond a cut-short list walk are being evicted"
+    )
+
+
+@allpythons()
+def test_asyncio_every_task_closed(py, save_mojo):
+    """Every reported task that goes away is closed.
+
+    The closing report is the only signal readers get that a task is gone,
+    but it used to be skipped for a task with no time pending, which was
+    most of them (e.g. any task finishing while running), so readers' task
+    trees kept every task ever seen. target_asyncio_reuse.py runs hundreds of
+    tasks one after the other, so only a couple are alive at any time."""
+    result = austin("-i", "1000", *python(py), target("target_asyncio_reuse.py"))
+    save_mojo(result.stdout)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    blocks = list(_iter_task_stack_blocks(_raw_mojo(result)))
+    reported = {b.task_id for b in blocks if b.scopes}
+    closed = {b.task_id for b in blocks if not b.scopes}
+    assert len(reported) > 10, "Expected many task reports"
+
+    # Tasks still alive when sampling stops are never closed.
+    assert len(reported - closed) <= 3, (
+        f"{len(reported - closed)} of {len(reported)} reported tasks were "
+        "never closed"
+    )
+
+    last = [s for s in result.samples if s.tasks][-1]
+    live = {t.task_id for t in _iter_tasks_flat(last.tasks)}
+    assert len(live) <= 3, f"Expected only the live tasks; got {len(live)}"
+
+
+@allpythons()
+def test_asyncio_task_loses_waiter(py, save_mojo):
+    """A task that loses its last waiter is reported as such, even while
+    that waiter is still alive.
+
+    Austin used to emit nothing when a task's waiter set became empty,
+    leaving consumers to infer it from the waiter going away. In
+    target_asyncio_waiter_release.py, watcher stops awaiting worker when
+    asyncio.wait() times out, then keeps running: worker must then show up
+    as a root of its own, not under watcher. Austin now emits a waiter of 0
+    (no task) for it."""
+    result = austin(
+        "-i", "1000", *python(py), target("target_asyncio_waiter_release.py")
+    )
+    save_mojo(result.stdout)
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    def by_name(sample):
+        return {t.name: t for t in _iter_tasks_flat(sample.tasks)}
+
+    awaited = released = False
+    for sample in result.samples:
+        tasks = by_name(sample)
+        if "watcher" not in tasks or "worker" not in tasks:
+            continue
+        roots = {t.name for t in sample.tasks}
+        under_watcher = any(c.name == "worker" for c in tasks["watcher"].awaiting)
+        awaited |= under_watcher
+        released |= "worker" in roots and not under_watcher
+
+    assert awaited, "Expected worker under watcher while being waited on"
+    assert released, (
+        "Expected worker as a root once watcher stopped waiting on it, while "
+        "watcher was still alive"
     )

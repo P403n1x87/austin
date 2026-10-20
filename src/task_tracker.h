@@ -64,19 +64,8 @@ typedef struct {
     task_frame_id_t top;       // pre-unwind coroutine frame identity
     uintptr_t       waiter_fp; // cheap fingerprint of task_awaited_by; 0 = no waiters
     unsigned int    last_gen;
-    // Time (same unit as sample_t.time) accrued since this task's last
-    // report, i.e. at the position that report showed. The next report
-    // carries it and resets it (see _py_asyncio__emit_task), whether the
-    // task is then running or suspended. Running samples that can't be
-    // reported (a repeat sample, which has nothing to split against, or a
-    // failed split) keep adding to it, so a long synchronous stretch inside
-    // a coroutine is still credited in full once it ends. In CPU mode it
-    // only grows while the task is running.
-    uint64_t        pending_time;
     // Cached MOJO_TASK_STACK name key from the last successful resolution (0
-    // = never resolved), so that flushing pending_time on eviction (the
-    // task has disappeared from the list, e.g. it completed) never needs to
-    // re-read the TaskObj's name -- by then it may already be freed.
+    // = never resolved).
     uintptr_t       name_key;
     // Remote address of the str name_key was resolved from, so that the
     // name of a live task (which keeps its str alive) isn't re-read every
@@ -153,6 +142,12 @@ void
 task_tracker__renew(task_tracker_t*, task_tracker_entry_t* entry);
 
 /**
+ * Return the existing entry for `task`, or NULL if it isn't tracked.
+ */
+task_tracker_entry_t*
+task_tracker__get(task_tracker_t*, uintptr_t task);
+
+/**
  * Mark the existing entry for `task`, if any, as seen in the current sample
  * generation, without creating one, so task_tracker__collect_stale doesn't
  * evict it. For tasks whose owning thread was skipped this sample (e.g. idle
@@ -166,8 +161,8 @@ task_tracker__keep_alive(task_tracker_t*, uintptr_t task);
  * current sample_gen (i.e. tasks that disappeared from every list walked
  * this sweep) into `out`. Does NOT remove them: a hash table can't be
  * safely mutated while it's being walked. Pair with task_tracker__remove for
- * each entry collected here, once the caller is done reading it (e.g. to flush
- * its accrued dwell time before it's gone).
+ * each entry collected here, once the caller is done reading it (e.g. to close
+ * the task on the wire before it's gone).
  *
  * @return the number of entries collected (never more than `max`).
  */

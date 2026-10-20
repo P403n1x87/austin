@@ -81,9 +81,15 @@ task_tracker__renew(task_tracker_t* self, task_tracker_entry_t* entry) {
 }
 
 // ----------------------------------------------------------------------------
+task_tracker_entry_t*
+task_tracker__get(task_tracker_t* self, uintptr_t task) {
+    return (task_tracker_entry_t*)lookup__get(self->by_task, (key_dt)task);
+}
+
+// ----------------------------------------------------------------------------
 void
 task_tracker__keep_alive(task_tracker_t* self, uintptr_t task) {
-    task_tracker_entry_t* entry = (task_tracker_entry_t*)lookup__get(self->by_task, (key_dt)task);
+    task_tracker_entry_t* entry = task_tracker__get(self, task);
     if (isvalid(entry))
         entry->last_gen = self->sample_gen;
 }

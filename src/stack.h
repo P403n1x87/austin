@@ -130,6 +130,16 @@ task_stack_py_push(raddr_t origin, raddr_t code, int lasti) {
 #define task_stack_is_empty() (_task_stack->pointer == 0)
 #define task_stack_full()     (_task_stack->pointer >= _task_stack->size)
 
+// The number of frames in the task stack, not counting CFRAME_MAGIC markers.
+static inline size_t
+task_stack_frame_count(void) {
+    size_t count = 0;
+    for (ssize_t i = 0; i < _task_stack->pointer; i++)
+        if (_task_stack->base[i] != CFRAME_MAGIC)
+            count++;
+    return count;
+}
+
 #define stack_py_push_cframe() (stack_py_push(CFRAME_MAGIC, NULL, 0))
 #define stack_py_push_repeat() (stack_py_push(PYSTACK_REPEAT_MAGIC, NULL, 0))
 

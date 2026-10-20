@@ -73,8 +73,9 @@ typedef void (*event_handler_new_string_t)(struct _eh*, cached_string_t* string)
 typedef void (*event_handler_new_frame_t)(struct _eh*, void* frame);
 typedef void (*event_handler_stack_end_t)(struct _eh*);
 typedef void (*event_handler_task_stack_begin_t)(struct _eh*, uintptr_t task_id, uintptr_t name_key);
-typedef void (*event_handler_task_stack_end_t)(struct _eh*, uint64_t elapsed);
+typedef void (*event_handler_task_stack_end_t)(struct _eh*);
 typedef void (*event_handler_task_waiter_t)(struct _eh*, uintptr_t task_id, uintptr_t waiter_id);
+typedef void (*event_handler_task_running_t)(struct _eh*, uintptr_t task_id);
 typedef void (*event_handler_destroy_t)(struct _eh*);
 
 typedef struct _ehs {
@@ -88,6 +89,7 @@ typedef struct _ehs {
     event_handler_task_stack_begin_t emit_task_stack_begin;
     event_handler_task_stack_end_t   emit_task_stack_end;
     event_handler_task_waiter_t      emit_task_waiter;
+    event_handler_task_running_t     emit_task_running;
 
     event_handler_destroy_t destroy;
 } event_handler_spec_t;
@@ -167,13 +169,9 @@ event_handler__emit_task_stack_begin(uintptr_t task_id, uintptr_t name_key) {
         handler(event_handler, task_id, name_key);
 }
 
-// elapsed is how long the task's top-level coroutine dwelled at the
-// frame(s) it just left, whether suspended or EXECUTING (see
-// _py_asyncio__emit_task) -- both count the same way. 0 on first sighting.
-//
-// SUSPENDED: one step behind -- frames are the new position, elapsed is the
-// PREVIOUS one. EXECUTING: no such lag -- frames and elapsed both describe
-// this same tick.
+// A task report is the task's new position, and nothing else: the time it
+// spends there is the time of its thread's samples while it holds it (see
+// event_handler__emit_task_running for when it is running).
 //
 // The owning thread's own regular sample is trimmed to stop at this task's
 // boundary frame (see py_thread__split_task_stack_at) so it never also
@@ -181,13 +179,13 @@ event_handler__emit_task_stack_begin(uintptr_t task_id, uintptr_t name_key) {
 // minus children) nets out the overlap once a merged view attaches this
 // task as that frame's child.
 static inline void
-event_handler__emit_task_stack_end(uint64_t elapsed) {
+event_handler__emit_task_stack_end(void) {
     if (!isvalid(event_handler))
         return;
 
     event_handler_task_stack_end_t handler = event_handler->spec.emit_task_stack_end;
     if (isvalid(handler))
-        handler(event_handler, elapsed);
+        handler(event_handler);
 }
 
 static inline void
@@ -198,6 +196,17 @@ event_handler__emit_task_waiter(uintptr_t task_id, uintptr_t waiter_id) {
     event_handler_task_waiter_t handler = event_handler->spec.emit_task_waiter;
     if (isvalid(handler))
         handler(event_handler, task_id, waiter_id);
+}
+
+// The task the current sample's thread is running.
+static inline void
+event_handler__emit_task_running(uintptr_t task_id) {
+    if (!isvalid(event_handler))
+        return;
+
+    event_handler_task_running_t handler = event_handler->spec.emit_task_running;
+    if (isvalid(handler))
+        handler(event_handler, task_id);
 }
 
 static inline void
