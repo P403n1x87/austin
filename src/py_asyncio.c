@@ -667,16 +667,9 @@ _py_asyncio__walk_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_h
 // ----------------------------------------------------------------------------
 void
 py_asyncio__scan_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr) {
-    if (isvalid(thread)) {
-        // One read per thread tells which of its tasks is running. If it
-        // fails, every task is treated as suspended for this sample.
-        raddr_t running_task_addr
-            = (raddr_t)((char*)thread->addr + self->asyncio_offsets.asyncio_thread_state.asyncio_running_task);
-        thread->asyncio_task = NULL;
-        if (fail(copy_datatype(self->ref, running_task_addr, thread->asyncio_task))) // GCOV_EXCL_LINE
-            thread->asyncio_task = NULL;                                             // GCOV_EXCL_LINE
-    }
-
+    // thread->asyncio_task, which of its tasks it is running, was read along
+    // with its stack (see py_thread__read_with_stack_remote). NULL if that
+    // read failed: every task is then treated as suspended for this sample.
     _py_asyncio__walk_task_list(self, thread, list_head_addr, _py_asyncio__emit_task);
 
     // After the thread's task reports, so that the running task's latest

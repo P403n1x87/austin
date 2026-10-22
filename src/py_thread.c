@@ -560,6 +560,24 @@ _py_thread__load_stack(py_thread_t* self) {
 }
 
 // ----------------------------------------------------------------------------
+// The asyncio task the thread is running, read right next to its stack: the
+// target keeps running while it is sampled, so reading it any later (e.g. at
+// task-scan time) can catch a different task than the one the stack shows,
+// whose frames would then be split off for the wrong task (see
+// py_asyncio__scan_task_list). It can still happen, just much more rarely.
+static inline void
+_py_thread__read_asyncio_task(py_thread_t* self) {
+    py_proc_t* proc    = self->proc;
+    self->asyncio_task = NULL;
+    if (!proc->asyncio_debug_found)
+        return;
+
+    raddr_t addr = (raddr_t)((char*)self->addr + proc->asyncio_offsets.asyncio_thread_state.asyncio_running_task);
+    if (fail(copy_datatype(proc->ref, addr, self->asyncio_task))) // GCOV_EXCL_LINE
+        self->asyncio_task = NULL;                                // GCOV_EXCL_LINE
+}
+
+// ----------------------------------------------------------------------------
 // Read the thread state and immediately perform the top-frame cache check.
 // Sets self->is_repeat; if not a repeat, loads the stack chunk right away to
 // minimise the window between the thread-state read and the frame data read.
@@ -575,8 +593,10 @@ py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr, thread_tracke
 
     self->is_repeat = false;
 
-    if (!isvalid(tracker))
+    if (!isvalid(tracker)) {
+        _py_thread__read_asyncio_task(self);
         SUCCESS;
+    }
 
     thread_tracker_entry_t* entry = thread_tracker__get_or_create(tracker, self->tid);
     if (!isvalid(entry))
@@ -606,6 +626,7 @@ py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr, thread_tracke
         if (entry->top.frame == self->top_frame && top_lasti == entry->top.lasti
             && (V_MIN(3, 11) || top_code == entry->top.code)) {
             self->is_repeat = true;
+            _py_thread__read_asyncio_task(self);
             SUCCESS;
         }
     }
@@ -614,6 +635,7 @@ py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr, thread_tracke
     self->prev_top = entry->top;
 
     _py_thread__load_stack(self);
+    _py_thread__read_asyncio_task(self);
 
     entry->top = (py_frame_id_t){self->top_frame, top_code, top_lasti};
 
