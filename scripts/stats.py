@@ -4,12 +4,9 @@ from io import BytesIO
 from itertools import chain
 
 import numpy as np
-from austin.format.mojo import MojoFrameReference
-from austin.format.mojo import MojoMetric
-from austin.format.mojo import MojoMetricType
-from austin.format.mojo import MojoStreamReader
-from austin.format.mojo import MojoTaskStack
+from austin.events import AustinFrame
 from austin.events import AustinSample
+from austin.format.mojo import MojoStreamReader
 from scipy.stats import f
 
 Stack = tuple[str, float]  # (stack frames, metric)
@@ -69,65 +66,39 @@ class AustinFlameGraph(dict):
 
     @classmethod
     def from_mojo(cls, data: bytes) -> "AustinFlameGraph":
+        # Thread samples, plus task time: every task report's time goes to the
+        # task's previous position, whose frames it carries, and every sample
+        # its thread was running a task at goes to that task's latest frames
+        # too. The reader works report times out from the samples, and counts
+        # each report once.
         fg = cls()
+        latest: t.Dict[int, str] = {}
+
+        def stack(frames: t.Iterable[AustinFrame]) -> str:
+            return ";".join(
+                _serialize(
+                    f.filename, f.function, f.line, f.line_end, f.column, f.column_end
+                )
+                for f in frames
+            )
 
         for e in MojoStreamReader(BytesIO(data)):
-            if isinstance(e, AustinSample) and e.frames:
-                fg += cls(
-                    {
-                        ";".join(
-                            _serialize(
-                                f.filename,
-                                f.function,
-                                f.line,
-                                f.line_end,
-                                f.column,
-                                f.column_end,
-                            )
-                            for f in e.frames
-                        ): e.metrics.time
-                    }
-                )
-
-        return fg + cls._task_stacks(data)
-
-    @classmethod
-    def _task_stacks(cls, data: bytes) -> "AustinFlameGraph":
-        # Every task report counted once. AustinSample.tasks won't do: it is a
-        # snapshot of every task known at that sample, so the same report
-        # would be counted again at every sample that follows. A report's time
-        # is how long the task spent at its previous position, so it goes to
-        # the frames of the task's previous report: a task's first report has
-        # nothing to credit, and one with no frames closes the task.
-        fg = cls()
-        last: t.Dict[int, str] = {}
-        task_id: t.Optional[int] = None
-        frames: t.List[str] = []
-
-        for e in MojoStreamReader(BytesIO(data)).parse():
-            if isinstance(e, MojoTaskStack):
-                task_id, frames = e.task_id, []
-            elif task_id is None:
+            if not isinstance(e, AustinSample):
                 continue
-            elif isinstance(e, MojoFrameReference):
-                f = e.frame
-                frames.append(
-                    _serialize(
-                        f.filename.value,
-                        f.scope.value,
-                        f.line,
-                        f.line_end,
-                        f.column,
-                        f.column_end,
-                    )
-                )
-            elif isinstance(e, MojoMetric) and e.metric_type == MojoMetricType.TIME:
-                previous = last.pop(task_id, None)
-                if previous is not None and e.value:
-                    fg += cls({previous: e.value})
-                if frames:
-                    last[task_id] = "TASK;" + ";".join(frames)
-                task_id = None
+
+            if e.frames:
+                fg += cls({stack(e.frames): e.metrics.time})
+
+            for report in e.task_reports:
+                if report.previous and report.elapsed:
+                    fg += cls({"TASK;" + stack(report.previous): report.elapsed})
+                if report.frames:
+                    latest[report.task_id] = "TASK;" + stack(report.frames)
+                else:
+                    latest.pop(report.task_id, None)
+
+            if e.running_task in latest and e.metrics.time:
+                fg += cls({latest[t.cast(int, e.running_task)]: e.metrics.time})
 
         return fg
 

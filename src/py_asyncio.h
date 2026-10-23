@@ -109,13 +109,13 @@ py_asyncio__scan_tasks_begin(py_proc_t* self);
  * @param list_head_addr the remote address of the list's llist_node
  *                       sentinel (see py_asyncio__interp_task_list_head/
  *                       py_asyncio__thread_task_list_head below).
- * @param time_delta     elapsed time since the previous sample; credited to
- *                       a task's time at its position, suspended or (thread
- *                       non-NULL) running alike, except that in CPU mode
- *                       only the running task accrues it.
+ *
+ * Reports carry positions only. The time a task spends at one is the time of
+ * its thread's samples while it holds it; the running task, if any, is
+ * reported after the list has been walked (MOJO_TASK_RUNNING).
  */
 void
-py_asyncio__scan_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr, microseconds_t time_delta);
+py_asyncio__scan_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr);
 
 /**
  * Keep the tasks on one asyncio task list alive without scanning them.
@@ -140,9 +140,8 @@ py_asyncio__keep_task_list_alive(py_proc_t* self, raddr_t list_head_addr);
  * otherwise removed from the interpreter's task population). Skipped if a
  * list walk was cut short, since the tasks it didn't reach weren't seen
  * either. Before
- * dropping one, flushes whatever dwell time it had accrued at its last
- * known frame as a closing metric with an empty frame sequence, so that
- * time isn't silently lost; a task with nothing accrued is just dropped.
+ * dropping one that was reported, closes it with an empty frame sequence:
+ * that is how readers learn it is gone.
  *
  * @param self the process object.
  */

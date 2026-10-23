@@ -48,6 +48,7 @@ enum {
     MOJO_STACK_REPEAT,
     MOJO_TASK_STACK,
     MOJO_TASK_WAITER,
+    MOJO_TASK_RUNNING,
     MOJO_MAX,
 };
 
@@ -182,10 +183,11 @@ mojo_integer(mojo_int_t integer, int sign) {
 // cached) name (0 if unresolved, and always 0 on a closing flush). Its owning
 // thread is implicit in wire position, bracketed between the MOJO_STACK it
 // followed and the next one.
-#define mojo_task_stack(task_id, name_key) \
-    mojo_event(MOJO_TASK_STACK);           \
-    mojo_ref(task_id);                     \
-    mojo_ref(name_key);
+#define mojo_task_stack(task_id, name_key, frame_count) \
+    mojo_event(MOJO_TASK_STACK);                        \
+    mojo_ref(task_id);                                  \
+    mojo_ref(name_key);                                 \
+    mojo_integer(frame_count, 0);
 
 // One edge of a task's waiter DAG: task_id is being awaited by waiter_id.
 // Emitted once per direct waiter, for every live task that has at least one
@@ -195,6 +197,13 @@ mojo_integer(mojo_int_t integer, int sign) {
     mojo_event(MOJO_TASK_WAITER);            \
     mojo_ref(task_id);                       \
     mojo_ref(waiter_id);
+
+// The task the enclosing sample's thread is running at this sample, as a task
+// id (see MOJO_TASK_STACK). The sample's metrics belong to that task too, at
+// its latest reported position.
+#define mojo_task_running(task_id) \
+    mojo_event(MOJO_TASK_RUNNING); \
+    mojo_ref(task_id);
 
 // Emit the metric tail shared by MOJO_STACK and MOJO_STACK_REPEAT.
 // Assumes pargs is in scope (always true inside the sampler/event handlers).

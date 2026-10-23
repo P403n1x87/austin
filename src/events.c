@@ -149,30 +149,27 @@ mojo_event_handler__handle_stack_end(base_event_handler_t* self) {
 }
 
 // ----------------------------------------------------------------------------
-// Suspended-task introspection (3.14+ asyncio): fires only when a task's
-// coroutine frame has changed since the last scan, emitting a pure Python
-// frame sequence (no GC/idle flags, no native-frame interleaving)
-// terminated by a single MOJO_METRIC_TIME. That metric is always a time
-// value, skipped entirely in pure memory mode, and describes the task's
-// PREVIOUS suspension point, not the frames in this same record.
+// Asyncio task reports (3.14+): fire only when a task's position has changed
+// since the last scan, emitting a pure Python frame sequence (no GC/idle
+// flags, no native-frame interleaving), delimited by the frame count in its
+// header. No metric: the time a task spends at a position is the time of its
+// thread's samples while it holds it.
 
 static inline void
 mojo_event_handler__handle_task_stack_begin(base_event_handler_t* self, uintptr_t task_id, uintptr_t name_key) {
-    mojo_task_stack(task_id, name_key);
+    // The frame count delimits the report: its frame references are the next
+    // that many, and the thread's own follow.
+    mojo_task_stack(task_id, name_key, task_stack_frame_count());
 }
 
 static inline void
-mojo_event_handler__handle_task_stack_end(base_event_handler_t* self, uint64_t elapsed) {
+mojo_event_handler__handle_task_stack_end(base_event_handler_t* self) {
     while (!task_stack_is_empty()) {
         frame_t* frame = task_stack_pop();
         if (frame != CFRAME_MAGIC) {
             mojo_frame_ref(frame);
         }
     }
-
-    // There is no memory profiling support for asyncio tasks.
-    if (!pargs.memory || pargs.full)
-        mojo_metric_time(elapsed);
 
     _mojo_flush();
 
@@ -183,6 +180,11 @@ mojo_event_handler__handle_task_stack_end(base_event_handler_t* self, uint64_t e
 static inline void
 mojo_event_handler__handle_task_waiter(base_event_handler_t* self, uintptr_t task_id, uintptr_t waiter_id) {
     mojo_task_waiter(task_id, waiter_id);
+}
+
+static inline void
+mojo_event_handler__handle_task_running(base_event_handler_t* self, uintptr_t task_id) {
+    mojo_task_running(task_id);
 }
 
 event_handler_t*
@@ -202,6 +204,7 @@ mojo_event_handler_new(void) {
     handler->spec.emit_task_stack_begin = (event_handler_task_stack_begin_t)mojo_event_handler__handle_task_stack_begin;
     handler->spec.emit_task_stack_end   = (event_handler_task_stack_end_t)mojo_event_handler__handle_task_stack_end;
     handler->spec.emit_task_waiter      = (event_handler_task_waiter_t)mojo_event_handler__handle_task_waiter;
+    handler->spec.emit_task_running     = (event_handler_task_running_t)mojo_event_handler__handle_task_running;
 
     mojo_header();
 
@@ -352,9 +355,7 @@ where_event_handler__handle_task_stack_begin(where_event_handler_t* self, uintpt
 
 // ----------------------------------------------------------------------------
 static void
-where_event_handler__handle_task_stack_end(where_event_handler_t* self, uint64_t elapsed) {
-    (void)elapsed; // the tree shows structure, not timing -- matches CPython's own pstree
-
+where_event_handler__handle_task_stack_end(where_event_handler_t* self) {
     where_task_t* task = self->has_current_task ? &self->tasks[self->current_task] : NULL;
 
     while (!task_stack_is_empty()) {
@@ -373,6 +374,16 @@ where_event_handler__handle_task_stack_end(where_event_handler_t* self, uint64_t
 // ----------------------------------------------------------------------------
 static void
 where_event_handler__handle_task_waiter(where_event_handler_t* self, uintptr_t task_id, uintptr_t waiter_id) {
+    // A waiter of 0 means the task has no waiters (any more): drop its edges.
+    if (waiter_id == 0) {
+        size_t kept = 0;
+        for (size_t i = 0; i < self->n_edges; i++)
+            if (self->edges[i].task_id != task_id)
+                self->edges[kept++] = self->edges[i];
+        self->n_edges = kept;
+        return;
+    }
+
     if (self->n_edges >= WHERE_MAX_TASK_EDGES) // GCOV_EXCL_LINE
         return; // best-effort: an over-cap edge just won't show as a branch later -- GCOV_EXCL_LINE
 

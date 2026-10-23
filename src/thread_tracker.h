@@ -63,6 +63,7 @@ typedef struct {
     unsigned int        last_gen;
     char                name[128];
     thread_name_state_t name_state;
+    uintptr_t           running_task; // asyncio task id reported running at its last sample (0 = none)
 } thread_tracker_entry_t;
 
 typedef struct {
