@@ -33,6 +33,7 @@ from test.utils import retry_where
 from test.utils import run_python
 from test.utils import target
 
+import pytest
 from flaky import flaky
 
 # Every test in this module is asyncio task-graph introspection, 3.14+ only.
@@ -973,10 +974,9 @@ def test_asyncio_every_task_closed(py, save_mojo):
     assert len(reported) > 10, "Expected many task reports"
 
     # Tasks still alive when sampling stops are never closed.
-    assert len(reported - closed) <= 3, (
-        f"{len(reported - closed)} of {len(reported)} reported tasks were "
-        "never closed"
-    )
+    assert (
+        len(reported - closed) <= 3
+    ), f"{len(reported - closed)} of {len(reported)} reported tasks were never closed"
 
     last = [s for s in result.samples if s.tasks][-1]
     live = {t.task_id for t in _iter_tasks_flat(last.tasks)}
@@ -1017,4 +1017,52 @@ def test_asyncio_task_loses_waiter(py, save_mojo):
     assert released, (
         "Expected worker as a root once watcher stopped waiting on it, while "
         "watcher was still alive"
+    )
+
+
+@allpythons()
+@pytest.mark.parametrize("mode", [[], ["-c"]], ids=["wall", "cpu"])
+def test_asyncio_running_task_consistent(py, mode, save_mojo):
+    """A sample's running task is a live task readers know of, and its frames
+    are not also in the thread's own stack.
+
+    The target keeps running while it is sampled, so the running task read
+    with a thread's stack can be gone by the time its task list is walked,
+    and the stack can show another task than the one it reads as running.
+    Austin used to report the task as running regardless: a task already
+    closed, or one whose frames the thread's stack still had, so that
+    consumers would count them twice. It now only does so when the task's
+    frames were split off the sample's stack, or the sample repeats one where
+    they were. Sampling target_asyncio_cpu.py as fast as possible maximises
+    the chances to hit these races."""
+    result = austin("-i", "100", *mode, *python(py), target("target_asyncio_cpu.py"))
+    save_mojo(result.stdout, suffix=mode[0][1:] if mode else "wall")
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    latest = {}
+    unknown = doubled = running = 0
+    for sample in result.samples:
+        for report in sample.task_reports:
+            if report.frames:
+                latest[report.task_id] = report.frames
+            else:
+                latest.pop(report.task_id, None)
+
+        if sample.running_task is None:
+            continue
+        running += 1
+
+        frames = latest.get(sample.running_task)
+        if frames is None:
+            unknown += 1
+        elif sample.frames and any(
+            f.function == frames[0].function for f in sample.frames
+        ):
+            doubled += 1
+
+    assert running, "Expected samples with a running task"
+    assert unknown == 0, f"{unknown} samples refer to a running task readers don't know"
+    assert doubled == 0, (
+        f"{doubled} samples have their running task's frames in the thread's "
+        "own stack too"
     )

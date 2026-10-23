@@ -538,7 +538,8 @@ _py_asyncio__emit_task(py_proc_t* self, py_thread_t* thread, raddr_t task_addr) 
                     // same rule as the suspended branch below.
                     event_handler__emit_task_stack_begin(task_id, entry->name_key);
                     event_handler__emit_task_stack_end();
-                    entry->reported = true;
+                    entry->reported            = true;
+                    thread->asyncio_task_split = true;
                 }
             }
 
@@ -665,23 +666,48 @@ _py_asyncio__walk_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_h
 } // _py_asyncio__walk_task_list
 
 // ----------------------------------------------------------------------------
+// Report the task the thread is running at this sample, after its task reports
+// so that the task's latest position is on the wire before this refers to it.
+// The sample's time is then the task's too, at that position, and its frames
+// follow the thread's: that only holds if they were split off this sample's
+// stack, or if the sample repeats one where they were. Otherwise (e.g. a split
+// failed, the task wasn't found in its list, or hasn't been reported yet), the
+// sample's time stays the thread's alone. The target keeps running while it is
+// sampled, so the task read with the stack can be gone by the time its list is
+// walked, or the stack can show another task.
+static void
+_py_asyncio__emit_running_task(py_proc_t* self, py_thread_t* thread) {
+    thread_tracker_entry_t* tentry = thread_tracker__get_or_create(self->thread_tracker, thread->tid);
+    uintptr_t               id     = 0;
+
+    if (isvalid(thread->asyncio_task)) {
+        task_tracker_entry_t* entry = task_tracker__get(self->task_tracker, (uintptr_t)thread->asyncio_task);
+        if (isvalid(entry) && entry->reported && entry->last_gen == self->task_tracker->sample_gen) {
+            uintptr_t task_id = _py_asyncio__entry_id(entry);
+            if (thread->asyncio_task_split || (thread->is_repeat && isvalid(tentry) && tentry->running_task == task_id))
+                id = task_id;
+        }
+    }
+
+    if (id)
+        event_handler__emit_task_running(id);
+
+    if (isvalid(tentry))
+        tentry->running_task = id;
+} // _py_asyncio__emit_running_task
+
+// ----------------------------------------------------------------------------
 void
 py_asyncio__scan_task_list(py_proc_t* self, py_thread_t* thread, raddr_t list_head_addr) {
     // thread->asyncio_task, which of its tasks it is running, was read along
     // with its stack (see py_thread__read_with_stack_remote). NULL if that
     // read failed: every task is then treated as suspended for this sample.
+    if (isvalid(thread))
+        thread->asyncio_task_split = false;
     _py_asyncio__walk_task_list(self, thread, list_head_addr, _py_asyncio__emit_task);
 
-    // After the thread's task reports, so that the running task's latest
-    // position is on the wire before this refers to it. Only a task that has
-    // been reported can be referred to: one first seen on a repeat sample, or
-    // whose split failed, has no position yet, so the sample's time stays the
-    // thread's alone.
-    if (isvalid(thread) && isvalid(thread->asyncio_task)) {
-        task_tracker_entry_t* entry = task_tracker__get(self->task_tracker, (uintptr_t)thread->asyncio_task);
-        if (isvalid(entry) && entry->reported)
-            event_handler__emit_task_running(_py_asyncio__entry_id(entry));
-    }
+    if (isvalid(thread))
+        _py_asyncio__emit_running_task(self, thread);
 } // py_asyncio__scan_task_list
 
 // ----------------------------------------------------------------------------

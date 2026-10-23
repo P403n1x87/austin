@@ -389,7 +389,7 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
 
         // Up-stack optimisation: repeat the previous stack if the next frame
         // matches the previous sample's top frame. Only for non-native samples.
-        if (!pargs_native && isvalid(prev) && prev == self->prev_top.frame) {
+        if (!pargs_native && !isvalid(self->asyncio_task) && isvalid(prev) && prev == self->prev_top.frame) {
             PyFrameObject fr;
             if (success(copy_py(self->proc->ref, prev, py_frame, fr))
                 && (uintptr_t)(unsigned int)V_FIELD(int, fr, py_frame, o_lasti) == self->prev_top.lasti) {
@@ -428,8 +428,11 @@ _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
         }
 
         // Up-stack optimisation: repeat the previous stack if a frame matches
-        // the previous sample's top frame. Only for non-native samples.
-        if (!pargs_native && isvalid(curr) && curr == self->prev_top.frame) {
+        // the previous sample's top frame. Only for non-native samples, and
+        // not while the thread runs an asyncio task: its frames must be split
+        // off (see py_asyncio__scan_task_list), which can't be done if they
+        // are in the part of the stack this would repeat.
+        if (!pargs_native && !isvalid(self->asyncio_task) && isvalid(curr) && curr == self->prev_top.frame) {
             uintptr_t lasti = LASTI_UNSET;
             void*     local = stack_chunk__resolve(self->stack, curr);
             if (isvalid(local)) {
