@@ -19,17 +19,17 @@ jobs:
     outputs:
       matrix: ${{ steps.groups.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       # Install the free-threaded build first so that python3.13 resolves to
       # the default (GIL) build. See the comment in the benchmark job below.
       - name: Install free-threaded Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13t"
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -55,7 +55,7 @@ jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           path: austin
 
@@ -67,7 +67,7 @@ jobs:
           sudo apt-get update
           sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev zlib1g-dev libzstd-dev
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           path: austin-base
@@ -94,7 +94,7 @@ jobs:
           cp austin-base/src/austin dist/austin-base
           cp austin/src/austin       dist/austin
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: austin-binaries
           path: dist/
@@ -103,11 +103,11 @@ jobs:
   build-win:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           path: austin
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           path: austin-base
@@ -135,7 +135,7 @@ jobs:
             cp austin-base/src/austin.exe dist/austin-base.exe
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: austin-binaries-win
           path: dist/
@@ -144,11 +144,11 @@ jobs:
   build-mac:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           path: austin
 
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.base.ref }}
           path: austin-base
@@ -173,7 +173,7 @@ jobs:
             cp austin-base/src/austin dist/austin-base
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: austin-binaries-mac
           path: dist/
@@ -187,7 +187,7 @@ jobs:
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           path: austin
 
@@ -202,16 +202,16 @@ jobs:
       # free-threaded bin/ directory and is still found there. The benchmark
       # script looks up the free-threaded interpreter explicitly as python3.13t.
       - name: Install free-threaded Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13t"
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: austin-binaries
           path: dist/
@@ -250,7 +250,7 @@ jobs:
             > ../results-${{ matrix.name }}.json
           cd -
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bench-results-${{ matrix.name }}
           path: results-${{ matrix.name }}.json
@@ -261,16 +261,16 @@ jobs:
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           path: austin
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: austin-binaries-win
           path: dist/
@@ -306,7 +306,7 @@ jobs:
             > ../results-native-wall-time-win.json
           cd -
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bench-results-native-wall-time-win
           path: results-native-wall-time-win.json
@@ -317,16 +317,16 @@ jobs:
     runs-on: macos-15
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           path: austin
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: austin-binaries-mac
           path: dist/
@@ -366,7 +366,7 @@ jobs:
             > ../results-native-wall-time-mac.json
           cd -
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bench-results-native-wall-time-mac
           path: results-native-wall-time-mac.json
@@ -377,16 +377,16 @@ jobs:
     if: always() && needs.benchmark.result != 'cancelled'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           path: austin
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: bench-results-*
           path: results/
@@ -425,7 +425,7 @@ jobs:
           cd -
 
       - name: Post results on PR
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
         with:
           header: benchmarks
           path: ${{ github.workspace }}/comment.txt

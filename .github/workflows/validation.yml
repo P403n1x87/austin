@@ -38,30 +38,30 @@ jobs:
     steps:
       - name: Install Python (standard)
         if: ${{ !endsWith(matrix.python-version, 't') }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}-dev
 
       - name: Install Python (free-threaded)
         if: ${{ endsWith(matrix.python-version, 't') }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
       - name: Check out the base branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.base_ref }}
           path: austin-base
 
       - name: Check out the PR branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           path: austin
 
@@ -124,7 +124,7 @@ jobs:
         if: always()
 
       - name: Upload profiles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: data-validation-profiles-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
           path: "austin/*.mojo"
@@ -132,7 +132,7 @@ jobs:
         if: always()
 
       - name: Upload data validation results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: data-validation-results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
           path: "austin/results*.txt"
@@ -156,30 +156,30 @@ jobs:
     steps:
       - name: Install Python (standard)
         if: ${{ !endsWith(matrix.python-version, 't') }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}-dev
 
       - name: Install Python (free-threaded)
         if: ${{ endsWith(matrix.python-version, 't') }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
       - name: Check out the base branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.base_ref }}
           path: austin-base
 
       - name: Check out the PR branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           path: austin
 
@@ -229,7 +229,7 @@ jobs:
         if: always()
 
       - name: Upload profiles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: data-validation-profiles-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
           path: "austin/*.mojo"
@@ -237,7 +237,7 @@ jobs:
         if: always()
 
       - name: Upload data validation results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: data-validation-results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
           path: "austin/results*.txt"
@@ -261,30 +261,30 @@ jobs:
     steps:
       - name: Install Python (standard)
         if: ${{ !endsWith(matrix.python-version, 't') }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}-dev
 
       - name: Install Python (free-threaded)
         if: ${{ endsWith(matrix.python-version, 't') }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
       - name: Check out the base branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.base_ref }}
           path: austin-base
 
       - name: Check out the PR branch
-        uses: actions/checkout@v3
+        uses: actions/checkout@v7
         with:
           path: austin
 
@@ -334,7 +334,7 @@ jobs:
         if: always()
 
       - name: Upload profiles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: data-validation-profiles-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
           path: "austin/*.mojo"
@@ -342,7 +342,7 @@ jobs:
         if: always()
 
       - name: Upload data validation results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: data-validation-results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
           path: "austin/results*.txt"
@@ -358,10 +358,10 @@ jobs:
     name: Data validation report
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Download data validation results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: data-validation-results-*
           merge-multiple: true
@@ -371,13 +371,13 @@ jobs:
         run: python3 scripts/validation.py --merge results-*.txt --output validation.txt
 
       - name: Post results on PR
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
         with:
           header: validation
           path: validation.txt
 
       - name: Download crash reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           pattern: crash-reports-validation-*
@@ -419,14 +419,14 @@ jobs:
 
       - name: Post crash report on PR
         if: steps.crash.outputs.found == 'true'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
         with:
           header: validation-crash-report
           path: crash-comment.md
 
       - name: Clear stale crash comment
         if: steps.crash.outputs.found == 'false'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
         with:
           header: validation-crash-report
           delete: true
