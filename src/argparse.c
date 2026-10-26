@@ -38,8 +38,15 @@
 #include "hints.h"
 #include "platform.h"
 
+#ifdef AUSTINP
+#define DEFAULT_SAMPLING_INTERVAL 10000 // reduces impact on tracee
+#else
 #define DEFAULT_SAMPLING_INTERVAL 100
-#define DEFAULT_INIT_TIMEOUT_MS   3000 // 3 second
+#endif
+#define DEFAULT_INIT_TIMEOUT_MS 3000 // 3 second
+
+#define _STR(x) #x
+#define STR(x)  _STR(x)
 
 // Globals for command line arguments
 parsed_args_t pargs = {
@@ -185,7 +192,7 @@ static arg_option options[] = {
   },
   {
     "interval",  'i', "n_us",  0,
-    "Sampling interval in microseconds (default is 100). Accepted units: s, ms, us."
+    "Sampling interval in microseconds (default is " STR(DEFAULT_SAMPLING_INTERVAL) "). Accepted units: s, ms, us."
   },
 #ifdef AUSTINP
   {
