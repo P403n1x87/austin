@@ -14,6 +14,7 @@ on:
       - scripts/build-in-musllinux.sh
       - scripts/build-wheel.py
       - scripts/requirements-bw.txt
+      - test/__init__.py
       - src/**
       - configure.ac
       - Makefile.am
@@ -261,7 +262,6 @@ jobs:
           python scripts/build-wheel.py \
             --version=${{ steps.tag.outputs.version }} \
             --platform=${{ steps.tag.outputs.platform }} \
-            --no-free-threaded \
             --files austin:src/austin
           deactivate
 

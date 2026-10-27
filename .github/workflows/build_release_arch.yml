@@ -17,6 +17,7 @@ on:
       - scripts/build-in-musllinux.sh
       - scripts/build-wheel.py
       - scripts/requirements-bw.txt
+      - test/__init__.py
       - src/**
       - configure.ac
       - Makefile.am
@@ -109,11 +110,9 @@ jobs:
           pip install --upgrade pip
           pip install -r scripts/requirements-bw.txt
 
-          # FT Python has no official builds for armv7/ppc64le.
           python scripts/build-wheel.py \
             --version=${{ steps.tag.outputs.version }} \
             --platform=${{ steps.tag.outputs.platform }} \
-            --no-free-threaded \
             --files austin:src/austin austinp:src/austinp
 
           deactivate
@@ -194,7 +193,6 @@ jobs:
           python scripts/build-wheel.py \
             --version=${{ steps.tag.outputs.version }} \
             --platform=${{ steps.tag.outputs.platform }} \
-            --no-free-threaded \
             --files austin:src/austin
 
           deactivate

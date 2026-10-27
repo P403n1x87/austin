@@ -2,17 +2,17 @@ from argparse import ArgumentParser
 from io import BytesIO, StringIO
 import json
 from pathlib import Path
+import sys
 import tarfile
 from urllib.error import HTTPError
 from urllib.request import urlopen
 from wheel.wheelfile import WheelFile
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 
-# Free-threaded CPython ABI tags to include alongside the generic py3 tag.
-# Each entry produces an additional Tag: line in the wheel metadata and a
-# dotted component in the wheel filename, making pip prefer this wheel for
-# free-threaded Python environments without requiring a separate upload.
-FT_PYTHON_TAGS = ["cp313t", "cp314t"]
+# Make the repository root take precedence over the standard library test
+# package, so that the supported Python versions come from our test suite.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from test import PY3_EARLIEST, PY3_LATEST  # noqa: E402
 
 METADATA = {
     "Summary": "Austin - Frame Stack Sampler for CPython",
@@ -22,11 +22,11 @@ METADATA = {
         "Development Status :: 5 - Production/Stable",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-        "Programming Language :: Python :: 3.13",
-        "Programming Language :: Python :: 3.14",
+        *(
+            f"Programming Language :: Python :: 3.{minor}"
+            for minor in range(PY3_EARLIEST, PY3_LATEST + 1)
+        ),
+        "Programming Language :: Python :: Free Threading :: 3 - Stable",
     ],
     "Project-URL": [
         "Homepage, https://github.com/P403n1x87/austin",
@@ -94,18 +94,12 @@ def make_message(headers, payload=None):
     return message.getvalue().encode("utf-8")
 
 
-def write_austin_wheel(
-    out_dir, *, version, platform, austin_bin_data, free_threaded=True
-):
+def write_austin_wheel(out_dir, *, version, platform, austin_bin_data):
     package_name = "austin-dist"
-    # All Python version tags covered by this wheel: the generic py3 tag plus,
-    # on platforms that ship free-threaded CPython builds, explicit FT tags.
-    # The filename uses them dotted; the WHEEL metadata lists a Tag: line for
-    # every (python, abi, platform) combination.
-    python_tags = ["py3"] + (FT_PYTHON_TAGS if free_threaded else [])
-    python_filename = ".".join(python_tags)
+    # The wheel only ships executables, so the generic py3-none tag makes it
+    # installable by any CPython interpreter, free-threaded builds included.
     dist_name = package_name.replace("-", "_")
-    wheel_name = f"{dist_name}-{version}-{python_filename}-none-{platform}.whl"
+    wheel_name = f"{dist_name}-{version}-py3-none-{platform}.whl"
     dist_info = f"{dist_name}-{version}.dist-info"
     wheel_path = out_dir / wheel_name
 
@@ -137,11 +131,7 @@ def write_austin_wheel(
             "Wheel-Version": "1.0",
             "Generator": "austin-dist build-wheel.py",
             "Root-Is-Purelib": "false",
-            # One Tag: entry per (python_tag, platform) combination so that pip
-            # resolves this wheel for both GIL and free-threaded environments.
-            "Tag": [
-                f"{py}-none-{p}" for py in python_tags for p in platform.split(".")
-            ],
+            "Tag": [f"py3-none-{p}" for p in platform.split(".")],
         }
     )
 
@@ -211,21 +201,12 @@ if __name__ == "__main__":
         default=None,
     )
 
-    argp.add_argument(
-        "--no-free-threaded",
-        help="Omit free-threaded Python tags (use for platforms without FT builds, e.g. musllinux)",
-        action="store_true",
-        default=False,
-    )
-
     args = argp.parse_args()
 
     version = args.version or get_latest_release()
 
     dist_dir = Path.cwd() / "dist"
     dist_dir.mkdir(exist_ok=True)
-
-    free_threaded = not args.no_free_threaded
 
     if args.files is not None:
         if args.platform is None:
@@ -239,7 +220,6 @@ if __name__ == "__main__":
                 (file_name, Path(bin_path).read_bytes())
                 for file_name, bin_path in (file.split(":") for file in args.files)
             ],
-            free_threaded=free_threaded,
         )
     else:
         if args.platform is None:
@@ -254,5 +234,4 @@ if __name__ == "__main__":
                 download_release(version, suffix, variant_name=variant)
                 for variant in variants
             ],
-            free_threaded=free_threaded,
         )
