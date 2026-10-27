@@ -1,22 +1,45 @@
-name: Publish Austin Docker image
+name: Docker image
 on:
   release:
     types: [published]
+  pull_request:
+    paths:
+      - .github/workflows/docker.yml
+      - Dockerfile
+      - src/**
+      - configure.ac
+      - Makefile.am
+
+concurrency:
+  group: docker-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
 
 jobs:
-  push_to_registry:
-    name: Push Docker image to Docker Hub
+  docker:
+    name: Build${{ github.event_name == 'release' && ' and push' || '' }} Docker image
     runs-on: ubuntu-24.04
     steps:
       - name: Check out the repo
         uses: actions/checkout@v3
-      - name: Push to Docker Hub
-        uses: docker/build-push-action@v1
+
+      - name: Log in to Docker Hub
+        if: github.event_name == 'release'
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_TOKEN }}
-          repository: p403n1x87/austin
-          tag_with_ref: true
+
+      - name: Build${{ github.event_name == 'release' && ' and push' || '' }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name == 'release' }}
+          load: ${{ github.event_name != 'release' }}
+          tags: p403n1x87/austin:${{ github.event_name == 'release' && github.ref_name || 'ci' }}
+
+      - name: Smoke test image
+        if: github.event_name != 'release'
+        run: docker run --rm p403n1x87/austin:ci sh -c 'austin -V && austinp -V'
