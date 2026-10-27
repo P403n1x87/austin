@@ -34,7 +34,7 @@ jobs:
       tests: ${{ steps.filter.outputs.tests }}
       wheel-scripts: ${{ steps.filter.outputs.wheel-scripts }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v3
         id: filter
         with:
@@ -65,7 +65,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     name: Build Austin on Linux (${{ matrix.arch }})
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Setup libunwind
         uses: ./.github/actions/setup-libunwind
@@ -81,7 +81,7 @@ jobs:
           ./configure --enable-debug
           make
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: austin-binaries-Linux-${{ matrix.arch }}
           overwrite: true
@@ -101,7 +101,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     name: Build Austin on Linux (${{ matrix.arch }}, musl)
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Install build dependencies
         run: |
@@ -112,7 +112,7 @@ jobs:
         run: |
           musl-gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austin.musl -D__MUSL__
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: austin-binaries-Linux-musl-${{ matrix.arch }}
           overwrite: true
@@ -159,9 +159,9 @@ jobs:
 
     name: Tests on Linux (${{ matrix.arch }}) with Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: austin-binaries-Linux-${{ matrix.arch }}
           path: src
@@ -177,19 +177,19 @@ jobs:
 
       - name: Install Python (standard)
         if: ${{ !endsWith(matrix.python-version, 't') }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}-dev
 
       - name: Install Python (free-threaded)
         if: ${{ endsWith(matrix.python-version, 't') }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -266,7 +266,7 @@ jobs:
         if: always()
 
       - name: Collect native test profiles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: native-profiles-linux-${{ matrix.arch }}-py${{ matrix.python-version }}
@@ -299,14 +299,14 @@ jobs:
 
     name: Build Linux wheels (${{ matrix.arch }})
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: austin-binaries-Linux-${{ matrix.arch }}
           path: src
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: austin-binaries-Linux-musl-${{ matrix.arch }}
           path: src
@@ -314,7 +314,7 @@ jobs:
       - run: chmod +x src/austin && chmod +x src/austinp
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -344,12 +344,12 @@ jobs:
 
     name: Build Austin on macOS (gcc)
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Compile Austin
         run: gcc-15 -Wall -Werror -O3 -g src/*.c -o src/austin
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: austin-binary-${{ runner.os }}
           overwrite: true
@@ -361,7 +361,7 @@ jobs:
 
     name: Build Austin on macOS (clang)
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
       
       - name: Install automake
         run: brew install automake
@@ -387,9 +387,9 @@ jobs:
 
     name: Tests on macOS with Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: austin-binary-${{ runner.os }}
           path: src
@@ -398,19 +398,19 @@ jobs:
 
       - name: Install Python (standard)
         if: ${{ !endsWith(matrix.python-version, 't') }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}-dev
 
       - name: Install Python (free-threaded)
         if: ${{ endsWith(matrix.python-version, 't') }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -472,7 +472,7 @@ jobs:
         if: always()
 
       - name: Collect native test profiles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: native-profiles-macos-py${{ matrix.python-version }}
@@ -493,9 +493,9 @@ jobs:
 
     name: Build macOS wheels
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: austin-binary-${{ runner.os }}
           path: src
@@ -503,7 +503,7 @@ jobs:
       - run: chmod +x src/austin
 
       - name: Install Python 3.13
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.13"
 
@@ -528,7 +528,7 @@ jobs:
 
     name: Build Austin on Windows
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Compile Austin
         run: |
@@ -536,7 +536,7 @@ jobs:
           gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall -Werror -DDEBUG
           src\austin.exe --help
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: austin-binary-${{ runner.os }}
           overwrite: true
@@ -559,27 +559,27 @@ jobs:
 
     name: Tests on Windows with Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: austin-binary-${{ runner.os }}
           path: src
 
       - name: Install Python (standard)
         if: ${{ !endsWith(matrix.python-version, 't') }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}-dev
 
       - name: Install Python (free-threaded)
         if: ${{ endsWith(matrix.python-version, 't') }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           allow-prereleases: true
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         name: Install Python 3.12
         with:
           python-version: "3.12"
@@ -610,7 +610,7 @@ jobs:
         if: always()
 
       - name: Collect native profiles
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: native-profiles-${{ runner.os }}-${{ matrix.python-version }}
           path: test-profiles\
@@ -623,7 +623,7 @@ jobs:
         if: always()
 
       - name: Upload debug log
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: austin-log-${{ runner.os }}-${{ matrix.python-version }}
           path: austin.log
@@ -636,7 +636,7 @@ jobs:
         if: failure()
 
       - name: Store dumps
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dumps-${{ runner.os }}-${{ matrix.python-version }}
           path: ${{ github.workspace }}\dumps
@@ -650,14 +650,14 @@ jobs:
 
     name: Build Windows wheels
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: austin-binary-${{ runner.os }}
           path: src
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         name: Install Python 3.13
         with:
           python-version: '3.13'
@@ -682,10 +682,10 @@ jobs:
     name: Crash report
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Download crash reports
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         continue-on-error: true
         with:
           pattern: crash-reports-*
@@ -719,14 +719,14 @@ jobs:
 
       - name: Post crash report on PR
         if: steps.report.outputs.found == 'true'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
         with:
           header: crash-report
           path: crash-comment.md
 
       - name: Clear stale crash comment
         if: steps.report.outputs.found == 'false'
-        uses: marocchino/sticky-pull-request-comment@v2
+        uses: marocchino/sticky-pull-request-comment@v3.0.5
         with:
           header: crash-report
           delete: true
