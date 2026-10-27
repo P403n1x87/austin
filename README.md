@@ -412,13 +412,22 @@ within each process making up the Python application.
 *Since Austin 3.6.0*.
 
 
+## Thread Names
+
+Austin reports Python threads by the name they have in the `threading` module
+(e.g. `MainThread`), whenever this can be resolved. Threads that are not known
+to the `threading` module, like those created by native extensions, are
+reported by their thread ID.
+
+*Since Austin 4.1.0*.
+
+
 ## Garbage Collector Sampling
 
-Austin can sample the Python garbage collector state for applications running
-with Python 3.7 and later versions. If the `-g`/`--gc` option is passed, Austin
-will append `:GC:` at the end of each collected frame stack whenever the garbage
-collector is collecting. This gives you a measure of how *busy* the Python GC is
-during a run.
+Austin can sample the Python garbage collector state. If the `-g`/`--gc` option
+is passed, Austin will mark each collected sample that was taken while the
+garbage collector was collecting. This gives you a measure of how *busy* the
+Python GC is during a run.
 
 *Since Austin 3.1.0*.
 
@@ -456,6 +465,12 @@ For applications running on CPython 3.14 or later, Austin can also track the
 task is currently suspended at or executing, and the await relationships
 between tasks.
 
+When profiling, the collected samples are attributed to the task that is
+running on the sampled thread, and the stacks of the suspended tasks are
+reported together with the await relationships between tasks. This allows
+tools like the [Austin VS Code extension] to reconstruct a task-level view of
+the application that also accounts for the time tasks spend waiting.
+
 With `-w/--where`, tasks are rendered as a tree nested under the thread whose
 event loop owns them, so you can see at a glance which coroutines each task
 is waiting on. Tasks whose owning thread has since terminated are listed
@@ -478,9 +493,47 @@ between accuracy and performance.
 
 ## Native Frame Stack
 
-If you want observability into the native frame stacks, you can use the
-`austinp` variant of `austin` which can be obtained by compiling the source
-with `-DAUSTINP` on Linux, or from the released binaries.
+If you want observability into the native frame stacks, you can pass the
+`-n/--native` option to collect native call stacks alongside the Python ones,
+e.g.
+
+~~~ console
+austin -n -i 1ms -o profile.mojo python myscript.py
+~~~
+
+Native frames are interleaved with the Python frames that they belong to, and
+are reported with the path of the binary they come from and the name of the
+function, resolved from the binary's symbol table. In native mode, Austin also
+samples threads that are not running any Python code, like those created by
+native extensions, to give a more comprehensive view of what is running within
+a Python process. The [where](#where) option also supports native mode.
+
+Native mode is available on Linux (x86_64 and aarch64), macOS and Windows
+(x86_64), and requires no additional dependencies. On any other platforms or
+architectures, the option is ignored with a warning.
+
+> [!WARNING]
+> To capture a consistent native stack, Austin needs to briefly suspend each
+> thread while sampling it. Therefore, the impact on the tracee is no longer
+> minimal and it becomes higher at smaller sampling intervals. For this reason,
+> consider using larger sampling intervals in native mode (e.g. `-i 1ms` or
+> higher), and avoid using it in production environments.
+
+> [!NOTE]
+> On Windows, symbols are resolved with DbgHelp. For accurate function names,
+> make sure that the PDB files of the binaries of interest are available,
+> e.g. by setting the `_NT_SYMBOL_PATH` environment variable to point to a
+> symbol server, as described in the [Windows
+> documentation](https://learn.microsoft.com/en-us/windows/win32/debug/symbol-paths).
+
+*Since Austin 4.1.0*.
+
+### The `austinp` variant
+
+On Linux, the `austinp` variant of `austin` provides an alternative native
+mode, which also supports architectures other than x86_64 and aarch64, as well
+as the sampling of kernel call stacks. It can be obtained by compiling the
+source with `-DAUSTINP`, or from the released binaries.
 
 `austinp` makes use of `ptrace` to halt the application and grab a
 snapshot of the call stack with `libunwind`. If you are compiling `austinp` from
@@ -537,9 +590,10 @@ show both native and Python frames. Highlighting helps tell frames apart. The
 
 Austin uses `syslog` on Linux and macOS, and `%TEMP%\austin.log` on Windows
 for log messages, so make sure to watch these to get execution details and
-statistics. _Bad_ frames are output together with the other frames. In general,
-entries for bad frames will not be visible in a flame graph as all tests show
-error rates below 1% on average.
+statistics. _Bad_ frames are output together with the other frames. The error
+rate depends on the workload: it is generally low, but it can be higher for
+applications whose stacks change very rapidly, e.g. with many short calls or
+deep recursion.
 
 Logging can be disabled using [environment variables](#environment-variables).
 
@@ -563,14 +617,15 @@ and has been tested on the following platforms and architectures
 |             | <img src="art/tux.svg" /> | <img src="art/win.svg"/> | <img src="art/apple.svg"/> |
 | ----------- | ------------------------- | ------------------------ | -------------------------- |
 | **x86_64**  | ✓                         | ✓                        | ✓                          |
-| **i686**    | ✓                         |                          | ✓                          |
+| **i686**    | ✓                         |                          |                            |
 | **armv7**   | ✓                         |                          |                            |
 | **arm64**   | ✓                         |                          | ✓                          |
 | **ppc64le** | ✓                         |                          |                            |
 
 > [!NOTE]
-> Memory profiling (`-m`/`--memory`) is not supported in free-threaded Python
-> builds as it relies on GIL state to identify the active thread.
+> Memory profiling (`-m`/`--memory`) in free-threaded Python builds is less
+> accurate, as without the GIL there is no reliable way of attributing memory
+> deltas to the thread that caused them.
 
 If you are looking for support for older versions of CPython, the following table
 summarises the compatibility of Austin with CPython versions
@@ -584,7 +639,7 @@ summarises the compatibility of Austin with CPython versions
 
 > [!NOTE]
 > Austin *might* work with other platforms and architectures not listed above.
-> So it is worth giving it a try even if your system is not listed below. If you
+> So it is worth giving it a try even if your system is not listed. If you
 > are looking for support for Python < 3.8, you can use Austin 3.5.
 
 Because of platform-specific details, Austin usage may vary slightly. Below are
@@ -652,11 +707,12 @@ currently distinguish Austin.
   Austin can sample at rates higher than other non-C alternatives that perform
   some aggregations at run-time.
 
-- **Simple output, powerful tools** Austin uses the collapsed stack format of
-  FlameGraph that is easy to parse. You can then go and build your own tool to
-  analyse Austin's output. You could even make a _player_ that replays the
-  application execution in slow motion, so that you can see what has happened in
-  temporal order.
+- **Compact output, powerful tools** Austin uses the compact [MOJO] binary
+  format, which can be easily parsed with the [`austin-python`] package, or
+  converted to other popular formats. You can then go and build your own tool
+  to analyse Austin's output. You could even make a _player_ that replays the
+  application execution in slow motion, so that you can see what has happened
+  in temporal order.
 
 - **Small size** Austin compiles to a single binary executable of just a bunch
 of KB.
@@ -786,9 +842,8 @@ environment variable in order for Austin Web to work.
 
 ## Speedscope
 
-Austin output is now supported by [Speedscope]. However, the [`austin-python`]
-library comes with format conversion tools that allow converting the output from
-Austin to the Speedscope JSON format.
+Austin's MOJO output can be converted to the [Speedscope] JSON format with the
+`austin2speedscope` utility that comes with the [`austin-python`] package.
 
 If you want to give it a go you can install it using `pip` with
 
@@ -863,6 +918,7 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 
 
 [anaconda]: https://www.anaconda.com/
+[Austin VS Code extension]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode
 [`austin-python`]: https://github.com/P403n1x87/austin-python
 [Austin TUI]: https://github.com/P403n1x87/austin-tui
 [Austin Web]: https://github.com/P403n1x87/austin-web

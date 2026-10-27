@@ -3,61 +3,71 @@
 Profile wall time of a Python script
 .PP
 .RS
-$ austin python3 \fI\,myscript.py\fR
+$ austin -o \fI\,profile.mojo\/\fR python3 \fI\,myscript.py\/\fR
 .RE
 .PP
 Profile CPU time of an executable Python script
 .PP
 .RS
-$ austin -c \fI\,./myscript.py\/\fR
+$ austin -c -o \fI\,profile.mojo\/\fR \fI\,./myscript.py\/\fR
 .RE
 .PP
 Profile a Python application
 .PP
 .RS
-$ austin \fI\,uwsgi\fR --http :9090 --wsgi-file foobar.py
+$ austin -o \fI\,profile.mojo\/\fR uwsgi --http :9090 --wsgi-file foobar.py
 .RE
 .PP
 Profile child processes
 .PP
 .RS
-$ austin \fI\,-C\fR uwsgi --http :9090 --wsgi-file foobar.py
+$ austin -C -o \fI\,profile.mojo\/\fR uwsgi --http :9090 --wsgi-file foobar.py
 .RE
 .PP
 Attach to a running Python process
 .PP
 .RS
-# austin -p \fI\,<pid>\fR
+# austin -o \fI\,profile.mojo\/\fR -p \fI\,<pid>\/\fR
 .RE
 .PP
 Attach to a process and its children
 .PP
 .RS
-# austin -Cp \fI\,<pid>\fR
+# austin -o \fI\,profile.mojo\/\fR -Cp \fI\,<pid>\/\fR
 .RE
 .PP
 Where is a Python process at?
 .PP
 .RS
-# austin -w \fI\,<pid>\fR
+# austin -w \fI\,<pid>\/\fR
 .RE
 .PP
 Set the sampling interval
 .PP
 .RS
-# austin -i \fI\,10ms\fR -p <pid>
+# austin -i \fI\,10ms\/\fR -o \fI\,profile.mojo\/\fR -p \fI\,<pid>\/\fR
 .RE
 .PP
 Save collected on-CPU samples to file
 .PP
 .RS
-$ austin -co \fI/path/to/file.austin\fR ./myscript.py
+$ austin -co \fI\,/path/to/file.mojo\/\fR \fI\,./myscript.py\/\fR
 .RE
 .PP
 Sample for 5 seconds only
 .PP
 .RS
-# austin -x \fI5\fR -p <pid>
+# austin -x \fI\,5\/\fR -o \fI\,profile.mojo\/\fR -p \fI\,<pid>\/\fR
 .RE
-
-
+.PP
+Collect native call stacks alongside Python stacks
+.PP
+.RS
+$ austin -n -i \fI\,1ms\/\fR -o \fI\,profile.mojo\/\fR python3 \fI\,myscript.py\/\fR
+.RE
+.PP
+Where is a Python process at, including native frames?
+.PP
+.RS
+# austin -n -w \fI\,<pid>\/\fR
+.RE
