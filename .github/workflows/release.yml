@@ -406,7 +406,6 @@ jobs:
           pip install -r scripts/requirements-bw.txt
 
           export VERSION=$(cat src/austin.h | sed -n -E "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
-          echo "::set-output name=version::$VERSION"
 
           clang -Wall -O3 -Os -o src/austin src/*.c -target x86_64-apple-macos11
 
