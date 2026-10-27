@@ -37,6 +37,14 @@
 #include "../resources.h"
 #include "../stats.h"
 
+// PTRACE_EVENT_STOP is part of the kernel ABI since Linux 3.4, but older glibc
+// headers (e.g. 2.17, as found in manylinux2014) do not expose it. We cannot
+// include <linux/ptrace.h> alongside <sys/ptrace.h> on those systems, as the
+// two clash, so we provide the kernel value ourselves.
+#ifndef PTRACE_EVENT_STOP
+#define PTRACE_EVENT_STOP 128
+#endif
+
 #define PTHREAD_BUFFER_ITEMS 200
 
 struct _proc_extra_info {
