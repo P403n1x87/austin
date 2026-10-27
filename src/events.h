@@ -55,13 +55,14 @@ typedef enum {
 } gc_state_t;
 
 typedef struct {
-    pid_t          pid;      // Process ID
-    int64_t        iid;      // Interpreter ID
-    uintptr_t      tid;      // Thread ID
-    microseconds_t time;     // Time of the sample
-    ssize_t        memory;   // Memory usage
-    gc_state_t     gc_state; // GC state
-    bool           is_idle;  // Is the thread idle?
+    pid_t          pid;         // Process ID
+    int64_t        iid;         // Interpreter ID
+    uintptr_t      tid;         // Thread ID
+    microseconds_t time;        // Time of the sample
+    ssize_t        memory;      // Memory usage
+    gc_state_t     gc_state;    // GC state
+    bool           is_idle;     // Is the thread idle?
+    const char*    thread_name; // Thread name from threading module, or NULL for TID fallback
 } sample_t;
 
 struct _eh;
@@ -71,6 +72,11 @@ typedef void (*event_handler_stack_begin_t)(struct _eh*, sample_t* sample);
 typedef void (*event_handler_new_string_t)(struct _eh*, cached_string_t* string);
 typedef void (*event_handler_new_frame_t)(struct _eh*, void* frame);
 typedef void (*event_handler_stack_end_t)(struct _eh*);
+typedef void (*event_handler_task_stack_begin_t)(struct _eh*, uintptr_t task_id, uintptr_t name_key);
+typedef void (*event_handler_task_stack_end_t)(struct _eh*);
+typedef void (*event_handler_task_waiter_t)(struct _eh*, uintptr_t task_id, uintptr_t waiter_id);
+typedef void (*event_handler_task_running_t)(struct _eh*, uintptr_t task_id);
+typedef void (*event_handler_destroy_t)(struct _eh*);
 
 typedef struct _ehs {
     event_handler_metadata_t    emit_metadata;
@@ -78,6 +84,14 @@ typedef struct _ehs {
     event_handler_new_string_t  emit_new_string;
     event_handler_new_frame_t   emit_new_frame;
     event_handler_stack_end_t   emit_stack_end;
+
+    // Suspended-task introspection (3.14+ asyncio).
+    event_handler_task_stack_begin_t emit_task_stack_begin;
+    event_handler_task_stack_end_t   emit_task_stack_end;
+    event_handler_task_waiter_t      emit_task_waiter;
+    event_handler_task_running_t     emit_task_running;
+
+    event_handler_destroy_t destroy;
 } event_handler_spec_t;
 
 typedef struct _eh {
@@ -146,6 +160,56 @@ event_handler__emit_stack_end(void) {
 }
 
 static inline void
+event_handler__emit_task_stack_begin(uintptr_t task_id, uintptr_t name_key) {
+    if (!isvalid(event_handler))
+        return;
+
+    event_handler_task_stack_begin_t handler = event_handler->spec.emit_task_stack_begin;
+    if (isvalid(handler))
+        handler(event_handler, task_id, name_key);
+}
+
+// A task report is the task's new position, and nothing else: the time it
+// spends there is the time of its thread's samples while it holds it (see
+// event_handler__emit_task_running for when it is running).
+//
+// The owning thread's own regular sample is trimmed to stop at this task's
+// boundary frame (see py_thread__split_task_stack_at) so it never also
+// reports these frames -- with that, ordinary flame-graph self-time (value
+// minus children) nets out the overlap once a merged view attaches this
+// task as that frame's child.
+static inline void
+event_handler__emit_task_stack_end(void) {
+    if (!isvalid(event_handler))
+        return;
+
+    event_handler_task_stack_end_t handler = event_handler->spec.emit_task_stack_end;
+    if (isvalid(handler))
+        handler(event_handler);
+}
+
+static inline void
+event_handler__emit_task_waiter(uintptr_t task_id, uintptr_t waiter_id) {
+    if (!isvalid(event_handler))
+        return;
+
+    event_handler_task_waiter_t handler = event_handler->spec.emit_task_waiter;
+    if (isvalid(handler))
+        handler(event_handler, task_id, waiter_id);
+}
+
+// The task the current sample's thread is running.
+static inline void
+event_handler__emit_task_running(uintptr_t task_id) {
+    if (!isvalid(event_handler))
+        return;
+
+    event_handler_task_running_t handler = event_handler->spec.emit_task_running;
+    if (isvalid(handler))
+        handler(event_handler, task_id);
+}
+
+static inline void
 event_handler_install(event_handler_t* handler) {
     if (isvalid(event_handler)) // GCOV_EXCL_LINE
         free(event_handler);    // GCOV_EXCL_LINE
@@ -156,6 +220,12 @@ event_handler_install(event_handler_t* handler) {
 static inline void
 event_handler_free(void) {
     if (isvalid(event_handler)) {
+        // See the destroy field's doc comment on event_handler_spec_t --
+        // NULL/no-op for MOJO, which needs no teardown of its own.
+        event_handler_destroy_t destroy = event_handler->spec.destroy;
+        if (isvalid(destroy))
+            destroy(event_handler);
+
         free(event_handler);
         event_handler = NULL;
     }

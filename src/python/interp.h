@@ -77,8 +77,16 @@ typedef struct _is3_9 {
 
     int finalizing;
 
-    struct _ceval_state         ceval;
-    struct _gc_runtime_state3_8 gc;
+    struct _ceval_state          ceval;
+    // CPython 3.10 gc state includes garbage, callbacks, long_lived_total/pending
+    // which are absent from _gc_runtime_state3_8 but present in _gc_runtime_state3_12.
+    struct _gc_runtime_state3_12 gc;
+
+    // sys.modules dictionary (CPython 3.10: first field after gc)
+    PyObject* modules;
+    PyObject* modules_by_index; // placeholder, not used
+    // Dictionary of the sys module (sys.__dict__)
+    PyObject* sysdict;
 } PyInterpreterState3_9;
 
 typedef struct _is3_11 {
@@ -105,8 +113,16 @@ typedef struct _is3_11 {
     /* Was this interpreter statically allocated? */
     bool _static;
 
-    struct _ceval_state         ceval;
-    struct _gc_runtime_state3_8 gc;
+    struct _ceval_state          ceval;
+    // CPython 3.11 gc state includes garbage, callbacks, long_lived_total/pending
+    // which are absent from _gc_runtime_state3_8 but present in _gc_runtime_state3_12.
+    struct _gc_runtime_state3_12 gc;
+
+    // sys.modules dictionary (CPython 3.11: first field after gc)
+    PyObject* modules;
+    PyObject* modules_by_index; // placeholder, not used
+    // Dictionary of the sys module (sys.__dict__)
+    PyObject* sysdict;
 } PyInterpreterState3_11;
 
 typedef struct {

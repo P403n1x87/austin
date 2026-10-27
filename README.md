@@ -271,10 +271,10 @@ whereas on macOS it is enough to run
 gcc -O3 -Os -Wall src/*.c -o src/austin
 ~~~
 
-On Windows, the `-lpsapi -lntdll` switches are needed
+On Windows, the `-lpsapi -lntdll -ldbghelp` switches are needed
 
 ~~~ console
-gcc -O3 -Os -Wall -lpsapi -lntdll src/*.c -o src/austin
+gcc -O3 -Os -Wall -lpsapi -lntdll -ldbghelp src/*.c -o src/austin
 ~~~
 
 Add `-DDEBUG` if you need a more verbose log. This is useful if you encounter a
@@ -290,34 +290,36 @@ print(check_output(["src/austin", "--help"]).decode().strip())
 print("~~~")
 ]]] -->
 ~~~
-Usage: austin [OPTION...] command [ARG...]
+Usage: austin [-CcfgmnP?V] [-x n_sec] [-i n_us] [-o FILE] [-p PID] [-t n_ms]
+               [-w PID] command [ARG...]
+
 Austin is a frame stack sampler for CPython that is used to extract profiling
 data out of a running Python process (and all its children, if required) that
 requires no instrumentation and has practically no impact on the tracee.
 
-  -c, --cpu                  Sample on-CPU stacks only.
-  -C, --children             Attach to child processes.
-  -f, --full                 Produce the full set of metrics (time +mem -mem).
-  -g, --gc                   Sample the garbage collector state.
-  -i, --interval=n_us        Sampling interval in microseconds (default is
-                             100). Accepted units: s, ms, us.
-  -m, --memory               Profile memory usage.
-  -o, --output=FILE          Specify an output file for the collected samples.
-  -p, --pid=PID              Attach to the process with the given PID.
-  -P, --pipe                 Pipe mode. Use when piping Austin output.
-  -t, --timeout=n_ms         Start up wait time in milliseconds (default is
-                             3000). Accepted units: s, ms.
-  -w, --where=PID            Dump the stacks of all the threads within the
-                             process with the given PID.
-  -x, --exposure=n_sec       Sample for n_sec seconds only.
-  -?, --help                 Give this help list
-      --usage                Give a short usage message
-  -V, --version              Print program version
+Options:
+  -C, --children              Attach to child processes.
+  -c, --cpu                   Sample on-CPU stacks only.
+  -x, --exposure <n_sec>      Sample for n_sec seconds only.
+  -f, --full                  Produce the full set of metrics (time +mem -mem).
+  -g, --gc                    Sample the garbage collector state.
+  -i, --interval <n_us>       Sampling interval in microseconds (default is
+                              100). Accepted units: s, ms, us.
+  -m, --memory                Profile memory usage.
+  -n, --native                Collect native call stacks alongside Python
+                              stacks.
+  -o, --output <FILE>         Specify an output file for the collected samples.
+  -p, --pid <PID>             Attach to the process with the given PID.
+  -P, --pipe                  Pipe mode. Use when piping Austin output.
+  -t, --timeout <n_ms>        Start up wait time in milliseconds (default is
+                              3000). Accepted units: s, ms.
+  -w, --where <PID>           Dump the stacks of all the threads within the
+                              process with the given PID.
+  -?, --help                  Give this help list.
+      --usage                 Give a short usage message.
+  -V, --version               Print program version.
 
-Mandatory or optional arguments to long options are also mandatory or optional
-for any corresponding short options.
-
-Report bugs to <https://github.com/P403n1x87/austin/issues>.
+Report bugs at https://github.com/P403n1x87/austin/issues
 ~~~
 <!-- [[[end]]] -->
 
@@ -326,9 +328,32 @@ representation of the collected data that can be processed by the `mojo2austin`
 tool that comes with the [`austin-python`] Python package to produce the more
 commonly used collapsed stack format. The MOJO format can also be converted to
 the [Speedscope] JSON format using the `austin2speedscope` tool that also comes
-with the [`austin-python`] Python package. If you use Visual Studio Code, you
-can use the [Austin VS Code extension] to visualise the profile data directly
-in the editor.
+with the [`austin-python`] Python package.
+
+> [!TIP]
+> The recommended way to visualise Austin profiles is with the
+> [Austin VS Code extension]. It opens `.mojo` files directly and renders
+> interactive flame graphs, source-level annotations, and thread breakdowns
+> without any extra conversion steps. The extension also ships with an MCP
+> server that lets coding agents query profiling data autonomously.
+
+If you prefer command-line tools such as [Brendan Gregg's
+`flamegraph.pl`][FlameGraph] to generate flame graph visualisations, you first
+need to convert Austin's MOJO output to collapsed stack format with the
+`mojo2austin` utility from the [`austin-python`] package:
+
+~~~ console
+pip install austin-python
+mojo2austin profile.mojo /dev/stdout | flamegraph.pl > profile.svg
+~~~
+
+Open `profile.svg` in a browser to explore the interactive flame graph.
+
+> [!NOTE]
+> Austin writes binary MOJO data to stdout by default, so piping Austin's
+> output directly into `flamegraph.pl` will not work. Always save to a file
+> first (with `-o profile.mojo` or output redirection) and then convert with
+> `mojo2austin`.
 
 > [!IMPORTANT]
 > If you are running Austin directly in a terminal, make sure to either redirect
@@ -387,13 +412,22 @@ within each process making up the Python application.
 *Since Austin 3.6.0*.
 
 
+## Thread Names
+
+Austin reports Python threads by the name they have in the `threading` module
+(e.g. `MainThread`), whenever this can be resolved. Threads that are not known
+to the `threading` module, like those created by native extensions, are
+reported by their thread ID.
+
+*Since Austin 4.1.0*.
+
+
 ## Garbage Collector Sampling
 
-Austin can sample the Python garbage collector state for applications running
-with Python 3.7 and later versions. If the `-g`/`--gc` option is passed, Austin
-will append `:GC:` at the end of each collected frame stack whenever the garbage
-collector is collecting. This gives you a measure of how *busy* the Python GC is
-during a run.
+Austin can sample the Python garbage collector state. If the `-g`/`--gc` option
+is passed, Austin will mark each collected sample that was taken while the
+garbage collector was collecting. This gives you a measure of how *busy* the
+Python GC is during a run.
 
 *Since Austin 3.1.0*.
 
@@ -424,6 +458,31 @@ not.
 *Since Austin 3.3.0*.
 
 
+## Asyncio Support
+
+For applications running on CPython 3.14 or later, Austin can also track the
+`asyncio` task graph: each event loop's own tasks, the coroutine chain each
+task is currently suspended at or executing, and the await relationships
+between tasks.
+
+When profiling, the collected samples are attributed to the task that is
+running on the sampled thread, and the stacks of the suspended tasks are
+reported together with the await relationships between tasks. This allows
+tools like the [Austin VS Code extension] to reconstruct a task-level view of
+the application that also accounts for the time tasks spend waiting.
+
+With `-w/--where`, tasks are rendered as a tree nested under the thread whose
+event loop owns them, so you can see at a glance which coroutines each task
+is waiting on. Tasks whose owning thread has since terminated are listed
+separately as orphaned.
+
+> [!NOTE]
+> Asyncio task tracking is not currently available in native mode
+> (`-n/--native`).
+
+*Since Austin 4.1.0*.
+
+
 ## Sampling Accuracy
 
 Austin can sample stacks very rapidly, guaranteeing high accuracy, as well as
@@ -434,9 +493,47 @@ between accuracy and performance.
 
 ## Native Frame Stack
 
-If you want observability into the native frame stacks, you can use the
-`austinp` variant of `austin` which can be obtained by compiling the source
-with `-DAUSTINP` on Linux, or from the released binaries.
+If you want observability into the native frame stacks, you can pass the
+`-n/--native` option to collect native call stacks alongside the Python ones,
+e.g.
+
+~~~ console
+austin -n -i 1ms -o profile.mojo python myscript.py
+~~~
+
+Native frames are interleaved with the Python frames that they belong to, and
+are reported with the path of the binary they come from and the name of the
+function, resolved from the binary's symbol table. In native mode, Austin also
+samples threads that are not running any Python code, like those created by
+native extensions, to give a more comprehensive view of what is running within
+a Python process. The [where](#where) option also supports native mode.
+
+Native mode is available on Linux (x86_64 and aarch64), macOS and Windows
+(x86_64), and requires no additional dependencies. On any other platforms or
+architectures, the option is ignored with a warning.
+
+> [!WARNING]
+> To capture a consistent native stack, Austin needs to briefly suspend each
+> thread while sampling it. Therefore, the impact on the tracee is no longer
+> minimal and it becomes higher at smaller sampling intervals. For this reason,
+> consider using larger sampling intervals in native mode (e.g. `-i 1ms` or
+> higher), and avoid using it in production environments.
+
+> [!NOTE]
+> On Windows, symbols are resolved with DbgHelp. For accurate function names,
+> make sure that the PDB files of the binaries of interest are available,
+> e.g. by setting the `_NT_SYMBOL_PATH` environment variable to point to a
+> symbol server, as described in the [Windows
+> documentation](https://learn.microsoft.com/en-us/windows/win32/debug/symbol-paths).
+
+*Since Austin 4.1.0*.
+
+### The `austinp` variant
+
+On Linux, the `austinp` variant of `austin` provides an alternative native
+mode, which also supports architectures other than x86_64 and aarch64, as well
+as the sampling of kernel call stacks. It can be obtained by compiling the
+source with `-DAUSTINP`, or from the released binaries.
 
 `austinp` makes use of `ptrace` to halt the application and grab a
 snapshot of the call stack with `libunwind`. If you are compiling `austinp` from
@@ -493,9 +590,10 @@ show both native and Python frames. Highlighting helps tell frames apart. The
 
 Austin uses `syslog` on Linux and macOS, and `%TEMP%\austin.log` on Windows
 for log messages, so make sure to watch these to get execution details and
-statistics. _Bad_ frames are output together with the other frames. In general,
-entries for bad frames will not be visible in a flame graph as all tests show
-error rates below 1% on average.
+statistics. _Bad_ frames are output together with the other frames. The error
+rate depends on the workload: it is generally low, but it can be higher for
+applications whose stacks change very rapidly, e.g. with many short calls or
+deep recursion.
 
 Logging can be disabled using [environment variables](#environment-variables).
 
@@ -513,29 +611,35 @@ folder in either the SVG, PDF or PNG format
 
 # Compatibility
 
-Austin supports Python 3.9 through 3.14, and has been tested on the following
-platforms and architectures
+Austin supports Python 3.10 through 3.15, including **free-threaded builds**,
+and has been tested on the following platforms and architectures
 
 |             | <img src="art/tux.svg" /> | <img src="art/win.svg"/> | <img src="art/apple.svg"/> |
 | ----------- | ------------------------- | ------------------------ | -------------------------- |
 | **x86_64**  | ✓                         | ✓                        | ✓                          |
-| **i686**    | ✓                         |                          | ✓                          |
+| **i686**    | ✓                         |                          |                            |
 | **armv7**   | ✓                         |                          |                            |
 | **arm64**   | ✓                         |                          | ✓                          |
 | **ppc64le** | ✓                         |                          |                            |
 
+> [!NOTE]
+> Memory profiling (`-m`/`--memory`) in free-threaded Python builds is less
+> accurate, as without the GIL there is no reliable way of attributing memory
+> deltas to the thread that caused them.
+
 If you are looking for support for older versions of CPython, the following table
 summarises the compatibility of Austin with CPython versions
 
-| CPython Versions  | Austin Version |
-| ----------------- | -------------- |
-| 2.3-2.7, 3.3-3.11 | 3.5            |
-| 3.8-3.13          | 3.7            |
-| 3.9-3.14          | 4.0            |
+| CPython Versions                     | Austin Version |
+| ------------------------------------ | -------------- |
+| 2.3-2.7, 3.3-3.11                    | 3.5            |
+| 3.8-3.13                             | 3.7            |
+| 3.9-3.14                             | 4.0            |
+| 3.10-3.15, (incl. free-threaded)     | 4.1            |
 
 > [!NOTE]
 > Austin *might* work with other platforms and architectures not listed above.
-> So it is worth giving it a try even if your system is not listed below. If you
+> So it is worth giving it a try even if your system is not listed. If you
 > are looking for support for Python < 3.8, you can use Austin 3.5.
 
 Because of platform-specific details, Austin usage may vary slightly. Below are
@@ -603,11 +707,12 @@ currently distinguish Austin.
   Austin can sample at rates higher than other non-C alternatives that perform
   some aggregations at run-time.
 
-- **Simple output, powerful tools** Austin uses the collapsed stack format of
-  FlameGraph that is easy to parse. You can then go and build your own tool to
-  analyse Austin's output. You could even make a _player_ that replays the
-  application execution in slow motion, so that you can see what has happened in
-  temporal order.
+- **Compact output, powerful tools** Austin uses the compact [MOJO] binary
+  format, which can be easily parsed with the [`austin-python`] package, or
+  converted to other popular formats. You can then go and build your own tool
+  to analyse Austin's output. You could even make a _player_ that replays the
+  application execution in slow motion, so that you can see what has happened
+  in temporal order.
 
 - **Small size** Austin compiles to a single binary executable of just a bunch
 of KB.
@@ -737,9 +842,8 @@ environment variable in order for Austin Web to work.
 
 ## Speedscope
 
-Austin output is now supported by [Speedscope]. However, the [`austin-python`]
-library comes with format conversion tools that allow converting the output from
-Austin to the Speedscope JSON format.
+Austin's MOJO output can be converted to the [Speedscope] JSON format with the
+`austin2speedscope` utility that comes with the [`austin-python`] package.
 
 If you want to give it a go you can install it using `pip` with
 
@@ -814,6 +918,7 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 
 
 [anaconda]: https://www.anaconda.com/
+[Austin VS Code extension]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode
 [`austin-python`]: https://github.com/P403n1x87/austin-python
 [Austin TUI]: https://github.com/P403n1x87/austin-tui
 [Austin Web]: https://github.com/P403n1x87/austin-web

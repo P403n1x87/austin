@@ -3,64 +3,104 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+  pull_request:
+    # Uploads are skipped on pull requests, so this only builds the release
+    # artifacts. It is the only workflow that compiles against the oldest
+    # supported glibc (manylinux2014), hence it must run on source changes too.
+    paths:
+      - .github/workflows/release.yml
+      - .github/actions/setup-libunwind/**
+      - scripts/build-in-manylinux.sh
+      - scripts/build-in-musllinux.sh
+      - scripts/build-wheel.py
+      - scripts/requirements-bw.txt
+      - src/**
+      - configure.ac
+      - Makefile.am
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (build artifacts but skip all uploads)'
+        required: false
+        default: true
+        type: boolean
+      libunwind-version:
+        description: 'libunwind git tag to build'
+        default: 'v1.8.3'
+
+env:
+  LIBUNWIND_VERSION: ${{ inputs.libunwind-version || 'v1.8.3' }}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: write
+
 jobs:
-  release-linux:
-    runs-on: ubuntu-24.04
+  release-linux-glibc:
     strategy:
       fail-fast: false
-    name: Release (Linux)
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+            container: quay.io/pypa/manylinux2014_x86_64
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+            container: quay.io/pypa/manylinux_2_28_x86_64
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+            container: quay.io/pypa/manylinux2014_aarch64
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+            container: quay.io/pypa/manylinux_2_28_aarch64
+    runs-on: ${{ matrix.runs-on }}
+    name: Release (Linux, ${{ matrix.arch }}, ${{ matrix.container }})
     steps:
       - uses: actions/checkout@v3
         name: Checkout Austin
 
-      - name: Install Python 3.10
-        uses: actions/setup-python@v4
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
-      - name: Generate artifacts
+      - name: Build austin in container
         run: |
-          python3.10 -m venv .venv
+          docker run --rm \
+            --volume "$PWD:/io" \
+            --workdir /io \
+            --env ARCH=${{ matrix.arch }} \
+            --env LIBUNWIND_VERSION=${{ env.LIBUNWIND_VERSION }} \
+            ${{ matrix.container }} \
+            bash /io/scripts/build-in-manylinux.sh
+
+      - name: Read build outputs
+        id: tag
+        run: cat .build-outputs >> "$GITHUB_OUTPUT"
+
+      - name: Build wheel
+        run: |
+          python3.13 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-bw.txt
-          
-          sudo apt-get update
-          sudo apt-get -y install autoconf build-essential libunwind-dev binutils-dev libiberty-dev musl-tools zlib1g-dev
-
-          # Build austin
-          autoreconf --install
-          ./configure
-          make
-          
-          export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p");
-
-          pushd src
-          tar -Jcf austin-$VERSION-gnu-linux-amd64.tar.xz austin
-          tar -Jcf austinp-$VERSION-gnu-linux-amd64.tar.xz austinp
-          popd
-
-          # Build gnu wheel
           python scripts/build-wheel.py \
-            --version=$VERSION \
-            --platform=manylinux_2_12_x86_64.manylinux2010_x86_64 \
+            --version=${{ steps.tag.outputs.version }} \
+            --platform=${{ steps.tag.outputs.platform }} \
             --files austin:src/austin austinp:src/austinp
-
-          # Build with musl
-          musl-gcc -O3 -Os -s -Wall -pthread src/*.c -o src/austin -D__MUSL__
-          pushd src
-          tar -Jcf austin-$VERSION-musl-linux-amd64.tar.xz austin
-          popd
-
-          # Build musl wheel
-          python scripts/build-wheel.py \
-            --version=$VERSION \
-            --platform=musllinux_1_1_x86_64 \
-            --files austin:src/austin
-
           deactivate
 
+      - name: Save wheels as job artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ steps.tag.outputs.platform }}
+          path: dist/*.whl
+
       - name: Upload artifacts to release
+        if: ${{ github.event_name != 'pull_request' && !inputs.dry_run }}
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -68,8 +108,181 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
-      
+
       - name: Upload Python wheels to PyPI
+        if: ${{ github.event_name != 'pull_request' && !inputs.dry_run }}
+        run: |
+          source .venv/bin/activate
+          twine upload dist/*.whl --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+          deactivate
+
+  release-linux-glibc-modern:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    name: Release (Linux, ${{ matrix.arch }}, host glibc)
+    steps:
+      - uses: actions/checkout@v3
+        name: Checkout Austin
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Setup libunwind
+        uses: ./.github/actions/setup-libunwind
+        with:
+          version: ${{ env.LIBUNWIND_VERSION }}
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev zlib1g-dev libzstd-dev
+
+      - name: Detect glibc and compute platform tag
+        id: tag
+        run: |
+          GLIBC=$(ldd --version | awk '/^ldd/ {print $NF}')
+          GLIBC_MAJOR=${GLIBC%%.*}
+          GLIBC_MINOR=${GLIBC#*.}
+          ARCH=${{ matrix.arch }}
+          PLATFORM="manylinux_${GLIBC_MAJOR}_${GLIBC_MINOR}_${ARCH}"
+          # Per PEP 600, compound with the legacy named alias when one exists
+          # so older pip (< 20.3) still picks up the wheel.
+          case "${GLIBC_MAJOR}_${GLIBC_MINOR}" in
+            2_5)  PLATFORM="${PLATFORM}.manylinux1_${ARCH}"    ;;
+            2_12) PLATFORM="${PLATFORM}.manylinux2010_${ARCH}" ;;
+            2_17) PLATFORM="${PLATFORM}.manylinux2014_${ARCH}" ;;
+          esac
+          GLIBC_TAG="${GLIBC_MAJOR}_${GLIBC_MINOR}"
+          echo "platform=$PLATFORM" >> "$GITHUB_OUTPUT"
+          echo "glibc_tag=$GLIBC_TAG" >> "$GITHUB_OUTPUT"
+          echo "Detected host glibc $GLIBC -> $PLATFORM"
+
+      - name: Generate artifacts
+        run: |
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-bw.txt
+
+          autoreconf --install
+          ./configure
+          make
+
+          VERSION=$(sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p" src/austin.h)
+
+          ARCH_TAG=${{ matrix.arch }}
+          GLIBC_TAG=${{ steps.tag.outputs.glibc_tag }}
+
+          pushd src
+          tar -Jcf austin-$VERSION-gnu-${GLIBC_TAG}-linux-${ARCH_TAG}.tar.xz austin
+          tar -Jcf austinp-$VERSION-gnu-${GLIBC_TAG}-linux-${ARCH_TAG}.tar.xz austinp
+          popd
+
+          python scripts/build-wheel.py \
+            --version=$VERSION \
+            --platform=${{ steps.tag.outputs.platform }} \
+            --files austin:src/austin austinp:src/austinp
+
+          deactivate
+
+      - name: Save wheels as job artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ steps.tag.outputs.platform }}
+          path: dist/*.whl
+
+      - name: Upload artifacts to release
+        if: ${{ github.event_name != 'pull_request' && !inputs.dry_run }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: src/austin*.tar.xz
+          tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true
+
+      - name: Upload Python wheels to PyPI
+        if: ${{ github.event_name != 'pull_request' && !inputs.dry_run }}
+        run: |
+          source .venv/bin/activate
+          twine upload dist/*.whl --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+          deactivate
+
+  release-linux-musl:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+            container: quay.io/pypa/musllinux_1_2_x86_64
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+            container: quay.io/pypa/musllinux_1_2_aarch64
+    runs-on: ${{ matrix.runs-on }}
+    name: Release (Linux, ${{ matrix.arch }}, musl)
+    steps:
+      - uses: actions/checkout@v3
+        name: Checkout Austin
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build austin in container
+        run: |
+          docker run --rm \
+            --volume "$PWD:/io" \
+            --workdir /io \
+            --env ARCH=${{ matrix.arch }} \
+            ${{ matrix.container }} \
+            sh /io/scripts/build-in-musllinux.sh
+
+      - name: Read build outputs
+        id: tag
+        run: cat .build-outputs >> "$GITHUB_OUTPUT"
+
+      - name: Build wheel
+        run: |
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-bw.txt
+          python scripts/build-wheel.py \
+            --version=${{ steps.tag.outputs.version }} \
+            --platform=${{ steps.tag.outputs.platform }} \
+            --no-free-threaded \
+            --files austin:src/austin
+          deactivate
+
+      - name: Save wheels as job artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ steps.tag.outputs.platform }}
+          path: dist/*.whl
+
+      - name: Upload artifacts to release
+        if: ${{ github.event_name != 'pull_request' && !inputs.dry_run }}
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: src/austin*.tar.xz
+          tag: ${{ github.ref }}
+          overwrite: true
+          file_glob: true
+
+      - name: Upload Python wheels to PyPI
+        if: ${{ github.event_name != 'pull_request' && !inputs.dry_run }}
         run: |
           source .venv/bin/activate
           twine upload dist/*.whl --username __token__ --password ${{ secrets.PYPI_TOKEN }}
@@ -93,7 +306,7 @@ jobs:
           export PATH="/c/Program Files (x86)/`ls /c/Program\ Files\ \(x86\) | grep \"[wW]i[xX] [tT]oolset\"`/bin:$PATH"
           export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
 
-          gcc -static -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll
+          gcc -static -s -Wall -O3 -Os -o src/austin src/*.c -lpsapi -lntdll -ldbghelp
 
           git checkout "packaging/msi"
           git checkout master
@@ -115,6 +328,7 @@ jobs:
           popd
 
       - name: Upload to choco
+        if: ${{ github.event_name != 'pull_request' && !inputs.dry_run }}
         shell: bash
         run: |
           export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
@@ -131,6 +345,7 @@ jobs:
           popd
 
       - name: Upload artifacts to release
+        if: ${{ github.event_name != 'pull_request' && !inputs.dry_run }}
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -139,28 +354,35 @@ jobs:
           overwrite: true
           file_glob: true
 
-      - name: Install Python 3.10
-        uses: actions/setup-python@v4
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Build Python wheels
         shell: bash
         run: |
-          py -3.10 -m pip install --upgrade pip
-          py -3.10 -m pip install -r scripts/requirements-bw.txt
+          py -3.13 -m pip install --upgrade pip
+          py -3.13 -m pip install -r scripts/requirements-bw.txt
           
           export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
 
-          py -3.10 scripts/build-wheel.py \
+          py -3.13 scripts/build-wheel.py \
             --version=$VERSION \
             --platform=win_amd64 \
             --files austin.exe:src/austin.exe
-      
+
+      - name: Save wheels as job artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-win_amd64
+          path: dist/*.whl
+
       - name: Upload Python wheels to PyPI
+        if: ${{ github.event_name != 'pull_request' && !inputs.dry_run }}
         shell: bash
         run: |
-          py -3.10 -m twine upload dist/*.whl --username __token__ --password ${{ secrets.PYPI_TOKEN }}
+          py -3.13 -m twine upload dist/*.whl --username __token__ --password ${{ secrets.PYPI_TOKEN }}
 
   release-osx:
     runs-on: macos-latest
@@ -171,20 +393,19 @@ jobs:
       - uses: actions/checkout@v3
         name: Checkout Austin
 
-      - name: Install Python 3.10
-        uses: actions/setup-python@v4
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Generate artifacts
         run: |
-          python3.10 -m venv .venv
+          python3.13 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-bw.txt
 
           export VERSION=$(cat src/austin.h | sed -n -E "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
-          echo "::set-output name=version::$VERSION"
 
           clang -Wall -O3 -Os -o src/austin src/*.c -target x86_64-apple-macos11
 
@@ -212,7 +433,14 @@ jobs:
 
           deactivate
 
+      - name: Save wheels as job artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-macos
+          path: dist/*.whl
+
       - name: Upload artifacts to release
+        if: ${{ github.event_name != 'pull_request' && !inputs.dry_run }}
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
@@ -220,8 +448,9 @@ jobs:
           tag: ${{ github.ref }}
           overwrite: true
           file_glob: true
-      
+
       - name: Upload Python wheels to PyPI
+        if: ${{ github.event_name != 'pull_request' && !inputs.dry_run }}
         shell: bash
         run: |
           source .venv/bin/activate

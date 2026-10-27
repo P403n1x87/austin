@@ -49,7 +49,7 @@ if __name__ == "__main__":
 
     processes = []
     for _ in range(nproc):
-        process = multiprocessing.Process(target=do, args=(3000,))
+        process = multiprocessing.Process(target=do, args=(2800,))
         process.start()
         processes.append(process)
 

@@ -28,8 +28,10 @@ from pathlib import Path
 from test.utils import allpythons
 from test.utils import austin
 from test.utils import parse_mojo
+from test.utils import get_free_port
 from test.utils import has_frame
 from test.utils import maps
+from test.utils import version_in
 from test.utils import processes
 from test.utils import python
 from test.utils import sum_full_metrics
@@ -37,6 +39,8 @@ from test.utils import sum_metrics
 from test.utils import target
 from test.utils import threads
 from test.utils import variants
+from test.utils import wait_for_port
+from threading import Thread
 from time import sleep
 
 import pytest
@@ -46,7 +50,9 @@ import pytest
 @variants
 def test_fork_wall_time(austin, py):
     result = austin("-i", "2ms", *python(py), target("target34.py"))
-    assert py in (result.stderr or result.stdout), result.stderr or result.stdout
+    assert version_in(py, result.stderr or result.stdout), (
+        result.stderr or result.stdout
+    )
 
     assert len(processes(result.samples)) == 1
     ts = threads(result.samples)
@@ -115,6 +121,10 @@ def test_fork_memory(py, args):
     result = austin(args, "-i", "1ms", *python(py), target("target34.py"))
     assert result.returncode == 0, result.stderr or result.stdout
 
+    # With the GIL disabled, memory deltas are split across running threads,
+    # so we expect a warning about possibly inaccurate results.
+    assert ("requires Python with the GIL" in result.stderr) == py.endswith("t")
+
     assert has_frame(result.samples, "target34.py", "keep_cpu_busy", 32)
 
     meta = result.metadata
@@ -128,7 +138,12 @@ def test_fork_memory(py, args):
     alloc = sum(_ for _ in ms if _ > 0)
     dealloc = sum(-_ for _ in ms if _ < 0)
 
-    assert alloc * dealloc
+    if py.endswith("t"):
+        # Free-threaded builds use mimalloc, which might hold on to freed pages,
+        # so the RSS is not guaranteed to drop during the run.
+        assert alloc
+    else:
+        assert alloc * dealloc
 
 
 @allpythons()
@@ -176,7 +191,9 @@ def test_fork_multiprocess(py):
 @allpythons()
 def test_fork_full_metrics(py):
     result = austin("-i", "10ms", "-f", *python(py), target("target34.py"))
-    assert py in (result.stderr or result.stdout), result.stderr or result.stdout
+    assert version_in(py, result.stderr or result.stdout), (
+        result.stderr or result.stdout
+    )
 
     assert len(processes(result.samples)) == 1
     ts = threads(result.samples)
@@ -194,7 +211,12 @@ def test_fork_full_metrics(py):
 
     assert 0 < 0.9 * d < wall < 2.1 * d
     assert 0 < cpu <= wall
-    assert alloc * dealloc
+    if py.endswith("t"):
+        # Free-threaded builds use mimalloc, which might hold on to freed pages,
+        # so the RSS is not guaranteed to drop during the run.
+        assert alloc
+    else:
+        assert alloc * dealloc
 
 
 @pytest.mark.parametrize("exposure", (1, 2))
@@ -227,7 +249,9 @@ def test_fork_exposure(py, exposure, children):
 @allpythons(min=(3, 11))
 def test_qualnames(py, austin):
     result = austin("-i", "1ms", *python(py), target("qualnames.py"))
-    assert py in (result.stderr or result.stdout), result.stderr or result.stdout
+    assert version_in(py, result.stderr or result.stdout), (
+        result.stderr or result.stdout
+    )
 
     assert len(processes(result.samples)) == 1
     ts = threads(result.samples)
@@ -235,6 +259,37 @@ def test_qualnames(py, austin):
 
     assert has_frame(result.samples, "qualnames.py", "Foo.run")
     assert has_frame(result.samples, "qualnames.py", "Bar.run")
+
+
+@allpythons()
+def test_fork_thread_names(py):
+    result = austin("-i", "1ms", *python(py), target("target34.py"))
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    ts = {thread for _, thread, _ in threads(result.samples)}
+    assert ts == {"MainThread", "SecondThread"}, ts
+
+
+@allpythons()
+def test_fork_thread_names_single(py):
+    result = austin("-i", "1ms", *python(py), target("sleepy.py"))
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    ts = {thread for _, thread, _ in threads(result.samples)}
+    assert ts == {"MainThread"}, ts
+
+
+@allpythons()
+def test_fork_thread_names_transition(py):
+    """Starts single-threaded (no threading module), then imports threading and
+    spawns named workers.  Verifies the NAME_NO_THREADING → NAME_RESOLVED
+    transition: the main thread should be "MainThread" from the single-thread
+    path, and the workers should be resolved via threading._active."""
+    result = austin("-i", "1ms", *python(py), target("target_thread_names.py"))
+    assert result.returncode == 0, result.stderr or result.stdout
+
+    ts = {thread for _, thread, _ in threads(result.samples)}
+    assert ts == {"MainThread", "Worker1", "Worker2"}, ts
 
 
 @allpythons()
@@ -290,8 +345,24 @@ def test_fork_int_signal(py):
 @allpythons()
 @variants
 def test_fork_exec(austin, py, children):
-    result = austin("-i", "2ms", *children, *python(py), target("target_exec.py"))
-    assert py in (result.stderr or result.stdout), result.stderr or result.stdout
+    port = get_free_port()
+
+    # target_exec.py blocks on accept() until we connect -- the connection
+    # itself is what lets it proceed to exec(), so there's no fixed delay
+    # to guess and nothing to race against austin's own initial attach.
+    # This runs in the background because austin(...) below is a single
+    # blocking call for the whole capture.
+    trigger = Thread(target=wait_for_port, args=("localhost", port))
+    trigger.start()
+
+    result = austin(
+        "-i", "1ms", *children, *python(py), target("target_exec.py"), str(port)
+    )
+    trigger.join()
+
+    assert version_in(py, result.stderr or result.stdout), (
+        result.stderr or result.stdout
+    )
 
     assert len(processes(result.samples)) == 1
     ts = threads(result.samples)

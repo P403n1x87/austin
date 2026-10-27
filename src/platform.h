@@ -50,12 +50,6 @@ typedef HANDLE proc_ref_t;
 
 // ----------------------------------------------------------------------------
 
-#if defined(AUSTINP) && defined(PL_LINUX)
-#define NATIVE
-#endif
-
-// ----------------------------------------------------------------------------
-
 #if defined(PL_LINUX) || defined(PL_MACOS)
 #define PL_UNIX
 

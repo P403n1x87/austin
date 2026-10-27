@@ -25,16 +25,20 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-#ifdef NATIVE
 #include "cache.h"
+#include "py_interp.h"
+#include "thread_tracker.h"
+#ifdef PL_LINUX
 #include "linux/vm-range-tree.h"
+#ifdef AUSTINP
 #include <libunwind-ptrace.h>
 #endif
-
-#include "cache.h"
+#endif
 #include "platform.h"
+#include "python/asyncio.h"
 #include "python/symbols.h"
 #include "stats.h"
+#include "task_tracker.h"
 #include "version.h"
 
 typedef struct {
@@ -47,7 +51,8 @@ typedef struct {
     proc_vm_map_block_t exe;
     proc_vm_map_block_t dynsym;
     proc_vm_map_block_t rodata;
-    proc_vm_map_block_t runtime; // Added in Python 3.11
+    proc_vm_map_block_t runtime;       // Added in Python 3.11
+    proc_vm_map_block_t asyncio_debug; // AsyncioDebug section in the _asyncio module, 3.14+
 } proc_vm_map_t;
 
 typedef struct {
@@ -77,26 +82,77 @@ typedef struct {
 
     raddr_t istate_raddr;
 
-    lru_cache_t* frame_cache;
-    lru_cache_t* string_cache;
-    lru_cache_t* code_cache;
-    lru_cache_t* interpreter_state_cache;
-
+    lru_cache_t*         frame_cache;
+    lru_cache_t*         string_cache;
+    lru_cache_t*         code_cache;
+    lru_cache_t*         interpreter_state_cache;
+    thread_tracker_t*    thread_tracker;
+    interpreter_state_t* current_interp_state; // set per-interpreter during sampling
     // Temporal profiling support
-    microseconds_t timestamp;
+    microseconds_t       timestamp;
 
     // Memory profiling support
     ssize_t last_resident_memory;
+    // Thread counts from the last sample that split the memory delta across
+    // threads (GIL disabled).
+    int     mem_split_threads;
+    int     mem_split_running;
 
     // Offset of the tstate_current field within the _PyRuntimeState structure
     unsigned int tstate_current_offset;
 
-#ifdef NATIVE
+    bool free_threaded;
+
+    // Whether we have already warned about memory mode with the GIL disabled.
+    bool gil_disabled_warned;
+
+    // Non-Python thread sampling.
+    //
+    // The full OS thread enumeration (e.g. CreateToolhelp32Snapshot on Windows)
+    // is expensive and only runs when non_python_scan_deadline is reached.
+    // Between scans, known non-Python TIDs are re-interrupted directly from the
+    // cache, avoiding the enumeration entirely.
+    microseconds_t non_python_scan_deadline;
+    uintptr_t      non_python_tids[MAX_THREAD_TRACKER];
+    int            non_python_n;
+
+    uint64_t tlbc_generation; // current interpreter tlbc_generation (3.14+ FT)
+
+    // Set by the platform thread-suspend code (Linux: _py_thread__suspend)
+    // the moment it observes a thread report the kernel's mandatory
+    // post-exec ptrace stop. A process that execs in place gets a fresh
+    // ASLR base, so every cached address we hold (istate_raddr, bin_path,
+    // symbols, ...) is now wrong -- but that doesn't make sampling fail
+    // outright, since the stale thread-state head can easily still look
+    // like a plausible (non-NULL) pointer and simply walk into garbage.
+    // py_proc__sample checks and clears this flag once per call to force
+    // full re-discovery (py_proc__init) as soon as an exec is observed,
+    // rather than trying to infer staleness from the data it produces.
+    bool exec_seen;
+
+    // Asyncio introspection support (3.14+).
+    //
+    // The _asyncio extension module is loaded lazily (on `import asyncio`),
+    // so its AsyncioDebug section may not be mapped yet at attach time. We
+    // retry the scan on a Fibonacci backoff (see ASYNCIO_SCAN_BACKOFF_* in
+    // py_asyncio.h) until it is found, or until asyncio_scan_started_at is
+    // old enough that we fall back to a sparse indefinite poll instead of
+    // giving up outright. Once found, no further scanning is needed.
+    bool           asyncio_debug_found;
+    microseconds_t asyncio_scan_deadline;      // next allowed scan attempt
+    microseconds_t asyncio_scan_started_at;    // when discovery began; 0 == not started yet
+    microseconds_t asyncio_scan_interval;      // current backoff interval (the one just used)
+    microseconds_t asyncio_scan_prev_interval; // previous backoff interval, for computing the next Fibonacci step
+    Py_AsyncioModuleDebugOffsets asyncio_offsets;
+    task_tracker_t*              task_tracker; // per-task identity cache; see task_tracker.h
+
+#ifdef PL_LINUX
+#ifdef AUSTINP
     struct _puw {
         unw_addr_space_t as;
     } unwind;
+#endif
     vm_range_tree_t* maps_tree;
-    hash_table_t*    base_table;
 #endif
 
     com_t interpreter_state_com;
@@ -242,6 +298,14 @@ py_proc__init(py_proc_t*);
  */
 void
 py_proc__log_version(py_proc_t*, bool);
+
+/**
+ * Log the working directory, virtual environment and Python path of the
+ * process as metadata.
+ * @param self  the process object.
+ */
+void
+py_proc__log_paths(py_proc_t*);
 
 /**
  * Send a signal to the process.

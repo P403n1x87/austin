@@ -4,23 +4,68 @@ on:
   pull_request:
     paths:
       - .github/workflows/benchmarks.yml
+      - .github/actions/setup-libunwind/action.yml
       - scripts/benchmark.py
       - scripts/requirements-bm.txt
       - src/**
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
-  benchmarks:
+  setup:
+    runs-on: ubuntu-24.04
+    outputs:
+      matrix: ${{ steps.groups.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v3
+
+      # Install the free-threaded build first so that python3.13 resolves to
+      # the default (GIL) build. See the comment in the benchmark job below.
+      - name: Install free-threaded Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13t"
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libopenblas-dev
+
+      - name: Install benchmark dependencies
+        run: |
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r scripts/requirements-bm.txt
+
+      - name: Generate benchmark group matrix
+        id: groups
+        env:
+          PYTHONPATH: .
+        run: |
+          source .venv/bin/activate
+          matrix=$(python scripts/benchmark.py --list-groups)
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  build:
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - name: Setup libunwind
+        uses: ./austin/.github/actions/setup-libunwind
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
-
-      - name: Install Python 3.13
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.13"
+          sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev zlib1g-dev libzstd-dev
 
       - uses: actions/checkout@v3
         with:
@@ -35,10 +80,6 @@ jobs:
           make
           cd -
 
-      - uses: actions/checkout@v3
-        with:
-          path: austin
-
       - name: Compile Austin from the PR
         run: |
           cd austin
@@ -46,6 +87,143 @@ jobs:
           ./configure --enable-debug=symbols
           make
           cd -
+
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          cp austin-base/src/austin dist/austin-base
+          cp austin/src/austin       dist/austin
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: austin-binaries
+          path: dist/
+          retention-days: 1
+
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: austin-base
+
+      - name: Compile Austin from the base branch
+        shell: bash
+        run: |
+          cd austin-base
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall
+          cd -
+
+      - name: Compile Austin from the PR
+        shell: bash
+        run: |
+          cd austin
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall -Werror
+          cd -
+
+      - name: Package binaries
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp austin/src/austin.exe dist/austin.exe
+          if [ -f austin-base/src/austin.exe ]; then
+            cp austin-base/src/austin.exe dist/austin-base.exe
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: austin-binaries-win
+          path: dist/
+          retention-days: 1
+
+  build-mac:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.pull_request.base.ref }}
+          path: austin-base
+
+      - name: Compile Austin from the base branch
+        run: |
+          cd austin-base
+          gcc-15 -Wall -O3 -g src/*.c -o src/austin
+          cd -
+
+      - name: Compile Austin from the PR
+        run: |
+          cd austin
+          gcc-15 -Wall -Werror -O3 -g src/*.c -o src/austin
+          cd -
+
+      - name: Package binaries
+        run: |
+          mkdir -p dist
+          cp austin/src/austin dist/austin
+          if [ -f austin-base/src/austin ]; then
+            cp austin-base/src/austin dist/austin-base
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: austin-binaries-mac
+          path: dist/
+          retention-days: 1
+
+  benchmark:
+    needs: [setup, build]
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      # The order of these two steps matters. Each setup-python step prepends
+      # its own bin/ directory to PATH, so the last one installed wins for any
+      # executable name that both provide. The free-threaded build ships not
+      # only python3.13t but also python3.13, python3 and python. Installing it
+      # last would make python3.13 (and hence the venv below, and every
+      # "normal" benchmark scenario) resolve to the free-threaded interpreter.
+      # Installing it first puts the default (GIL) build ahead on PATH, so that
+      # python3.13 is the GIL build, while python3.13t is only provided by the
+      # free-threaded bin/ directory and is still found there. The benchmark
+      # script looks up the free-threaded interpreter explicitly as python3.13t.
+      - name: Install free-threaded Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13t"
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: austin-binaries
+          path: dist/
+
+      - name: Install binaries
+        run: |
+          chmod +x dist/austin dist/austin-base
+          cp dist/austin      austin/src/austin
+          cp dist/austin-base austin/src/austin-base
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libopenblas-dev
 
       - name: Install runtime dependencies
         run: |
@@ -56,22 +234,198 @@ jobs:
           pip install -r scripts/requirements-bm.txt
           cd -
 
-      - name: Run benchmarks
+      - name: Run benchmark group
         shell: bash
         env:
-          PYTHONPATH: "."
+          PYTHONPATH: austin
         run: |
           set -eo pipefail
           ulimit -c unlimited
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           source .venv/bin/activate
-          mv ${{ github.workspace}}/austin-base/src/austin ${{ github.workspace}}/austin/src/austin-base
           cd austin
-          python scripts/benchmark.py --format markdown | tee ${{ github.workspace}}/comment.txt
+          python scripts/benchmark.py \
+            -k "${{ matrix.filter }}" \
+            --format json \
+            > ../results-${{ matrix.name }}.json
+          cd -
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-${{ matrix.name }}
+          path: results-${{ matrix.name }}.json
+          retention-days: 1
+
+  benchmark-win:
+    needs: [build-win]
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: austin-binaries-win
+          path: dist/
+
+      - name: Install binaries
+        shell: bash
+        run: |
+          cp dist/austin.exe austin/src/austin.exe
+          if [ -f dist/austin-base.exe ]; then
+            cp dist/austin-base.exe austin/src/austin-base.exe
+          fi
+
+      - name: Install runtime dependencies
+        shell: bash
+        run: |
+          python -m venv .venv
+          source .venv/Scripts/activate
+          python -m pip install --upgrade pip
+          cd austin
+          pip install -r scripts/requirements-bm.txt
+          cd -
+
+      - name: Run native benchmark
+        shell: bash
+        env:
+          PYTHONPATH: austin
+        run: |
+          source .venv/Scripts/activate
+          cd austin
+          python scripts/benchmark.py \
+            -k "Native wall time" \
+            --format json \
+            > ../results-native-wall-time-win.json
+          cd -
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-native-wall-time-win
+          path: results-native-wall-time-win.json
+          retention-days: 1
+
+  benchmark-mac:
+    needs: [build-mac]
+    runs-on: macos-15
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: austin-binaries-mac
+          path: dist/
+
+      - name: Install binaries
+        run: |
+          chmod +x dist/austin
+          cp dist/austin austin/src/austin
+          if [ -f dist/austin-base ]; then
+            chmod +x dist/austin-base
+            cp dist/austin-base austin/src/austin-base
+          fi
+
+      - name: Remove signature from the Python binary
+        run: |
+          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/3.13/bin/python3 || true
+          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python || true
+
+      - name: Install runtime dependencies
+        run: |
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          cd austin
+          pip install -r scripts/requirements-bm.txt
+          cd -
+
+      - name: Run native benchmark
+        env:
+          PYTHONPATH: austin
+        run: |
+          source .venv/bin/activate
+          cd austin
+          sudo -E python scripts/benchmark.py \
+            -k "Native wall time" \
+            --format json \
+            > ../results-native-wall-time-mac.json
+          cd -
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-results-native-wall-time-mac
+          path: results-native-wall-time-mac.json
+          retention-days: 1
+
+  report:
+    needs: [benchmark, benchmark-win, benchmark-mac]
+    if: always() && needs.benchmark.result != 'cancelled'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bench-results-*
+          path: results/
+          merge-multiple: true
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libopenblas-dev
+
+      - name: Install runtime dependencies
+        run: |
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          cd austin
+          pip install -r scripts/requirements-bm.txt
+          cd -
+
+      - name: Merge results and render report
+        shell: bash
+        env:
+          PYTHONPATH: austin
+        run: |
+          source .venv/bin/activate
+          cd austin
+
+          files=$(ls ../results/*.json 2>/dev/null || true)
+          if [ -n "$files" ]; then
+            python scripts/benchmark.py \
+              --merge $files \
+              --format markdown \
+              > ${{ github.workspace }}/comment.txt
+          else
+            echo "No benchmark results." > ${{ github.workspace }}/comment.txt
+          fi
+
           cd -
 
       - name: Post results on PR
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: benchmarks
-          path: ${{ github.workspace}}/comment.txt
+          path: ${{ github.workspace }}/comment.txt

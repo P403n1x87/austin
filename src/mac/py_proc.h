@@ -57,7 +57,11 @@
 #define sw32(f, v) (f ? bswap_32(v) : v)
 
 struct _proc_extra_info {
-    // void
+    // Process start time, derived from pbi_start_tvsec/pbi_start_tvusec in
+    // proc_bsdinfo.  Captured on the first liveness check and compared on
+    // subsequent ones to detect PID reuse; a different value means a new
+    // process now owns the PID and our target is gone.
+    uint64_t starttime;
 };
 
 // ----------------------------------------------------------------------------
@@ -100,6 +104,9 @@ _py_proc__analyze_macho64(py_proc_t* self, void* base, void* map) {
         bin_attrs |= BT_EXEC;
         break;
     case MH_DYLIB:
+    // Python C-extension modules (e.g. _asyncio) are Mach-O bundles, not
+    // dylibs, but still carry the sections we scan for (AsyncioDebug etc).
+    case MH_BUNDLE:
         bin_attrs |= BT_LIB;
         break;
     default:
@@ -134,6 +141,12 @@ _py_proc__analyze_macho64(py_proc_t* self, void* base, void* map) {
                         self->map.runtime.size = sec[j].size;
                         continue;
                     }
+                    // Exposed by the _asyncio extension module since Python 3.14.
+                    if (strcmp(sec[j].sectname, "AsyncioDebug") == 0) {
+                        self->map.asyncio_debug.base = (void*)(offset + sec[j].addr);
+                        self->map.asyncio_debug.size = sec[j].size;
+                        continue;
+                    }
                 }
                 cmd_cnt++;
             }
@@ -146,6 +159,13 @@ _py_proc__analyze_macho64(py_proc_t* self, void* base, void* map) {
                 void*            str_tab = (void*)(map + sw32(s, ((struct symtab_command*)cmd)->stroff));
 
                 if ((sym_tab[i].n_type & N_EXT) == 0)
+                    continue;
+
+                // Skip undefined (imported) symbols. Extension modules commonly
+                // reference _PyRuntime etc. as undefined externals resolved by
+                // the dynamic linker, with n_value == 0; matching those would
+                // wrongly resolve the symbol to the extension's own load base.
+                if ((sym_tab[i].n_type & N_TYPE) == N_UNDF)
                     continue;
 
                 char* sym_name = (char*)(str_tab + sym_tab[i].n_un.n_strx);
@@ -178,6 +198,9 @@ _py_proc__analyze_macho32(py_proc_t* self, void* base, void* map) {
         bin_attrs |= BT_EXEC;
         break;
     case MH_DYLIB:
+    // Python C-extension modules (e.g. _asyncio) are Mach-O bundles, not
+    // dylibs, but still carry the sections we scan for (AsyncioDebug etc).
+    case MH_BUNDLE:
         bin_attrs |= BT_LIB;
         break;
     default:
@@ -212,6 +235,12 @@ _py_proc__analyze_macho32(py_proc_t* self, void* base, void* map) {
                         self->map.runtime.size = sec[j].size;
                         continue;
                     }
+                    // Exposed by the _asyncio extension module since Python 3.14.
+                    if (strcmp(sec[j].sectname, "AsyncioDebug") == 0) {
+                        self->map.asyncio_debug.base = (void*)(offset + sec[j].addr);
+                        self->map.asyncio_debug.size = sec[j].size;
+                        continue;
+                    }
                 }
                 cmd_cnt++;
             }
@@ -224,6 +253,13 @@ _py_proc__analyze_macho32(py_proc_t* self, void* base, void* map) {
                 void*         str_tab = (void*)(map + sw32(s, ((struct symtab_command*)cmd)->stroff));
 
                 if ((sym_tab[i].n_type & N_EXT) == 0)
+                    continue;
+
+                // Skip undefined (imported) symbols. Extension modules commonly
+                // reference _PyRuntime etc. as undefined externals resolved by
+                // the dynamic linker, with n_value == 0; matching those would
+                // wrongly resolve the symbol to the extension's own load base.
+                if ((sym_tab[i].n_type & N_TYPE) == N_UNDF)
                     continue;
 
                 char* sym_name = (char*)(str_tab + sym_tab[i].n_un.n_strx);
@@ -347,6 +383,11 @@ _py_proc__analyze_macho(py_proc_t* self, char* path, void* base, mach_vm_size_t 
     return 0;
 } // _py_proc__analyze_macho
 
+// pbi_status sentinel for "status could not be determined" -- not one of the
+// real process states from <sys/proc.h> (SIDL/SRUN/SSLEEP/SSTOP/SZOMB, all
+// small values), so this can never legitimately match a live process.
+#define PROC_STATUS_UNKNOWN 32767
+
 // ----------------------------------------------------------------------------
 static int
 check_pid(pid_t pid) {
@@ -362,12 +403,38 @@ check_pid(pid_t pid) {
 
     log_t("check_pid :: %d", proc.pbi_status);
 
-    if (proc.pbi_status == SIDL || proc.pbi_status == 32767) {
+    if (proc.pbi_status == PROC_STATUS_UNKNOWN) {
         set_error(OS, "Process has unexpected status");
         FAIL;
     }
 
     SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+// Liveness check with zombie and PID-reuse detection.  check_pid() accepts
+// SZOMB (zombie) as alive, which would otherwise keep the py_proc__init retry
+// loop spinning for its full timeout after the target exits.  proc_pidinfo
+// also gives us pbi_start_tvsec/pbi_start_tvusec, which uniquely identify the
+// process across its lifetime; capturing and comparing these detects the case
+// where the original target was reaped and a new process reused the PID.
+static inline bool
+_py_proc__is_running(py_proc_t* self) {
+    struct proc_bsdinfo info;
+    if (proc_pidinfo(self->pid, PROC_PIDTBSDINFO, 0, &info, PROC_PIDTBSDINFO_SIZE) != PROC_PIDTBSDINFO_SIZE)
+        return false;
+
+    // SZOMB: exited, awaiting reap.
+    if (info.pbi_status == SZOMB || info.pbi_status == PROC_STATUS_UNKNOWN)
+        return false;
+
+    uint64_t start = ((uint64_t)info.pbi_start_tvsec * 1000000ull) + info.pbi_start_tvusec;
+    if (self->extra->starttime == 0)
+        self->extra->starttime = start;
+    else if (self->extra->starttime != start)
+        return false; // PID has been reused by a different process
+
+    return true;
 }
 
 // ----------------------------------------------------------------------------
@@ -573,6 +640,48 @@ _py_proc__get_maps(py_proc_t* self) {
 } // _py_proc__get_maps
 
 // ----------------------------------------------------------------------------
+// Look for a mapped image belonging to the _asyncio extension module and, if
+// found, analyse it for the AsyncioDebug section. Unlike the main binary and
+// libpython, _asyncio is loaded lazily on `import asyncio`, so this is called
+// on a throttled retry rather than once at attach time.
+static void
+_py_proc__scan_for_asyncio(py_proc_t* self) {
+    if (isvalid(self->map.asyncio_debug.base))
+        return;
+
+    mach_vm_address_t              address     = 0;
+    mach_vm_size_t                 size        = 0;
+    mach_msg_type_number_t         count       = sizeof(vm_region_basic_info_data_64_t);
+    vm_region_basic_info_data_64_t region_info = {0};
+    mach_port_t                    object_name;
+
+    char* path = (char*)calloc(MAXPATHLEN + 1, sizeof(char));
+    if (!isvalid(path))
+        return;
+
+    while (mach_vm_region(
+               self->ref, &address, &size, VM_REGION_BASIC_INFO_64, (vm_region_info_t)&region_info, &count,
+               &object_name // cppcheck-suppress [uninitvar]
+           )
+           == KERN_SUCCESS) {
+        if (!(region_info.protection & VM_PROT_EXECUTE)) {
+            address += size;
+            continue;
+        }
+
+        int path_len = proc_regionfilename(self->pid, address, path, MAXPATHLEN);
+        if (path_len > 0 && isvalid(strstr(path, "_asyncio"))) {
+            _py_proc__analyze_macho(self, path, (void*)address, size);
+            break; // Only one _asyncio module is expected per process.
+        }
+
+        address += size;
+    }
+
+    free(path);
+} // _py_proc__scan_for_asyncio
+
+// ----------------------------------------------------------------------------
 static ssize_t
 _py_proc__get_resident_memory(py_proc_t* self) {
     struct mach_task_basic_info info;
@@ -584,6 +693,82 @@ _py_proc__get_resident_memory(py_proc_t* self) {
              ? info.resident_size
              : -1;
 } // _py_proc__get_resident_memory
+
+// ----------------------------------------------------------------------------
+// Return the current working directory of the process. The returned string must
+// be freed by the caller.
+static char*
+_py_proc__get_cwd(py_proc_t* self) {
+    struct proc_vnodepathinfo vpi;
+
+    if (proc_pidinfo(self->pid, PROC_PIDVNODEPATHINFO, 0, &vpi, sizeof(vpi)) != sizeof(vpi))
+        return NULL;
+
+    return *vpi.pvi_cdir.vip_path ? strdup(vpi.pvi_cdir.vip_path) : NULL;
+} // _py_proc__get_cwd
+
+// ----------------------------------------------------------------------------
+// Return the NUL-separated environment block of the process, as it was at
+// exec time. The block is always NUL-terminated and must be freed by the caller.
+static char*
+_py_proc__get_environ(py_proc_t* self, size_t* size) {
+    int    mib[3]  = {CTL_KERN, KERN_ARGMAX, 0};
+    int    arg_max = 0;
+    size_t len     = sizeof(arg_max);
+
+    if (sysctl(mib, 2, &arg_max, &len, NULL, 0) != 0 || arg_max <= 0)
+        return NULL;
+
+    cu_char* args = (char*)malloc(arg_max);
+    if (!isvalid(args))
+        return NULL;
+
+    // The KERN_PROCARGS2 buffer has the following layout:
+    //
+    //   int argc | exec_path \0 | \0... | argv[0] \0 ... argv[argc-1] \0 |
+    //   env[0] \0 ... env[n-1] \0 | \0 | apple strings ...
+    mib[1] = KERN_PROCARGS2;
+    mib[2] = self->pid;
+    len    = (size_t)arg_max;
+    if (sysctl(mib, 3, args, &len, NULL, 0) != 0 || len <= sizeof(int))
+        return NULL;
+
+    char* end  = args + len;
+    int   argc = *(int*)args;
+    char* p    = args + sizeof(int);
+
+    // Skip the executable path and the NUL padding that follows it.
+    while (p < end && *p != '\0')
+        p++;
+    while (p < end && *p == '\0')
+        p++;
+
+    // Skip the arguments.
+    for (int i = 0; i < argc && p < end; i++)
+        p += strnlen(p, end - p) + 1;
+
+    if (p >= end)
+        return NULL;
+
+    // The environment ends at the first empty string.
+    char* env = p;
+    while (p < end && *p != '\0')
+        p += strnlen(p, end - p) + 1;
+
+    if (p > end)
+        p = end;
+
+    size_t env_size = p - env;
+    char*  block    = (char*)malloc(env_size + 1);
+    if (!isvalid(block))
+        return NULL;
+
+    memcpy(block, env, env_size);
+    block[env_size] = '\0';
+    *size           = env_size;
+
+    return block;
+} // _py_proc__get_environ
 
 // ----------------------------------------------------------------------------
 static int

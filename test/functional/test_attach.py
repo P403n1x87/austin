@@ -32,6 +32,7 @@ from test.utils import austin
 from test.utils import austinp
 from test.utils import has_frame
 from test.utils import requires_sudo
+from test.utils import retry_until
 from test.utils import run_python
 from test.utils import sum_metrics
 from test.utils import target
@@ -152,7 +153,7 @@ def test_where_multiprocess(py):
 @pytest.mark.xfail(reason="Fails in CI with some Python versions")
 @requires_sudo
 @allpythons()
-def test_where_kernel(py):
+def test_where_kernel_austinp(py):
     with run_python(py, target("sleepy.py"), sleep_after=1) as p:
         result = austinp("-kw", str(p.pid))
         assert result.returncode == 0
@@ -165,9 +166,56 @@ def test_where_kernel(py):
         assert "do_syscall" in result.stdout
 
 
+@requires_sudo
+@allpythons()
+def test_attach_thread_names(py):
+    with run_python(py, target("target34.py")) as p:
+        # A fixed sleep before the one-shot sample raced SecondThread's
+        # startup under load (worse on free-threaded builds, where thread
+        # creation does more work) -- poll instead, taking a fresh sample
+        # each time, until both threads have actually shown up.
+        result = retry_until(
+            lambda: austin("-i", "1ms", "-p", str(p.pid)),
+            lambda r: (
+                {t for _, t, _ in threads(r.samples)} == {"MainThread", "SecondThread"}
+            ),
+        )
+        assert result.returncode == 0, result.stderr or result.stdout
+
+        ts = {thread for _, thread, _ in threads(result.samples)}
+        assert ts == {"MainThread", "SecondThread"}, ts
+
+
+@requires_sudo
+@allpythons()
+def test_attach_thread_names_single(py):
+    with run_python(py, target("sleepy.py"), sleep_after=0.5) as p:
+        result = austin("-i", "1ms", "-p", str(p.pid))
+        assert result.returncode == 0, result.stderr or result.stdout
+
+        ts = {thread for _, thread, _ in threads(result.samples)}
+        assert ts == {"MainThread"}, ts
+
+
+@requires_sudo
+@allpythons()
+def test_attach_thread_names_transition(py):
+    """Attaches while the process is single-threaded (phase 1), then the
+    target imports threading and spawns named workers (phase 2).  Verifies
+    that Austin resolves the transition from the single-thread "MainThread"
+    path to full threading._active lookup."""
+    with run_python(py, target("target_thread_names.py")) as p:
+        sleep(0.5)
+
+        result = austin("-i", "1ms", "-p", str(p.pid))
+        assert result.returncode == 0, result.stderr or result.stdout
+
+        ts = {thread for _, thread, _ in threads(result.samples)}
+        assert ts == {"MainThread", "Worker1", "Worker2"}, ts
+
+
 @pytest.mark.parametrize("prefix", [[], ["unshare", "-p", "-f", "-r"]])
 @pytest.mark.skipif(platform.system() != "Linux", reason="Linux only")
-@pytest.mark.xfail(os.getenv("CI") == "true", reason="Fails in CI")
 @requires_sudo
 @allpythons()
 def test_attach_container_like(py, tmp_path, prefix):
@@ -178,6 +226,9 @@ def test_attach_container_like(py, tmp_path, prefix):
     symbols. We also test against an interpreter started in a different PID
     namespace to emulate a container as closely as possible.
     """
+    if prefix and os.getenv("CI") == "true":
+        pytest.xfail("PID namespace case not yet reliable in CI")
+
     venv_path = tmp_path / ".venv"
     p = run_python(py, "-m", "venv", "--copies", str(venv_path))
     p.wait(30)
@@ -186,23 +237,85 @@ def test_attach_container_like(py, tmp_path, prefix):
     env = os.environ.copy()
     env["LD_LIBRARY_PATH"] = str(venv_path / "lib")
     env["PATH"] = str(venv_path / "bin") + os.pathsep + env["PATH"]
+    # Give the target enough lifetime (sleepy.py sleeps `interval` seconds
+    # twice) that a successful attach -- which then blocks sampling until
+    # the target exits, since "-Cp" has no exposure limit -- has real time
+    # left to collect a useful sample, rather than attaching moments before
+    # the target's natural death and coming back empty.
     with run_python(
-        py, target("sleepy.py"), "3", env=env, prefix=prefix, sleep_after=0.5
+        py, target("sleepy.py"), "10", env=env, prefix=prefix, sleep_after=0.5
     ) as p:
         rmtree(venv_path)
-        sleep(0.5)
 
-        result = austin("-Cp", str(p.pid))
-        assert result.returncode == 0
+        # With a prefix like "unshare -p -f -r", the PID we attach to is the
+        # launcher, not the exec'd Python interpreter -- austin's own "-C"
+        # fallback needs that child to have actually forked+exec'd by the
+        # time it scans for it. A failed attach returns fast (no child
+        # found yet), so retry_until gets several real attempts cheaply;
+        # poll instead of trusting a single fixed-delay snapshot.
+        result = retry_until(
+            lambda: austin("-Cp", str(p.pid)),
+            lambda r: has_frame(r.samples, filename="sleepy.py", function="<module>"),
+        )
+        assert result.returncode == 0, result.stderr or result.stdout
 
-        ts = threads(result.stdout)
-        assert len(ts) == 1
+        ts = threads(result.samples)
+        assert len(ts) == 1, result.stderr or result.stdout
 
         assert has_frame(result.samples, filename="sleepy.py", function="<module>")
 
         meta = result.metadata
 
-        a = sum_metrics(result.stdout)
+        a, _ = sum_metrics(result.samples)
         d = int(meta["duration"])
 
         assert abs(a - d) <= (a + d) * 0.25
+
+
+@requires_sudo
+@allpythons()
+def test_attach_path_metadata(py, tmp_path, monkeypatch):
+    # Make sure that Austin cannot get the values from its own environment.
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+
+    venv = os.path.join("some", "venv")
+    pythonpath = os.pathsep.join(["foo", "bar"])
+    # Pad the environment to exercise reading large environment blocks.
+    env = dict(
+        os.environ,
+        VIRTUAL_ENV=venv,
+        PYTHONPATH=pythonpath,
+        AUSTIN_TEST_PADDING="x" * 16384,
+    )
+
+    with run_python(py, target("sleepy.py"), "2", env=env, cwd=tmp_path) as p:
+        sleep(0.5)
+
+        result = austin("-i", "10ms", "-p", str(p.pid))
+        assert result.returncode == 0
+
+        meta = result.metadata
+
+        assert os.path.samefile(meta["cwd"], tmp_path), meta
+        assert meta["venv"] == venv, meta
+        assert meta["pythonpath"] == pythonpath, meta
+
+
+@requires_sudo
+@allpythons()
+def test_attach_path_metadata_unset(py, monkeypatch):
+    monkeypatch.delenv("VIRTUAL_ENV", raising=False)
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+
+    with run_python(py, target("sleepy.py"), "2") as p:
+        sleep(0.5)
+
+        result = austin("-i", "10ms", "-p", str(p.pid))
+        assert result.returncode == 0
+
+        meta = result.metadata
+
+        assert "cwd" in meta, meta
+        assert "venv" not in meta, meta
+        assert "pythonpath" not in meta, meta

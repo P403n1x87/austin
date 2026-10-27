@@ -8,10 +8,10 @@ on:
   pull_request:
     paths:
       - .github/workflows/tests.yml
+      - .github/actions/setup-libunwind/action.yml
+      - .github/actions/collect-crashes/action.yml
       - scripts/build-wheel.py
       - scripts/requirements-bw.txt
-      - scripts/requirements-val.txt
-      - scripts/validation.py
       - src/**
       - test/**
       - configure.ac
@@ -21,17 +21,59 @@ concurrency:
   group: tests-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
-  build-linux:
-    runs-on: ubuntu-24.04    
-    name: Build Austin on Linux
+  changes:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request'
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+      tests: ${{ steps.filter.outputs.tests }}
+      wheel-scripts: ${{ steps.filter.outputs.wheel-scripts }}
     steps:
       - uses: actions/checkout@v3
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            src:
+              - .github/workflows/tests.yml
+              - .github/actions/setup-libunwind/action.yml
+              - src/**
+              - configure.ac
+              - Makefile.am
+            tests:
+              - .github/workflows/tests.yml
+              - test/**
+            wheel-scripts:
+              - .github/workflows/tests.yml
+              - scripts/build-wheel.py
+              - scripts/requirements-bw.txt
+
+  build-linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    name: Build Austin on Linux (${{ matrix.arch }})
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Setup libunwind
+        uses: ./.github/actions/setup-libunwind
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev
+          sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev zlib1g-dev libzstd-dev
 
       - name: Compile Austin
         run: |
@@ -41,15 +83,23 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}
+          name: austin-binaries-Linux-${{ matrix.arch }}
           overwrite: true
           path: |
             src/austin
             src/austinp
 
   build-linux-musl:
-    runs-on: ubuntu-24.04    
-    name: Build Austin on Linux (musl)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    name: Build Austin on Linux (${{ matrix.arch }}, musl)
     steps:
       - uses: actions/checkout@v3
 
@@ -64,31 +114,56 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}-musl
+          name: austin-binaries-Linux-musl-${{ matrix.arch }}
           overwrite: true
           path: |
             src/austin.musl
 
   tests-linux:
-    runs-on: ubuntu-24.04
-
-    needs: [build-linux, build-linux-musl]
-
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
-    
+        arch: [x86_64, aarch64]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15"]
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+          # Free-threaded builds on both arches
+          - arch: x86_64
+            python-version: "3.13t"
+            runs-on: ubuntu-24.04
+          - arch: x86_64
+            python-version: "3.14t"
+            runs-on: ubuntu-24.04
+          - arch: x86_64
+            python-version: "3.15t"
+            runs-on: ubuntu-24.04
+          - arch: aarch64
+            python-version: "3.13t"
+            runs-on: ubuntu-24.04-arm
+          - arch: aarch64
+            python-version: "3.14t"
+            runs-on: ubuntu-24.04-arm
+          - arch: aarch64
+            python-version: "3.15t"
+            runs-on: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runs-on }}
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.tests == 'true' || needs.changes.result == 'skipped'
+
+    needs: [changes, build-linux, build-linux-musl]
+
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
-    
-    name: Tests on Linux with Python ${{ matrix.python-version }}
+
+    name: Tests on Linux (${{ matrix.arch }}) with Python ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}
+          name: austin-binaries-Linux-${{ matrix.arch }}
           path: src
 
       - run: chmod +x src/austin && chmod +x src/austinp
@@ -100,37 +175,47 @@ jobs:
             valgrind \
             gdb
 
-      - name: Install Python
-        uses: actions/setup-python@v4
+      - name: Install Python (standard)
+        if: ${{ !endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}-dev
 
-      - name: Install Python 3.10
-        uses: actions/setup-python@v4
+      - name: Install Python (free-threaded)
+        if: ${{ endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
       - name: Install test dependencies
         run: |
-          python3.10 -m venv .venv
+          python3.13 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r test/requirements.txt
-          
+
       - name: Set core dump file pattern
         run: |
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
-
           ulimit -c unlimited
-          python3.10 -c "import ctypes;ctypes.string_at(0)" || true
-          ls core.*
-          rm core.*
+          python3.13 -c "import ctypes;ctypes.string_at(0)" || true
+          ls core.* && rm core.* || true
 
       - name: Run unit tests
         run: |
           ulimit -c unlimited
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           .venv/bin/pytest -vv test/cunit
-  
+
+      - name: Pre-create mojo output directory
+        run: mkdir -p test-profiles && chmod 777 test-profiles
+
       - name: Run functional Austin tests (with sudo)
         run: |
           ulimit -c unlimited
@@ -158,7 +243,7 @@ jobs:
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           .venv/bin/pytest --pastebin=failed -svr a test/functional -k "austinp"
         if: always()
-  
+
       - name: Run integrity tests (with sudo)
         run: |
           ulimit -c unlimited
@@ -180,62 +265,89 @@ jobs:
           sudo -E env PATH="$PATH" .venv/bin/pytest -n 0 -sv test/support
         if: always()
 
+      - name: Collect native test profiles
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-profiles-linux-${{ matrix.arch }}-py${{ matrix.python-version }}
+          path: test-profiles/
+          if-no-files-found: ignore
+
+      - name: Collect crash reports
+        uses: ./.github/actions/collect-crashes
+        if: always()
+        with:
+          label: linux-${{ matrix.arch }}-py${{ matrix.python-version }}
+
   wheels-linux:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runs-on: ubuntu-24.04
+            manylinux-platform: manylinux_2_12_x86_64.manylinux2010_x86_64
+            musl-platform: musllinux_1_1_x86_64
+          - arch: aarch64
+            runs-on: ubuntu-24.04-arm
+            manylinux-platform: manylinux_2_17_aarch64.manylinux2014_aarch64
+            musl-platform: musllinux_1_1_aarch64
+    runs-on: ${{ matrix.runs-on }}
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.wheel-scripts == 'true' || needs.changes.result == 'skipped'
 
-    needs: [build-linux, build-linux-musl]
+    needs: [changes, build-linux, build-linux-musl]
 
-    name: Build Linux wheels
+    name: Build Linux wheels (${{ matrix.arch }})
     steps:
       - uses: actions/checkout@v3
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}
+          name: austin-binaries-Linux-${{ matrix.arch }}
           path: src
 
       - uses: actions/download-artifact@v4
         with:
-          name: austin-binaries-${{ runner.os }}-musl
+          name: austin-binaries-Linux-musl-${{ matrix.arch }}
           path: src
 
       - run: chmod +x src/austin && chmod +x src/austinp
 
-      - name: Install Python 3.10
-        uses: actions/setup-python@v4
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Build wheels
         run: |
-          python3.10 -m venv .venv
+          python3.13 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-bw.txt
-          
+
           export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p");
 
           python scripts/build-wheel.py \
             --version=$VERSION \
-            --platform=manylinux_2_12_x86_64.manylinux2010_x86_64 \
+            --platform=${{ matrix.manylinux-platform }} \
             --files austin:src/austin austinp:src/austinp
 
           python scripts/build-wheel.py \
             --version=$VERSION \
-            --platform=musllinux_1_1_x86_64 \
+            --platform=${{ matrix.musl-platform }} \
             --files austin:src/austin.musl
 
           deactivate
 
   build-osx-gcc:
-    runs-on: macos-latest
+    runs-on: macos-15
 
     name: Build Austin on macOS (gcc)
     steps:
       - uses: actions/checkout@v3
 
       - name: Compile Austin
-        run: gcc-12 -Wall -Werror -O3 -g src/*.c -o src/austin
+        run: gcc-15 -Wall -Werror -O3 -g src/*.c -o src/austin
 
       - uses: actions/upload-artifact@v4
         with:
@@ -261,13 +373,14 @@ jobs:
 
   tests-osx:
     runs-on: macos-latest
-    
-    needs: [build-osx-gcc, build-osx-clang]
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.tests == 'true' || needs.changes.result == 'skipped'
+
+    needs: [changes, build-osx-gcc, build-osx-clang]
 
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t", "3.15", "3.15t"]
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
@@ -283,31 +396,53 @@ jobs:
 
       - run: chmod +x src/austin
 
-      - name: Install Python
-        uses: actions/setup-python@v4
+      - name: Install Python (standard)
+        if: ${{ !endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}-dev
 
-      - name: Install Python 3.10
-        uses: actions/setup-python@v4
+      - name: Install Python (free-threaded)
+        if: ${{ endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
 
       - name: Remove signature from the Python binary
         run: |
-          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/bin/python3 || true
-          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/Resources/Python.app/Contents/MacOS/Python || true
+          version="${{ matrix.python-version }}"
+          base="${version%t}"
+          framework="Python.framework"
+          binary="python3"
+          app_binary="Python"
+          if [[ "$version" == *t ]]; then
+            # Free-threaded builds install into a separate PythonT.framework
+            # (not a "t"-suffixed Versions dir under Python.framework), whose
+            # bin/ directory ships the interpreter as python<version>t and
+            # whose bundled launcher app binary is named PythonT.
+            framework="PythonT.framework"
+            binary="python${version}"
+            app_binary="PythonT"
+          fi
+          codesign --remove-signature "/Library/Frameworks/${framework}/Versions/${base}/bin/${binary}" || true
+          codesign --remove-signature "/Library/Frameworks/${framework}/Versions/${base}/Resources/Python.app/Contents/MacOS/${app_binary}" || true
 
       - name: Install test dependencies
         run: |
-          python3.10 -m pip install --upgrade pip
-          python3.10 -m pip install -r test/requirements.txt
+          python3.13 -m pip install --upgrade pip
+          python3.13 -m pip install -r test/requirements.txt
           python${{ matrix.python-version }} -m venv .venv \
             || (python${{ matrix.python-version }} -m pip install virtualenv && python${{ matrix.python-version }} -m virtualenv .venv)
 
       - name: Run unit tests
         env:
-          CC: gcc-12
+          CC: gcc-15
         run: |
           source .venv/bin/activate
           pytest -vv test/cunit
@@ -336,10 +471,25 @@ jobs:
           pytest --pastebin=failed -svr a -k "_darwin" test/functional
         if: always()
 
+      - name: Collect native test profiles
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-profiles-macos-py${{ matrix.python-version }}
+          path: test-profiles/
+          if-no-files-found: ignore
+
+      - name: Collect crash reports
+        uses: ./.github/actions/collect-crashes
+        if: always()
+        with:
+          label: macos-py${{ matrix.python-version }}
+
   wheels-osx:
     runs-on: macos-latest
-    
-    needs: [build-osx-gcc, build-osx-clang]
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.wheel-scripts == 'true' || needs.changes.result == 'skipped'
+
+    needs: [changes, build-osx-gcc, build-osx-clang]
 
     name: Build macOS wheels
     steps:
@@ -352,14 +502,14 @@ jobs:
 
       - run: chmod +x src/austin
 
-      - name: Install Python 3.10
-        uses: actions/setup-python@v4
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Build wheels
         run: |
-          python3.10 -m venv .venv
+          python3.13 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r scripts/requirements-bw.txt
@@ -383,7 +533,7 @@ jobs:
       - name: Compile Austin
         run: |
           gcc.exe --version
-          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -Wall -Werror -DDEBUG
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall -Werror -DDEBUG
           src\austin.exe --help
 
       - uses: actions/upload-artifact@v4
@@ -395,17 +545,18 @@ jobs:
 
   tests-win:
     runs-on: windows-latest
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.tests == 'true' || needs.changes.result == 'skipped'
 
-    needs: build-win
+    needs: [changes, build-win]
 
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t", "3.15", "3.15t"]
 
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
-    
+
     name: Tests on Windows with Python ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v3
@@ -415,19 +566,27 @@ jobs:
           name: austin-binary-${{ runner.os }}
           path: src
 
-      - name: Install Python
-        uses: actions/setup-python@v4
+      - name: Install Python (standard)
+        if: ${{ !endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}-dev
 
-      - uses: actions/setup-python@v4
-        name: Install Python 3.10
+      - name: Install Python (free-threaded)
+        if: ${{ endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - uses: actions/setup-python@v5
+        name: Install Python 3.12
+        with:
+          python-version: "3.12"
 
       - name: Install test dependencies
         run: |
-          py -3.10 -m venv venv
+          py -3.12 -m venv venv
           venv\Scripts\Activate.ps1
           python -m pip install --upgrade pip
           python -m pip install -r test/requirements.txt
@@ -450,6 +609,27 @@ jobs:
           python -m pytest --full-trace --pastebin=failed -svr a test\support
         if: always()
 
+      - name: Collect native profiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-profiles-${{ runner.os }}-${{ matrix.python-version }}
+          path: test-profiles\
+        if: always()
+
+      - name: Collect debug log
+        shell: cmd
+        run: |
+          copy "%TEMP%\austin.log" "%GITHUB_WORKSPACE%\austin.log" 2>nul || echo No log file found
+        if: always()
+
+      - name: Upload debug log
+        uses: actions/upload-artifact@v4
+        with:
+          name: austin-log-${{ runner.os }}-${{ matrix.python-version }}
+          path: austin.log
+          if-no-files-found: ignore
+        if: always()
+
       - name: Show collected dumps
         run: |
           ls -R ${{ github.workspace }}\dumps || echo "No dumps collected"
@@ -464,8 +644,9 @@ jobs:
 
   wheels-win:
     runs-on: windows-latest
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.wheel-scripts == 'true' || needs.changes.result == 'skipped'
 
-    needs: build-win
+    needs: [changes, build-win]
 
     name: Build Windows wheels
     steps:
@@ -476,20 +657,76 @@ jobs:
           name: austin-binary-${{ runner.os }}
           path: src
 
-      - uses: actions/setup-python@v4
-        name: Install Python 3.10
+      - uses: actions/setup-python@v5
+        name: Install Python 3.13
         with:
-          python-version: '3.10'
+          python-version: '3.13'
 
       - name: Build wheels
         shell: bash
         run: |
-          py -3.10 -m pip install --upgrade pip
-          py -3.10 -m pip install -r scripts/requirements-bw.txt
+          py -3.13 -m pip install --upgrade pip
+          py -3.13 -m pip install -r scripts/requirements-bw.txt
           
           export VERSION=$(cat src/austin.h | sed -r -n "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
 
-          py -3.10 scripts/build-wheel.py \
+          py -3.13 scripts/build-wheel.py \
             --version=$VERSION \
             --platform=win_amd64 \
             --files austin.exe:src/austin.exe
+
+  crash-report:
+    runs-on: ubuntu-24.04
+    needs: [tests-linux, tests-osx, tests-win]
+    if: always() && github.event_name == 'pull_request'
+    name: Crash report
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Download crash reports
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: crash-reports-*
+          path: crash-reports/
+          merge-multiple: false
+
+      - name: Generate crash report
+        id: report
+        shell: bash
+        run: |
+          mkdir -p crash-reports
+          files=$(find crash-reports/ -type f | sort)
+          if [ -z "$files" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "found=true" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## :rotating_light: Austin crashed during CI"
+            echo ""
+            echo "Crash artefacts were collected in the following jobs (see the workflow run artifacts for full backtraces):"
+            echo ""
+            for dir in crash-reports/*/; do
+              label="${dir#crash-reports/}"
+              label="${label%/}"
+              echo "- \`${label}\`: $(ls "$dir" | tr '\n' ' ')"
+            done
+          } > crash-comment.md
+
+      - name: Post crash report on PR
+        if: steps.report.outputs.found == 'true'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: crash-report
+          path: crash-comment.md
+
+      - name: Clear stale crash comment
+        if: steps.report.outputs.found == 'false'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: crash-report
+          delete: true

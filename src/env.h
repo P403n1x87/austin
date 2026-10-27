@@ -37,3 +37,26 @@ extern parsed_env_t env;
 // ----------------------------------------------------------------------------
 int
 parse_env();
+
+/**
+ * Get the value of an environment variable of the current process.
+ * @param  name  the name of the variable.
+ * @return       a newly allocated copy of the value, or NULL if the variable is
+ *               not set or empty.
+ */
+char*
+env_get(const char*);
+
+/**
+ * Look up an environment variable in an environment block, such as the one of
+ * another process.
+ * @param  block  a block of NUL-separated NAME=VALUE entries, terminated by an
+ *                empty entry or by the end of the block. The block must be
+ *                NUL-terminated.
+ * @param  size   the size of the block, excluding the terminating NUL.
+ * @param  name   the name of the variable. Case-insensitive on Windows.
+ * @return        a newly allocated copy of the value, or NULL if the variable is
+ *                not set or empty.
+ */
+char*
+env_lookup(const char*, size_t, const char*);

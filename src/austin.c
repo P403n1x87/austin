@@ -95,43 +95,61 @@ do_single_process(py_proc_t* py_proc) {
     log_meta_header();
 
     py_proc__log_version(py_proc, /*is_parent*/ true);
+    py_proc__log_paths(py_proc);
+
+    pacer_t pacer;
+    pacer_init(&pacer);
 
     if (pargs.exposure == 0) {
         while (interrupt_signal == 0) {
-            stopwatch_start();
+            sample_timer_start();
 
             if (fail(result = py_proc__sample(py_proc))) {
-                // Try to re-initialise
-                if (fail(py_proc__init(py_proc)))
+                // Retry reinit after exec: Python startup may be slow on
+                // emulated platforms (e.g. QEMU aarch64).  Bound the total
+                // wait to 10× the startup timeout so we don't spin forever
+                // if the process exec'd into a non-Python binary.
+                bool           reinit_ok    = false;
+                microseconds_t reinit_limit = gettime() + pargs.timeout;
+                while (interrupt_signal == 0 && gettime() < reinit_limit && py_proc__is_running(py_proc)) {
+                    if (success(py_proc__init(py_proc))) {
+                        reinit_ok = true;
+                        break;
+                    }
+                }
+                if (!reinit_ok)
                     FAIL_BREAK;
             }
 
-#ifdef NATIVE
-            stopwatch_pause(0);
-#else
-            stopwatch_pause(stopwatch_duration());
-#endif
+            stats_check_duration(sample_timer_elapsed());
+            pacer_next(&pacer);
         }
     } else {
         if (!pargs.where) {
             log_m("");
-            log_m("🕑 Sampling for %d second%s ...", pargs.exposure, pargs.exposure != 1 ? "s" : "");
+            log_m("🕑 Sampling for %lu second%s ...", pargs.exposure, pargs.exposure != 1 ? "s" : "");
         }
         microseconds_t end_time = gettime() + pargs.exposure * 1000000;
         while (interrupt_signal == 0) {
-            stopwatch_start();
+            sample_timer_start();
 
             if (fail(result = py_proc__sample(py_proc))) {
-                // Try to re-initialise
-                if (pargs.where || fail(py_proc__init(py_proc)))
+                if (pargs.where)
+                    FAIL_BREAK;
+                bool           reinit_ok    = false;
+                microseconds_t reinit_limit = gettime() + pargs.timeout;
+                while (interrupt_signal == 0 && gettime() < reinit_limit && py_proc__is_running(py_proc)) {
+                    if (success(py_proc__init(py_proc))) {
+                        reinit_ok = true;
+                        break;
+                    }
+                }
+                if (!reinit_ok)
                     FAIL_BREAK;
             }
 
-#ifdef NATIVE
-            stopwatch_pause(0);
-#else
-            stopwatch_pause(stopwatch_duration());
-#endif
+            stats_check_duration(sample_timer_elapsed());
+            pacer_next(&pacer);
             if (pargs.where)
                 break;
 
@@ -139,6 +157,11 @@ do_single_process(py_proc_t* py_proc) {
                 interrupt_signal = SIGINT; // Emulate Ctrl-C
         }
     }
+
+    // Freeze the duration clock at the end of the sampling loop so that the
+    // signal/terminate/wait/destroy sequence below is not counted against the
+    // reported sampling duration.
+    stats_end();
 
     if (pargs.attach_pid == 0) {
         if (interrupt_signal) {
@@ -171,6 +194,10 @@ do_child_processes(py_proc_t* py_proc) {
         FAIL;
     } // GCOV_EXCL_STOP
 
+    // Children inherit the working directory and environment of the parent
+    // process, so we log the parent's even when it is not a Python process.
+    py_proc__log_paths(py_proc);
+
     // If the parent process is not a Python process, its children might be, so
     // we attempt to attach Austin to them.
     if (!py_proc__is_python(py_proc)) {
@@ -200,36 +227,29 @@ do_child_processes(py_proc_t* py_proc) {
 
     log_meta_header();
 
+    pacer_t pacer;
+    pacer_init(&pacer);
+
     if (pargs.exposure == 0) {
         while (!py_proc_list__is_empty(list) && interrupt_signal == 0) {
-#ifndef NATIVE
-            microseconds_t start_time = gettime();
-#endif
+            sample_timer_start();
             py_proc_list__update(list);
             py_proc_list__sample(list);
-#ifdef NATIVE
-            stopwatch_pause(0);
-#else
-            stopwatch_pause(gettime() - start_time);
-#endif
+            stats_check_duration(sample_timer_elapsed());
+            pacer_next(&pacer);
         }
     } else {
         if (!pargs.pipe && !pargs.where) {
             log_m("");
-            log_m("🕑 Sampling for %d second%s ...", pargs.exposure, pargs.exposure != 1 ? "s" : "");
+            log_m("🕑 Sampling for %lu second%s ...", pargs.exposure, pargs.exposure != 1 ? "s" : "");
         }
         microseconds_t end_time = gettime() + pargs.exposure * 1000000;
         while (!py_proc_list__is_empty(list) && interrupt_signal == 0) {
-#ifndef NATIVE
-            microseconds_t start_time = gettime();
-#endif
+            sample_timer_start();
             py_proc_list__update(list);
             py_proc_list__sample(list);
-#ifdef NATIVE
-            stopwatch_pause(0);
-#else
-            stopwatch_pause(gettime() - start_time);
-#endif
+            stats_check_duration(sample_timer_elapsed());
+            pacer_next(&pacer);
 
             if (pargs.where)
                 break;
@@ -238,6 +258,11 @@ do_child_processes(py_proc_t* py_proc) {
                 interrupt_signal = SIGINT; // Emulate Ctrl-C
         }
     }
+
+    // Freeze the duration clock at the end of the sampling loop so that the
+    // signal/terminate/wait sequence below is not counted against the
+    // reported sampling duration.
+    stats_end();
 
     if (pargs.attach_pid == 0) {
         if (interrupt_signal) {
@@ -423,6 +448,8 @@ main(int argc, char** argv) {
         fclose(pargs.output_file);
         log_d("Output file closed.");
     }
+
+    pacer_free();
 
     logger_close();
 

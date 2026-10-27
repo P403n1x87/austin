@@ -23,6 +23,7 @@
 import importlib
 import os
 import platform
+import socket
 import sys
 from asyncio.subprocess import STDOUT
 from collections import Counter
@@ -40,9 +41,12 @@ from subprocess import TimeoutExpired
 from subprocess import check_output
 from tempfile import gettempdir
 from test import PYTHON_VERSIONS
+from test import _ver_tuple
+from time import monotonic
 from time import sleep
 from types import FrameType
 from types import ModuleType
+from typing import Callable
 from typing import Dict
 from typing import Iterator
 from typing import List
@@ -50,7 +54,6 @@ from typing import Optional
 from typing import Tuple
 from typing import TypeVar
 from typing import Union
-
 
 if sys.platform == "win32":
     from subprocess import CREATE_NEW_PROCESS_GROUP
@@ -64,7 +67,6 @@ except ImportError:
 from austin.events import AustinSample
 from austin.format.mojo import MojoStreamReader
 
-
 HERE = Path(__file__).parent
 
 
@@ -72,16 +74,29 @@ def target(name: str = "target34.py") -> str:
     return str(HERE / "targets" / name)
 
 
+def version_in(py: str, text: str) -> bool:
+    """Check whether Austin's version output for `py` appears in `text`.
+
+    Austin emits the full patch version, e.g. '3.13.13t' for py='3.13t' or
+    '3.13.1' for py='3.13'. For free-threaded builds the 't' suffix is
+    appended after the patch number, so a simple substring search won't work.
+    """
+    import re
+
+    base = py.rstrip("t")
+    ft = py.endswith("t")
+    pattern = re.escape(base) + r"\.\d+" + ("t" if ft else "")
+    return bool(re.search(pattern, text))
+
+
 def allpythons(min=None, max=None):
     def _(f):
         versions = PYTHON_VERSIONS
         if min is not None:
-            versions = [_ for _ in versions if _ >= min]
+            versions = [v for v in versions if _ver_tuple(v) >= min]
         if max is not None:
-            versions = [_ for _ in versions if _ <= max]
-        return pytest.mark.parametrize(
-            "py", [".".join([str(_) for _ in v]) for v in versions]
-        )(f)
+            versions = [v for v in versions if _ver_tuple(v) <= max]
+        return pytest.mark.parametrize("py", versions)(f)
 
     return _
 
@@ -232,9 +247,9 @@ def run(
 def print_logs(logs: List[str]) -> None:
     if logs:
         for log in logs:
-            print(log)
+            print(log, file=sys.stderr)
     else:
-        print("<< no logs available >>")
+        print("<< no logs available >>", file=sys.stderr)
 
 
 (DUMP_PATH := HERE.parent / "dumps").mkdir(exist_ok=True)
@@ -407,23 +422,112 @@ austin = Variant("austin")
 austinp = Variant("austinp")
 
 
-def run_async(command: list[str], *args: str, env: dict | None = None) -> Popen:
-    return Popen(command + list(args), stdout=PIPE, stderr=PIPE, env=env)
+def run_async(
+    command: list[str],
+    *args: str,
+    env: dict | None = None,
+    cwd: str | Path | None = None,
+) -> Popen:
+    return Popen(command + list(args), stdout=PIPE, stderr=PIPE, env=env, cwd=cwd)
 
 
 def run_python(
     version,
     *args: str,
     env: dict | None = None,
+    cwd: str | Path | None = None,
     prefix: list[str] = [],
     sleep_after: float | None = None,
 ) -> Popen:
-    result = run_async(prefix + python(version), *args, env=env)
+    result = run_async(prefix + python(version), *args, env=env, cwd=cwd)
 
     if sleep_after is not None:
         sleep(sleep_after)
 
     return result
+
+
+def retry_until(
+    run: Callable[[], CompletedProcess],
+    predicate: Callable[[CompletedProcess], bool],
+    attempts: int = 15,
+    interval: float = 0.15,
+) -> CompletedProcess:
+    """
+    Repeatedly calls `run` (an austin invocation) until `predicate(result)`
+    is true, instead of a single snapshot after a fixed sleep -- e.g. a
+    freshly-spawned process's second thread, or a native-mode unwind
+    reaching real user code, isn't guaranteed to exist yet after any fixed
+    delay on a loaded CI runner.
+    """
+    if attempts < 1:
+        raise ValueError("attempts must be at least 1")
+
+    # The final attempt is unguarded, outside the loop: whatever it does --
+    # raise or return a result predicate still doesn't match -- is the real
+    # answer once retries are exhausted, not something to swallow.
+    for _ in range(attempts - 1):
+        try:
+            result = run()
+        except RuntimeError:
+            sleep(interval)
+            continue
+
+        if predicate(result):
+            return result
+
+        sleep(interval)
+
+    return run()
+
+
+def retry_where(
+    pid: int,
+    predicate: Callable[[str], bool],
+    attempts: int = 15,
+    interval: float = 0.15,
+) -> CompletedProcess:
+    """
+    Repeatedly samples `pid` with ``austin -w`` until
+    ``predicate(result.stdout)`` is true, instead of a single snapshot after a
+    fixed sleep.
+    """
+    return retry_until(
+        lambda: austin("-w", str(pid)),
+        lambda result: predicate(result.stdout),
+        attempts=attempts,
+        interval=interval,
+    )
+
+
+def get_free_port() -> int:
+    """Ask the OS for an unused TCP port on localhost."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("localhost", 0))
+        return s.getsockname()[1]
+
+
+def wait_for_port(
+    host: str, port: int, timeout: float = 10.0, interval: float = 0.1
+) -> None:
+    """Poll a TCP port until something is listening on it.
+
+    A raw connect() succeeding is a much more direct "is the server actually
+    up" signal than guessing a fixed delay -- and, when the server on the
+    other end blocks on accept() as its own synchronisation point, this
+    connection is also what lets it proceed.
+    """
+    deadline = monotonic() + timeout
+    while True:
+        try:
+            with socket.create_connection((host, port), timeout=interval):
+                return
+        except OSError:
+            if monotonic() >= deadline:
+                raise TimeoutError(
+                    f"nothing started listening on {host}:{port} within {timeout}s"
+                )
+            sleep(interval)
 
 
 T = TypeVar("T")

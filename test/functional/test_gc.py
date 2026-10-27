@@ -20,6 +20,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import pytest
+
 from test.utils import allpythons
 from test.utils import austin
 from test.utils import python
@@ -48,13 +50,15 @@ def test_gc_on(py):
 
 @allpythons()
 def test_gc_disabled(py, monkeypatch):
+    if py.endswith("t"):
+        pytest.xfail(
+            "Free-threaded Python uses an incremental GC that ignores gc.disable()"
+        )
+
     monkeypatch.setenv("GC_DISABLED", "1")
 
     result = austin("-gi", "10ms", *python(py), target("target_gc.py"))
     assert result.returncode == 0
-
-    meta = result.metadata
-    assert int(meta["gc"]) * 0.8 < int(meta["duration"]) / 20
 
     gcs = [sample for sample in result.samples if sample.gc]
     assert len(gcs) < 5

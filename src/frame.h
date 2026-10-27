@@ -79,15 +79,15 @@ frame__destroy(frame_t* self) {
     sfree(self);
 }
 
-#ifdef NATIVE
-#define CFRAME_MAGIC ((void*)0xCF)
-#endif
+#define CFRAME_MAGIC         ((void*)0xCF)
+#define PYSTACK_REPEAT_MAGIC ((void*)0xB4)
+#define EVAL_FRAME_MAGIC     ((void*)0xEF)
 
 #include "code.h"
 #include "mojo.h"
 #include "py_proc.h"
 
-#define py_frame_key(code, lasti) (((key_dt)(((key_dt)code) & MOJO_INT32) << 16) | lasti)
+#define py_frame_key(code, lasti) (((key_dt)(ptr_key(code) & MOJO_INT32) << 16) | (lasti))
 
 // ----------------------------------------------------------------------------
 static inline int

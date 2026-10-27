@@ -9,7 +9,6 @@ from test.cunit.cache import QueueItem
 
 import pytest
 
-
 NULL = 0
 C.free.argtypes = [c_void_p]
 C.malloc.restype = c_void_p

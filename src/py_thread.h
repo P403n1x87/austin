@@ -31,9 +31,13 @@
 #include "py_proc.h"
 #include "stack.h"
 #include "stats.h"
+#include "thread_tracker.h"
 
-#define MAXLEN         1024
-#define MAX_STACK_SIZE 2048
+#define MAXLEN              1024
+#define MAX_STACK_SIZE      2048
+// A coroutine chain never comes close to an OS thread's frame depth, hence the
+// much smaller size for _task_stack (see stack.h) than MAX_STACK_SIZE above.
+#define MAX_TASK_STACK_SIZE 128
 
 typedef struct thread {
     py_proc_t* proc;
@@ -41,14 +45,23 @@ typedef struct thread {
     raddr_t addr;
     raddr_t next;
 
-    uintptr_t tid;
+    uintptr_t tid;       // OS thread ID used for display (kernel TID on Linux)
+    uintptr_t native_id; // raw PyThreadState.thread_id (pthread_t on Linux/macOS)
+                         // used for threading._active ident matching
 
     raddr_t top_frame;
 
     /* The per-thread datastack was introduced in Python 3.11 */
+    raddr_t        stack_raddr;
     stack_chunk_t* stack;
 
     tstate_status_t status;
+
+    bool          is_repeat; // true when top_frame+code+lasti matches the previous sample
+    py_frame_id_t prev_top;  // previous sample's top frame identity (for partial repeat detection)
+
+    raddr_t asyncio_task;       // the asyncio task this thread is running, if any, read along with its stack
+    bool    asyncio_task_split; // whether that task's frames were split off this sample's stack
 } py_thread_t;
 
 #define py_thread__init(_proc) {.proc = _proc}
@@ -64,14 +77,27 @@ int
 py_thread__read_remote(py_thread_t*, raddr_t);
 
 /**
- * Get the next thread, if any.
- *
- * @param  py_thread_t  self.
- *
- * @return a pointer to the next py_thread_t instance.
+ * Read the thread state and immediately perform the top-frame cache check. Sets
+ * self->is_repeat; if not a repeat, loads the stack chunk right away to
+ * minimise the window between the thread-state read and the frame data read.
+ * The tracker may be NULL, in which case this behaves like
+ * py_thread__read_remote.
  */
 int
-py_thread__next(py_thread_t*);
+py_thread__read_with_stack_remote(py_thread_t*, raddr_t, thread_tracker_t*);
+
+/**
+ * Get the next thread, if any.  If the tracker is non-NULL, checks the
+ * top-frame cache immediately after reading the thread state and loads the
+ * stack chunk if the stack has changed, setting self->is_repeat accordingly.
+ *
+ * @param  py_thread_t    self.
+ * @param  thread_tracker_t optional cache (NULL for non-sampling callers).
+ *
+ * @return SUCCESS or FAIL/STOP.
+ */
+int
+py_thread__next(py_thread_t*, thread_tracker_t*);
 
 /**
  * Unwind the thread.
@@ -80,6 +106,46 @@ py_thread__next(py_thread_t*);
  */
 void
 py_thread__unwind(py_thread_t*);
+
+/**
+ * Resolve whatever raw frames have been accumulated on _task_stack (e.g. via
+ * direct task_stack_py_push calls -- see py_asyncio.c's _py_asyncio__unwind_
+ * coro_chain) into cached frame_t* pointers. Callers are responsible for
+ * calling task_stack_reset() themselves before accumulating, exactly once
+ * per logical unwind (one task's coroutine chain).
+ *
+ * @param  py_thread_t  self.
+ *
+ * @return SUCCESS or FAIL.
+ */
+int
+py_thread__resolve_task_stack(py_thread_t*);
+
+/**
+ * Split off the leaf-ward portion of self's already-unwound Python stack
+ * into _task_stack, from index 0 up to and including the frame at
+ * `boundary`, shifting whatever remains down to index 0.
+ *
+ * Used when a task on this thread was found EXECUTING: its own portion of
+ * the thread's live chain (top_frame down to its own top-level coroutine frame)
+ * belongs to the task, not the thread. Reuses the thread's own already-unwound
+ * stack rather than a second, separate walk.
+ *
+ * Python-only: never called in native mode, since asyncio_debug_found is
+ * never set while pargs_native.
+ *
+ * Caller must call task_stack_reset() first.
+ *
+ * @param  py_thread_t  self -- the thread whose stack was just unwound.
+ * @param  raddr_t      boundary -- the executing task's own top-level
+ *                       coroutine frame; moved along with everything
+ *                       leaf-ward of it.
+ *
+ * @return true if boundary was found and the split performed, false
+ *         otherwise (best-effort -- both stacks are left untouched).
+ */
+bool
+py_thread__split_task_stack_at(py_thread_t*, raddr_t);
 
 /**
  * Allocate memory for dumping the thread data.
@@ -95,19 +161,23 @@ py_thread_allocate(void);
 void
 py_thread_free(void);
 
-#ifdef NATIVE
-int
-py_thread__set_idle(py_thread_t*);
-
-int
-py_thread__set_interrupted(py_thread_t*, bool);
-
-int
-py_thread__is_interrupted(py_thread_t* self);
-
-int
-py_thread__save_kernel_stack(py_thread_t*);
-#endif
+void
+py_thread__resume_all_interrupted(void);
 
 bool
 py_thread__is_idle(py_thread_t*);
+
+int
+py_thread__interrupt(py_thread_t*);
+
+// Interrupt all OS threads in the process not already interrupted (native mode,
+// best-effort).  Must be called after py_thread__interrupt has been called for
+// each Python thread so that platform state (e.g. _silly_offset) is ready.
+void
+py_thread__interrupt_os_threads(py_proc_t*);
+
+// Call fn(thread, userdata) for every thread interrupted this sample that has
+// no PyThreadState (i.e. was not visited during the Python thread sweep).
+// Sets last_gen on each visited tracker entry.
+void
+py_thread__for_each_non_python(py_proc_t*, thread_tracker_t*, void (*)(py_thread_t*, void*), void*);

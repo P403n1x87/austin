@@ -6,20 +6,60 @@ on:
       - master
       - devel
   pull_request:
+    paths:
+      - .github/workflows/checks.yml
+      - .github/actions/setup-libunwind/action.yml
+      - src/**
+      - test/**
+      - doc/**
+      - configure.ac
+      - Makefile.am
+
+permissions:
+  contents: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'pull_request'
+    outputs:
+      src: ${{ steps.filter.outputs.src }}
+      tests: ${{ steps.filter.outputs.tests }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            src:
+              - .github/workflows/checks.yml
+              - .github/actions/setup-libunwind/action.yml
+              - src/**
+              - doc/**
+              - configure.ac
+              - Makefile.am
+            tests:
+              - .github/workflows/checks.yml
+              - test/**
+
   check-manpage:
     runs-on: ubuntu-24.04
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.result == 'skipped'
     name: Check docs
     steps:
       - uses: actions/checkout@v3
+
+      - name: Setup libunwind
+        uses: ./.github/actions/setup-libunwind
 
       - name: Install build dependencies
         run: |
           sudo add-apt-repository -y universe
           sudo add-apt-repository -y ppa:inkscape.dev/stable
           sudo apt-get update
-          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev help2man inkscape
+          sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev zlib1g-dev libzstd-dev \
+            help2man inkscape
 
       - name: Compile Austin
         run: |
@@ -35,6 +75,8 @@ jobs:
 
   cppcheck-linux:
     runs-on: ubuntu-24.04
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.result == 'skipped'
     name: Static code analysis (Linux)
     env:
       cppcheck-version: 2.10.3
@@ -53,6 +95,8 @@ jobs:
   cppcheck-macos:
     name: Static code analysis (macOS)
     runs-on: macos-latest
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.result == 'skipped'
     steps:
       - uses: actions/checkout@v3
       
@@ -64,88 +108,87 @@ jobs:
 
   codespell:
     runs-on: ubuntu-24.04
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.result == 'skipped'
     name: Codespell
     steps:
       - uses: actions/checkout@v3
 
-      - uses: "actions/setup-python@v4"
+      - uses: "actions/setup-python@v5"
         with:
-          python-version: "3.9"
+          python-version: "3.13"
 
       - name: Install codespell
-        run: pip install codespell
+        run: pip install codespell~=2.4
 
       - name: Check source code spelling
         run: codespell -I .github/workflows/wordlist.txt -S "src/python/*" src
 
   formatting-sources:
     runs-on: ubuntu-24.04
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.result == 'skipped'
     name: Formatting (sources)
     steps:
       - uses: actions/checkout@v3
 
       - name: Install clang-format
-        run: pip install clang-format
+        run: pip install clang-format~=22.1.1
 
       - name: Check formatting
         run: find src -name "*.c" -o -name "*.h" | xargs clang-format -style=file --dry-run --Werror
 
   formatting-tests:
     runs-on: ubuntu-24.04
+    needs: changes
+    if: needs.changes.outputs.tests == 'true' || needs.changes.result == 'skipped'
     name: Formatting (tests)
     steps:
       - uses: actions/checkout@v3
 
-      - uses: "actions/setup-python@v4"
+      - uses: "actions/setup-python@v5"
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Install black
-        run: pip install black
+        run: pip install black~=26.3.1
 
       - name: Check formatting
         run: black --check --exclude=test/targets test/
 
   linting-tests:
     runs-on: ubuntu-24.04
+    needs: changes
+    if: needs.changes.outputs.tests == 'true' || needs.changes.result == 'skipped'
     name: Linting (tests)
     steps:
       - uses: actions/checkout@v3
 
-      - uses: "actions/setup-python@v4"
+      - uses: "actions/setup-python@v5"
         with:
-          python-version: "3.10"
+          python-version: "3.13"
 
       - name: Install flake8
-        run: pip install flake8
+        run: pip install flake8~=7.3
 
       - name: Lint code
         run: flake8 --config test/.flake8 test/
 
-  coverage:
+  build-coverage:
     runs-on: ubuntu-24.04
-    name: Code coverage
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.result == 'skipped'
+    name: Code coverage (build)
     steps:
       - uses: actions/checkout@v3
+
+      - name: Setup libunwind
+        uses: ./.github/actions/setup-libunwind
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get -y install libunwind-dev binutils-dev libiberty-dev gcovr
-
-      - name: Install test dependencies
-        run: |
-          sudo add-apt-repository -y ppa:deadsnakes/ppa
-          sudo apt-get update
-          sudo apt-get -y install \
-            valgrind \
-            python3.{9..14} \
-            python3.13-full python3.13-dev
-
-          python3.13 -m venv .venv
-          source .venv/bin/activate
-          pip install --upgrade pip
-          pip install -r test/requirements.txt
+          sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev zlib1g-dev libzstd-dev
 
       - name: Compile Austin
         run: |
@@ -153,16 +196,187 @@ jobs:
           ./configure --enable-coverage
           make
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: austin-coverage-build
+          path: |
+            src/austin
+            src/austinp
+            src/*.gcno
+          retention-days: 1
+
+  test-coverage:
+    runs-on: ubuntu-24.04
+    needs: build-coverage
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t", "3.15", "3.15t"]
+    name: Code coverage (Python ${{ matrix.python-version }})
+    env:
+      AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: austin-coverage-build
+          path: src
+
+      - run: chmod +x src/austin src/austinp
+
+      - name: Install Python (standard)
+        if: ${{ !endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}-dev
+
+      - name: Install Python (free-threaded)
+        if: ${{ endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install valgrind gcovr
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r test/requirements.txt
+
       - name: Run tests
         run: |
           echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
           ulimit -c unlimited
           .venv/bin/pytest -svr a test/cunit || true
-          .venv/bin/pytest -svr a test/functional || true
-          sudo -E env PATH="$PATH" .venv/bin/pytest -svr a test/functional || true
+          .venv/bin/pytest -n auto -svr a test/functional || true
+          sudo -E env PATH="$PATH" .venv/bin/pytest -n auto -svr a test/functional || true
+
+      - name: Generate coverage tracefile
+        run: gcovr --json coverage-py${{ matrix.python-version }}.json -r src/ --gcov-ignore-errors=no_working_dir_found
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-py${{ matrix.python-version }}
+          path: coverage-py${{ matrix.python-version }}.json
+          retention-days: 1
+
+  build-coverage-aarch64:
+    runs-on: ubuntu-24.04-arm
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.result == 'skipped'
+    name: Code coverage (build, aarch64)
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install autoconf build-essential libtool pkg-config
+
+      - name: Compile Austin
+        run: |
+          autoreconf --install
+          ./configure --enable-coverage
+          make
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: austin-coverage-build-aarch64
+          path: |
+            src/austin
+            src/*.gcno
+          retention-days: 1
+
+  test-coverage-aarch64:
+    runs-on: ubuntu-24.04-arm
+    needs: build-coverage-aarch64
+    name: Code coverage (native, aarch64)
+    env:
+      AUSTIN_TESTS_PYTHON_VERSIONS: "3.12"
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: austin-coverage-build-aarch64
+          path: src
+
+      - run: chmod +x src/austin
+
+      - name: Install Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12-dev"
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install gcovr
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r test/requirements.txt
+
+      - name: Run native tests
+        run: |
+          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+          ulimit -c unlimited
+          .venv/bin/pytest -svr a test/functional/test_native.py || true
+          sudo -E env PATH="$PATH" .venv/bin/pytest -svr a test/functional/test_native.py || true
+
+      - name: Generate coverage tracefile
+        run: gcovr --json coverage-native-aarch64.json -r src/ --gcov-ignore-errors=no_working_dir_found
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-native-aarch64
+          path: coverage-native-aarch64.json
+          retention-days: 1
+
+  report-coverage:
+    runs-on: ubuntu-24.04
+    needs: [test-coverage, test-coverage-aarch64]
+    if: >-
+      always()
+      && needs.test-coverage.result != 'cancelled'
+      && needs.test-coverage.result != 'skipped'
+    name: Code coverage (report)
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Install gcovr
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install gcovr
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          path: coverage-data/
+          merge-multiple: true
 
       - name: Generate Cobertura report
-        run: gcovr --xml ./cobertura.xml -r src/
+        shell: bash
+        run: |
+          args=()
+          for f in coverage-data/*.json; do
+            args+=(--add-tracefile "$f")
+          done
+          gcovr "${args[@]}" --xml cobertura.xml -r src/
 
       - name: Upload report to Codecov
         uses: codecov/codecov-action@v2
@@ -173,12 +387,14 @@ jobs:
 
   check-cog:
     runs-on: ubuntu-24.04
+    needs: changes
+    if: needs.changes.outputs.src == 'true' || needs.changes.result == 'skipped'
     name: Check cog output
     steps:
       - uses: actions/checkout@v3
 
       - name: Install cog
-        run: pip install cogapp
+        run: pip install cogapp~=3.6
 
       - name: Compile Austin
         run: |

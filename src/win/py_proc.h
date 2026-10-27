@@ -25,8 +25,10 @@
 #include <psapi.h>
 #include <string.h>
 #include <tlhelp32.h>
+#include <winternl.h>
 
 #include "../py_proc.h"
+#include "../py_thread.h"
 #include "../resources.h"
 
 #define MODULE_CNT 2
@@ -343,6 +345,218 @@ _py_proc__get_resident_memory(py_proc_t* self) {
 
     return GetProcessMemoryInfo(self->ref, &mem_info, sizeof(mem_info)) ? mem_info.WorkingSetSize : -1;
 }
+
+// ----------------------------------------------------------------------------
+// The leading part of the (undocumented) RTL_USER_PROCESS_PARAMETERS structure,
+// up to the environment block pointer. The definition in winternl.h is opaque.
+typedef struct {
+    ULONG          MaximumLength;
+    ULONG          Length;
+    ULONG          Flags;
+    ULONG          DebugFlags;
+    HANDLE         ConsoleHandle;
+    ULONG          ConsoleFlags;
+    HANDLE         StandardInput;
+    HANDLE         StandardOutput;
+    HANDLE         StandardError;
+    UNICODE_STRING CurrentDirectoryPath;
+    HANDLE         CurrentDirectoryHandle;
+    UNICODE_STRING DllPath;
+    UNICODE_STRING ImagePathName;
+    UNICODE_STRING CommandLine;
+    PVOID          Environment;
+} process_parameters_t;
+
+// ----------------------------------------------------------------------------
+static int
+_py_proc__get_process_parameters(py_proc_t* self, process_parameters_t* params) {
+    PROCESS_BASIC_INFORMATION pbi;
+    ULONG                     n = 0;
+
+    if (NtQueryInformationProcess(self->ref, ProcessBasicInformation, &pbi, sizeof(pbi), &n) < 0)
+        FAIL;
+
+    PVOID params_addr = NULL;
+    if (fail(copy_datatype(self->ref, (raddr_t)pbi.PebBaseAddress + offsetof(PEB, ProcessParameters), params_addr)))
+        FAIL;
+
+    if (fail(copy_memory(self->ref, (raddr_t)params_addr, sizeof(process_parameters_t), params)))
+        FAIL;
+
+    SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+// Convert a wide string of the given length (in characters) to a newly
+// allocated, NUL-terminated UTF-8 string.
+static char*
+_wide_to_utf8(const WCHAR* wide, int wlen, size_t* size) {
+    int len = WideCharToMultiByte(CP_UTF8, 0, wide, wlen, NULL, 0, NULL, NULL);
+    if (len <= 0)
+        return NULL;
+
+    char* utf8 = (char*)malloc(len + 1);
+    if (!isvalid(utf8))
+        return NULL;
+
+    WideCharToMultiByte(CP_UTF8, 0, wide, wlen, utf8, len, NULL, NULL);
+    utf8[len] = '\0';
+    if (isvalid(size))
+        *size = len;
+
+    return utf8;
+}
+
+// ----------------------------------------------------------------------------
+// Return the current working directory of the process. The returned string must
+// be freed by the caller.
+static char*
+_py_proc__get_cwd(py_proc_t* self) {
+    process_parameters_t params;
+    if (fail(_py_proc__get_process_parameters(self, &params)))
+        return NULL;
+
+    USHORT wlen = params.CurrentDirectoryPath.Length / sizeof(WCHAR);
+    if (wlen == 0)
+        return NULL;
+
+    cu_void* wide = calloc(wlen, sizeof(WCHAR));
+    if (!isvalid(wide)
+        || fail(copy_memory(
+            self->ref, (raddr_t)params.CurrentDirectoryPath.Buffer, params.CurrentDirectoryPath.Length, wide
+        )))
+        return NULL;
+
+    // The current directory carries a trailing separator, unless it is a
+    // drive root (e.g. C:\), which we strip to match getcwd.
+    if (wlen > 3 && ((WCHAR*)wide)[wlen - 1] == L'\\')
+        wlen--;
+
+    return _wide_to_utf8((WCHAR*)wide, wlen, NULL);
+}
+
+// ----------------------------------------------------------------------------
+// Return the NUL-separated environment block of the process, as UTF-8. The
+// block is always NUL-terminated and must be freed by the caller.
+static char*
+_py_proc__get_environ(py_proc_t* self, size_t* size) {
+    process_parameters_t params;
+    if (fail(_py_proc__get_process_parameters(self, &params)) || !isvalid(params.Environment))
+        return NULL;
+
+    // The environment block has no explicit size, so we read up to the end of
+    // the memory region that contains it, and then look for the terminator.
+    MEMORY_BASIC_INFORMATION mbi;
+    if (VirtualQueryEx(self->ref, params.Environment, &mbi, sizeof(mbi)) == 0)
+        return NULL;
+
+    size_t region_size = (size_t)((char*)mbi.BaseAddress + mbi.RegionSize - (char*)params.Environment);
+    if (region_size > (1 << 20))
+        region_size = 1 << 20;
+
+    cu_void* wide = malloc(region_size);
+    if (!isvalid(wide) || fail(copy_memory(self->ref, (raddr_t)params.Environment, region_size, wide)))
+        return NULL;
+
+    // Find the double NUL that terminates the block.
+    WCHAR* w    = (WCHAR*)wide;
+    size_t wlen = region_size / sizeof(WCHAR);
+    size_t i    = 0;
+    while (i + 1 < wlen && !(w[i] == L'\0' && w[i + 1] == L'\0'))
+        i++;
+
+    return i == 0 ? NULL : _wide_to_utf8(w, (int)i + 1, size);
+}
+
+// ----------------------------------------------------------------------------
+static inline bool
+_py_proc__is_running(py_proc_t* self) {
+    DWORD ec = 0;
+    return GetExitCodeProcess(self->ref, &ec) ? ec == STILL_ACTIVE : false;
+}
+
+// ----------------------------------------------------------------------------
+// Locate the "AsyncioDebug" PE section exposed by the _asyncio extension
+// module. Section names longer than IMAGE_SIZEOF_SHORT_NAME (8 bytes) are
+// truncated by the linker in the final image, so both the section's raw Name
+// field and the search string are compared only up to that length.
+static void
+_py_proc__find_asyncio_debug_section(py_proc_t* self, void* pMapping, void* base) {
+    IMAGE_DOS_HEADER*     dos_hdr = (IMAGE_DOS_HEADER*)pMapping;
+    IMAGE_NT_HEADERS*     nt_hdr  = (IMAGE_NT_HEADERS*)(pMapping + dos_hdr->e_lfanew);
+    IMAGE_SECTION_HEADER* s_hdr   = (IMAGE_SECTION_HEADER*)(pMapping + dos_hdr->e_lfanew + sizeof(IMAGE_NT_HEADERS));
+
+    if (nt_hdr->Signature != IMAGE_NT_SIGNATURE)
+        return;
+
+    for (register int i = 0; i < nt_hdr->FileHeader.NumberOfSections; i++) {
+        if (strncmp((const char*)s_hdr[i].Name, "AsyncioD", IMAGE_SIZEOF_SHORT_NAME) == 0) {
+            self->map.asyncio_debug.base = base + s_hdr[i].VirtualAddress;
+            self->map.asyncio_debug.size = s_hdr[i].Misc.VirtualSize;
+            return;
+        }
+    }
+} // _py_proc__find_asyncio_debug_section
+
+// ----------------------------------------------------------------------------
+// Map one already-located module by path and analyse it for the
+// AsyncioDebug section. Deliberately NOT _py_proc__analyze_pe: that also
+// resolves exports and hard-fails if none are found, which is never true for
+// an extension module like _asyncio.
+static void
+_py_proc__scan_module_for_asyncio(py_proc_t* self, char* path, void* base) {
+    cu_HANDLE hFile = CreateFile(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (hFile == INVALID_HANDLE_VALUE) {
+        log_d("Cannot open %s", path);
+        return;
+    }
+
+    cu_HANDLE hMapping = CreateFileMapping(hFile, NULL, PAGE_READONLY, 0, 0, 0);
+    if (!isvalid(hMapping)) {
+        log_d("Cannot create file mapping for %s", path);
+        return;
+    }
+
+    cu_VOF pMapping = MapViewOfFile(hMapping, FILE_MAP_READ, 0, 0, 0);
+    if (!isvalid(pMapping)) {
+        log_d("Cannot map %s", path);
+        return;
+    }
+
+    _py_proc__find_asyncio_debug_section(self, pMapping, base);
+} // _py_proc__scan_module_for_asyncio
+
+// ----------------------------------------------------------------------------
+// Look for the AsyncioDebug section in the _asyncio module and, if it's
+// built straight into the main executable or the Python library instead
+// (some 3.14+ builds), fall back to those.
+static void
+_py_proc__scan_for_asyncio(py_proc_t* self) {
+    if (isvalid(self->map.asyncio_debug.base))
+        return;
+
+    cu_HANDLE mod_hdl = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE | TH32CS_SNAPMODULE32, self->pid);
+    if (mod_hdl == INVALID_HANDLE_VALUE)
+        return;
+
+    MODULEENTRY32 module;
+    module.dwSize = sizeof(module);
+
+    if (!Module32First(mod_hdl, &module))
+        return;
+
+    do {
+        bool is_candidate = isvalid(strstr(module.szExePath, "_asyncio"))
+                         || (isvalid(self->bin_path) && strcmp(module.szExePath, self->bin_path) == 0)
+                         || (isvalid(self->lib_path) && strcmp(module.szExePath, self->lib_path) == 0);
+        if (!is_candidate)
+            continue;
+
+        _py_proc__scan_module_for_asyncio(self, module.szExePath, (void*)module.modBaseAddr);
+        if (isvalid(self->map.asyncio_debug.base))
+            return;
+    } while (Module32Next(mod_hdl, &module));
+} // _py_proc__scan_for_asyncio
 
 // ----------------------------------------------------------------------------
 static int

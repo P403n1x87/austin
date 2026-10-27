@@ -1,1 +1,1 @@
-uwsgi; sys_platform != 'win32'
+uwsgi~=2.0; sys_platform != 'win32'

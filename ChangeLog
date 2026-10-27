@@ -1,3 +1,33 @@
+2026-10-27 v4.1.0
+
+  Added support for CPython 3.15.
+
+  Dropped support for CPython 3.9.
+
+  Added support for free-threaded CPython builds.
+
+  Added the --native/-n option to collect native call stacks alongside Python
+  stacks on on Linux (x86_64 and aarch64), macOS and Windows (x86_64);
+  non-Python threads are sampled too.
+
+  Added asyncio support for CPython 3.14 and above.
+
+  Added the Python thread names to the collected samples.
+
+  Improved support for Linux containers.
+
+  Added the cwd, venv and pythonpath metadata fields to help tools resolve
+  file paths.
+
+  Improved performance with the detection of repeated stacks and buffered
+  output, allowing for higher sampling rates and smaller output files.
+
+  Bugfix: improved CPython detection on MacOS.
+
+  Bugfix: fixed a bug that caused Austin to fail to sample a newly spawned
+  process on MacOS.
+
+
 2025-10-31 v4.0.0
 
   Added support for CPython 3.14.

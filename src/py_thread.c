@@ -38,38 +38,40 @@
 #include "mem.h"
 #include "platform.h"
 #include "stack.h"
-#include "timing.h"
 #include "version.h"
 
 #include "py_thread.h"
+#include "py_thread_name.h"
 
 // ---- PRIVATE ---------------------------------------------------------------
 
 static size_t max_pid = 0;
-#ifdef NATIVE
-static void**         _tids      = NULL;
-static unsigned char* _tids_idle = NULL;
-static unsigned char* _tids_int  = NULL;
-static char**         _kstacks   = NULL;
+
+// Buffer for formatting native frame filenames. Only needed on platforms /
+// architectures that actually perform native unwinding. Declared here so it
+// is visible to the platform headers included below.
+#if !defined(PL_LINUX) || defined(AUSTINP) || defined(__x86_64__) || defined(__aarch64__)
+static char _native_buf[MAXLEN];
 #endif
 
 // ----------------------------------------------------------------------------
-// -- Platform-dependent implementations of py_thread__is_idle
+// -- Platform-dependent implementations.
 // ----------------------------------------------------------------------------
 
 #if defined(PL_LINUX)
 
-#include "linux/py_thread.h"
-#if defined NATIVE && defined HAVE_BFD
 #include "linux/addr2line.h"
-#endif
+#include "linux/py_thread.h"
 
 #elif defined(PL_WIN)
 
+#include "win/addr2line.h"
 #include "win/py_thread.h"
 
 #elif defined(PL_MACOS)
 
+#include "mac/addr2line.h"
+#include "mac/common.h"
 #include "mac/py_thread.h"
 
 #endif
@@ -78,18 +80,24 @@ static char**         _kstacks   = NULL;
 
 // ----------------------------------------------------------------------------
 static inline int
-_py_thread__resolve_py_stack(py_thread_t* self) {
+_py_thread__resolve_py_stack(py_thread_t* self, stack_dt* stack) {
     lru_cache_t* cache = self->proc->frame_cache;
 
-    for (int i = 0; i < stack_pointer(); i++) {
-        py_frame_t py_frame = stack_py_get(i);
+    for (int i = 0; i < stack->pointer; i++) {
+        py_frame_t py_frame = stack->py_base[i];
 
-#ifdef NATIVE
+        // TODO: we can avoid this branching by checking the top of the stack
+        // beforehand.
+        if (py_frame.origin == PYSTACK_REPEAT_MAGIC) {
+            stack->base[i] = (frame_t*)PYSTACK_REPEAT_MAGIC;
+            break;
+        }
+
         if (py_frame.origin == CFRAME_MAGIC) {
-            stack_set(i, CFRAME_MAGIC);
+            stack->base[i] = (frame_t*)CFRAME_MAGIC;
             continue;
         }
-#endif
+
         int      lasti     = py_frame.lasti;
         key_dt   frame_key = py_frame_key(py_frame.code, lasti);
         frame_t* frame     = lru_cache__maybe_hit(cache, frame_key);
@@ -98,7 +106,7 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
             frame = _frame_remote(self->proc, py_frame.code, lasti);
             if (!isvalid(frame)) {
                 // Truncate the stack to the point where we have successfully resolved.
-                _stack->pointer = i;
+                stack->pointer = i;
                 FAIL;
             }
             lru_cache__store(cache, frame_key, frame);
@@ -106,10 +114,72 @@ _py_thread__resolve_py_stack(py_thread_t* self) {
             event_handler__emit_new_frame(frame);
         }
 
-        stack_set(i, frame);
+        stack->base[i] = frame;
     }
 
     SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__resolve_thread_py_stack(py_thread_t* self) {
+    return _py_thread__resolve_py_stack(self, _stack);
+}
+
+// ----------------------------------------------------------------------------
+static inline int
+_py_thread__resolve_task_py_stack(py_thread_t* self) {
+    return _py_thread__resolve_py_stack(self, _task_stack);
+}
+
+// ----------------------------------------------------------------------------
+// Read the top frame into a local buffer and extract lasti + code for the
+// repeat-detection identity check.  Handles the CFrame indirection on 3.11-3.12
+// (where self->top_frame is a CFrame, not an iframe) without using the stack
+// chunk (which may not be loaded yet at this call site).
+// Returns true on success, false if the read failed or top_frame is invalid.
+static inline bool
+_py_thread__read_top_frame_identity(py_thread_t* self, uintptr_t* out_lasti, void** out_code) {
+    V_DESC(self->proc->py_v);
+
+    V_ALLOCA(iframe, fi);
+
+    py_proc_t* proc = self->proc;
+
+    *out_lasti = LASTI_UNSET;
+    *out_code  = NULL;
+
+    if (!isvalid(self->top_frame))
+        return false;
+
+    if (V_MIN(3, 11)) {
+        raddr_t iframe_addr = self->top_frame;
+
+        if (!V_MIN(3, 13)) {
+            // 3.11-3.12: top_frame is a CFrame pointer; dereference current_frame.
+            PyCFrame cframe;
+            if (fail(copy_py(proc->ref, self->top_frame, py_cframe, cframe)))
+                return false;
+            iframe_addr = V_FIELD(raddr_t, cframe, py_cframe, o_current_frame);
+            if (!isvalid(iframe_addr))
+                return false;
+        }
+
+        if (fail(copy_py(proc->ref, iframe_addr, py_iframe, fi)))
+            return false;
+
+        *out_lasti = V_FIELD(uintptr_t, fi, py_iframe, o_prev_instr);
+        // out_code not used for >= 3.11 (code-object guard only applies to < 3.11)
+    } else {
+        PyFrameObject fr;
+        if (fail(copy_py(proc->ref, self->top_frame, py_frame, fr)))
+            return false;
+
+        *out_lasti = (uintptr_t)(unsigned int)V_FIELD(int, fr, py_frame, o_lasti);
+        *out_code  = V_FIELD(raddr_t, fr, py_frame, o_code);
+    }
+
+    return true;
 }
 
 // ----------------------------------------------------------------------------
@@ -150,6 +220,15 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
 
     raddr_t origin     = *prev;
     raddr_t code_raddr = V_FIELD_PTR(raddr_t, iframe, py_iframe, o_code);
+    // f_executable is a _PyStackRef tagged pointer. Strip the tag bits to get
+    // the actual PyObject* address:
+    //   - Free-threaded builds: Py_TAG_BITS = 0x3 (bits 0-1)
+    //   - 3.15+ GIL builds: Py_TAG_REFCNT = 0x1 (bit 0); new in 3.15 — prior
+    //     GIL builds stored a raw pointer with no tag.
+    if (self->proc->free_threaded)
+        code_raddr = (raddr_t)((uintptr_t)code_raddr & ~(uintptr_t)3);
+    else if (V_MIN(3, 15))
+        code_raddr = (raddr_t)((uintptr_t)code_raddr & ~(uintptr_t)1);
 
     *prev = V_FIELD_PTR(raddr_t, iframe, py_iframe, o_previous);
     if (unlikely(origin == *prev)) {
@@ -157,28 +236,97 @@ _py_thread__push_local_iframe(py_thread_t* self, void* iframe, raddr_t* prev) {
         FAIL;
     }
 
-    if (V_MIN(3, 12) && V_FIELD_PTR(char, iframe, py_iframe, o_owner) == FRAME_OWNED_BY_CSTACK) {
-// This is a shim frame that we can ignore
-#ifdef NATIVE
-        // In native mode we take this as the marker for the beginning of the stack
-        // for a call to PyEval_EvalFrameDefault.
-        stack_py_push_cframe();
-#endif
+    if (V_MIN(3, 12) && V_FIELD_PTR(char, iframe, py_iframe, o_owner) >= FRAME_OWNED_BY_SHIM) {
+        // In 3.15+, contextvars.Context.run() creates a nested _PyEval_EvalFrameDefault
+        // call, producing intermediate entry frames whose `previous` links back to the
+        // outer eval loop's Python frame (e.g. Thread._bootstrap_inner). Skip these
+        // intermediate entry frames and continue the walk outward. Only the base entry
+        // frame (tstate->base_frame, previous == NULL) terminates the walk.
+        if (V_MIN(3, 15) && isvalid(*prev))
+            SUCCESS;
+
+        // This is a shim/entry frame that marks the beginning of a Python eval loop.
+        if (pargs_native)
+            stack_py_push_cframe();
         SUCCESS;
     }
 
-    stack_py_push(
-        origin, code_raddr,
-        (((int)(V_FIELD_PTR(raddr_t, iframe, py_iframe, o_prev_instr) - code_raddr)) - py_v->py_code.o_code)
-            / sizeof(_Py_CODEUNIT)
-    );
+    raddr_t instr_ptr = V_FIELD_PTR(raddr_t, iframe, py_iframe, o_prev_instr);
+    int     lasti     = 0;
 
-#ifdef NATIVE
-    if (V_EQ(3, 11) && V_FIELD_PTR(int, iframe, py_iframe, o_is_entry)) {
+    // In free-threaded Python 3.14+, instr_ptr points into a thread-local bytecode
+    // copy (TLBC).  Compute lasti relative to the correct TLBC entry base, not
+    // co_code_adaptive, so that line-number resolution is accurate for all threads.
+    if (py_v->py_iframe.o_tlbc_index && py_v->py_code.o_tlbc) {
+        int32_t tlbc_idx = V_FIELD_PTR(int32_t, iframe, py_iframe, o_tlbc_index);
+        if (tlbc_idx > 0) {
+            code_t* cached_code   = lru_cache__maybe_hit(self->proc->code_cache, (key_dt)code_raddr);
+            raddr_t co_tlbc_raddr = cached_code ? cached_code->co_tlbc_raddr : NULL;
+
+            if (!isvalid(co_tlbc_raddr)) { // GCOV_EXCL_BR_LINE
+                copy_memory(self->proc->ref, code_raddr + py_v->py_code.o_tlbc, sizeof(co_tlbc_raddr), &co_tlbc_raddr);
+            }
+
+            if (isvalid(co_tlbc_raddr)) { // GCOV_EXCL_BR_LINE
+                raddr_t tlbc_base = NULL;
+
+                // Use the cached _PyCodeArray snapshot when the generation
+                // matches and the index is in range
+                uint64_t cur_tlbc_gen = self->proc->tlbc_generation;
+                if (cached_code && cached_code->tlbc_gen == cur_tlbc_gen && tlbc_idx < cached_code->tlbc_count) {
+                    tlbc_base = cached_code->tlbc_entries[tlbc_idx];
+                } else {
+                    // Read the full array header to get count, then all entries.
+                    ssize_t count = 0;
+                    if (success(copy_memory(self->proc->ref, co_tlbc_raddr, sizeof(count), &count))
+                        && count > 0) { // GCOV_EXCL_BR_LINE
+                        raddr_t* entries = (raddr_t*)malloc((size_t)count * sizeof(raddr_t));
+                        if (isvalid(entries)
+                            && success(copy_memory(
+                                self->proc->ref, co_tlbc_raddr + sizeof(ssize_t), (size_t)count * sizeof(raddr_t),
+                                entries
+                            ))) {
+                            if (tlbc_idx < count)
+                                tlbc_base = entries[tlbc_idx]; // cppcheck-suppress uninitdata
+                            if (cached_code) {
+                                sfree(cached_code->tlbc_entries);
+                                cached_code->tlbc_entries = entries;
+                                cached_code->tlbc_count   = count;
+                                cached_code->tlbc_gen     = cur_tlbc_gen;
+                            } else {
+                                free(entries);
+                            }
+                        } else {
+                            sfree(entries);
+                        }
+                    }
+                    // Fall back to single-entry read if array fetch failed.
+                    if (!isvalid(tlbc_base)) {
+                        copy_memory(
+                            self->proc->ref,
+                            co_tlbc_raddr + sizeof(ssize_t) + (ssize_t)tlbc_idx * (ssize_t)sizeof(raddr_t),
+                            sizeof(tlbc_base), &tlbc_base
+                        );
+                    }
+                }
+
+                if (isvalid(tlbc_base)) { // GCOV_EXCL_BR_LINE
+                    lasti = (int)(instr_ptr - tlbc_base) / (int)sizeof(_Py_CODEUNIT);
+                    goto push_frame;
+                }
+            }
+        }
+    }
+
+    lasti = V_LASTI(instr_ptr, code_raddr);
+
+push_frame:
+    stack_py_push(origin, code_raddr, lasti);
+
+    if (pargs_native && V_EQ(3, 11) && V_FIELD_PTR(int, iframe, py_iframe, o_is_entry)) {
         // This marks the end of a CFrame
         stack_py_push_cframe();
     }
-#endif
 
     SUCCESS;
 }
@@ -221,7 +369,7 @@ _py_thread__push_iframe(py_thread_t* self, raddr_t* prev) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_frame_stack(py_thread_t* self) {
-    stack_reset();
+    V_DESC(self->proc->py_v);
 
     raddr_t prev = self->top_frame;
 
@@ -238,6 +386,17 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
             log_d("Circular frame reference detected");
             FAIL;
         }
+
+        // Up-stack optimisation: repeat the previous stack if the next frame
+        // matches the previous sample's top frame. Only for non-native samples.
+        if (!pargs_native && !isvalid(self->asyncio_task) && isvalid(prev) && prev == self->prev_top.frame) {
+            PyFrameObject fr;
+            if (success(copy_py(self->proc->ref, prev, py_frame, fr))
+                && (uintptr_t)(unsigned int)V_FIELD(int, fr, py_frame, o_lasti) == self->prev_top.lasti) {
+                stack_py_push_repeat();
+                SUCCESS;
+            }
+        }
     }
 
     SUCCESS;
@@ -246,6 +405,10 @@ _py_thread__unwind_frame_stack(py_thread_t* self) {
 // ----------------------------------------------------------------------------
 static inline int
 _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
+    V_DESC(self->proc->py_v);
+
+    V_ALLOCA(iframe, fi);
+
     raddr_t curr = iframe_raddr;
 
     while (isvalid(curr)) {
@@ -263,6 +426,25 @@ _py_thread__unwind_iframe_stack(py_thread_t* self, raddr_t iframe_raddr) {
             log_d("Circular frame reference detected");
             FAIL;
         }
+
+        // Up-stack optimisation: repeat the previous stack if a frame matches
+        // the previous sample's top frame. Only for non-native samples, and
+        // not while the thread runs an asyncio task: its frames must be split
+        // off (see py_asyncio__scan_task_list), which can't be done if they
+        // are in the part of the stack this would repeat.
+        if (!pargs_native && !isvalid(self->asyncio_task) && isvalid(curr) && curr == self->prev_top.frame) {
+            uintptr_t lasti = LASTI_UNSET;
+            void*     local = stack_chunk__resolve(self->stack, curr);
+            if (isvalid(local)) {
+                lasti = *(uintptr_t*)((char*)local + py_v->py_iframe.o_prev_instr);
+            } else if (success(copy_py(self->proc->ref, curr, py_iframe, fi))) {
+                lasti = V_FIELD(uintptr_t, fi, py_iframe, o_prev_instr);
+            }
+            if (lasti == self->prev_top.lasti) {
+                stack_py_push_repeat();
+                SUCCESS;
+            }
+        }
     }
 
     SUCCESS;
@@ -273,8 +455,6 @@ static inline int
 _py_thread__unwind_cframe_stack(py_thread_t* self) {
     PyCFrame cframe;
 
-    stack_reset();
-
     V_DESC(self->proc->py_v);
 
     if (fail(copy_py(self->proc->ref, self->top_frame, py_cframe, cframe)))
@@ -283,279 +463,16 @@ _py_thread__unwind_cframe_stack(py_thread_t* self) {
     return fail(_py_thread__unwind_iframe_stack(self, V_FIELD(raddr_t, cframe, py_cframe, o_current_frame)));
 }
 
-#ifdef NATIVE
-// ----------------------------------------------------------------------------
-int
-py_thread__set_idle(py_thread_t* self) {
-    unsigned char bit   = 1 << (self->tid & 7);
-    size_t        index = self->tid >> 3;
-
-    if (index > (max_pid >> 3)) { // GCOV_EXCL_START
-        set_error(OS, "Invalid thread identifier");
-        FAIL;
-    } // GCOV_EXCL_STOP
-
-    if (py_thread__is_idle(self)) {
-        _tids_idle[index] |= bit;
-    } else {
-        _tids_idle[index] &= ~bit;
-    }
-
-    SUCCESS;
-}
-
-// ----------------------------------------------------------------------------
-int
-py_thread__set_interrupted(py_thread_t* self, bool state) {
-    unsigned char bit   = 1 << (self->tid & 7);
-    size_t        index = self->tid >> 3;
-
-    if (state) {
-        _tids_int[index] |= bit;
-    } else {
-        _tids_int[index] &= ~bit;
-    }
-
-    SUCCESS;
-}
-
-// ----------------------------------------------------------------------------
-int
-py_thread__is_interrupted(py_thread_t* self) {
-    return _tids_int[self->tid >> 3] & (1 << (self->tid & 7));
-}
-
-// ----------------------------------------------------------------------------
-#define MAX_STACK_FILE_SIZE 2048
-
-int
-py_thread__save_kernel_stack(py_thread_t* self) {
-    char stack_path[48];
-
-    if (!isvalid(_kstacks)) { // GCOV_EXCL_START
-        set_error(NULL, "Kernel stacks not initialized");
-        FAIL;
-    } // GCOV_EXCL_STOP
-
-    sfree(_kstacks[self->tid]);
-
-    sprintf(stack_path, "/proc/%d/task/%" PRIuPTR "/stack", self->proc->pid, self->tid);
-    cu_fd fd = open(stack_path, O_RDONLY);
-    if (fd == -1) { // GCOV_EXCL_START
-        set_error(IO, "Failed to open kernel stack file");
-        FAIL;
-    } // GCOV_EXCL_STOP
-
-    _kstacks[self->tid] = (char*)calloc(1, MAX_STACK_FILE_SIZE);
-    if (!isvalid(_kstacks[self->tid])) { // GCOV_EXCL_START
-        set_error(MALLOC, "Failed to allocate kernel stack buffer");
-        FAIL;
-    } // GCOV_EXCL_STOP
-
-    if (read(fd, _kstacks[self->tid], MAX_STACK_FILE_SIZE) == -1) { // GCOV_EXCL_START
-        set_error(IO, "Failed to read kernel stack file");
-        FAIL;
-    } // GCOV_EXCL_STOP
-
-    SUCCESS;
-}
-
-// ----------------------------------------------------------------------------
-static inline int
-_py_thread__unwind_kernel_frame_stack(py_thread_t* self) {
-    char* line = _kstacks[self->tid];
-    if (!isvalid(line)) // GCOV_EXCL_LINE
-        SUCCESS;        // GCOV_EXCL_LINE
-
-    log_t("linux: unwinding kernel stack");
-
-    stack_kernel_reset();
-
-    for (;;) {
-        char* eol = strchr(line, '\n');
-        if (!isvalid(eol))
-            break;
-        *eol = '\0';
-
-        char* b = strchr(line, ']');
-        if (isvalid(b)) {
-            char* e = strchr(++b, '+');
-            if (isvalid(e))
-                *e = 0;
-
-            stack_kernel_push(strdup(++b));
-        }
-        line = eol + 1;
-    }
-
-    SUCCESS;
-}
-
-// ----------------------------------------------------------------------------
-static char _native_buf[MAXLEN];
-
-static inline int
-wait_unw_init_remote(unw_cursor_t* c, unw_addr_space_t as, void* arg) {
-    int            outcome = 0;
-    microseconds_t end     = gettime() + 1000;
-    while (gettime() <= end && (outcome = unw_init_remote(c, as, arg)) == -UNW_EBADREG)
-        sched_yield();
-    if (fail(outcome))
-        log_e("unwind: failed to initialize cursor (%d)", outcome);
-    return outcome;
-}
-
-static inline int
-_py_thread__unwind_native_frame_stack(py_thread_t* self) {
-    unw_cursor_t cursor;
-    unw_word_t   offset, pc;
-
-    lru_cache_t* cache        = self->proc->frame_cache;
-    lru_cache_t* string_cache = self->proc->string_cache;
-    void*        context      = _tids[self->tid];
-
-    stack_native_reset();
-
-    if (!isvalid(context)) { // GCOV_EXCL_START
-        _tids[self->tid] = _UPT_create(self->tid);
-        if (!isvalid(_tids[self->tid])) {
-            set_error(OS, "Failed to create libunwind context");
-            FAIL;
-        }
-        if (!isvalid(context)) {
-            set_error(OS, "Unexpected invalid context");
-            FAIL;
-        }
-    } // GCOV_EXCL_STOP
-
-    if (fail(wait_unw_init_remote(&cursor, self->proc->unwind.as, context))) {
-        set_error(OS, "Failed to initialize remote cursor");
-        FAIL;
-    }
-
-    do {
-        if (unw_get_reg(&cursor, UNW_REG_IP, &pc)) { // GCOV_EXCL_START
-            set_error(OS, "Failed to read program counter");
-            FAIL;
-        } // GCOV_EXCL_STOP
-
-        key_dt frame_key = (key_dt)pc;
-
-        frame_t* frame = lru_cache__maybe_hit(cache, frame_key);
-        if (!isvalid(frame)) {
-            cached_string_t* scope    = NULL;
-            cached_string_t* filename = NULL;
-            vm_range_t*      range    = NULL;
-            if (pargs.where) {
-                range = vm_range_tree__find(self->proc->maps_tree, pc);
-// TODO: A failed attempt to find a range is an indication that we need
-// to regenerate the VM maps. This would be of no use at the moment,
-// since we only use them in `where` mode where we sample just once. If
-// we resort to improving addr2line and use the VM range tree for
-// normal mode, then we should consider catching the case
-// !isvalid(range) and regenerate the VM range tree with fresh data.
-#ifdef HAVE_BFD
-                if (isvalid(range)) {
-                    unw_word_t base = (unw_word_t)hash_table__get(self->proc->base_table, string__hash(range->name));
-                    if (base > 0)
-                        frame = get_native_frame(range->name, pc - base, frame_key);
-                }
-#endif
-            }
-            if (!isvalid(frame)) {
-                unw_proc_info_t pi;
-                if (success(unw_get_proc_info(&cursor, &pi))) {
-                    key_dt scope_key = (key_dt)pi.start_ip;
-                    scope            = lru_cache__maybe_hit(string_cache, scope_key);
-                    if (!isvalid(scope)) {
-                        if (unw_get_proc_name(&cursor, _native_buf, MAXLEN, &offset) == 0) {
-                            scope = cached_string_new(scope_key, strdup(_native_buf));
-                            if (!isvalid(scope)) {
-                                FAIL; // GCOV_EXCL_LINE
-                            }
-                            lru_cache__store(string_cache, scope_key, (value_t)scope);
-                            event_handler__emit_new_string(scope);
-                        }
-                    }
-                }
-                if (!isvalid(scope)) {
-                    scope  = UNKNOWN_SCOPE;
-                    offset = 0;
-                }
-
-                if (isvalid(range)) { // For now this is only relevant in `where` mode
-                    filename = cached_string_new((key_dt)pc, range->name);
-                    if (!isvalid(filename)) {
-                        FAIL; // GCOV_EXCL_LINE
-                    }
-                } else {
-                    // The program counter carries information about the file name *and*
-                    // the line number. Given that we don't resolve the file name using
-                    // memory ranges at runtime for performance reasons, we need to store
-                    // the PC value so that we can later resolve it to a file name and
-                    // line number, instead of doing the more sensible thing of using
-                    // something like `scope_key+1`, or the resolved base address.
-                    key_dt filename_key = (key_dt)pc;
-                    filename            = lru_cache__maybe_hit(string_cache, filename_key);
-                    if (!isvalid(filename)) {
-                        sprintf(_native_buf, "native@%" PRIxPTR, pc);
-                        filename = cached_string_new(filename_key, strdup(_native_buf));
-                        if (!isvalid(filename)) {
-                            FAIL; // GCOV_EXCL_LINE
-                        }
-                        lru_cache__store(string_cache, filename_key, (value_t)filename);
-                        event_handler__emit_new_string(filename);
-                    }
-                }
-
-                frame = frame_new(frame_key, filename, scope, offset, 0, 0, 0);
-                if (!isvalid(frame)) // GCOV_EXCL_LINE
-                    FAIL;            // GCOV_EXCL_LINE
-            }
-
-            lru_cache__store(cache, frame_key, (value_t)frame);
-
-            event_handler__emit_new_frame(frame);
-        }
-
-        stack_native_push(frame);
-    } while (!stack_native_full() && unw_step(&cursor) > 0);
-
-    SUCCESS;
-} /* _py_thread__unwind_native_frame_stack */
-
-// ----------------------------------------------------------------------------
-static inline int
-_py_thread__seize(py_thread_t* self) {
-    // TODO: If a TID is reused we will never seize it!
-    if (!isvalid(_tids[self->tid])) {
-        if (fail(wait_ptrace(PTRACE_SEIZE, self->tid, 0, 0))) { // GCOV_EXCL_START
-            set_error(OS, "Failed to seize thread");
-            FAIL;
-        } else { // GCOV_EXCL_STOP
-            log_d("ptrace: thread %d seized", self->tid);
-        }
-        _tids[self->tid] = _UPT_create(self->tid);
-        if (!isvalid(_tids[self->tid])) { // GCOV_EXCL_START
-            set_error(OS, "Failed to create libunwind context");
-            FAIL;
-        } // GCOV_EXCL_STOP
-    }
-    SUCCESS;
-}
-
-#endif /* NATIVE */
-
 // ---- PUBLIC ----------------------------------------------------------------
 
 // ----------------------------------------------------------------------------
-int
-py_thread__read_remote(py_thread_t* self, raddr_t addr) {
-    if (!isvalid(self)) { // GCOV_EXCL_START
-        set_error(NULL, "Invalid thread pointer");
-        FAIL;
-    } // GCOV_EXCL_STOP
-
+// ----------------------------------------------------------------------------
+// Core thread-state read: copies the remote thread state and extracts all
+// fields except the datastack chunk.  Declared static inline so that both
+// py_thread__read_remote and py_thread__read_with_stack_remote can call it
+// without function-call overhead.
+static inline int
+_py_thread__read_remote(py_thread_t* self, raddr_t addr) {
     py_proc_t* proc = self->proc;
 
     V_DESC(proc->py_v);
@@ -566,11 +483,10 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
         FAIL;
     }
 
-    self->stack = NULL;
+    self->stack       = NULL;
+    self->stack_raddr = NULL;
     if (V_MIN(3, 11)) {
-        // This is destroyed in py_thread__next, so it is important that all threads
-        // are traversed to avoid a memory leak!
-        self->stack = stack_chunk_new(proc->ref, V_FIELD(raddr_t, ts, py_thread, o_stack));
+        self->stack_raddr = V_FIELD(raddr_t, ts, py_thread, o_stack);
     }
 
     self->addr      = addr;
@@ -587,6 +503,10 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
         self->tid = V_FIELD(long, ts, py_thread, o_thread_id);
     }
 #endif
+    // threading._active always keys by PyThreadState.thread_id (pthread_t on
+    // Linux/macOS, regardless of version). Capture it before any kernel-TID
+    // conversion so name resolution can match it correctly.
+    self->native_id = V_FIELD(long, ts, py_thread, o_thread_id);
     if (self->tid == 0) {
         set_error(OS, "Cannot retrieve native thread ID information");
         FAIL;
@@ -594,13 +514,21 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
 #if defined PL_LINUX
     else {
         if (V_MIN(3, 11)) {
-// We already have the native thread id
-#ifdef NATIVE
-            if (fail(_py_thread__seize(self))) { // GCOV_EXCL_START
+            // We already have the native thread id.  Validate before indexing
+            // the bitmap or passing to ptrace.
+            if (pargs_native && (uintptr_t)self->tid >= (uintptr_t)max_pid) { // GCOV_EXCL_START
+                log_t("native TID %" PRIuPTR " out of range, skipping thread", self->tid);
                 FAIL;
             } // GCOV_EXCL_STOP
-#endif
-        } else if (likely(proc->extra->pthread_tid_offset) && success(read_pthread_t(self->proc, (void*)self->tid))) {
+        } else if (likely(proc->extra->pthread_tid_offset)) {
+            // self->tid currently holds the raw pthread_t value from CPython's
+            // thread_id field.  Read the pthread struct to recover the real OS
+            // TID.  If this read fails (e.g. the Python process is mid-GC and
+            // the thread-state data we sampled is transiently inconsistent),
+            // skip this thread rather than proceeding with an unresolved tid
+            // that would later crash the interrupted-bitmap access.
+            if (fail(read_pthread_t(self->proc, (void*)self->tid)))
+                FAIL;
             int o     = proc->extra->pthread_tid_offset;
             self->tid = o > 0 ? proc->extra->_pthread_buffer[o] : (pid_t)((pid_t*)proc->extra->_pthread_buffer)[-o];
             if (self->tid >= max_pid || self->tid == 0) {
@@ -608,21 +536,118 @@ py_thread__read_remote(py_thread_t* self, raddr_t addr) {
                 self->tid = 0;
                 FAIL;
             }
-#ifdef NATIVE
-            if (fail(_py_thread__seize(self))) {
-                FAIL;
-            }
-#endif
         }
     }
 #endif
 
     SUCCESS;
-} /* py_thread__read_remote */
+}
 
 // ----------------------------------------------------------------------------
 int
-py_thread__next(py_thread_t* self) {
+py_thread__read_remote(py_thread_t* self, raddr_t addr) {
+    if (!isvalid(self)) { // GCOV_EXCL_START
+        set_error(NULL, "Invalid thread pointer");
+        FAIL;
+    } // GCOV_EXCL_STOP
+
+    return _py_thread__read_remote(self, addr);
+}
+
+// ----------------------------------------------------------------------------
+static inline void
+_py_thread__load_stack(py_thread_t* self) {
+    if (!isvalid(self->stack) && isvalid(self->stack_raddr)) {
+        self->stack = stack_chunk_new(self->proc->ref, self->stack_raddr);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// The asyncio task the thread is running, read right next to its stack: the
+// target keeps running while it is sampled, so reading it any later (e.g. at
+// task-scan time) can catch a different task than the one the stack shows,
+// whose frames would then be split off for the wrong task (see
+// py_asyncio__scan_task_list). It can still happen, just much more rarely.
+static inline void
+_py_thread__read_asyncio_task(py_thread_t* self) {
+    py_proc_t* proc    = self->proc;
+    self->asyncio_task = NULL;
+    if (!proc->asyncio_debug_found)
+        return;
+
+    raddr_t addr = (raddr_t)((char*)self->addr + proc->asyncio_offsets.asyncio_thread_state.asyncio_running_task);
+    if (fail(copy_datatype(proc->ref, addr, self->asyncio_task))) // GCOV_EXCL_LINE
+        self->asyncio_task = NULL;                                // GCOV_EXCL_LINE
+}
+
+// ----------------------------------------------------------------------------
+// Read the thread state and immediately perform the top-frame cache check.
+// Sets self->is_repeat; if not a repeat, loads the stack chunk right away to
+// minimise the window between the thread-state read and the frame data read.
+int
+py_thread__read_with_stack_remote(py_thread_t* self, raddr_t addr, thread_tracker_t* tracker) {
+    if (!isvalid(self)) { // GCOV_EXCL_START
+        set_error(NULL, "Invalid thread pointer");
+        FAIL;
+    } // GCOV_EXCL_STOP
+
+    if (fail(_py_thread__read_remote(self, addr)))
+        FAIL;
+
+    self->is_repeat = false;
+
+    if (!isvalid(tracker)) {
+        _py_thread__read_asyncio_task(self);
+        SUCCESS;
+    }
+
+    thread_tracker_entry_t* entry = thread_tracker__get_or_create(tracker, self->tid);
+    if (!isvalid(entry))
+        SUCCESS; // GCOV_EXCL_LINE
+
+    entry->last_gen  = tracker->sample_gen;
+    entry->native_id = self->native_id;
+
+    // Resolve thread name if not yet done (or threading not imported yet).
+    if (entry->name_state != NAME_RESOLVED && isvalid(self->proc->current_interp_state)) {
+        py_thread__resolve_name(
+            self->proc->ref, self->proc->istate_raddr, self->proc->current_interp_state, entry, self->proc->py_v
+        );
+    }
+
+    V_DESC(self->proc->py_v);
+
+    // Read the top frame once; extract lasti + code for the repeat check.
+    // For Python < 3.11 heap-allocated frame objects can be freed and
+    // reallocated at the same address; verify the code object too.
+    // For >= 3.11 frames live in a stack chunk with variable sizing, so
+    // address collisions are rare enough that the frame check alone suffices.
+    void*     top_code  = NULL;
+    uintptr_t top_lasti = LASTI_UNSET;
+
+    if (_py_thread__read_top_frame_identity(self, &top_lasti, &top_code)) {
+        if (entry->top.frame == self->top_frame && top_lasti == entry->top.lasti
+            && (V_MIN(3, 11) || top_code == entry->top.code)) {
+            self->is_repeat = true;
+            _py_thread__read_asyncio_task(self);
+            SUCCESS;
+        }
+    }
+
+    // Expose the previous top for partial-repeat detection during unwinding.
+    self->prev_top = entry->top;
+
+    _py_thread__load_stack(self);
+    _py_thread__read_asyncio_task(self);
+
+    entry->top = (py_frame_id_t){self->top_frame, top_code, top_lasti};
+
+    SUCCESS;
+}
+
+// ----------------------------------------------------------------------------
+int
+py_thread__next(py_thread_t* self, thread_tracker_t* tracker) {
     V_DESC(self->proc->py_v);
 
     if (V_MIN(3, 11)) {
@@ -635,7 +660,8 @@ py_thread__next(py_thread_t* self) {
 
     log_t("Found next thread");
 
-    return py_thread__read_remote(self, self->next);
+    return isvalid(tracker) ? py_thread__read_with_stack_remote(self, self->next, tracker)
+                            : py_thread__read_remote(self, self->next);
 }
 
 // ----------------------------------------------------------------------------
@@ -643,26 +669,42 @@ void
 py_thread__unwind(py_thread_t* self) {
     bool error = false;
 
-#ifdef NATIVE
+    // Platform-specific native stack unwinding dispatch.
+    // Each platform header defines _py_thread__unwind_native which handles
+    // the is_interrupted check, kernel stack, and native frame unwinding.
+    if (pargs_native) {
+        _py_thread__unwind_native(self, &error);
 
-    // We sample the kernel frame stack BEFORE interrupting because otherwise
-    // we would see the ptrace syscall call stack, which is not very interesting.
-    // The downside is that the kernel stack might not be in sync with the other
-    // ones.
-    if (pargs.kernel) {
-        _py_thread__unwind_kernel_frame_stack(self);
-    }
-    if (fail(_py_thread__unwind_native_frame_stack(self))) {
-        error = true;
+        if (stack_native_top() == (frame_t*)EVAL_FRAME_MAGIC) {
+            // Sentinel present: consume it so the emit loop only sees real frames.
+            (void)stack_native_pop();
+        } else if (self->is_repeat) {
+            // Python stack marked as repeat but _PyEval_EvalFrameDefault was not
+            // found on the native stack.  The thread is momentarily outside the
+            // eval loop (GIL handoff, C-extension call chain that doesn't pass
+            // through the eval frame at this instant).  Emit collected native
+            // frames only, and force a full Python unwind next sample to avoid
+            // cascading empty stacks via MOJO_STACK_REPEAT.
+            self->is_repeat               = false;
+            thread_tracker_entry_t* entry = thread_tracker__get_or_create(self->proc->thread_tracker, self->tid);
+            if (isvalid(entry))
+                entry->top.frame = NULL;
+        }
     }
 
-    // Update the thread state to improve guarantees that it will be in sync with
-    // the native stack just collected
-    py_thread__read_remote(self, self->addr);
-#endif
     V_DESC(self->proc->py_v);
 
-    if (isvalid(self->top_frame)) {
+    // Clear the Python stack state before any Python stack unwinding.
+    stack_reset();
+
+    if (self->is_repeat) {
+        // The top frame is the same as the previous sample, so we can skip
+        // unwinding and just push a repeat marker.
+        stack_py_push_repeat();
+    } else if (isvalid(self->top_frame)) {
+        // Ensure the stack chunk is loaded before unwinding
+        _py_thread__load_stack(self);
+
         if (V_MIN(3, 13)) {
             if (fail(_py_thread__unwind_iframe_stack(self, self->top_frame))) {
                 error = true;
@@ -676,17 +718,53 @@ py_thread__unwind(py_thread_t* self) {
                 error = true;
             }
         }
-
-        if (fail(_py_thread__resolve_py_stack(self))) {
-            error = true;
-        }
     }
 
-    // Update sampling stats
-    stats_count_sample();
+    if (fail(_py_thread__resolve_thread_py_stack(self))) {
+        error = true;
+    }
+
     if (error)
         stats_count_error();
-    stats_check_duration(stopwatch_duration());
+}
+
+// ----------------------------------------------------------------------------
+int
+py_thread__resolve_task_stack(py_thread_t* self) {
+    return fail(_py_thread__resolve_task_py_stack(self));
+}
+
+// ----------------------------------------------------------------------------
+// Moves the leaf-ward prefix of self's already-unwound _stack, from index 0
+// up to and including `boundary`, into _task_stack, shifting the rest down
+// to index 0.
+//
+// Used when a task on this thread is caught EXECUTING: its own portion of
+// the thread's live chain belongs to the task, not the thread (see
+// py_asyncio.c's is_executing branch).
+//
+// Python-only: never called in native mode, since asyncio_debug_found is never
+// set while pargs_native -- native mode's own EVAL_FRAME_MAGIC/CFRAME_MAGIC
+// pairing isn't reliable enough on every build to trust a split derived from
+// it.
+//
+// @return true if boundary was found and the split performed, false
+//         otherwise (best-effort -- the stack is left untouched).
+bool
+py_thread__split_task_stack_at(py_thread_t* self, raddr_t boundary) {
+    (void)self; // _stack is that thread's own -- nothing else needed here
+
+    ssize_t stack_cut = stack_py_find_origin(boundary);
+    if (stack_cut < 0)
+        return false;
+
+    for (ssize_t i = 0; i <= stack_cut; i++)
+        if (!task_stack_full())
+            _task_stack->base[_task_stack->pointer++] = _stack->base[i];
+
+    stack_py_shift_left(stack_cut);
+
+    return true;
 }
 
 // ----------------------------------------------------------------------------
@@ -699,60 +777,14 @@ py_thread_allocate(void) {
         FAIL;
     } // GCOV_EXCL_STOP
 
-#if defined PL_WIN
-    // On Windows we need to fetch process and thread information to detect idle
-    // threads. We allocate a buffer for periodically fetching that data and, if
-    // needed we grow it at runtime.
-    _pi_buffer_size = (1 << 16) * sizeof(void*);
-    _pi_buffer      = calloc(1, _pi_buffer_size);
-    if (!isvalid(_pi_buffer)) {
-        set_error(MALLOC, "Failed to allocate process information buffer");
+    if (fail(task_stack_allocate(MAX_TASK_STACK_SIZE))) { // GCOV_EXCL_START
         FAIL;
-    }
-#endif
+    } // GCOV_EXCL_STOP
 
     max_pid = pid_max() + 1;
 
-#ifdef NATIVE
-    _tids = (void**)calloc(max_pid, sizeof(void*));
-    if (!isvalid(_tids)) { // GCOV_EXCL_START
-        set_error(MALLOC, "Failed to allocate thread context buffer");
-        goto failed;
-    } // GCOV_EXCL_STOP
-
-    size_t bmsize = (max_pid >> 3) + 1;
-
-    _tids_idle = (unsigned char*)calloc(bmsize, sizeof(unsigned char));
-    if (!isvalid(_tids_idle)) { // GCOV_EXCL_START
-        set_error(MALLOC, "Failed to allocate thread idle bitmap");
-        goto failed;
-    } // GCOV_EXCL_STOP
-
-    _tids_int = (unsigned char*)calloc(bmsize, sizeof(unsigned char));
-    if (!isvalid(_tids_int)) { // GCOV_EXCL_START
-        set_error(MALLOC, "Failed to allocate thread internal bitmap");
-        goto failed;
-    } // GCOV_EXCL_STOP
-
-    if (pargs.kernel) {
-        _kstacks = (char**)calloc(max_pid, sizeof(char*));
-        if (!isvalid(_kstacks)) { // GCOV_EXCL_START
-            set_error(MALLOC, "Failed to allocate kernel stack buffer");
-            goto failed;
-        } // GCOV_EXCL_STOP
-    }
-    goto ok;
-
-failed: // GCOV_EXCL_START
-    sfree(_tids);
-    sfree(_tids_idle);
-    sfree(_tids_int);
-    sfree(_kstacks);
-
-    FAIL;
-
-ok:    // GCOV_EXCL_STOP
-#endif /* NATIVE */
+    if (fail(_py_thread_allocate_native()))
+        FAIL;
 
     SUCCESS;
 }
@@ -760,10 +792,6 @@ ok:    // GCOV_EXCL_STOP
 // ----------------------------------------------------------------------------
 void
 py_thread_free(void) {
-#if defined PL_WIN
-    sfree(_pi_buffer);
-#endif
-
 #ifdef DEBUG
     if (_stack_chunk_count) {
         log_d(
@@ -774,24 +802,7 @@ py_thread_free(void) {
 #endif
 
     stack_deallocate();
+    task_stack_deallocate();
 
-#ifdef NATIVE
-    for (pid_t tid = 0; tid < max_pid; tid++) {
-        if (isvalid(_tids[tid])) {
-            _UPT_destroy(_tids[tid]);
-            if (fail(wait_ptrace(PTRACE_DETACH, tid, 0, 0))) {
-                log_d("ptrace: failed to detach thread %ld", tid);
-            } else {
-                log_d("ptrace: thread %ld detached", tid);
-            }
-        }
-        if (isvalid(_kstacks) && isvalid(_kstacks[tid])) {
-            sfree(_kstacks[tid]);
-        }
-    }
-    sfree(_tids);
-    sfree(_tids_idle);
-    sfree(_tids_int);
-    sfree(_kstacks);
-#endif
+    _py_thread_free_native();
 }

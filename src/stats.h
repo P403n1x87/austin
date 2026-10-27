@@ -30,6 +30,7 @@ typedef unsigned long ustat_t; /* non-negative statistics metric */
 
 #ifndef STATS_C
 extern unsigned long _sample_cnt;
+extern unsigned long _tick_cnt;
 
 extern microseconds_t _min_sampling_time;
 extern microseconds_t _max_sampling_time;
@@ -99,6 +100,7 @@ stats_get_avg_sampling_time();
  */
 #define stats_check_duration(delta)            \
     {                                          \
+        _tick_cnt++;                           \
         if (delta > pargs.t_sampling_interval) \
             _long_cnt++;                       \
         if (_min_sampling_time > delta)        \
@@ -121,7 +123,16 @@ void
 stats_start();
 
 /**
- * Return the current sampling duration.
+ * Freeze the duration clock at the current time.  Call when the sampling loop
+ * exits, so that subsequent teardown work (signalling / reaping / cleanup) is
+ * not counted against the reported duration.
+ */
+void
+stats_end();
+
+/**
+ * Return the current sampling duration.  If stats_end() has been called, the
+ * duration is frozen at that point; otherwise it is gettime() - start.
  */
 microseconds_t
 stats_duration();

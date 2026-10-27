@@ -43,4 +43,14 @@ struct _gil_runtime_state3_11 {
     _Py_atomic_int     locked;
 };
 
-typedef struct _gil_runtime_state3_11 gil_state_t;
+// Free-threaded builds (3.13+) prepend an `enabled` field, which is 0 when the
+// GIL is disabled and non-zero when it is enabled (transiently or permanently).
+struct _gil_runtime_state3_13t {
+    int                enabled;
+    unsigned long      interval;
+    _Py_atomic_address last_holder;
+    _Py_atomic_int     locked;
+};
+
+typedef struct _gil_runtime_state3_11  gil_state_t;
+typedef struct _gil_runtime_state3_13t gil_state_ft_t;

@@ -89,8 +89,10 @@ proc_map_new(pid_t pid) {
             // anyway.
             continue;
         }
-        if (has_pathname && pathname[0] == '[') {
-            // Skip kernel memory maps
+        if (has_pathname && pathname[0] == '[' && strcmp(pathname, "[vdso]") != 0) {
+            // Skip non-file memory regions ([stack], [heap], [vvar], etc.)
+            // but keep [vdso] — it is a real user-space ELF with .eh_frame
+            // and symbols, so we can unwind and resolve names through it.
             continue;
         }
 

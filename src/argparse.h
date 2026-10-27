@@ -51,7 +51,8 @@ typedef struct {
     seconds_t      exposure;
     bool           pipe;
     bool           gc;
-#ifdef NATIVE
+    bool           native;
+#ifdef AUSTINP
     bool kernel;
 #endif
 } parsed_args_t;
@@ -59,6 +60,8 @@ typedef struct {
 #ifndef ARGPARSE_C
 extern parsed_args_t pargs;
 #endif
+
+#define pargs_native pargs.native
 
 #define ARG_ARGUMENT 0
 

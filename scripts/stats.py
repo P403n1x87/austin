@@ -4,8 +4,9 @@ from io import BytesIO
 from itertools import chain
 
 import numpy as np
+from austin.events import AustinFrame
+from austin.events import AustinSample
 from austin.format.mojo import MojoStreamReader
-from austin.events import AustinSample, AustinFrame
 from scipy.stats import f
 
 Stack = tuple[str, float]  # (stack frames, metric)
@@ -65,25 +66,47 @@ class AustinFlameGraph(dict):
 
     @classmethod
     def from_mojo(cls, data: bytes) -> "AustinFlameGraph":
+        # Thread samples, plus task time: every task report's time goes to the
+        # task's previous position, whose frames it carries, and every sample
+        # its thread was running a task at goes to that task's latest frames
+        # too. The reader works report times out from the samples, and counts
+        # each report once.
         fg = cls()
+        latest: t.Dict[int, str] = {}
 
-        def serialize(frame: AustinFrame) -> str:
-            return ":".join(
-                (
-                    frame.filename,
-                    frame.function,
-                    str(frame.line),
-                    str(frame.line_end),
-                    str(frame.column),
-                    str(frame.column_end),
+        def stack(frames: t.Iterable[AustinFrame]) -> str:
+            return ";".join(
+                _serialize(
+                    f.filename, f.function, f.line, f.line_end, f.column, f.column_end
                 )
+                for f in frames
             )
 
         for e in MojoStreamReader(BytesIO(data)):
-            if isinstance(e, AustinSample) and e.frames:
-                fg += cls({";".join(serialize(f) for f in e.frames): e.metrics.time})
+            if not isinstance(e, AustinSample):
+                continue
+
+            if e.frames:
+                fg += cls({stack(e.frames): e.metrics.time})
+
+            for report in e.task_reports:
+                if report.previous and report.elapsed:
+                    fg += cls({"TASK;" + stack(report.previous): report.elapsed})
+                if report.frames:
+                    latest[report.task_id] = "TASK;" + stack(report.frames)
+                else:
+                    latest.pop(report.task_id, None)
+
+            if e.running_task in latest and e.metrics.time:
+                fg += cls({latest[t.cast(int, e.running_task)]: e.metrics.time})
 
         return fg
+
+
+def _serialize(filename, function, line, line_end, column, column_end) -> str:
+    return ":".join(
+        str(_) for _ in (filename, function, line, line_end, column, column_end)
+    )
 
 
 def hotelling_two_sample_test(X, Y) -> float:
@@ -119,7 +142,7 @@ def compare(
     x: t.List[AustinFlameGraph],
     y: t.List[AustinFlameGraph],
     threshold: t.Optional[float] = None,
-) -> float:
+) -> t.Optional[float]:
     domain = list(set().union(*(_.supp() for _ in chain(x, y))))
 
     if threshold is not None:
@@ -128,7 +151,23 @@ def compare(
             c.update(_.supp())
         domain = sorted([k for k, v in c.items() if v >= threshold])
 
-    X = np.array([f.to_list(domain) for f in x], dtype=np.int32)
-    Y = np.array([f.to_list(domain) for f in y], dtype=np.int32)
+    # The Hotelling T² test requires nx + ny - p - 1 > 0, i.e. the number
+    # of dimensions (unique stacks) must be less than nx + ny - 1.  When
+    # native frames are included the stack diversity can exceed this limit.
+    # Cap the domain to the most common stacks to keep the test valid.
+    max_p = len(x) + len(y) - 2
+    if len(domain) > max_p:
+        c = c if threshold is not None else Counter()
+        if not c:
+            for _ in chain(x, y):
+                c.update(_.supp())
+        domain = [k for k, _ in c.most_common(max_p)]
+
+    # Nothing to compare, e.g. no stack shows up in every run.
+    if not domain:
+        return None
+
+    X = np.array([f.to_list(domain) for f in x], dtype=np.int64)
+    Y = np.array([f.to_list(domain) for f in y], dtype=np.int64)
 
     return hotelling_two_sample_test(X, Y)

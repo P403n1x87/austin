@@ -1,0 +1,64 @@
+name: 'Collect crash reports'
+description: >
+  Collect any Austin crash artefacts produced during a test run (core dumps on
+  Linux, diagnostic reports on macOS), generate a GDB/lldb backtrace where
+  possible, and upload everything as a workflow artefact.
+
+inputs:
+  austin-bin:
+    description: 'Path to the austin binary (used for GDB symbolisation on Linux)'
+    default: 'src/austin'
+  label:
+    description: 'Unique label suffix for the artefact name'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Collect core dumps (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        shopt -s nullglob
+        cores=(core.*)
+        if [ ${#cores[@]} -eq 0 ]; then
+          echo "No core dumps found."
+          exit 0
+        fi
+
+        mkdir -p crash-reports
+        for core in "${cores[@]}"; do
+          echo "=== Backtrace for $core ===" | tee crash-reports/$core.txt
+          gdb -batch \
+            -ex "set pagination off" \
+            -ex "thread apply all bt full" \
+            -ex "quit" \
+            "${{ inputs.austin-bin }}" "$core" 2>&1 | tee -a crash-reports/$core.txt || true
+          mv "$core" crash-reports/
+        done
+
+    - name: Collect diagnostic reports (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        shopt -s nullglob
+        reports=(~/Library/Logs/DiagnosticReports/austin*.ips \
+                 ~/Library/Logs/DiagnosticReports/austin*.crash)
+        if [ ${#reports[@]} -eq 0 ]; then
+          echo "No diagnostic reports found."
+          exit 0
+        fi
+
+        mkdir -p crash-reports
+        for report in "${reports[@]}"; do
+          cp "$report" crash-reports/
+        done
+
+    - name: Upload crash reports
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: crash-reports-${{ inputs.label }}
+        path: crash-reports/
+        if-no-files-found: ignore
+        retention-days: 7

@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - .github/workflows/validation.yml
+      - .github/actions/setup-libunwind/action.yml
+      - .github/actions/collect-crashes/action.yml
       - scripts/requirements-val.txt
       - scripts/validation.py
       - src/**
@@ -14,6 +16,10 @@ concurrency:
   group: validation-${{ github.head_ref || github.run_id }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   validation:
     runs-on: ubuntu-24.04
@@ -21,22 +27,32 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
-    
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t", "3.15", "3.15t"]
+
     env:
       AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
+      PLATFORM: linux
+      ARCH: x86_64
 
-    name: Data validation with Python ${{ matrix.python-version }}
+    name: Data validation on Linux (x86_64) with Python ${{ matrix.python-version }}
     steps:
-      - name: Install Python
-        uses: actions/setup-python@v4
+      - name: Install Python (standard)
+        if: ${{ !endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}-dev
 
-      - name: Install Python 3.12
-        uses: actions/setup-python@v4
+      - name: Install Python (free-threaded)
+        if: ${{ endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
 
       - name: Check out the base branch
         uses: actions/checkout@v3
@@ -48,6 +64,14 @@ jobs:
         uses: actions/checkout@v3
         with:
           path: austin
+
+      - name: Setup libunwind
+        uses: ./austin/.github/actions/setup-libunwind
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install binutils-dev libiberty-dev liblzma-dev zlib1g-dev libzstd-dev gdb
 
       - name: Compile Austin on the base branch
         run: |
@@ -67,7 +91,7 @@ jobs:
 
       - name: Install runtime dependencies
         run: |
-          python3.12 -m venv .venv
+          python3.13 -m venv .venv
           source .venv/bin/activate
           pip install --upgrade pip
           pip install -r austin/scripts/requirements-val.txt
@@ -76,13 +100,232 @@ jobs:
       - name: Run data validation
         run: |
           ulimit -c unlimited
-          echo "core.%p" | sudo tee /proc/sys/kernel/core_pattern
+          echo "$(pwd)/core.%p" | sudo tee /proc/sys/kernel/core_pattern
 
           mv austin-base/src/austin austin/src/austin-base
 
           source .venv/bin/activate
           cd austin
-          python scripts/validation.py --ignore-errors --report results-${{ matrix.python-version }}.txt
+          python scripts/validation.py \
+            --ignore-errors \
+            --report results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}.txt
+          cd -
+          deactivate
+
+      - name: Collect crash reports
+        uses: ./austin/.github/actions/collect-crashes
+        if: always()
+        with:
+          austin-bin: austin/src/austin
+          label: validation-${{ env.PLATFORM }}-${{ env.ARCH }}-py${{ matrix.python-version }}
+
+      - name: List collected samples
+        run: ls austin/*.mojo
+        if: always()
+
+      - name: Upload profiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-validation-profiles-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
+          path: "austin/*.mojo"
+          overwrite: true
+        if: always()
+
+      - name: Upload data validation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-validation-results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
+          path: "austin/results*.txt"
+          overwrite: true
+        if: always()
+
+  validation-win:
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t", "3.15", "3.15t"]
+
+    env:
+      AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
+      PLATFORM: windows
+      ARCH: x86_64
+
+    name: Data validation on Windows (x86_64) with Python ${{ matrix.python-version }}
+    steps:
+      - name: Install Python (standard)
+        if: ${{ !endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}-dev
+
+      - name: Install Python (free-threaded)
+        if: ${{ endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Check out the base branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.base_ref }}
+          path: austin-base
+
+      - name: Check out the PR branch
+        uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - name: Compile Austin on the base branch
+        shell: bash
+        run: |
+          cd austin-base
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall -Werror
+          cd -
+
+      - name: Compile Austin on the PR branch
+        shell: bash
+        run: |
+          cd austin
+          gcc.exe -O3 -g -o src/austin.exe src/*.c -lpsapi -lntdll -ldbghelp -Wall -Werror
+          cd -
+
+      - name: Install binaries
+        shell: bash
+        run: cp austin-base/src/austin.exe austin/src/austin-base.exe
+
+      - name: Install runtime dependencies
+        shell: bash
+        run: |
+          python -m venv .venv
+          source .venv/Scripts/activate
+          python -m pip install --upgrade pip
+          pip install -r austin/scripts/requirements-val.txt
+
+      - name: Run data validation
+        shell: bash
+        env:
+          PYTHONPATH: austin
+          PYTHONIOENCODING: utf-8
+        run: |
+          source .venv/Scripts/activate
+          cd austin
+          python scripts/validation.py \
+            --ignore-errors \
+            -k "Native" \
+            --report results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}.txt
+          cd -
+
+      - name: List collected samples
+        shell: bash
+        run: ls austin/*.mojo
+        if: always()
+
+      - name: Upload profiles
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-validation-profiles-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
+          path: "austin/*.mojo"
+          overwrite: true
+        if: always()
+
+      - name: Upload data validation results
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-validation-results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
+          path: "austin/results*.txt"
+          overwrite: true
+        if: always()
+
+  validation-mac:
+    runs-on: macos-15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.13t", "3.14", "3.14t", "3.15", "3.15t"]
+
+    env:
+      AUSTIN_TESTS_PYTHON_VERSIONS: ${{ matrix.python-version }}
+      PLATFORM: macos
+      ARCH: arm64
+
+    name: Data validation on macOS (arm64) with Python ${{ matrix.python-version }}
+    steps:
+      - name: Install Python (standard)
+        if: ${{ !endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}-dev
+
+      - name: Install Python (free-threaded)
+        if: ${{ endsWith(matrix.python-version, 't') }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+
+      - name: Install Python 3.13
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Check out the base branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.base_ref }}
+          path: austin-base
+
+      - name: Check out the PR branch
+        uses: actions/checkout@v3
+        with:
+          path: austin
+
+      - name: Compile Austin on the base branch
+        run: |
+          cd austin-base
+          gcc-15 -Wall -Werror -O3 -g src/*.c -o src/austin
+          cd -
+
+      - name: Compile Austin on the PR branch
+        run: |
+          cd austin
+          gcc-15 -Wall -Werror -O3 -g src/*.c -o src/austin
+          cd -
+
+      - name: Install binaries
+        run: cp austin-base/src/austin austin/src/austin-base
+
+      - name: Remove signature from the Python binary
+        run: |
+          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/bin/python3 || true
+          codesign --remove-signature /Library/Frameworks/Python.framework/Versions/${{ matrix.python-version }}/Resources/Python.app/Contents/MacOS/Python || true
+
+      - name: Install runtime dependencies
+        run: |
+          python3.13 -m venv .venv
+          source .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r austin/scripts/requirements-val.txt
+          deactivate
+
+      - name: Run data validation
+        env:
+          PYTHONPATH: austin
+        run: |
+          source .venv/bin/activate
+          cd austin
+          sudo -E python scripts/validation.py \
+            --ignore-errors \
+            -k "Native" \
+            --report results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}.txt
           cd -
           deactivate
 
@@ -93,7 +336,7 @@ jobs:
       - name: Upload profiles
         uses: actions/upload-artifact@v4
         with:
-          name: data-validation-profiles-${{ matrix.python-version }}
+          name: data-validation-profiles-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
           path: "austin/*.mojo"
           overwrite: true
         if: always()
@@ -101,7 +344,7 @@ jobs:
       - name: Upload data validation results
         uses: actions/upload-artifact@v4
         with:
-          name: data-validation-results-${{ matrix.python-version }}
+          name: data-validation-results-${{ env.PLATFORM }}-${{ env.ARCH }}-${{ matrix.python-version }}
           path: "austin/results*.txt"
           overwrite: true
         if: always()
@@ -109,7 +352,7 @@ jobs:
   validation-report:
     runs-on: ubuntu-24.04
 
-    needs: validation
+    needs: [validation, validation-win, validation-mac]
     if: always()
 
     name: Data validation report
@@ -125,17 +368,65 @@ jobs:
           path: .
 
       - name: Generate validation report
-        run: |
-          # Concatenate all the results*.txt files with the header
-          echo "## Austin Data Validation" > validation.txt
-          echo "" >> validation.txt
-          for file in $(ls results*.txt | sort -V); do
-            cat $file >> validation.txt
-            echo "" >> validation.txt
-          done
+        run: python3 scripts/validation.py --merge results-*.txt --output validation.txt
 
       - name: Post results on PR
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: validation
           path: validation.txt
+
+      - name: Download crash reports
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: crash-reports-validation-*
+          path: crash-reports/
+          merge-multiple: false
+
+      - name: Generate crash report
+        id: crash
+        shell: bash
+        run: |
+          mkdir -p crash-reports
+          files=$(find crash-reports/ -type f | sort)
+          if [ -z "$files" ]; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "found=true" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## :rotating_light: Austin crashed during data validation"
+            echo ""
+            for dir in crash-reports/*/; do
+              label="${dir#crash-reports/}"
+              label="${label%/}"
+              echo "### \`${label}\`"
+              echo ""
+              for f in "$dir"*; do
+                echo "<details><summary><code>$(basename $f)</code></summary>"
+                echo ""
+                echo '```'
+                cat "$f"
+                echo '```'
+                echo "</details>"
+                echo ""
+              done
+            done
+          } > crash-comment.md
+
+      - name: Post crash report on PR
+        if: steps.crash.outputs.found == 'true'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: validation-crash-report
+          path: crash-comment.md
+
+      - name: Clear stale crash comment
+        if: steps.crash.outputs.found == 'false'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: validation-crash-report
+          delete: true

@@ -52,19 +52,18 @@
 #include "stats.h"
 #include "timer.h"
 
+#include "py_asyncio.h"
 #include "py_proc.h"
 #include "py_thread.h"
 
 // ---- PRIVATE ---------------------------------------------------------------
 
 // In native mode we have both the Python and native stacks (the kernel stack
-// is negligible). We make sure we have a cache large enough to hold the full.
-// stack.
-#ifdef NATIVE
-#define MAX_FRAME_CACHE_SIZE (MAX_STACK_SIZE << 1)
-#else
-#define MAX_FRAME_CACHE_SIZE MAX_STACK_SIZE
-#endif
+// is negligible). We make sure we have a cache large enough to hold the full
+// stack.  The size is determined at runtime so that non-native mode on macOS
+// (where NATIVE is defined but pargs_native is false) uses the smaller cache
+// and avoids unnecessary memory pressure.
+#define MAX_FRAME_CACHE_SIZE  (pargs_native ? (MAX_STACK_SIZE << 1) : MAX_STACK_SIZE)
 #define MAX_STRING_CACHE_SIZE LRU_CACHE_EXPAND
 #define MAX_CODE_CACHE_SIZE   LRU_CACHE_EXPAND
 
@@ -268,6 +267,10 @@ _py_proc__infer_python_version(py_proc_t* self) {
 
             init_version_descriptor(self->py_v, &py_d);
 
+            self->free_threaded = py_d.v3_13.free_threaded != 0;
+            if (self->free_threaded)
+                log_d("Free-threaded Python detected");
+
             SUCCESS;
         }
         log_d("PyRuntimeState structure does not match expected cookie");
@@ -431,7 +434,7 @@ _py_proc__check_interp_state(py_proc_t* self, raddr_t interp) {
         if (!error_is(OS)) // GCOV_EXCL_START
             FAIL;
 
-        if (fail(py_thread__next(&thread))) {
+        if (fail(py_thread__next(&thread, NULL))) {
             log_d("Failed to get next thread while inferring TID field offset");
             FAIL;
         }
@@ -622,12 +625,14 @@ _py_proc__find_interpreter_state(py_proc_t* self) {
         FAIL;
     } // GCOV_EXCL_STOP
 
-    if (fail(_py_proc__init(self)))
+    if (fail(_py_proc__init(self))) {
         FAIL;
+    }
 
     // Determine and set version
-    if (fail(_py_proc__infer_python_version(self)))
+    if (fail(_py_proc__infer_python_version(self))) {
         FAIL;
+    }
 
     if (self->sym_loaded || isvalid(self->map.runtime.base)) {
         // Try to resolve the symbols or the runtime section, if we have them
@@ -733,7 +738,7 @@ py_proc__init(py_proc_t* self) {
 
     self->timestamp = gettime();
 
-#ifdef NATIVE
+#if defined(PL_LINUX) && defined(AUSTINP)
     self->unwind.as = unw_create_addr_space(&_UPT_accessors, 0);
 #endif
 
@@ -785,6 +790,20 @@ py_proc_new(bool child) {
 
     _prehash_symbols();
 
+    // Tracking information about seen threads. Threads that have disappeared
+    // are evicted on a generation basis.
+    py_proc->thread_tracker = thread_tracker_new();
+    if (!isvalid(py_proc->thread_tracker)) { // GCOV_EXCL_START
+        FAIL_GOTO(error);
+    } // GCOV_EXCL_STOP
+
+    // Tracking information about seen asyncio tasks (3.14+), on the same
+    // generation-based eviction model as thread_tracker.
+    py_proc->task_tracker = task_tracker_new();
+    if (!isvalid(py_proc->task_tracker)) { // GCOV_EXCL_START
+        FAIL_GOTO(error);
+    } // GCOV_EXCL_STOP
+
     py_proc->frame_cache = lru_cache_new(MAX_FRAME_CACHE_SIZE, (void (*)(value_t))frame__destroy);
     if (!isvalid(py_proc->frame_cache)) { // GCOV_EXCL_START
         FAIL_GOTO(error);
@@ -823,6 +842,9 @@ py_proc_new(bool child) {
         set_error(MALLOC, "Cannot allocate memory for process extra info");
         FAIL_GOTO(error);
     } // GCOV_EXCL_STOP
+#ifdef PL_LINUX
+    py_proc->extra->statm_fd = -1;
+#endif
 
     return py_proc;
 
@@ -997,8 +1019,13 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
 
     // On Linux we need to wait for the forked process or otherwise it will
     // become a zombie and we cannot tell with kill if it has terminated.
-    pthread_create(&(self->extra->wait_thread_id), NULL, wait_thread, (void*)self);
-    log_d("Wait thread created with ID %x", self->extra->wait_thread_id);
+    // In native mode, py_proc__wait handles this with a ptrace-stop draining
+    // loop instead (the process may be in signal-delivery-stop and won't exit
+    // until the tracer delivers the signal via ptrace(PTRACE_CONT)).
+    if (!pargs_native) {
+        pthread_create(&(self->extra->wait_thread_id), NULL, wait_thread, (void*)self);
+        log_d("Wait thread created with ID %x", self->extra->wait_thread_id);
+    }
 #endif
 
     log_d("New process created with PID %d", self->pid);
@@ -1007,9 +1034,8 @@ py_proc__start(py_proc_t* self, const char* exec, char* argv[]) {
         FAIL;
     }
 
-#ifdef NATIVE
-    self->timestamp = gettime();
-#endif
+    if (pargs_native)
+        self->timestamp = gettime();
 
     if (self->pid == 0) { // GCOV_EXCL_START
         set_error(OS, "Failed to start process");
@@ -1027,7 +1053,7 @@ py_proc__wait(py_proc_t* self) {
     log_d("Waiting for process %d to terminate", self->pid);
 
 #if defined PL_LINUX
-    if (self->extra->wait_thread_id) {
+    if (!pargs_native && self->extra->wait_thread_id) {
         pthread_join(self->extra->wait_thread_id, NULL);
     }
 #endif
@@ -1040,8 +1066,37 @@ py_proc__wait(py_proc_t* self) {
     WaitForSingleObject(self->ref, INFINITE);
     CloseHandle(self->ref);
 #else /* UNIX */
-#ifdef NATIVE
-    wait(NULL);
+#ifdef PL_LINUX
+    if (pargs_native) {
+        // In native mode, threads are ptrace-seized. A signal sent to the
+        // process (e.g. SIGTERM) is intercepted by ptrace as a
+        // signal-delivery-stop: the signal is NOT delivered until the tracer
+        // calls ptrace(PTRACE_CONT) with the signal number. Loop here draining
+        // ptrace-stops and forwarding signals until the main process exits;
+        // otherwise the process hangs forever.
+        int status;
+        for (;;) {
+            pid_t r = waitpid(-1, &status, __WALL);
+            if (r <= 0)
+                break; // ECHILD or error: no more traced children
+            if (WIFEXITED(status) || WIFSIGNALED(status)) {
+                if (r == (pid_t)self->pid)
+                    break; // Main process exited
+                continue;  // A thread exited; keep waiting for the main process
+            }
+            if (WIFSTOPPED(status)) {
+                // Resume the thread, forwarding any pending signal.
+                // Do not forward SIGTRAP (ptrace events) or SIGSTOP (ptrace
+                // interrupt stops) — pass 0 for those to avoid spurious signals.
+                int sig = WSTOPSIG(status);
+                if (sig == SIGTRAP || sig == SIGSTOP)
+                    sig = 0;
+                ptrace(PTRACE_CONT, r, 0, (void*)(intptr_t)sig);
+            }
+        }
+    } else {
+        waitpid(self->pid, 0, 0);
+    }
 #else
     waitpid(self->pid, 0, 0);
 #endif
@@ -1087,16 +1142,7 @@ _py_proc__find_current_thread_offset(py_proc_t* self, raddr_t thread_raddr) {
 // ----------------------------------------------------------------------------
 bool
 py_proc__is_running(py_proc_t* self) {
-#if defined PL_WIN /* WIN */
-    DWORD ec = 0;
-    return GetExitCodeProcess(self->ref, &ec) ? ec == STILL_ACTIVE : 0;
-
-#elif defined PL_MACOS /* MACOS */
-    return success(check_pid(self->pid));
-
-#else /* LINUX */
-    return !(kill(self->pid, 0) == -1 && errno == ESRCH);
-#endif
+    return _py_proc__is_running(self);
 }
 
 // ----------------------------------------------------------------------------
@@ -1132,129 +1178,86 @@ py_proc__get_gc_state(py_proc_t* self) {
     return V_FIELD(int, gc_state, py_gc, o_collecting);
 }
 
-#ifdef NATIVE
 // ----------------------------------------------------------------------------
 static int
 _py_proc__interrupt_threads(py_proc_t* self, raddr_t tstate_head) {
     py_thread_t py_thread = py_thread__init(self);
 
-    if (fail(py_thread__read_remote(&py_thread, tstate_head))) { // GCOV_EXCL_START
+    if (fail(py_thread__read_remote(&py_thread, tstate_head)))
         FAIL;
-    } // GCOV_EXCL_STOP
 
     do {
-        if (pargs.kernel && fail(py_thread__save_kernel_stack(&py_thread))) // GCOV_EXCL_LINE
-            FAIL;                                                           // GCOV_EXCL_LINE
-
-        // !IMPORTANT! We need to retrieve the idle state *before* trying to
-        // interrupt the thread, else it will always be idle!
-        if (fail(py_thread__set_idle(&py_thread))) // GCOV_EXCL_LINE
-            FAIL;                                  // GCOV_EXCL_LINE
-
-        if (fail(wait_ptrace(PTRACE_INTERRUPT, py_thread.tid, 0, 0))) // GCOV_EXCL_LINE
-            FAIL;                                                     // GCOV_EXCL_LINE
-
-        if (fail(py_thread__set_interrupted(&py_thread, true))) { // GCOV_EXCL_START
-            if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) {
-                log_d("ptrace: failed to resume interrupted thread %d (errno: %d)", py_thread.tid, errno);
-            }
+        if (fail(py_thread__interrupt(&py_thread)))
             FAIL;
-        } // GCOV_EXCL_STOP
+    } while (success(py_thread__next(&py_thread, NULL)));
 
-        log_t("ptrace: thread %d interrupted", py_thread.tid);
-    } while (success(py_thread__next(&py_thread)));
-
-    if (!error_is(ITEREND)) // GCOV_EXCL_LINE
-        FAIL;               // GCOV_EXCL_LINE
-
-    SUCCESS;
-}
-
-// ----------------------------------------------------------------------------
-static int
-_py_proc__resume_threads(py_proc_t* self, raddr_t tstate_head) {
-    py_thread_t py_thread = py_thread__init(self);
-
-    if (fail(py_thread__read_remote(&py_thread, tstate_head))) { // GCOV_EXCL_START
+    if (!error_is(ITEREND))
         FAIL;
-    } // GCOV_EXCL_STOP
-
-    do {
-        if (py_thread__is_interrupted(&py_thread)) {
-            if (fail(wait_ptrace(PTRACE_CONT, py_thread.tid, 0, 0))) // GCOV_EXCL_LINE
-                FAIL;                                                // GCOV_EXCL_LINE
-
-            log_t("ptrace: thread %d resumed", py_thread.tid);
-            if (fail(py_thread__set_interrupted(&py_thread, false))) { // GCOV_EXCL_START
-                FAIL;
-            } // GCOV_EXCL_STOP
-        }
-    } while (success(py_thread__next(&py_thread)));
-
-    if (!error_is(ITEREND)) // GCOV_EXCL_LINE
-        FAIL;               // GCOV_EXCL_LINE
 
     SUCCESS;
 }
-#endif
 
 // ----------------------------------------------------------------------------
+// A thread skipped this sample still owns its asyncio tasks: keep them alive
+// so py_asyncio__scan_tasks_end doesn't evict them as gone, which would emit
+// spurious closing flushes and give them fresh wire identities once the
+// thread is sampled again.
+static inline void
+_py_proc__skip_thread_tasks(py_proc_t* self, py_thread_t* py_thread) {
+    if (self->asyncio_debug_found)
+        py_asyncio__keep_task_list_alive(self, py_asyncio__thread_task_list_head(self, py_thread->addr));
+}
+
+// ----------------------------------------------------------------------------
+// Walk the thread linked list starting from tstate_head, emitting a sample
+// for each thread.  All threads must already be suspended if in native mode.
 static inline int
-_py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t time_delta) {
+_py_proc__sample_threads(py_proc_t* self, raddr_t interp, raddr_t tstate_head, microseconds_t time_delta) {
     ssize_t mem_delta      = 0;
     raddr_t current_thread = NULL;
 
+    // With the GIL disabled, the process memory delta is split evenly across
+    // the running threads. These track the part that is still to be assigned.
+    bool    split_mem   = false;
+    bool    split_all   = false;
+    ssize_t mem_left    = 0;
+    int     mem_shares  = 0;
+    int     mem_threads = 0;
+    int     mem_running = 0;
+
+    self->thread_tracker->sample_gen++;
+
+    if (self->asyncio_debug_found) {
+        py_asyncio__scan_tasks_begin(self);
+
+        // The INTERP-wide list only ever holds orphaned tasks -- ones whose
+        // owning thread was torn down while something else still held a
+        // reference to them. An orphaned task has no thread left to drive
+        // its event loop, so it can never run again -- there is nothing to
+        // sample continuously. We only care about it for a one-shot -w/--where
+        // snapshot (to show it existed at that instant), not for ongoing
+        // sampling.
+        if (pargs.where)
+            py_asyncio__scan_task_list(self, NULL, py_asyncio__interp_task_list_head(self, interp));
+    }
+
     V_DESC(self->py_v);
 
-    raddr_t tstate_head = NULL;
-    if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, tstate_head))) // GCOV_EXCL_LINE
-        FAIL;                                                                                // GCOV_EXCL_LINE
-
-    if (!isvalid(tstate_head)) { // GCOV_EXCL_START
-        set_error(PYOBJECT, "Invalid thread state head address");
-        FAIL;
-    } // GCOV_EXCL_STOP
-
-    py_thread_t py_thread = py_thread__init(self);
-
-    if (fail(py_thread__read_remote(&py_thread, tstate_head))) {
-        if (is_fatal(austin_errno)) {
-            FAIL;
-        }
-        SUCCESS;
-    }
-
-    if (pargs.memory) {
-        // Use the current thread to determine which thread is manipulating memory
-        if (V_MIN(3, 12)) {
-            raddr_t gil_state_raddr = NULL;
-            if (fail(_py_proc__get_interpreter_state_field(self, interp, gil_state, gil_state_raddr))) // GCOV_EXCL_LINE
-                FAIL;                                                                                  // GCOV_EXCL_LINE
-
-            if (!isvalid(gil_state_raddr)) // GCOV_EXCL_LINE
-                SUCCESS;                   // GCOV_EXCL_LINE
-
-            gil_state_t gil_state = {0};
-            if (fail(copy_datatype(self->ref, gil_state_raddr, gil_state))) // GCOV_EXCL_LINE
-                FAIL;                                                       // GCOV_EXCL_LINE
-
-            current_thread = (raddr_t)gil_state.last_holder._value;
-        } else
-            current_thread = _py_proc__current_thread_state(self);
-    }
-
+    // Set up the interpreter state record before the first thread read so that
+    // current_interp_state is valid for ALL thread reads (including the very
+    // first one), enabling thread name resolution on sample 1.
     int64_t interp_id = 0;
     if (fail(_py_proc__get_interpreter_state_field(self, interp, id, interp_id))) // GCOV_EXCL_LINE
         FAIL;                                                                     // GCOV_EXCL_LINE
 
-    // In Python 3.14 we can use the code object generation to determine if we
-    // need to invalidate the frame cache.
-    if (V_MIN(3, 14)) {
+    {
         uint64_t code_object_gen = 0;
-        if (fail( // GCOV_EXCL_LINE
-                _py_proc__get_interpreter_state_field(self, interp, code_object_gen, code_object_gen)
-            ))
-            FAIL; // GCOV_EXCL_LINE
+        if (V_MIN(3, 14)) {
+            if (fail( // GCOV_EXCL_LINE
+                    _py_proc__get_interpreter_state_field(self, interp, code_object_gen, code_object_gen)
+                ))
+                FAIL; // GCOV_EXCL_LINE
+        }
 
         key_dt               key                    = interpreter_state_key(interp_id);
         interpreter_state_t* interpreter_state_info = lru_cache__maybe_hit(self->interpreter_state_cache, key);
@@ -1271,47 +1274,147 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
             lru_cache__store(self->interpreter_state_cache, key, interpreter_state_info);
         }
 
-        if (code_object_gen != interpreter_state_info->code_object_gen) {
-            log_d(
-                "Code object generation changed from %lu to %lu, invalidating frame cache",
-                interpreter_state_info->code_object_gen, code_object_gen
-            );
+        if (V_MIN(3, 14)) {
+            if (code_object_gen != interpreter_state_info->code_object_gen) {
+                log_d(
+                    "Code object generation changed from %lu to %lu, invalidating frame cache",
+                    interpreter_state_info->code_object_gen, code_object_gen
+                );
 
-            // This is the only safe place where we can invalidate the frame
-            // cache. Doing it while in the middle of unwinding is dangerous
-            // because the frames that are put in the stack are owned by the
-            // cache and we might end up with dangling pointers.
-            lru_cache__invalidate(self->frame_cache);
-            lru_cache__invalidate(self->code_cache);
+                // This is the only safe place where we can invalidate the frame
+                // cache. Doing it while in the middle of unwinding is dangerous
+                // because the frames that are put in the stack are owned by the
+                // cache and we might end up with dangling pointers.
+                lru_cache__invalidate(self->frame_cache);
+                lru_cache__invalidate(self->code_cache);
 
-            interpreter_state_info->code_object_gen = code_object_gen;
+                interpreter_state_info->code_object_gen = code_object_gen;
+            }
+
+            uint64_t tlbc_gen = 0;
+            if (py_v->py_is.o_tlbc_generation) {
+                _py_proc__get_interpreter_state_field(self, interp, tlbc_generation, tlbc_gen);
+            }
+            if (tlbc_gen != interpreter_state_info->tlbc_gen) {
+                log_d("TLBC generation changed from %lu to %lu", interpreter_state_info->tlbc_gen, tlbc_gen);
+                interpreter_state_info->tlbc_gen = tlbc_gen;
+                self->tlbc_generation            = tlbc_gen;
+            }
         }
+
+        self->current_interp_state = interpreter_state_info;
+    }
+
+    py_thread_t py_thread = py_thread__init(self);
+
+    if (fail(py_thread__read_with_stack_remote(&py_thread, tstate_head, self->thread_tracker))) {
+        if (is_fatal(austin_errno)) {
+            FAIL;
+        }
+        SUCCESS;
+    }
+
+    if (pargs.memory) {
+        // Use the current thread to determine which thread is manipulating memory
+        if (V_MIN(3, 12)) {
+            raddr_t gil_state_raddr = NULL;
+            if (fail(_py_proc__get_interpreter_state_field(self, interp, gil_state, gil_state_raddr))) // GCOV_EXCL_LINE
+                FAIL;                                                                                  // GCOV_EXCL_LINE
+
+            if (!isvalid(gil_state_raddr)) // GCOV_EXCL_LINE
+                SUCCESS;                   // GCOV_EXCL_LINE
+
+            if (self->free_threaded) {
+                gil_state_ft_t gil_state = {0};
+                if (fail(copy_datatype(self->ref, gil_state_raddr, gil_state))) // GCOV_EXCL_LINE
+                    FAIL;                                                       // GCOV_EXCL_LINE
+
+                if (gil_state.enabled) {
+                    current_thread = (raddr_t)gil_state.last_holder._value;
+                } else {
+                    // With the GIL disabled there is no single thread
+                    // manipulating memory, so the best we can do is to split
+                    // the process memory delta across the running threads.
+                    if (!self->gil_disabled_warned) {
+                        log_w("Memory mode with the GIL disabled; splitting memory deltas across running threads");
+                        log_m("");
+                        log_m(
+                            "⚠️  " BOLD "Memory mode" CRESET " requires Python with the GIL. With the GIL disabled, "
+                            "memory deltas are split across running threads and results might not be accurate."
+                        );
+                        self->gil_disabled_warned = true;
+                    }
+                    // We only know how many threads are running once we have
+                    // seen them all, so we use the counts from the previous
+                    // sample as the number of shares. If no thread was
+                    // running, we split across all of them, so that the delta
+                    // is not lost. Whatever is not handed out is carried over
+                    // to the next sample.
+                    split_mem  = true;
+                    split_all  = self->mem_split_running == 0;
+                    mem_shares = split_all ? self->mem_split_threads : self->mem_split_running;
+                    mem_left   = _py_proc__get_memory_delta(self);
+                }
+            } else {
+                gil_state_t gil_state = {0};
+                if (fail(copy_datatype(self->ref, gil_state_raddr, gil_state))) // GCOV_EXCL_LINE
+                    FAIL;                                                       // GCOV_EXCL_LINE
+
+                current_thread = (raddr_t)gil_state.last_holder._value;
+            }
+        } else
+            current_thread = _py_proc__current_thread_state(self);
     }
 
     do {
+        bool is_idle    = false;
+        bool idle_known = false;
+
         if (pargs.memory) {
             mem_delta = 0;
-            if (V_MAX(3, 11) && self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void*)-1) {
-                if (_py_proc__find_current_thread_offset(self, py_thread.addr))
-                    continue;
-                else
-                    current_thread = _py_proc__current_thread_state(self);
+            if (split_mem) {
+                is_idle    = py_thread__is_idle(&py_thread);
+                idle_known = true;
+
+                mem_threads++;
+                if (!is_idle)
+                    mem_running++;
+
+                if (split_all || !is_idle) {
+                    // The last share takes the remainder too, so that the
+                    // shares add up to the total delta.
+                    mem_delta  = mem_shares > 1 ? mem_left / mem_shares-- : mem_left;
+                    mem_left  -= mem_delta;
+                }
+            } else {
+                if (V_MAX(3, 11) && self->symbols[DYNSYM_RUNTIME] != NULL && current_thread == (void*)-1) {
+                    if (_py_proc__find_current_thread_offset(self, py_thread.addr)) {
+                        _py_proc__skip_thread_tasks(self, &py_thread);
+                        continue;
+                    } else
+                        current_thread = _py_proc__current_thread_state(self);
+                }
+                if (py_thread.addr == current_thread) {
+                    mem_delta = _py_proc__get_memory_delta(self);
+                    log_t("Thread %lx holds the GIL", py_thread.tid);
+                }
             }
-            if (py_thread.addr == current_thread) {
-                mem_delta = _py_proc__get_memory_delta(self);
-                log_t("Thread %lx holds the GIL", py_thread.tid);
-            }
-            if (!pargs.full && mem_delta == 0)
+            if (!pargs.full && mem_delta == 0) {
+                _py_proc__skip_thread_tasks(self, &py_thread);
                 continue;
+            }
         }
 
-        if (mem_delta == 0 && time_delta == 0) // GCOV_EXCL_LINE
-            continue;                          // GCOV_EXCL_LINE
+        if (mem_delta == 0 && time_delta == 0) { // GCOV_EXCL_START
+            _py_proc__skip_thread_tasks(self, &py_thread);
+            continue;
+        } // GCOV_EXCL_STOP
 
-        bool is_idle = false;
         if (pargs.full || pargs.cpu || unlikely(pargs.where)) {
-            is_idle = py_thread__is_idle(&py_thread);
+            if (!idle_known)
+                is_idle = py_thread__is_idle(&py_thread);
             if (!pargs.full && is_idle && pargs.cpu) {
+                _py_proc__skip_thread_tasks(self, &py_thread);
                 continue;
             }
         }
@@ -1324,73 +1427,320 @@ _py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t tim
             }
         }
 
+        thread_tracker_entry_t* tentry = thread_tracker__get_or_create(self->thread_tracker, py_thread.tid);
+        const char* thread_name = (isvalid(tentry) && tentry->name[0]) ? tentry->name : NULL; // GCOV_EXCL_BR_LINE
+
         sample_t sample = {
-            .pid      = self->pid,
-            .tid      = py_thread.tid,
-            .iid      = interp_id,
-            .time     = time_delta,
-            .memory   = mem_delta,
-            .is_idle  = is_idle,
-            .gc_state = gc,
+            .pid         = self->pid,
+            .tid         = py_thread.tid,
+            .iid         = interp_id,
+            .time        = time_delta,
+            .memory      = mem_delta,
+            .is_idle     = is_idle,
+            .gc_state    = gc,
+            .thread_name = thread_name,
         };
         event_handler__emit_stack_begin(&sample);
 
         py_thread__unwind(&py_thread);
 
-#ifdef NATIVE
-        if (V_MIN(3, 11) && V_MAX(3, 12)) {
+        // TODO: Now the stack repeat frame might be at the top!
+        if (pargs_native && V_MIN(3, 11) && V_MAX(3, 12)) {
             // We expect a CFrame to sit at the top of the stack
             if (!stack_is_empty() && stack_top() != CFRAME_MAGIC) { // GCOV_EXCL_START
                 log_e("Invalid resolved Python stack");
             } // GCOV_EXCL_STOP
         }
-#endif
+
+        // Scan for thread-owned asyncio tasks. If one is caught EXECUTING,
+        // py_asyncio__emit_task moves its own portion of py_thread's
+        // already-unwound Python stack out to a separate task-stack report, so
+        // it isn't also reported as this thread's own. Never reached in native
+        // mode: self->asyncio_debug_found is only ever set by
+        // _py_proc__maybe_discover_asyncio, which returns immediately when
+        // pargs_native.
+        if (self->asyncio_debug_found)
+            py_asyncio__scan_task_list(self, &py_thread, py_asyncio__thread_task_list_head(self, py_thread.addr));
 
         event_handler__emit_stack_end();
-    } while (success(py_thread__next(&py_thread)));
+
+        stats_count_sample();
+    } while (success(py_thread__next(&py_thread, self->thread_tracker)));
+
+    if (split_mem) {
+        self->mem_split_threads     = mem_threads;
+        self->mem_split_running     = mem_running;
+        // Carry over what we could not hand out to the next sample.
+        self->last_resident_memory -= mem_left;
+    }
+
+    // Evict cache entries for threads that disappeared this sweep.
+    thread_tracker__evict_stale(self->thread_tracker);
+
+    if (self->asyncio_debug_found)
+        py_asyncio__scan_tasks_end(self);
 
     if (!error_is(ITEREND)) { // GCOV_EXCL_START
         FAIL;
     } // GCOV_EXCL_STOP
 
     SUCCESS;
+} /* _py_proc__sample_threads */
+
+typedef struct {
+    py_proc_t*     proc;
+    microseconds_t time_delta;
+    uintptr_t      tids[MAX_THREAD_TRACKER]; // TIDs found this sweep, for cache update
+    int            n;
+} _non_python_sample_ctx_t;
+
+// Full OS thread enumeration is capped at this interval so that the expensive
+// platform scan (e.g. CreateToolhelp32Snapshot) is amortised even when
+// non-Python threads are present.  Between scans, cached TIDs are re-interrupted
+// directly without enumerating all OS threads.
+#define NON_PYTHON_SCAN_WINDOW_US 100000 // 100 ms
+
+// ----------------------------------------------------------------------------
+// Emit a single sample for a non-Python (native-only) thread.
+// Called by py_thread__for_each_non_python for every interrupted thread that
+// has no PyThreadState.
+//
+// `thread` is a synthetic py_thread_t with only .proc and .tid populated.
+// It carries exactly the information the native unwinding and idle-check
+// machinery needs; no Python-level fields (top_frame, stack, …) are set.
+static void
+_emit_non_python_thread_sample(py_thread_t* thread, void* userdata) {
+    _non_python_sample_ctx_t* ctx = (_non_python_sample_ctx_t*)userdata;
+
+    // Record TID in the cache regardless of idle/time filters so the fast
+    // re-interrupt path sees every non-Python thread next sample.
+    if (ctx->n < MAX_THREAD_TRACKER)
+        ctx->tids[ctx->n++] = thread->tid;
+
+    bool is_idle = py_thread__is_idle(thread);
+    if (!pargs.full && is_idle && pargs.cpu)
+        return;
+
+    if (ctx->time_delta == 0) // GCOV_EXCL_LINE
+        return;               // GCOV_EXCL_LINE
+
+    gc_state_t gc = GC_STATE_UNKNOWN;
+    if (pargs.gc) {
+        gc = py_proc__get_gc_state(ctx->proc);
+        if (gc == GC_STATE_COLLECTING)
+            stats_gc_time(ctx->time_delta);
+    }
+
+    thread_tracker_entry_t* tentry = thread_tracker__get_or_create(thread->proc->thread_tracker, thread->tid);
+    const char* thread_name        = (isvalid(tentry) && tentry->name[0]) ? tentry->name : NULL; // GCOV_EXCL_BR_LINE
+
+    sample_t sample = {
+        .pid         = ctx->proc->pid,
+        .tid         = thread->tid,
+        .iid         = -1, // no interpreter owns native-only threads
+        .time        = ctx->time_delta,
+        .memory      = 0, // non-Python threads never hold the GIL
+        .is_idle     = is_idle,
+        .gc_state    = gc,
+        .thread_name = thread_name,
+    };
+    event_handler__emit_stack_begin(&sample);
+
+    py_thread__unwind(thread);
+
+    event_handler__emit_stack_end();
+
+    stats_count_sample();
+}
+
+// ----------------------------------------------------------------------------
+// Sample native stacks for every OS thread that was not covered by the Python
+// thread sweep.  Updates the non-Python TID cache on py_proc_t.
+static inline void
+_py_proc__sample_non_python_threads(py_proc_t* self, microseconds_t time_delta) {
+    _non_python_sample_ctx_t ctx = {.proc = self, .time_delta = time_delta};
+    py_thread__for_each_non_python(self, self->thread_tracker, _emit_non_python_thread_sample, &ctx);
+    self->non_python_n = ctx.n;
+    memcpy(self->non_python_tids, ctx.tids, ctx.n * sizeof(uintptr_t));
+}
+
+// ----------------------------------------------------------------------------
+// Orchestrate a single interpreter sample: read the thread state head,
+// interrupt all threads (native mode), sample, then resume.
+//
+static inline int
+_py_proc__sample_interpreter(py_proc_t* self, raddr_t interp, microseconds_t time_delta) {
+    V_DESC(self->py_v);
+
+    raddr_t tstate_head     = NULL;
+    bool    scan_non_python = false;
+
+    if (fail(_py_proc__get_interpreter_state_field(self, interp, tstate_head, tstate_head))) // GCOV_EXCL_LINE
+        FAIL;                                                                                // GCOV_EXCL_LINE
+
+    // In native mode, interrupt (seize + suspend) every thread before
+    // sampling so we get a consistent snapshot of the whole process. This
+    // runs even when tstate_head is momentarily invalid (e.g. right after
+    // the process execs in place: the new interpreter hasn't initialized
+    // far enough yet for tstate_head to resolve). A thread seized on a
+    // previous sample may be sitting in an unconsumed ptrace-stop -- the
+    // kernel's mandatory post-exec stop -- that nothing else will ever
+    // clear; skipping this step whenever tstate_head can't be read would
+    // abandon that thread in ptrace-stop forever, since nothing would ever
+    // call back into the suspend/resume machinery for it again.
+    if (pargs_native) {
+        if (isvalid(tstate_head) && fail(_py_proc__interrupt_threads(self, tstate_head))) { // GCOV_EXCL_LINE
+            py_thread__resume_all_interrupted();                                            // GCOV_EXCL_LINE
+            FAIL;                                                                           // GCOV_EXCL_LINE
+        }
+        // Extend the snapshot to non-Python OS threads (best-effort).
+        // The full OS enumeration runs only when the deadline fires (every
+        // 100 ms).  Between deadline ticks, known non-Python TIDs are
+        // re-interrupted directly from the cache — no OS-wide scan needed.
+        // This also doubles as the mechanism that pumps a thread stuck in
+        // the post-exec stop described above: the OS-wide scan walks
+        // /proc/<pid>/task regardless of interpreter state and will pick it
+        // back up within one scan window.
+        microseconds_t now = gettime();
+        if (now >= self->non_python_scan_deadline) {
+            // Skip the scan outright once the process is confirmed dead: a
+            // zombie can still answer PTRACE_SEIZE (its task_struct hasn't
+            // been reclaimed yet) but will never produce another ptrace-stop
+            // for wait_thread_stop to wait for. That call now enforces its
+            // own hard deadline regardless, so this is purely to avoid
+            // paying for one needlessly.
+            if (py_proc__is_running(self))
+                py_thread__interrupt_os_threads(self);
+            self->non_python_scan_deadline = now + NON_PYTHON_SCAN_WINDOW_US;
+            scan_non_python                = true;
+        } else if (self->non_python_n > 0) {
+            for (int i = 0; i < self->non_python_n; i++) {
+                py_thread_t t = py_thread__init(self);
+                t.tid         = self->non_python_tids[i];
+                py_thread__interrupt(&t); // best-effort
+            }
+            scan_non_python = true;
+        }
+    }
+
+    if (!isvalid(tstate_head)) {
+        // Interpreter state is in an invalid state.  The caller will retry
+        // on the next sample unless there is a fatal error. Any threads
+        // interrupted above (non-Python pump) still need to be resumed.
+        if (pargs_native)
+            py_thread__resume_all_interrupted();
+        SUCCESS;
+    }
+
+    int result = _py_proc__sample_threads(self, interp, tstate_head, time_delta);
+
+    // In native mode, also emit samples for threads with no PyThreadState.
+    // Only needed when we ran the OS scan above.
+    if (pargs_native && success(result) && scan_non_python)
+        _py_proc__sample_non_python_threads(self, time_delta);
+
+    if (pargs_native)
+        py_thread__resume_all_interrupted();
+
+    return result;
 } /* _py_proc__sample_interpreter */
+
+// ----------------------------------------------------------------------------
+// Retry AsyncioDebug offset discovery on a Fibonacci backoff until it succeeds
+// or the fast window elapses, then fall back to a sparse, effectively
+// negligible-cost poll for the rest of the process's life. No-op once
+// self->asyncio_debug_found is set, on a pre-3.14 interpreter (asyncio
+// introspection support doesn't exist before then), or in pure memory mode
+// (there's no meaningful per-task memory delta to report).
+static inline void
+_py_proc__maybe_discover_asyncio(py_proc_t* self) {
+    // Native mode is tricky across CPython builds (task frame attribution) so
+    // we disable asyncio support in native mode.
+    if (pargs_native)
+        return;
+
+    V_DESC(self->py_v);
+
+    if (self->asyncio_debug_found || !isvalid(py_v) || !V_MIN(3, 14) || (pargs.memory && !pargs.full))
+        return;
+
+    microseconds_t now = gettime();
+    if (now < self->asyncio_scan_deadline)
+        return;
+
+    if (self->asyncio_scan_started_at == 0)
+        self->asyncio_scan_started_at = now;
+
+    microseconds_t next_interval;
+    if (now - self->asyncio_scan_started_at >= ASYNCIO_SCAN_BACKOFF_WINDOW_US) {
+        // Fast backoff window elapsed with no success -- fall back to
+        // a sparse, effectively negligible-cost poll for the rest of
+        // the process's life instead of giving up outright.
+        next_interval = ASYNCIO_SCAN_SPARSE_INTERVAL_US;
+    } else if (self->asyncio_scan_interval == 0) {
+        // First attempt (asyncio_scan_deadline starts at 0, so this
+        // scan already ran as early as possible); seed the backoff.
+        next_interval = ASYNCIO_SCAN_BACKOFF_MIN_US;
+    } else {
+        microseconds_t fib               = self->asyncio_scan_prev_interval + self->asyncio_scan_interval;
+        self->asyncio_scan_prev_interval = self->asyncio_scan_interval;
+        next_interval                    = fib > ASYNCIO_SCAN_BACKOFF_CAP_US ? ASYNCIO_SCAN_BACKOFF_CAP_US : fib;
+    }
+    self->asyncio_scan_interval = next_interval;
+    self->asyncio_scan_deadline = now + next_interval;
+
+    _py_proc__scan_for_asyncio(self);
+    if (isvalid(self->map.asyncio_debug.base))
+        py_asyncio__validate_and_cache(self);
+} // _py_proc__maybe_discover_asyncio
 
 // ----------------------------------------------------------------------------
 int
 py_proc__sample(py_proc_t* self) {
-    microseconds_t time_delta     = gettime() - self->timestamp; // Time delta since last sample.
-    raddr_t        current_interp = self->istate_raddr;
+    raddr_t current_interp = self->istate_raddr;
 
     V_DESC(self->py_v);
 
+    // Piggybacks on this function rather than its own call site for simplicity.
+    _py_proc__maybe_discover_asyncio(self);
+
+    // Compute the time delta once for all interpreters. In native mode this is
+    // done BEFORE the interrupt so we capture the wall time the threads were
+    // actually running (the suspension time will be excluded via the timestamp
+    // update after resume below).
+    // In non-native mode threads are still running while they are being
+    // sampled, so this is computing the difference between now and the
+    // beginning of the last sample. So the time delta includes both the
+    // sampling time and the eventual sleep time from the pacer.
+    microseconds_t time_delta = gettime() - self->timestamp;
+
     do {
-        if (fail(_py_proc__prefetch_interpreter_state(self, current_interp))) // GCOV_EXCL_LINE
-            FAIL;                                                             // GCOV_EXCL_LINE
+        if (fail(_py_proc__prefetch_interpreter_state(self, current_interp))) {
+            // The cached interpreter address itself is unreadable -- most
+            // likely the process execd in place and istate_raddr still
+            // points into the old, now-replaced image (which, unlike a
+            // momentarily-invalid-but-still-mapped read, can fail outright
+            // once the new image's ASLR base no longer overlaps it at all).
+            // We are about to give up on sampling entirely this tick, so
+            // _py_proc__sample_interpreter below -- and with it, the native
+            // thread pump that would otherwise consume a pending ptrace-stop
+            // on an already-seized thread -- never runs. Do it here instead:
+            // a thread parked in the kernel's mandatory post-exec stop gets
+            // nothing else to resume it once this address stops resolving.
+            //
+            // Guarded on liveness: this failure is just as often the process
+            // having exited (prefetching from a torn-down address space
+            // fails the same way as from a stale pre-exec one) as it is an
+            // in-place exec -- see the matching guard in
+            // _py_proc__sample_interpreter for why that matters here too.
+            if (pargs_native && py_proc__is_running(self)) {
+                py_thread__interrupt_os_threads(self);
+                py_thread__resume_all_interrupted();
+            }
+            FAIL;
+        }
 
-        raddr_t tstate_head = NULL;
-        if (fail( // GCOV_EXCL_LINE
-                _py_proc__get_interpreter_state_field(self, current_interp, tstate_head, tstate_head)
-            ))
-            FAIL; // GCOV_EXCL_LINE
-
-        if (!isvalid(tstate_head))
-            // Maybe the interpreter state is in an invalid state. We'll try again
-            // unless there is a fatal error.
-            SUCCESS;
-
-#ifdef NATIVE
-        if (fail(_py_proc__interrupt_threads(self, tstate_head))) // GCOV_EXCL_LINE
-            FAIL;                                                 // GCOV_EXCL_LINE
-
-        time_delta = gettime() - self->timestamp;
-#endif
         int result = _py_proc__sample_interpreter(self, current_interp, time_delta);
-
-#ifdef NATIVE
-        if (fail(_py_proc__resume_threads(self, tstate_head))) // GCOV_EXCL_LINE
-            FAIL;                                              // GCOV_EXCL_LINE
-#endif
 
         if (fail(result))
             continue;
@@ -1399,11 +1749,26 @@ py_proc__sample(py_proc_t* self) {
             FAIL;                                                                                    // GCOV_EXCL_LINE
     } while (isvalid(current_interp));
 
-#ifdef NATIVE
-    self->timestamp = gettime();
-#else
-    self->timestamp += time_delta;
-#endif
+    if (self->exec_seen) {
+        // A thread reported the kernel's mandatory post-exec ptrace stop
+        // while we were sampling above. The process now runs a different
+        // image with a fresh ASLR base, so istate_raddr and every cached
+        // symbol/path we hold are stale -- carrying on would mean reading
+        // whatever garbage now happens to live at the old addresses
+        // forever. Ask the caller to re-run full process discovery instead.
+        self->exec_seen = false;
+        set_error(OS, "Process exec'd in place; requesting re-attach");
+        FAIL;
+    }
+
+    // In non-native mode, advance the timestamp by the measured delta so that
+    // the next time_delta captures the full interval (sample work + sleep).
+    // In native mode, reset to now (after resume) so that suspension time is
+    // excluded from the next delta.
+    if (pargs_native)
+        self->timestamp = gettime();
+    else
+        self->timestamp += time_delta; // This is now the timestamp at the start of this sample
 
     SUCCESS;
 } /* py_proc__sample */
@@ -1411,15 +1776,16 @@ py_proc__sample(py_proc_t* self) {
 // ----------------------------------------------------------------------------
 void
 py_proc__log_version(py_proc_t* self, bool is_parent) {
-    int major = self->py_v->major;
-    int minor = self->py_v->minor;
-    int patch = self->py_v->patch;
+    int         major = self->py_v->major;
+    int         minor = self->py_v->minor;
+    int         patch = self->py_v->patch;
+    const char* ft    = self->free_threaded ? "t" : "";
 
     if (is_parent) {
-        if (patch == 0xFF) {                                                 // GCOV_EXCL_LINE
-            event_handler__emit_metadata("python", "%d.%d.?", major, minor); // GCOV_EXCL_LINE
+        if (patch == 0xFF) {                                                       // GCOV_EXCL_LINE
+            event_handler__emit_metadata("python", "%d.%d.?%s", major, minor, ft); // GCOV_EXCL_LINE
         } else
-            event_handler__emit_metadata("python", "%d.%d.%d", major, minor, patch);
+            event_handler__emit_metadata("python", "%d.%d.%d%s", major, minor, patch, ft);
     }
 
     if (pargs.pipe)
@@ -1430,20 +1796,68 @@ py_proc__log_version(py_proc_t* self, bool is_parent) {
     if (pargs.children) {
         if (patch == 0xFF) // GCOV_EXCL_START
             log_m(
-                "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d" CRESET,
-                is_parent ? "Parent" : "Child", self->pid, major, minor
+                "🐍 %s process [" CYN "%d" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d%s" CRESET,
+                is_parent ? "Parent" : "Child", (int)self->pid, major, minor, ft
             );
         else // GCOV_EXCL_STOP
             log_m(
-                "🐍 %s process [" CYN "%zd" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d" CRESET,
-                is_parent ? "Parent" : "Child", self->pid, major, minor, patch
+                "🐍 %s process [" CYN "%d" CRESET "] " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d%s" CRESET,
+                is_parent ? "Parent" : "Child", (int)self->pid, major, minor, patch, ft
             );
     } else {
         if (patch == 0xFF) // GCOV_EXCL_START
-            log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d" CRESET, major, minor);
+            log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d%s" CRESET, major, minor, ft);
         else // GCOV_EXCL_STOP
-            log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d" CRESET, major, minor, patch);
+            log_m("🐍 " BOLD "Python" CRESET " version: " BYEL "%d.%d.%d%s" CRESET, major, minor, patch, ft);
     }
+}
+
+// ----------------------------------------------------------------------------
+void
+py_proc__log_paths(py_proc_t* self) {
+    if (pargs.where)
+        return;
+
+    // Reading this information is best-effort, so we preserve any error state.
+    error_t saved_errno = austin_errno;
+    char*   saved_msg   = austin_error_msg;
+
+    cu_char* cwd        = _py_proc__get_cwd(self);
+    size_t   env_size   = 0;
+    cu_char* env_block  = _py_proc__get_environ(self, &env_size);
+    cu_char* venv       = NULL;
+    cu_char* pythonpath = NULL;
+
+    if (isvalid(env_block)) { // GCOV_EXCL_BR_LINE
+        venv       = env_lookup(env_block, env_size, "VIRTUAL_ENV");
+        pythonpath = env_lookup(env_block, env_size, "PYTHONPATH");
+    }
+
+    // If we spawned the process, it inherited our working directory and
+    // environment, so we can use our own if we failed to read the process'.
+    if (pargs.attach_pid == 0) {
+        if (!isvalid(cwd)) { // GCOV_EXCL_START
+            cwd = (char*)calloc(PATH_MAX + 1, sizeof(char));
+            if (isvalid(cwd) && !isvalid(getcwd(cwd, PATH_MAX))) {
+                free(cwd);
+                cwd = NULL;
+            }
+        } // GCOV_EXCL_STOP
+        if (!isvalid(env_block)) { // GCOV_EXCL_START
+            venv       = env_get("VIRTUAL_ENV");
+            pythonpath = env_get("PYTHONPATH");
+        } // GCOV_EXCL_STOP
+    }
+
+    austin_errno     = saved_errno;
+    austin_error_msg = saved_msg;
+
+    if (isvalid(cwd)) // GCOV_EXCL_BR_LINE
+        event_handler__emit_metadata("cwd", "%s", cwd);
+    if (isvalid(venv))
+        event_handler__emit_metadata("venv", "%s", venv);
+    if (isvalid(pythonpath))
+        event_handler__emit_metadata("pythonpath", "%s", pythonpath);
 }
 
 // ----------------------------------------------------------------------------
@@ -1495,10 +1909,13 @@ py_proc__destroy(py_proc_t* self) {
     if (!isvalid(self)) // GCOV_EXCL_LINE
         return;         // GCOV_EXCL_LINE
 
-#ifdef NATIVE
+#ifdef PL_LINUX
+#ifdef AUSTINP
     unw_destroy_addr_space(self->unwind.as);
+#endif
     vm_range_tree__destroy(self->maps_tree);
-    hash_table__destroy(self->base_table);
+    if (isvalid(self->extra) && self->extra->statm_fd >= 0)
+        close(self->extra->statm_fd);
 #endif
 
 #if defined PL_MACOS
@@ -1509,6 +1926,9 @@ py_proc__destroy(py_proc_t* self) {
     sfree(self->lib_path);
     sfree(self->interpreter_state_com.data);
     sfree(self->extra);
+
+    thread_tracker__destroy(self->thread_tracker);
+    task_tracker__destroy(self->task_tracker);
 
     lru_cache__destroy(self->string_cache);
     lru_cache__destroy(self->frame_cache);
