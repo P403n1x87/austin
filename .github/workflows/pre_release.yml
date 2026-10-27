@@ -131,7 +131,6 @@ jobs:
           export PREV_VERSION=$(cat src/austin.h | sed -n -E "s/^#define VERSION[ ]+\"(.+)\"/\1/p")
           export VERSION=${{ github.ref_name }}
           sed -i "" "s/$PREV_VERSION/$VERSION/g" src/austin.h
-          echo "::set-output name=version::$VERSION"
 
           gcc-15 -Wall -O3 -Os -o src/austin src/*.c
 
