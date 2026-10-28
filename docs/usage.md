@@ -42,10 +42,10 @@ Report bugs at https://github.com/P403n1x87/austin/issues
 
 Austin generates binary output in the [MOJO](formats/mojo.md) format. This is a
 compact binary representation of the collected data that can be processed by
-the `mojo2austin` tool that comes with the [`austin-python`] Python package to
+the `mojo2austin` tool that comes with the [`austin-python`][austin-python] Python package to
 produce the more commonly used collapsed stack format. The MOJO format can also
 be converted to the [Speedscope] JSON format using the `austin2speedscope` tool
-that also comes with the [`austin-python`] Python package.
+that also comes with the [`austin-python`][austin-python] Python package.
 
 !!! tip
     The recommended way to visualise Austin profiles is with the [Austin VS Code
@@ -59,7 +59,7 @@ that also comes with the [`austin-python`] Python package.
 If you prefer command-line tools such as [Brendan Gregg's
 `flamegraph.pl`][FlameGraph] to generate flame graph visualisations, you first
 need to convert Austin's MOJO output to collapsed stack format with the
-`mojo2austin` utility from the [`austin-python`] package:
+`mojo2austin` utility from the [`austin-python`][austin-python] package:
 
 ~~~ console
 pip install austin-python
@@ -134,6 +134,6 @@ available in the [SVG](assets/cheatsheet.svg), [PDF](assets/cheatsheet.pdf) and
 
 
 [Austin VS Code extension]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode
-[`austin-python`]: https://github.com/P403n1x87/austin-python
+[austin-python]: https://github.com/P403n1x87/austin-python
 [FlameGraph]: https://github.com/brendangregg/FlameGraph
 [Speedscope]: https://speedscope.app

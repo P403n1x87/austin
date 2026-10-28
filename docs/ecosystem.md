@@ -1,7 +1,7 @@
 # Ecosystem
 
 Austin's [MOJO](formats/mojo.md) output can be consumed by a number of tools,
-or by your own, with the help of the [`austin-python`] package.
+or by your own, with the help of the [`austin-python`][austin-python] package.
 
 
 ## Agentic Workflows
@@ -12,7 +12,7 @@ on their own. There are two ways to give an agent access to Austin profiles:
 | | [VS Code MCP server](#mcp-server) | [`austin-query`](#querying-profiles) |
 | - | --------------------------------- | ------------------------------------ |
 | **Best for** | Interactive sessions in the editor, where you and the agent look at the same flame graph | Headless use: terminal agents, scripts and CI |
-| **Requires** | The [Austin VS Code extension] | The [`austin-python`] package |
+| **Requires** | The [Austin VS Code extension] | The [`austin-python`][austin-python] package |
 | **Agents** | GitHub Copilot out of the box, or any MCP client, like Claude Code or Cursor | Any agent that can run shell commands |
 | **Output** | Structured MCP tool results, plus flame graph actions | Text tables, or JSON with `--json` |
 
@@ -76,7 +76,7 @@ has all the details.
 
 ## Querying Profiles
 
-The `austin.query` module of the [`austin-python`] package answers the most
+The `austin.query` module of the [`austin-python`][austin-python] package answers the most
 common questions about a profile, like which functions are the hottest, what the
 sampled stacks are, or who calls a given function:
 
@@ -194,7 +194,7 @@ environment variable in order for Austin Web to work.
 ## Speedscope
 
 Austin's MOJO output can be converted to the [Speedscope] JSON format with the
-`austin2speedscope` utility that comes with the [`austin-python`] package.
+`austin2speedscope` utility that comes with the [`austin-python`][austin-python] package.
 
 If you want to give it a go you can install it using `pip` with
 
@@ -218,7 +218,7 @@ used on [Speedscope].
 ## Google pprof
 
 Austin's format can also be converted to the Google pprof format using the
-`austin2pprof` utility that comes with [`austin-python`]. If you want to give it
+`austin2pprof` utility that comes with [`austin-python`][austin-python]. If you want to give it
 a go you can install it using `pip` with
 
 ~~~ console
@@ -237,8 +237,9 @@ be used with [Google's pprof tools][pprof].
 
 
 [Austin TUI]: https://github.com/P403n1x87/austin-tui
+[Austin VS Code extension]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode
 [Austin Web]: https://github.com/P403n1x87/austin-web
-[`austin-python`]: https://github.com/P403n1x87/austin-python
+[austin-python]: https://github.com/P403n1x87/austin-python
 [d3-flame-graph]: https://github.com/spiermar/d3-flame-graph
 [pprof]: https://github.com/google/pprof
 [Speedscope]: https://speedscope.app
