@@ -1,5 +1,5 @@
 name: austin
-base: core20
+base: core24
 # [[[cog
 # from scripts.utils import get_current_version_from_changelog as version
 # print(f"version: '{version()}+git'")
@@ -16,10 +16,10 @@ description: |
 grade: stable
 confinement: classic
 
-architectures:
-  - build-on: amd64
-  - build-on: i386
-  - build-on: armhf
+platforms:
+  amd64:
+  arm64:
+  armhf:
 
 parts:
   austin:
@@ -27,8 +27,14 @@ parts:
     source: https://github.com/P403n1x87/austin
     source-type: git
     source-depth: 1
-    build-packages: [libunwind-dev, binutils-dev, libiberty-dev, zlib1g-dev]
-    stage-packages: [libbinutils]
+    build-packages:
+      - libunwind-dev
+      - binutils-dev
+      - libiberty-dev
+      - liblzma-dev
+      - zlib1g-dev
+      - libzstd-dev
+    build-attributes: [enable-patchelf]
 
 apps:
   austin:
