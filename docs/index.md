@@ -16,6 +16,8 @@ The key features of Austin are:
 - Fast and lightweight;
 - Time and memory profiling;
 - Built-in support for multi-process applications (e.g. `mod_wsgi`).
+- Support for agentic workflows, with an [MCP server and a query
+  API](ecosystem.md#agentic-workflows) for coding agents.
 
 The simplest way to turn Austin into a full-fledged profiler is to use it
 together with the [VS Code extension][Austin VS Code extension] or combine it
