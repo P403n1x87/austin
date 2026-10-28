@@ -496,10 +496,49 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#agentic-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agentic Workflows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ide-extensions" class="md-nav__link">
     <span class="md-ellipsis">
       
         IDE Extensions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="IDE Extensions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mcp-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP Server
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#querying-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Querying Profiles
       
     </span>
   </a>
@@ -672,10 +711,49 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#agentic-workflows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Agentic Workflows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#ide-extensions" class="md-nav__link">
     <span class="md-ellipsis">
       
         IDE Extensions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="IDE Extensions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#mcp-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MCP Server
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#querying-profiles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Querying Profiles
       
     </span>
   </a>
@@ -749,11 +827,162 @@
 <h1 id="ecosystem">Ecosystem</h1>
 <p>Austin's <a href="../formats/mojo/">MOJO</a> output can be consumed by a number of tools,
 or by your own, with the help of the [<code>austin-python</code>] package.</p>
+<h2 id="agentic-workflows">Agentic Workflows</h2>
+<p>Coding agents can profile Python code with Austin and reason about the results
+on their own. There are two ways to give an agent access to Austin profiles:</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><a href="#mcp-server">VS Code MCP server</a></th>
+<th><a href="#querying-profiles"><code>austin-query</code></a></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Best for</strong></td>
+<td>Interactive sessions in the editor, where you and the agent look at the same flame graph</td>
+<td>Headless use: terminal agents, scripts and CI</td>
+</tr>
+<tr>
+<td><strong>Requires</strong></td>
+<td>The [Austin VS Code extension]</td>
+<td>The [<code>austin-python</code>] package</td>
+</tr>
+<tr>
+<td><strong>Agents</strong></td>
+<td>GitHub Copilot out of the box, or any MCP client, like Claude Code or Cursor</td>
+<td>Any agent that can run shell commands</td>
+</tr>
+<tr>
+<td><strong>Output</strong></td>
+<td>Structured MCP tool results, plus flame graph actions</td>
+<td>Text tables, or JSON with <code>--json</code></td>
+</tr>
+</tbody>
+</table>
+<p>In both cases, the agent works from the same questions you would ask: what the
+hottest functions are, who calls them, which call stacks are the heaviest, how
+busy the garbage collector is, and what each <code>asyncio</code> task was doing.</p>
 <h2 id="ide-extensions">IDE Extensions</h2>
 <p>It is easy to write your own extension for your favourite text editor. This, for
 example, is a demo of the <a href="https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode">Visual Studio Code</a> extension that highlights the
 most hit lines of code straight into the editor</p>
 <p><img alt="Austin VS Code extension demo" src="../assets/art/vscode-demo.gif" /></p>
+<p>The extension opens <code>.mojo</code> files directly, and renders interactive flame
+graphs, source-level annotations and thread breakdowns, with support for the
+<code>asyncio</code> task view of profiles collected on CPython 3.14 or later.</p>
+<h3 id="mcp-server">MCP Server</h3>
+<p>The [Austin VS Code extension] comes with an <a href="https://modelcontextprotocol.io/">MCP</a>
+server that exposes the profile loaded in the editor to AI agents. The server
+starts automatically when the extension activates, and offers two kinds of
+tools.</p>
+<p>The data tools let the agent read the loaded profile:</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>get_top</code></td>
+<td>Top functions, sorted by own time</td>
+</tr>
+<tr>
+<td><code>get_call_stacks</code></td>
+<td>Process, thread and function call-stack tree, with an optional threshold to prune branches that contribute little</td>
+</tr>
+<tr>
+<td><code>get_metadata</code></td>
+<td>Source file, sampling mode, interval and total sample count</td>
+</tr>
+<tr>
+<td><code>get_gc_data</code></td>
+<td>Per-thread garbage collector time, and the functions on the stack during collections</td>
+</tr>
+<tr>
+<td><code>get_task_traces</code></td>
+<td><code>asyncio</code> task trees, with each task's coroutine, location, running and total time</td>
+</tr>
+</tbody>
+</table>
+<p>The action tools let the agent show its findings in the flame graph:</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>load_profile</code></td>
+<td>Load a profile file and open it in the flame graph view</td>
+</tr>
+<tr>
+<td><code>focus_flamegraph</code></td>
+<td>Zoom the flame graph to a call-stack or task node</td>
+</tr>
+<tr>
+<td><code>search_flamegraph</code></td>
+<td>Highlight every frame whose function name contains a term</td>
+</tr>
+</tbody>
+</table>
+<p>This way, an agent can profile your code, load the result, explain where the
+time goes, and point you to the relevant part of the flame graph, all within the
+same chat session.</p>
+<p>In VS Code, the server is registered with the built-in MCP client, and the tools
+are available in GitHub Copilot's agent mode with no configuration. For other
+agents with their own MCP client, like Claude Code or Cursor, run the <strong>Austin:
+Generate .mcp.json</strong> command from the Command Palette. This writes a <code>.mcp.json</code>
+file to the workspace root that points the agent to the server. To share this
+file with your team, set the <code>austin.mcp.port</code> setting to a fixed port before
+generating it. The <a href="https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode">extension's
+documentation</a>
+has all the details.</p>
+<h2 id="querying-profiles">Querying Profiles</h2>
+<p>The <code>austin.query</code> module of the [<code>austin-python</code>] package answers the most
+common questions about a profile, like which functions are the hottest, what the
+sampled stacks are, or who calls a given function:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">austin.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProfileQuery</span>
+
+<span class="n">q</span> <span class="o">=</span> <span class="n">ProfileQuery</span><span class="o">.</span><span class="n">from_file</span><span class="p">(</span><span class="s2">"profile.mojo"</span><span class="p">)</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">q</span><span class="o">.</span><span class="n">top</span><span class="p">(</span><span class="mi">10</span><span class="p">))</span>                       <span class="c1"># hottest functions</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">q</span><span class="o">.</span><span class="n">callers</span><span class="p">(</span><span class="s2">"db.py:execute"</span><span class="p">))</span>      <span class="c1"># who calls execute</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">q</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">thread</span><span class="o">=</span><span class="s2">"main"</span><span class="p">)</span><span class="o">.</span><span class="n">tree</span><span class="p">())</span>  <span class="c1"># call tree of the main thread</span>
+</code></pre></div>
+<p>Every result renders as a text table when printed, and can be converted to
+JSON-ready data with <code>to_dict()</code>. For <code>asyncio</code> profiles (CPython 3.14 or
+later), <code>q.tasks()</code> shows the task trees, <code>q.task_stacks("worker-0")</code> where a
+task was running and awaiting, and <code>q.filter(task="worker-0")</code> narrows any query
+down to the samples in which a task was running.</p>
+<p>The same queries are available from the command line with the <code>austin-query</code>
+tool, which makes them easy to use for any agent that can run shell commands.
+A typical session goes from an overview of the profile down to the code that
+needs attention:</p>
+<div class="highlight"><pre><span></span><code><span class="go">austin-query profile.mojo summary          # mode, metrics and threads</span>
+<span class="go">austin-query profile.mojo top -n 20        # hottest functions</span>
+<span class="go">austin-query profile.mojo callers execute  # who calls a hot function</span>
+<span class="go">austin-query profile.mojo stacks -n 5      # heaviest full stacks</span>
+<span class="go">austin-query profile.mojo tasks            # asyncio task trees</span>
+</code></pre></div>
+<p>Add <code>--json</code> to any command for machine-readable output. Run <code>austin-query
+--help</code> for the syntax that selects functions and tasks, and for the suggested
+workflow. Pointing an agent to <code>austin-query --help</code> is usually all it takes for
+it to profile and analyse your code on its own:</p>
+<div class="highlight"><pre><span></span><code><span class="go">austin -o profile.mojo python myscript.py</span>
+<span class="go">austin-query profile.mojo top -n 10 --json</span>
+</code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The query API and the <code>austin-query</code> tool are available since
+<code>austin-python</code> 2.5.0. Install or upgrade with <code>pip install -U
+austin-python</code>.</p>
+</div>
 <h2 id="austin-tui">Austin TUI</h2>
 <p>The <a href="https://github.com/P403n1x87/austin-tui">Austin TUI</a> is a text-based user interface for Austin that gives you a
 top-like view of what is currently running inside a Python application. It is
