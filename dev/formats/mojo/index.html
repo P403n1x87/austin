@@ -1,0 +1,1176 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="A frame stack sampler for CPython">
+      
+      
+      
+        <link rel="canonical" href="https://p403n1x87.github.io/austin/dev/formats/mojo/">
+      
+      
+        <link rel="prev" href="../../ecosystem/">
+      
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/art/austin_die_cut_sticker.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>MOJO file format - Austin</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#the-mojo-file-format" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+          <aside class="md-banner md-banner--warning">
+            <div class="md-banner__inner md-grid md-typeset">
+              
+  You are not reading the documentation for the latest Austin release.
+  <a href="../../..">
+    <strong>Go to the latest version.</strong>
+  </a>
+
+            </div>
+            <script>var el=document.querySelector("[data-md-component=outdated]"),base=new URL("../.."),outdated=__md_get("__outdated",sessionStorage,base);!0===outdated&&el&&(el.hidden=!1)</script>
+          </aside>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Austin" class="md-header__button md-logo" aria-label="Austin" data-md-component="logo">
+      
+  <img src="../../assets/art/austin_die_cut_sticker.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Austin
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              MOJO file format
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/P403n1x87/austin" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    P403n1x87/austin
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Austin" class="md-nav__button md-logo" aria-label="Austin" data-md-component="logo">
+      
+  <img src="../../assets/art/austin_die_cut_sticker.png" alt="logo">
+
+    </a>
+    Austin
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/P403n1x87/austin" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    P403n1x87/austin
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../features/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Features
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../logging/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Logging
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Compatibility
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../ecosystem/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Ecosystem
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_8" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_8" id="__nav_8_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_8_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_8">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MOJO file format
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    MOJO file format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#data-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#header" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Header
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Events
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#samples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Samples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stack-repeats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stack repeats
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#asyncio-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asyncio tasks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#native-frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Native frames
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What changed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#previous-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Previous versions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#data-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Data types
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#header" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Header
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Events
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#samples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Samples
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stack-repeats" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Stack repeats
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#asyncio-tasks" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Asyncio tasks
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#native-frames" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Native frames
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-changed" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What changed
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#previous-versions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Previous versions
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="the-mojo-file-format">The MOJO File Format</h1>
+<p>This page describes Austin's MOJO binary file format for version 4. At the high
+level, it consists of a stream of events that correspond to the various parts
+of Austin's default output format. Each MOJO file has a header with a magic
+sequence of bytes and a version number.</p>
+<h2 id="data-types">Data types</h2>
+<p>There are only two fundamental data types used by the MOJO format: strings and
+varints. A string is a null-terminated sequence of bytes. A varint is an integer
+of variable size which is encoded as follows: the most significant bit of each
+byte determines whether the next byte is part of the number. The second most
+significant bit of the first byte is the sign bit. Hence, only the last 6 least
+significant bits of the first byte contribute to the value of the integer,
+whereas for each of the subsequent bytes, the number of bits is 7. For example,
+the byte sequence <code>C3 02</code> encodes the integer <code>-131</code>.</p>
+<h2 id="header">Header</h2>
+<p>A MOJO file starts with the byte sequence</p>
+<table>
+<thead>
+<tr>
+<th>Byte 0 .. 2</th>
+<th>Byte 3 ..</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MOJ</code></td>
+<td>version varint</td>
+</tr>
+</tbody>
+</table>
+<p>that is, the byte sequence <code>MOJ</code> followed by the varint encoding of the format
+version. The initial version is 1. The latest version is 4.</p>
+<h2 id="events">Events</h2>
+<p>Each event has the following structure</p>
+<table>
+<thead>
+<tr>
+<th>Byte 0</th>
+<th>Byte 1 .. n</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Event ID</td>
+<td>Event data</td>
+</tr>
+</tbody>
+</table>
+<p>Note that some events might not have any additional event data. The currently
+supported event IDs are listed in the following table.</p>
+<table>
+<thead>
+<tr>
+<th>Event ID</th>
+<th>Name</th>
+<th>Event Data</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td></td>
+<td></td>
+<td>Reserved.</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Metadata</td>
+<td><em>key</em>: <code>string</code>, <em>value</em>: <code>string</code></td>
+<td>Metadata key-value pair, e.g. Austin version, detected Python version, sampling metrics etc... .</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Stack</td>
+<td><em>pid</em>: <code>varint</code>, <em>iid</em>: <code>varint</code>, <em>thread</em>: <code>string</code></td>
+<td>This signals the beginning of a sample. The event data includes the PID, the interpreter ID, and the thread identifier. The thread identifier is the name of the thread, as known to the <code>threading</code> module (e.g. <code>MainThread</code>), when it can be resolved, or the thread ID otherwise. Every new stack event signals the end of the previous sample (if any) and the beginning of a new one.</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Frame</td>
+<td><em>key</em>: <code>varint</code>, <em>filename_key</em>: <code>varint</code>, <em>scope_key</em>: <code>varint</code>, <em>line</em>: <code>varint</code>, <em>line_end</em>: <code>varint</code>, <em>column</em>: <code>varint</code>, <em>column_end</em>: <code>varint</code></td>
+<td>This event carries information about a frame. The event data consists of the frame key identifier, two string references for the file path and the function name respectively, and the location information. The location information consists of 4 numbers: the start and end line, and the start and end column. A value of 0 indicates that no information is available for that location value. See <a href="#native-frames">below</a> for how native frames are encoded.</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Invalid frame</td>
+<td></td>
+<td>Emitted when an invalid frame is detected. Not emitted since Austin 4.0, but kept for compatibility with older versions.</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Frame reference</td>
+<td><em>frame_key</em>: <code>varint</code></td>
+<td>A reference to a frame by key identifier. These events define the actual frame content of frame stacks.</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Kernel frame</td>
+<td><em>symbol</em>: <code>string</code></td>
+<td>Emitted by the austinp variant to report a kernel frame. The event data is a single string with the name of the kernel symbol.</td>
+</tr>
+<tr>
+<td>7</td>
+<td>Garbage collector</td>
+<td></td>
+<td>Emitted if the garbage collector is running while sampling with the garbage collector option.</td>
+</tr>
+<tr>
+<td>8</td>
+<td>Idle stack</td>
+<td></td>
+<td>Emitted if the stack is idle (only in full mode).</td>
+</tr>
+<tr>
+<td>9</td>
+<td>Time metric</td>
+<td><em>value</em>: <code>varint</code></td>
+<td>A time delta in microseconds</td>
+</tr>
+<tr>
+<td>10</td>
+<td>Memory metric</td>
+<td><em>value</em>: <code>varint</code></td>
+<td>A memory delta in bytes.</td>
+</tr>
+<tr>
+<td>11</td>
+<td>String event</td>
+<td><em>key</em>: <code>varint</code>, <em>value</em>: <code>string</code></td>
+<td>This is a pair of key followed by a literal string. Used to provide a mapping between a string and a string reference, which is used to reduce redundancy.</td>
+</tr>
+<tr>
+<td>12</td>
+<td>String reference</td>
+<td><em>string_key</em>: <code>varint</code></td>
+<td>A reference to a string by key.</td>
+</tr>
+<tr>
+<td>13</td>
+<td>Stack repeat</td>
+<td></td>
+<td>The Python frames of the current sample are the same as those of the previous sample of the same thread (same PID and thread identifier). See <a href="#stack-repeats">below</a> for details.</td>
+</tr>
+<tr>
+<td>14</td>
+<td>Task stack</td>
+<td><em>task_id</em>: <code>varint</code>, <em>name_key</em>: <code>varint</code>, <em>frame_count</em>: <code>varint</code></td>
+<td>Reports the current coroutine stack of an asyncio task. The event data consists of the task identifier, a string reference to the task name (0 if not available), and the number of frame references that follow and make up the task stack. See <a href="#asyncio-tasks">below</a> for details.</td>
+</tr>
+<tr>
+<td>15</td>
+<td>Task waiter</td>
+<td><em>task_id</em>: <code>varint</code>, <em>waiter_id</em>: <code>varint</code></td>
+<td>An edge of the asyncio task graph: the task with identifier <em>task_id</em> is being awaited by the task with identifier <em>waiter_id</em>. A <em>waiter_id</em> of 0 means that the task has no waiters. See <a href="#asyncio-tasks">below</a> for details.</td>
+</tr>
+<tr>
+<td>16</td>
+<td>Running task</td>
+<td><em>task_id</em>: <code>varint</code></td>
+<td>The asyncio task that the thread of the current sample is running. See <a href="#asyncio-tasks">below</a> for details.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="samples">Samples</h2>
+<p>A sample is made of the following sequence of events, in this order</p>
+<ol>
+<li>a Stack event;</li>
+<li>optionally, any asyncio task events (Task stack, Task waiter, Running task)
+   for the tasks owned by the thread of the sample;</li>
+<li>optionally, a Stack repeat event;</li>
+<li>the Frame reference events of the sample, from the outermost to the
+   innermost frame, followed by any Kernel frame events;</li>
+<li>optionally, a Garbage collector event;</li>
+<li>the metric events: a Time metric or a Memory metric event, or, in full mode,
+   a Time metric event, an optional Idle stack event and a Memory metric event.</li>
+</ol>
+<p>Frame and String events, that define new frames and strings, can appear
+anywhere in the stream before they are first referenced. Metadata events are
+mostly emitted at the beginning and at the end of the stream, outside of any
+sample.</p>
+<h2 id="stack-repeats">Stack repeats</h2>
+<p>To reduce the cost of sampling, and the size of MOJO files, Austin can detect
+when the Python frames of a thread are the same as those of the previous sample
+of the same thread. In this case, a Stack repeat event is emitted instead of the
+frame references of the Python stack. The frames of the sample are then those
+of the previous sample of the same thread, followed by the Frame reference
+events that come after the Stack repeat event, if any.</p>
+<p>In native mode, the native frames that are above the innermost Python frame
+might change between samples, even when the Python stack is the same.
+Therefore, the trailing native frames of the previous sample must be dropped
+before appending the frames that come after the Stack repeat event. Native
+frames are those whose file name does not end in <code>.py</code> and that are not of the
+form <code>&lt;...&gt;</code>.</p>
+<h2 id="asyncio-tasks">Asyncio tasks</h2>
+<p>For applications running on CPython 3.14 and later, Austin reports information
+about the asyncio tasks owned by each thread. Asyncio task events are emitted
+within the sample of the thread that owns the tasks, between the Stack event and
+the frame references of the sample. They are not available in native mode.</p>
+<p>Tasks are identified by a sequential number assigned by Austin, and not by their
+memory address, so that a new task allocated at the same address as a task that
+has gone away is not confused with it. The identifier 0 is never assigned to a
+task.</p>
+<p><strong>Task stack</strong> events are emitted for a suspended task only when its position
+has changed since the last time it was reported. A task that is executing when
+the sample is taken is reported in every such sample, with the portion of the
+thread stack that belongs to the task. The event is followed by exactly
+<em>frame_count</em> Frame reference events that make up the coroutine stack of the
+task, from the outermost to the innermost frame; only Frame reference events
+count towards <em>frame_count</em>. A Task stack event with a <em>frame_count</em> of 0
+signals that the task has gone away. Task stack events carry no metrics: the
+time a task spends at a position is the time of the samples of its thread while
+the task is at that position.</p>
+<p><strong>Task waiter</strong> events describe the await relationships between tasks. They are
+emitted whenever the set of waiters of a task changes, as a run of consecutive
+events with the same <em>task_id</em>, one for each direct waiter. The run replaces the
+whole set of known waiters of the task. A single event with a <em>waiter_id</em> of 0
+means that the task has no waiters anymore.</p>
+<p><strong>Running task</strong> events report the task that the thread of the sample is
+running. The task is always reported by a Task stack event before it is
+referenced. When this event is present, the metrics of the sample belong to the
+running task, at its latest reported position, and the frame references of the
+sample are those of the thread that are outside the task's own coroutine stack
+(e.g. the event loop frames). When the event is absent, the sample belongs to
+the thread alone.</p>
+<h2 id="native-frames">Native frames</h2>
+<p>When Austin runs in native mode (<code>-n/--native</code>, or with the austinp variant),
+native frames are reported with Frame events too, interleaved with the Python
+frames that they belong to. For a native frame, the file name is the path of the
+binary that contains the code (or <code>native@&lt;address&gt;</code> if the binary cannot be
+determined) and the scope is the name of the function. The location fields are
+set to 0, except for the austinp variant, where the line field carries the
+offset of the instruction within the function.</p>
+<h2 id="notes">Notes</h2>
+<p>Reference events, like frame and string events, make use of varint key. To
+further reduce the size of MOJO files, these keys are such that their
+varint-encoded value is at most 4 bytes, for a total of <code>2^27</code> (~134 M) possible
+values.</p>
+<p>The string key 1 is reserved for the string <code>&lt;unknown&gt;</code>, which is used, e.g.,
+for the scope of a native frame whose function name cannot be resolved. No
+String event is emitted for it.</p>
+<h2 id="what-changed">What changed</h2>
+<ul>
+<li>Added the Stack repeat event.</li>
+<li>Added the Task stack, Task waiter and Running task events for asyncio support.</li>
+<li>The thread identifier of the Stack event is now the name of the thread, when
+  it can be resolved.</li>
+<li>The string key 1 is now reserved for the <code>&lt;unknown&gt;</code> string.</li>
+</ul>
+<h2 id="previous-versions">Previous versions</h2>
+<ul>
+<li><a href="https://github.com/P403n1x87/austin/wiki/The-MOJO-File-Format/05162be9c3dc27aa45e26075e4f5139ff8643116">MOJO v1</a></li>
+<li><a href="https://github.com/P403n1x87/austin/wiki/The-MOJO-File-Format/55bf8b2a6720e289d5373cdc20b4b7d967ab7e53">MOJO v2</a></li>
+<li><a href="https://github.com/P403n1x87/austin/wiki/The-MOJO-File-Format/7ada067ace89faf48fd0582fb3546435143aeb11">MOJO v3</a></li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "search.highlight"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
