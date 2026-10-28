@@ -826,7 +826,7 @@
 
 <h1 id="ecosystem">Ecosystem</h1>
 <p>Austin's <a href="../formats/mojo/">MOJO</a> output can be consumed by a number of tools,
-or by your own, with the help of the [<code>austin-python</code>] package.</p>
+or by your own, with the help of the <a href="https://github.com/P403n1x87/austin-python"><code>austin-python</code></a> package.</p>
 <h2 id="agentic-workflows">Agentic Workflows</h2>
 <p>Coding agents can profile Python code with Austin and reason about the results
 on their own. There are two ways to give an agent access to Austin profiles:</p>
@@ -846,8 +846,8 @@ on their own. There are two ways to give an agent access to Austin profiles:</p>
 </tr>
 <tr>
 <td><strong>Requires</strong></td>
-<td>The [Austin VS Code extension]</td>
-<td>The [<code>austin-python</code>] package</td>
+<td>The <a href="https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode">Austin VS Code extension</a></td>
+<td>The <a href="https://github.com/P403n1x87/austin-python"><code>austin-python</code></a> package</td>
 </tr>
 <tr>
 <td><strong>Agents</strong></td>
@@ -873,7 +873,7 @@ most hit lines of code straight into the editor</p>
 graphs, source-level annotations and thread breakdowns, with support for the
 <code>asyncio</code> task view of profiles collected on CPython 3.14 or later.</p>
 <h3 id="mcp-server">MCP Server</h3>
-<p>The [Austin VS Code extension] comes with an <a href="https://modelcontextprotocol.io/">MCP</a>
+<p>The <a href="https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode">Austin VS Code extension</a> comes with an <a href="https://modelcontextprotocol.io/">MCP</a>
 server that exposes the profile loaded in the editor to AI agents. The server
 starts automatically when the extension activates, and offers two kinds of
 tools.</p>
@@ -944,7 +944,7 @@ generating it. The <a href="https://marketplace.visualstudio.com/items?itemName=
 documentation</a>
 has all the details.</p>
 <h2 id="querying-profiles">Querying Profiles</h2>
-<p>The <code>austin.query</code> module of the [<code>austin-python</code>] package answers the most
+<p>The <code>austin.query</code> module of the <a href="https://github.com/P403n1x87/austin-python"><code>austin-python</code></a> package answers the most
 common questions about a profile, like which functions are the hottest, what the
 sampled stacks are, or who calls a given function:</p>
 <div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">austin.query</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProfileQuery</span>
@@ -1029,7 +1029,7 @@ environment variable in order for Austin Web to work.</p>
 <p><img alt="Austin Web" src="../assets/art/austin-web.gif" /></p>
 <h2 id="speedscope">Speedscope</h2>
 <p>Austin's MOJO output can be converted to the <a href="https://speedscope.app">Speedscope</a> JSON format with the
-<code>austin2speedscope</code> utility that comes with the [<code>austin-python</code>] package.</p>
+<code>austin2speedscope</code> utility that comes with the <a href="https://github.com/P403n1x87/austin-python"><code>austin-python</code></a> package.</p>
 <p>If you want to give it a go you can install it using <code>pip</code> with</p>
 <div class="highlight"><pre><span></span><code><span class="go">pip install austin-python --upgrade</span>
 </code></pre></div>
@@ -1042,7 +1042,7 @@ used on <a href="https://speedscope.app">Speedscope</a>.</p>
 <p><img alt="Speedscope" src="../assets/art/speedscope.png" /></p>
 <h2 id="google-pprof">Google pprof</h2>
 <p>Austin's format can also be converted to the Google pprof format using the
-<code>austin2pprof</code> utility that comes with [<code>austin-python</code>]. If you want to give it
+<code>austin2pprof</code> utility that comes with <a href="https://github.com/P403n1x87/austin-python"><code>austin-python</code></a>. If you want to give it
 a go you can install it using <code>pip</code> with</p>
 <div class="highlight"><pre><span></span><code><span class="go">pip install austin-python --upgrade</span>
 </code></pre></div>
