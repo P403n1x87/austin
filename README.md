@@ -40,13 +40,11 @@
 </p>
 
 <p align="center">
+  <a href="https://p403n1x87.github.io/austin/"><b>Documentation</b></a>&nbsp;&bull;
   <a href="#synopsis"><b>Synopsis</b></a>&nbsp;&bull;
   <a href="#installation"><b>Installation</b></a>&nbsp;&bull;
   <a href="#usage"><b>Usage</b></a>&nbsp;&bull;
-  <a href="#cheat-sheet"><b>Cheat sheet</b></a>&nbsp;&bull;
   <a href="#compatibility"><b>Compatibility</b></a>&nbsp;&bull;
-  <a href="#why--austin"><b>Why <img src="art/austin_logo.svg" height="20px" /> Austin</b></a>&nbsp;&bull;
-  <a href="#examples"><b>Examples</b></a>&nbsp;&bull;
   <a href="#contribute"><b>Contribute</b></a>
 </p>
 
@@ -112,7 +110,7 @@ Check out [A Survey of Open-Source Python
 Profilers](https://www.usenix.org/system/files/login/articles/login_winter19_12_norton.pdf)
 by Peter Norton for a general overview of Austin.
 
-Keep reading for more tool ideas and examples!
+Check out the [documentation] for more tool ideas and examples!
 
 ---
 
@@ -124,767 +122,81 @@ project.</i></br>🙏</p>
 
 ---
 
+# Documentation
+
+The full documentation, with one version for each Austin minor release, is available
+at <https://p403n1x87.github.io/austin/>. It covers
+
+- the complete [installation] instructions for every platform;
+- the [command line options][usage] and environment variables;
+- the [features] of Austin, like memory profiling, native frame stacks and
+  `asyncio` support;
+- [platform-specific details][compatibility], e.g. permissions on Linux and
+  macOS;
+- the [ecosystem] of tools built around Austin;
+- the specification of the [MOJO] binary format.
+
+
 # Installation
 
-Austin is available to install from [PyPI](pypi) and from the major software
-repositories of the most popular platforms. Check out the [latest release] page
-for pre-compiled binaries and installation packages.
+Austin is available from [PyPI][pypi] and from the major software repositories
+of the most popular platforms
 
-On all supported platforms and architectures, Austin can be installed from PyPI
-with `pip` or `pipx` via the commands
+| Platform            | Command                                          |
+| ------------------- | ------------------------------------------------ |
+| Any (PyPI)          | `pip install austin-dist`                        |
+| Linux (Snap)        | `sudo snap install austin --classic`             |
+| Debian/Ubuntu       | `sudo apt install austin`                        |
+| macOS               | `brew install austin`                            |
+| Windows             | `choco install austin` or `scoop install austin` |
+| Linux/macOS (Conda) | `conda install -c conda-forge austin`            |
 
-~~~
-pip install austin-dist
-~~~
-or
-~~~
-pipx install austin-dist
-~~~
-
-On Linux, it can be installed using `autotools` or as a snap from the [Snap
-Store](https://snapcraft.io/store). The latter will automatically perform the
-steps of the `autotools` method with a single command. On distributions derived
-from Debian, Austin can be installed from the official repositories with
-`apt`. Anaconda users can install Austin from [Conda Forge].
-
-On Windows, Austin can be easily installed from the command line using either
-[Chocolatey] or [Scoop]. Alternatively, you can download the installer from the
-[latest release] page.
-
-On macOS, Austin can be easily installed from the command line using [Homebrew].
-Anaconda users can install Austin from [Conda Forge].
-
-For any other platforms, compiling Austin from sources is as easy as cloning the
-repository and running the C compiler. The [Releases][releases] page has many
-pre-compiled binaries that are ready to be uncompressed and used.
-
-## With `autotools`
-
-Installing Austin using `autotools` amounts to the usual `./configure`, `make`
-and `make install` finger gymnastic. The only dependency is the standard C
-library. Before proceeding with the steps below, make sure that the `autotools`
-are installed on your system. Refer to your distro's documentation for details
-on how to do so.
-
-~~~ console
-git clone --depth=1 https://github.com/P403n1x87/austin.git && cd austin
-autoreconf --install
-./configure
-make
-make install
-~~~
-
-> **NOTE** Some Linux distributions, like Manjaro, might require the execution
-> of `automake --add-missing` before `./configure`.
-
-Alternatively, sources can be compiled with just a C compiler (see below).
-
-
-## From the Snap Store
-
-Austin can be installed on [many major Linux
-distributions](https://snapcraft.io/docs/installing-snapd) from the Snap Store
-with the following command
-
-~~~ console
-sudo snap install austin --classic
-~~~
-
-
-## On Debian and Derivatives
-
-On March 30 2019 Austin was accepted into the official Debian repositories and
-can therefore be installed with the `apt` utility.
-
-~~~ console
-sudo apt update -y && sudo apt install austin -y
-~~~
-
-## On macOS
-
-Austin can be installed on macOS using [Homebrew](https://docs.brew.sh):
-
-~~~ console
-brew install austin
-~~~
-
-
-## From Chocolatey
-
-To install [Austin from Chocolatey](https://chocolatey.org/packages/austin), run
-the following command from the command line or from PowerShell
-
-~~~ console
-choco install austin
-~~~
-
-To upgrade run the following command from the command line or from PowerShell:
-
-~~~ console
-choco upgrade austin
-~~~
-
-
-## From Scoop
-
-To install Austin using Scoop, run the following command from the command line
-or PowerShell
-
-~~~ console
-scoop install austin
-~~~
-
-To upgrade run the following command from the command line or PowerShell:
-
-~~~ console
-scoop update
-~~~
-
-
-## From Conda Forge
-
-Anaconda users on Linux and macOS can install Austin from [Conda Forge] with the
-command
-
-~~~ console
-conda install -c conda-forge austin
-~~~
-
-## From Sources without `autotools`
-
-To install Austin from sources using the GNU C compiler, without `autotools`,
-clone the repository with
-
-~~~ console
-git clone --depth=1 https://github.com/P403n1x87/austin.git
-~~~
-
-On Linux, one can then use the command
-
-~~~ console
-gcc -O3 -Os -Wall -pthread src/*.c -o src/austin
-~~~
-
-whereas on macOS it is enough to run
-
-~~~ console
-gcc -O3 -Os -Wall src/*.c -o src/austin
-~~~
-
-On Windows, the `-lpsapi -lntdll -ldbghelp` switches are needed
-
-~~~ console
-gcc -O3 -Os -Wall -lpsapi -lntdll -ldbghelp src/*.c -o src/austin
-~~~
-
-Add `-DDEBUG` if you need a more verbose log. This is useful if you encounter a
-bug with Austin and you want to report it here.
+Pre-compiled binaries and installers are available from the [latest release]
+page. See the [installation] page for how to build Austin from sources.
 
 
 # Usage
 
-<!-- [[[cog
-from subprocess import check_output
-print("~~~")
-print(check_output(["src/austin", "--help"]).decode().strip())
-print("~~~")
-]]] -->
-~~~
-Usage: austin [-CcfgmnP?V] [-x n_sec] [-i n_us] [-o FILE] [-p PID] [-t n_ms]
-               [-w PID] command [ARG...]
-
-Austin is a frame stack sampler for CPython that is used to extract profiling
-data out of a running Python process (and all its children, if required) that
-requires no instrumentation and has practically no impact on the tracee.
-
-Options:
-  -C, --children              Attach to child processes.
-  -c, --cpu                   Sample on-CPU stacks only.
-  -x, --exposure <n_sec>      Sample for n_sec seconds only.
-  -f, --full                  Produce the full set of metrics (time +mem -mem).
-  -g, --gc                    Sample the garbage collector state.
-  -i, --interval <n_us>       Sampling interval in microseconds (default is
-                              100). Accepted units: s, ms, us.
-  -m, --memory                Profile memory usage.
-  -n, --native                Collect native call stacks alongside Python
-                              stacks.
-  -o, --output <FILE>         Specify an output file for the collected samples.
-  -p, --pid <PID>             Attach to the process with the given PID.
-  -P, --pipe                  Pipe mode. Use when piping Austin output.
-  -t, --timeout <n_ms>        Start up wait time in milliseconds (default is
-                              3000). Accepted units: s, ms.
-  -w, --where <PID>           Dump the stacks of all the threads within the
-                              process with the given PID.
-  -?, --help                  Give this help list.
-      --usage                 Give a short usage message.
-  -V, --version               Print program version.
-
-Report bugs at https://github.com/P403n1x87/austin/issues
-~~~
-<!-- [[[end]]] -->
-
-Austin generates binary output in the [MOJO] format. This is a compact binary
-representation of the collected data that can be processed by the `mojo2austin`
-tool that comes with the [`austin-python`] Python package to produce the more
-commonly used collapsed stack format. The MOJO format can also be converted to
-the [Speedscope] JSON format using the `austin2speedscope` tool that also comes
-with the [`austin-python`] Python package.
-
-> [!TIP]
-> The recommended way to visualise Austin profiles is with the
-> [Austin VS Code extension]. It opens `.mojo` files directly and renders
-> interactive flame graphs, source-level annotations, and thread breakdowns
-> without any extra conversion steps. The extension also ships with an MCP
-> server that lets coding agents query profiling data autonomously.
-
-If you prefer command-line tools such as [Brendan Gregg's
-`flamegraph.pl`][FlameGraph] to generate flame graph visualisations, you first
-need to convert Austin's MOJO output to collapsed stack format with the
-`mojo2austin` utility from the [`austin-python`] package:
-
-~~~ console
-pip install austin-python
-mojo2austin profile.mojo /dev/stdout | flamegraph.pl > profile.svg
-~~~
-
-Open `profile.svg` in a browser to explore the interactive flame graph.
-
-> [!NOTE]
-> Austin writes binary MOJO data to stdout by default, so piping Austin's
-> output directly into `flamegraph.pl` will not work. Always save to a file
-> first (with `-o profile.mojo` or output redirection) and then convert with
-> `mojo2austin`.
-
-> [!IMPORTANT]
-> If you are running Austin directly in a terminal, make sure to either redirect
-> the output to a file or give a destination file with the `-o/--output` option
-> to avoid the terminal being flooded with binary data.
-
-
-## Environment variables
-
-Some behaviour of Austin can be configured via environment variables.
-
-| Variable               | Effect                                                               |
-| ---------------------- | -------------------------------------------------------------------- |
-| `AUSTIN_NO_LOGGING`    | Disables all [log messages](#logging) (since Austin 3.4.0).          |
-| `AUSTIN_PAGE_SIZE_CAP` | Cap the page size used to perform remote reads (since Austin 4.0.0). |
-
-
-## Column-level Location Information
-
-Since Python 3.11, code objects carry finer-grained location information at the
-column level. When using the binary MOJO format, Austin can extract this extra
-location information when profiling code running with versions of the
-interpreter that expose this data.
-
-*Since Austin 3.5.0*.
-
-
-## Memory and Full Metrics
-
-When profiling in memory mode with the `-m` or `--memory` switch, the metric
-value associated with each stack is the memory delta between samples, measured
-in bytes. In full mode (`-f` or `--full` switches), each sample will include
-both a time and memory metric, plus the information of whether the stack was on
-CPU. This is useful if you want to collect wall-time/CPU-time and memory
-profiles in a single run.
-
-> [!NOTE]
-> The reported memory allocations and deallocations are obtained by computing
-> resident memory deltas between samples. Hence these values give an idea of how
-> much _physical_ memory is being requested/released.
-
-
-## Multi-process Applications
-
-Austin can be told to profile multi-process applications with the `-C` or
-`--children` switch. This way Austin will look for new children of the parent
-process.
-
-
-## Sub-interpreters
-
-Austin has support for Python applications that make use of sub-interpreters.
-This means that Austin will sample all the sub-interpreters that are running
-within each process making up the Python application.
-
-*Since Austin 3.6.0*.
-
-
-## Thread Names
-
-Austin reports Python threads by the name they have in the `threading` module
-(e.g. `MainThread`), whenever this can be resolved. Threads that are not known
-to the `threading` module, like those created by native extensions, are
-reported by their thread ID.
-
-*Since Austin 4.1.0*.
-
-
-## Garbage Collector Sampling
-
-Austin can sample the Python garbage collector state. If the `-g`/`--gc` option
-is passed, Austin will mark each collected sample that was taken while the
-garbage collector was collecting. This gives you a measure of how *busy* the
-Python GC is during a run.
-
-*Since Austin 3.1.0*.
-
-
-## Where?
-
-If you are only interested in what is currently happening inside a Python
-process, you can have a quick overview printed on the terminal with the
-`-w/--where` option. This takes the PID of the process whose threads you want to
-inspect, e.g.
-
-~~~ console
-sudo austin -w `pgrep -f my-running-python-app`
-~~~
-
-Below is an example of what the output looks like
-
-<p align="center">
-  <img src="art/austin-where.png"
-       alt="Austin where mode example"
-       style="box-shadow: #111 0px 0px 16px;" />
-</p>
-
-This works with the `-C/--children` option too. The emojis to the left indicate
-whether the thread is active or sleeping and whether the process is a child or
-not.
-
-*Since Austin 3.3.0*.
-
-
-## Asyncio Support
-
-For applications running on CPython 3.14 or later, Austin can also track the
-`asyncio` task graph: each event loop's own tasks, the coroutine chain each
-task is currently suspended at or executing, and the await relationships
-between tasks.
-
-When profiling, the collected samples are attributed to the task that is
-running on the sampled thread, and the stacks of the suspended tasks are
-reported together with the await relationships between tasks. This allows
-tools like the [Austin VS Code extension] to reconstruct a task-level view of
-the application that also accounts for the time tasks spend waiting.
-
-With `-w/--where`, tasks are rendered as a tree nested under the thread whose
-event loop owns them, so you can see at a glance which coroutines each task
-is waiting on. Tasks whose owning thread has since terminated are listed
-separately as orphaned.
-
-> [!NOTE]
-> Asyncio task tracking is not currently available in native mode
-> (`-n/--native`).
-
-*Since Austin 4.1.0*.
-
-
-## Sampling Accuracy
-
-Austin can sample stacks very rapidly, guaranteeing high accuracy, as well as
-allowing to reach very high sampling rates, if required. This makes Austin
-suitable for profiling applications in production with almost no compromise
-between accuracy and performance.
-
-
-## Native Frame Stack
-
-If you want observability into the native frame stacks, you can pass the
-`-n/--native` option to collect native call stacks alongside the Python ones,
-e.g.
-
-~~~ console
-austin -n -i 1ms -o profile.mojo python myscript.py
-~~~
-
-Native frames are interleaved with the Python frames that they belong to, and
-are reported with the path of the binary they come from and the name of the
-function, resolved from the binary's symbol table. In native mode, Austin also
-samples threads that are not running any Python code, like those created by
-native extensions, to give a more comprehensive view of what is running within
-a Python process. The [where](#where) option also supports native mode.
-
-Native mode is available on Linux (x86_64 and aarch64), macOS and Windows
-(x86_64), and requires no additional dependencies. On any other platforms or
-architectures, the option is ignored with a warning.
-
-> [!WARNING]
-> To capture a consistent native stack, Austin needs to briefly suspend each
-> thread while sampling it. Therefore, the impact on the tracee is no longer
-> minimal and it becomes higher at smaller sampling intervals. For this reason,
-> consider using larger sampling intervals in native mode (e.g. `-i 1ms` or
-> higher), and avoid using it in production environments.
-
-> [!NOTE]
-> On Windows, symbols are resolved with DbgHelp. For accurate function names,
-> make sure that the PDB files of the binaries of interest are available,
-> e.g. by setting the `_NT_SYMBOL_PATH` environment variable to point to a
-> symbol server, as described in the [Windows
-> documentation](https://learn.microsoft.com/en-us/windows/win32/debug/symbol-paths).
-
-*Since Austin 4.1.0*.
-
-### The `austinp` variant
-
-On Linux, the `austinp` variant of `austin` provides an alternative native
-mode, which also supports architectures other than x86_64 and aarch64, as well
-as the sampling of kernel call stacks. It can be obtained by compiling the
-source with `-DAUSTINP`, or from the released binaries.
-
-`austinp` makes use of `ptrace` to halt the application and grab a
-snapshot of the call stack with `libunwind`. If you are compiling `austinp` from
-sources make sure that you have the development version of the `libunwind`
-library available on your system, for example on Ubuntu,
-
-~~~ console
-sudo apt install libunwind-dev binutils-dev
-~~~
-
-and compile with
-
-~~~ console
-gcc -O3 -Os -Wall -pthread src/*.c -DAUSTINP -lunwind-ptrace -lunwind-generic -lbfd -o src/austinp
-~~~
-
-then use as per normal. The extra `-k/--kernel` option is available with
-`austinp` which allows sampling kernel call stacks as well.
-
-> [!WARNING]
-> Since `austinp` uses `ptrace`, the impact on the tracee is no longer minimal
-> and it becomes higher at smaller sampling intervals. Therefore the use of
-> `austinp` is not recommended in production environments. For this reason, the
-> default sampling interval for `austinp` is 10 milliseconds.
-
-The `austinp-resolve` tool from the [`austin-python`] Python package can be used
-to resolve the VM addresses to source and line numbers, provided that the
-referenced binaries have DWARF debug symbols. Internally, the tool uses
-`addr2line(1)` to determine the source name and line number given an address,
-when possible.
-
-> [!NOTE]
-> Whilst `austinp` comes with a stripped-down implementation of `addr2line`, it
-> is only used for the "where" option, as resolving symbols at runtime is
-> expensive. This is to minimise the impact of austinp on the tracee, increase
-> accuracy and maximise the sampling rate.
-
-The [where](#where) option is also available for the `austinp` variant and will
-show both native and Python frames. Highlighting helps tell frames apart. The
-`-k` option outputs Linux kernel frames too, as shown in this example
-
-<p align="center">
-  <img src="art/austin-where-kernel.png"
-       alt="Austin where mode example"
-       style="box-shadow: #111 0px 0px 16px;" />
-</p>
-
-> [!NOTE]
-> If you have installed Austin from the Snap Store, the `austinp` executable
-> will be available as `austin.p` from the command line.
-
-
-## Logging
-
-Austin uses `syslog` on Linux and macOS, and `%TEMP%\austin.log` on Windows
-for log messages, so make sure to watch these to get execution details and
-statistics. _Bad_ frames are output together with the other frames. The error
-rate depends on the workload: it is generally low, but it can be higher for
-applications whose stacks change very rapidly, e.g. with many short calls or
-deep recursion.
-
-Logging can be disabled using [environment variables](#environment-variables).
-
-
-## Cheat sheet
-
-All the above Austin options and arguments are summarised in a cheat sheet that
-you can find in the [doc](https://github.com/P403n1x87/austin/blob/master/doc/)
-folder in either the SVG, PDF or PNG format
-
-<p align="center">
-  <img src="doc/cheatsheet.png"
-       style="box-shadow: #111 0px 0px 16px;" />
-</p>
-
-# Compatibility
-
-Austin supports Python 3.10 through 3.15, including **free-threaded builds**,
-and has been tested on the following platforms and architectures
-
-|             | <img src="art/tux.svg" /> | <img src="art/win.svg"/> | <img src="art/apple.svg"/> |
-| ----------- | ------------------------- | ------------------------ | -------------------------- |
-| **x86_64**  | ✓                         | ✓                        | ✓                          |
-| **i686**    | ✓                         |                          |                            |
-| **armv7**   | ✓                         |                          |                            |
-| **arm64**   | ✓                         |                          | ✓                          |
-| **ppc64le** | ✓                         |                          |                            |
-
-> [!NOTE]
-> Memory profiling (`-m`/`--memory`) in free-threaded Python builds is less
-> accurate, as without the GIL there is no reliable way of attributing memory
-> deltas to the thread that caused them.
-
-If you are looking for support for older versions of CPython, the following table
-summarises the compatibility of Austin with CPython versions
-
-| CPython Versions                     | Austin Version |
-| ------------------------------------ | -------------- |
-| 2.3-2.7, 3.3-3.11                    | 3.5            |
-| 3.8-3.13                             | 3.7            |
-| 3.9-3.14                             | 4.0            |
-| 3.10-3.15, (incl. free-threaded)     | 4.1            |
-
-> [!NOTE]
-> Austin *might* work with other platforms and architectures not listed above.
-> So it is worth giving it a try even if your system is not listed. If you
-> are looking for support for Python < 3.8, you can use Austin 3.5.
-
-Because of platform-specific details, Austin usage may vary slightly. Below are
-further compatibility details to be aware of.
-
-
-## On Linux
-
-Austin requires the `CAP_SYS_PTRACE` capability to attach to an external
-process. This means that you will have to either use ``sudo`` when attaching to
-a running Python process or grant the CAP_SYS_PTRACE capability to the Austin
-binary with, e.g.
-
-~~~ console
-sudo setcap cap_sys_ptrace+ep `which austin`
-~~~
-
-To use Austin with Docker, the `--cap-add SYS_PTRACE` option needs to be passed
-when starting a container.
-
-
-## On MacOS
-
-Due to the **System Integrity Protection**, introduced in **MacOS** with El
-Capitan, and the [Hardened Runtime][hardened runtime], introduced in Mojave,
-Austin cannot profile Python processes that use an executable located in the
-`/bin` folder, or code-signed, even with `sudo`. This is the case for the
-system-provided version of Python, and the one installed with the official
-installers from [python.org](https://python.org). Other installation methods,
-like [pyenv][pyenv] or [Anaconda][anaconda] or
-[Homebrew](https://formulae.brew.sh/formula/austin) are known to work with
-Austin, out of the box.
-
-To use Austin with Python from the official installer, you could remove the
-signature from the binaries with
-~~~ console
-codesign --remove-signature /Library/Frameworks/Python.framework/Versions/<M.m>/bin/python3
-codesign --remove-signature /Library/Frameworks/Python.framework/Versions/<M.m>/Resources/Python.app/Contents/MacOS/Python
-~~~
-Alternatively, you could self-sign the Austin binary with the [Debugging Tool
-Entitlement][dte], as done for debugging tools like GDB. However, this method
-has not been tested.
-
-> Austin requires the use of `sudo` to work on MacOS. To avoid having to type
-> the password every time you use Austin, consider adding a rule to the
-> `sudoers` file, e.g.
-> ~~~
-> yourusername  ALL = (root) NOPASSWD: /usr/local/bin/austin
-> ~~~
-
-
-# Why Austin
-
-When there already are similar tools out there, it's normal to wonder why one
-should be interested in yet another one. So here is a list of features that
-currently distinguish Austin.
-
-- **Written in pure C** Austin is written in pure C code. There are no
-  dependencies on third-party libraries except for the standard C library and
-  the API provided by the Operating System.
-
-- **Just a sampler** Austin is just a frame stack sampler. It looks into a
-  running Python application at regular intervals of time and dumps whatever
-  frame stack it finds. The samples can then be analysed at a later time so that
-  Austin can sample at rates higher than other non-C alternatives that perform
-  some aggregations at run-time.
-
-- **Compact output, powerful tools** Austin uses the compact [MOJO] binary
-  format, which can be easily parsed with the [`austin-python`] package, or
-  converted to other popular formats. You can then go and build your own tool
-  to analyse Austin's output. You could even make a _player_ that replays the
-  application execution in slow motion, so that you can see what has happened
-  in temporal order.
-
-- **Small size** Austin compiles to a single binary executable of just a bunch
-of KB.
-
-- **Easy to maintain** Occasionally, the Python C API changes and Austin will
-need to be adjusted to new releases. However, given that Austin, like CPython,
-is written in C, implementing the new changes is rather straight-forward.
-
-
-# Examples
-
-To profile a Python script, run Austin with the command
+To profile a Python script, run
 
 ~~~ console
 austin -o profile.mojo python myscript.py
 ~~~
 
-To profile a running Python application, attach Austin to it with the
-`-p/--pid` option, e.g.
+To profile a running Python application, attach Austin to it with
 
 ~~~ console
 austin -o profile.mojo -p <pid>
 ~~~
-where `<pid>` is the process ID of the running Python application you want to
-profile. If you also want to profile the child processes of the target
-application, add the `-C/--children` option to the command line:
 
-~~~ console
-austin -o profile.mojo -Cp <pid>
-~~~
+Austin writes its samples in the binary [MOJO] format. The recommended way to
+visualise them is with the [Austin VS Code extension], which opens `.mojo` files
+directly. The [`austin-python`] package provides tools to convert them to other
+formats, like the collapsed stacks used by [FlameGraph], or [Speedscope].
 
-For example, to profile an Apache2 WSGI application, one can attach Austin to
-the web server with
-
-~~~ console
-austin -Cp `pgrep apache2 | head -n 1` > profile.mojo
-~~~
-
-Any child processes will be automatically detected as they are created and
-Austin will sample them too.
+The [usage] page describes all the command line options, and the [features]
+page covers each of them in detail.
 
 
-## IDE Extensions
+# Compatibility
 
-It is easy to write your own extension for your favourite text editor. This, for
-example, is a demo of a [Visual Studio Code] extension that highlights the most
-hit lines of code straight into the editor
-
-<p align="center">
-  <img src="art/vscode-demo.gif"
-       style="box-shadow: #111 0px 0px 16px;" />
-</p>
+Austin runs on Linux, macOS and Windows. The [compatibility] page lists the
+supported Python versions and architectures for each release, and the
+platform-specific details to be aware of.
 
 
-## Austin TUI
+# Why Austin
 
-The [Austin TUI] is a text-based user interface for Austin that gives you a
-top-like view of what is currently running inside a Python application. It is
-most useful for scripts that have long-running procedures as you can see where
-execution is at without tracing instructions in your code. You can also save the
-collected data from within the TUI and feed it to Flame Graph for visualisation,
-or convert it to the [pprof] format.
-
-If you want to give it a go you can install it using `pip` with
-
-~~~ console
-pip install austin-tui --upgrade
-~~~
-
-and run it with
-
-~~~ console
-austin-tui [OPTION...] command [ARG...]
-~~~
-
-with the same command line as Austin. Please note that the `austin` binary
-should be available from within the `PATH` environment variable in order for the
-TUI to work.
-
-> [!IMPORTANT]
-> The TUI is based on `python-curses`. The version included with the standard
-> Windows installations of Python is broken so it won't work out of the box. A
-> solution is to install the wheel of the port to Windows from
-> [this](https://www.lfd.uci.edu/~gohlke/pythonlibs/#curses) page. Wheel files
-> can be installed directly with `pip`, as described in the
-> [linked](https://pip.pypa.io/en/latest/user_guide/#installing-from-wheels)
-> page.
-
-<!-- ![austin-tui thread navigation](art/austin-tui_threads_nav.gif) -->
-<p align="center">
-  <img src="art/austin-tui.gif"
-       style="box-shadow: #111 0px 0px 16px;" />
-</p>
+Austin is written in pure C, has no dependencies beyond the standard C library,
+and is just a sampler, so it can sample at very high rates with minimal impact
+on the target application. Read more about [why Austin][why austin] in the
+documentation.
 
 
-## Austin Web
+# Examples
 
-[Austin Web] is a web application that wraps around Austin. At its core, Austin
-Web is based on [d3-flame-graph] to display a _live_ flame graph in the browser,
-that refreshes every 3 seconds with newly collected samples. Austin Web can also
-be used for _remote_ profiling by setting the `--host` and `--port` options.
-
-If you want to give it a go you can install it using `pip` with
-
-~~~ console
-pip install austin-web --upgrade
-~~~
-
-and run it with
-
-~~~ console
-austin-web [OPTION...] command [ARG...]
-~~~
-
-with the same command line as Austin. This starts a simple HTTP server that
-serves on `localhost` by default. When no explicit port is given, Austin Web
-will use an ephemeral one.
-
-Please note that the `austin` binary should be available from within the `PATH`
-environment variable in order for Austin Web to work.
-
-<p align="center">
-  <img src="art/austin-web.gif"
-       style="box-shadow: #111 0px 0px 16px;" />
-</p>
-
-
-## Speedscope
-
-Austin's MOJO output can be converted to the [Speedscope] JSON format with the
-`austin2speedscope` utility that comes with the [`austin-python`] package.
-
-If you want to give it a go you can install it using `pip` with
-
-~~~ console
-pip install austin-python --upgrade
-~~~
-
-and run it with
-
-~~~ console
-austin2speedscope [-h] [--indent INDENT] [-V] input output
-~~~
-
-where `input` is a file containing the output from Austin and `output` is the
-name of the JSON file to use to save the result of the conversion, ready to be
-used on [Speedscope].
-
-<p align="center">
-  <img src="art/speedscope.png"
-       style="box-shadow: #111 0px 0px 16px;" />
-</p>
-
-## Google pprof
-
-Austin's format can also be converted to the Google pprof format using the
-`austin2pprof` utility that comes with [`austin-python`]. If you want to give it
-a go you can install it using `pip` with
-
-~~~ console
-pip install austin-python --upgrade
-~~~
-
-and run it with
-
-~~~ console
-austin2pprof [-h] [-V] input output
-~~~
-
-where `input` is a file containing the output from Austin and `output` is the
-name of the protobuf file to use to save the result of the conversion, ready to
-be used with [Google's pprof tools][pprof].
+See the [examples] in the documentation, and the [ecosystem] page for the tools
+that build on Austin.
 
 
 # Contribute
@@ -917,25 +229,18 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 </p>
 
 
-[anaconda]: https://www.anaconda.com/
+[examples]: https://p403n1x87.github.io/austin/latest/usage/#examples
 [Austin VS Code extension]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode
 [`austin-python`]: https://github.com/P403n1x87/austin-python
-[Austin TUI]: https://github.com/P403n1x87/austin-tui
-[Austin Web]: https://github.com/P403n1x87/austin-web
-[Chocolatey]: https://chocolatey.org/
-[Conda Forge]: https://anaconda.org/conda-forge/austin
-[d3-flame-graph]: https://github.com/spiermar/d3-flame-graph
-[dte]: https://developer.apple.com/documentation/bundleresources/entitlements/com_apple_security_cs_debugger
+[compatibility]: https://p403n1x87.github.io/austin/latest/compatibility/
+[documentation]: https://p403n1x87.github.io/austin/
+[ecosystem]: https://p403n1x87.github.io/austin/latest/ecosystem/
+[features]: https://p403n1x87.github.io/austin/latest/features/
 [FlameGraph]: https://github.com/brendangregg/FlameGraph
-[hardened runtime]: https://developer.apple.com/documentation/security/hardened_runtime
-[Homebrew]: https://formulae.brew.sh/formula/austin
+[installation]: https://p403n1x87.github.io/austin/latest/installation/
 [latest release]: https://github.com/P403n1x87/austin/releases/latest
-[MOJO]: https://github.com/P403n1x87/austin/wiki/The-MOJO-file-format
-[pprof]: https://github.com/google/pprof
-[pyenv]: https://github.com/pyenv/pyenv
+[MOJO]: https://p403n1x87.github.io/austin/latest/formats/mojo/
 [pypi]: https://pypi.org/project/austin-dist/
-[releases]: https://github.com/P403n1x87/austin/releases
-[Scoop]: https://scoop.sh/
 [Speedscope]: https://speedscope.app
-[Visual Studio Code]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode
-[Wiki]: https://github.com/P403n1x87/austin/wiki
+[usage]: https://p403n1x87.github.io/austin/latest/usage/
+[why austin]: https://p403n1x87.github.io/austin/latest/#why-austin

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+
+{#- Shown by Material on any mike version that isn't the default (latest),
+    including the development docs built from main. -#}
+{% block outdated %}
+  You are not reading the documentation for the latest Austin release.
+  <a href="{{ '../' ~ base_url }}">
+    <strong>Go to the latest version.</strong>
+  </a>
+{% endblock %}

@@ -43,15 +43,17 @@ const char* MPERM =
 #if defined PL_LINUX
     "🔒 Insufficient permissions. Austin requires the use of sudo on Linux in order\n"
     "to attach to a running Python process. Alternatively, you need to grant the\n"
-    "Austin binary the CAP_SYS_PTRACE capability. See\n"
+    "Austin binary the CAP_SYS_PTRACE capability. See\n" URL(
+        "https://p403n1x87.github.io/austin/latest/compatibility/#on-linux"
+    )
 #elif defined PL_MACOS
     "🔒 Insufficient permissions. Austin requires the use of sudo on Mac OS to read\n"
     "the memory of even its child processes. Furthermore, the System \n"
     "Integrity Protection prevents Austin from working with Python binaries\n"
     "installed in certain areas of the file system. In some cases, using a  virtual\n"
-    "environment can provide a solution. See\n"
+    "environment can provide a solution. See\n" URL("https://p403n1x87.github.io/austin/latest/compatibility/#on-macos")
 #endif
-    URL("https://github.com/P403n1x87/austin#on-macos-1") "for more details";
+        "for more details";
 #endif // PL_UNIX
 
 const char* MFORK = "❌ Cannot launch the given command or it terminated too quickly";

@@ -33,7 +33,7 @@ METADATA = {
         "Source Code, https://github.com/P403n1x87/austin",
         "Bug Tracker, https://github.com/P403n1x87/austin/issues",
         "Changelog, https://github.com/P403n1x87/austin/blob/master/ChangeLog",
-        "Documentation, https://github.com/P403n1x87/austin/blob/master/README.md",
+        "Documentation, https://p403n1x87.github.io/austin/",
         "Funding, https://github.com/sponsors/P403n1x87",
         "Release Notes, https://github.com/P403n1x87/austin/releases",
     ],

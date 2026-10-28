@@ -1,0 +1,145 @@
+name: Docs
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/docs.yml
+      - docs/**
+      - mkdocs/**
+      - mkdocs.yml
+      - art/**
+      - doc/cheatsheet.*
+  push:
+    # TODO: Change to main after the trunk rename.
+    branches:
+      - master
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Docs version to deploy, e.g. 4.1 or dev'
+        required: true
+        type: string
+      latest:
+        description: 'Also point the latest alias at this version'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    name: Build documentation
+    concurrency:
+      group: docs-build-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: mkdocs/requirements.txt
+
+      - name: Install MkDocs
+        run: pip install -r mkdocs/requirements.txt
+
+      - name: Build the site
+        run: mkdocs build --strict
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    name: Deploy documentation
+    permissions:
+      contents: write
+    # A newer pending run replaces an older pending one in the same group, which
+    # is fine for dev deploys, but must never drop a release or manual deploy.
+    # Races between groups are handled by the retry loop below.
+    concurrency:
+      group: docs-deploy-${{ github.event_name == 'push' && github.ref_type == 'branch' && 'dev' || github.run_id }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: mkdocs/requirements.txt
+
+      - name: Install MkDocs
+        run: pip install -r mkdocs/requirements.txt
+
+      - name: Determine the docs version
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_LATEST: ${{ inputs.latest }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            version="$INPUT_VERSION"
+            latest="$INPUT_LATEST"
+          elif [ "$REF_TYPE" = "tag" ]; then
+            # v4.1.2 -> 4.1
+            version="${REF_NAME#v}"
+            version="${version%.*}"
+            latest=true
+          else
+            version=dev
+            latest=false
+          fi
+
+          if ! [[ "$version" =~ ^(dev|[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::Invalid docs version '$version'. Expected X.Y or dev."
+            exit 1
+          fi
+          if [ "$version" = "dev" ] && [ "$latest" = "true" ]; then
+            echo "::error::The latest alias must point to a released version."
+            exit 1
+          fi
+
+          echo "Deploying docs version $version (latest: $latest)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy with mike
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          LATEST: ${{ steps.version.outputs.latest }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          deploy() {
+            # Start from the current remote state, if gh-pages exists already.
+            if git ls-remote --exit-code --heads origin gh-pages > /dev/null; then
+              git fetch origin +gh-pages:gh-pages
+            fi
+
+            if [ "$LATEST" = "true" ]; then
+              mike deploy --push --update-aliases "$VERSION" latest &&
+                mike set-default --push latest
+            else
+              mike deploy --push "$VERSION"
+            fi
+          }
+
+          # Another deploy might push to gh-pages in the meantime.
+          for attempt in 1 2 3; do
+            deploy && exit 0
+            echo "Deploy attempt $attempt failed, retrying"
+            sleep $((attempt * 10))
+          done
+          exit 1

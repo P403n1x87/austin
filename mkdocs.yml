@@ -1,0 +1,55 @@
+site_name: Austin
+site_description: A frame stack sampler for CPython
+site_url: https://p403n1x87.github.io/austin/
+repo_url: https://github.com/P403n1x87/austin
+repo_name: P403n1x87/austin
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  custom_dir: mkdocs/overrides
+  logo: assets/art/austin_die_cut_sticker.png
+  favicon: assets/art/austin_die_cut_sticker.png
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+extra:
+  version:
+    provider: mike
+    default: latest
+
+validation:
+  anchors: warn
+  unrecognized_links: warn
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - pymdownx.details
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Usage: usage.md
+  - Features: features.md
+  - Logging: logging.md
+  - Compatibility: compatibility.md
+  - Ecosystem: ecosystem.md
+  - Reference:
+      - MOJO file format: formats/mojo.md
