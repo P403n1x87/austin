@@ -8,6 +8,6 @@ fi
 
 cog -P $args \
     configure.ac \
-    README.md \
+    docs/usage.md \
     src/austin.h \
     snap/snapcraft.yaml

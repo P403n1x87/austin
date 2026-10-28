@@ -12,6 +12,8 @@ on:
       - src/**
       - test/**
       - doc/**
+      - docs/usage.md
+      - scripts/cog.sh
       - configure.ac
       - Makefile.am
 
@@ -25,6 +27,7 @@ jobs:
     outputs:
       src: ${{ steps.filter.outputs.src }}
       tests: ${{ steps.filter.outputs.tests }}
+      cog: ${{ steps.filter.outputs.cog }}
     steps:
       - uses: actions/checkout@v3
       - uses: dorny/paths-filter@v3
@@ -41,6 +44,9 @@ jobs:
             tests:
               - .github/workflows/checks.yml
               - test/**
+            cog:
+              - docs/usage.md
+              - scripts/cog.sh
 
   check-manpage:
     runs-on: ubuntu-24.04
@@ -388,7 +394,7 @@ jobs:
   check-cog:
     runs-on: ubuntu-24.04
     needs: changes
-    if: needs.changes.outputs.src == 'true' || needs.changes.result == 'skipped'
+    if: needs.changes.outputs.src == 'true' || needs.changes.outputs.cog == 'true' || needs.changes.result == 'skipped'
     name: Check cog output
     steps:
       - uses: actions/checkout@v3
