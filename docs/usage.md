@@ -51,8 +51,10 @@ that also comes with the [`austin-python`] Python package.
     The recommended way to visualise Austin profiles is with the [Austin VS Code
     extension]. It opens `.mojo` files directly and renders interactive flame
     graphs, source-level annotations, and thread breakdowns without any extra
-    conversion steps. The extension also ships with an MCP server that lets
-    coding agents query profiling data autonomously.
+    conversion steps. The extension also ships with an [MCP
+    server](ecosystem.md#mcp-server) that lets coding agents query profiling
+    data autonomously, and the `austin-query` tool lets them [query
+    profiles](ecosystem.md#querying-profiles) from the command line.
 
 If you prefer command-line tools such as [Brendan Gregg's
 `flamegraph.pl`][FlameGraph] to generate flame graph visualisations, you first

@@ -93,6 +93,8 @@ The key features of Austin are:
 - Fast and lightweight;
 - Time and memory profiling;
 - Built-in support for multi-process applications (e.g. `mod_wsgi`).
+- Support for agentic workflows, with an [MCP server and a query
+  API][agentic workflows] for coding agents.
 
 The simplest way to turn Austin into a full-fledged profiler is to use together
 with the [VS
@@ -174,6 +176,10 @@ visualise them is with the [Austin VS Code extension], which opens `.mojo` files
 directly. The [`austin-python`] package provides tools to convert them to other
 formats, like the collapsed stacks used by [FlameGraph], or [Speedscope].
 
+Coding agents can analyse Austin profiles too, either through the MCP server
+that comes with the VS Code extension, or with the `austin-query` tool from the
+[`austin-python`] package. See [agentic workflows] for how to set them up.
+
 The [usage] page describes all the command line options, and the [features]
 page covers each of them in detail.
 
@@ -230,6 +236,7 @@ by chipping in a few pennies on [PayPal.Me](https://www.paypal.me/gtornetta/1).
 
 
 [examples]: https://p403n1x87.github.io/austin/latest/usage/#examples
+[agentic workflows]: https://p403n1x87.github.io/austin/latest/ecosystem/#agentic-workflows
 [Austin VS Code extension]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode
 [`austin-python`]: https://github.com/P403n1x87/austin-python
 [compatibility]: https://p403n1x87.github.io/austin/latest/compatibility/
