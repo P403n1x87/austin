@@ -198,7 +198,7 @@ then use as per normal. The extra `-k/--kernel` option is available with
     `austinp` is not recommended in production environments. For this reason,
     the default sampling interval for `austinp` is 10 milliseconds.
 
-The `austinp-resolve` tool from the [`austin-python`] Python package can be used
+The `austinp-resolve` tool from the [`austin-python`][austin-python] Python package can be used
 to resolve the VM addresses to source and line numbers, provided that the
 referenced binaries have DWARF debug symbols. Internally, the tool uses
 `addr2line(1)` to determine the source name and line number given an address,
@@ -232,5 +232,5 @@ interpreter that expose this data.
 *Since Austin 3.5.0*.
 
 
-[`austin-python`]: https://github.com/P403n1x87/austin-python
+[austin-python]: https://github.com/P403n1x87/austin-python
 [Austin VS Code extension]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode

@@ -57,7 +57,7 @@ currently distinguish Austin.
 
 - **Compact output, powerful tools** Austin uses the compact
   [MOJO](formats/mojo.md) binary format, which can be easily parsed with the
-  [`austin-python`] package, or converted to other popular formats. You can then
+  [`austin-python`][austin-python] package, or converted to other popular formats. You can then
   go and build your own tool to analyse Austin's output. You could even make a
   _player_ that replays the application execution in slow motion, so that you
   can see what has happened in temporal order.
@@ -95,6 +95,6 @@ you want to help with the development.
 
 
 [Austin VS Code extension]: https://marketplace.visualstudio.com/items?itemName=p403n1x87.austin-vscode
-[`austin-python`]: https://github.com/P403n1x87/austin-python
+[austin-python]: https://github.com/P403n1x87/austin-python
 [FlameGraph]: https://github.com/brendangregg/FlameGraph
 [Speedscope]: https://speedscope.app
