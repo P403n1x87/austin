@@ -21,7 +21,7 @@ on:
       - Makefile.am
 
 permissions:
-  contents: read-all
+  contents: read
             ActionScript
 
 jobs:
