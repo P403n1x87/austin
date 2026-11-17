@@ -622,14 +622,19 @@ cb(const int opt, const char* arg, const int index, char** argv) {
         pargs.full = true;
         break;
 
-    case 'p':
-        if (str_to_num((char*)arg, (long*)&pargs.attach_pid) == 1 || pargs.attach_pid <= 0)
+    case 'p': {
+        long attach_pid;
+        if (str_to_num((char*)arg, &attach_pid) == 1 || attach_pid <= 0)
             arg_error("invalid PID");
-        break;
+        pargs.attach_pid = attach_pid;
+    } break;
 
-    case 'w':
-        if (str_to_num((char*)arg, (long*)&pargs.attach_pid) == 1 || pargs.attach_pid <= 0)
+    case 'w': {
+        long attach_pid;
+        if (str_to_num((char*)arg, &attach_pid) == 1 || attach_pid <= 0)
             arg_error("invalid PID");
+        pargs.attach_pid = attach_pid;
+    }
         pargs.where = true;
         break;
 
@@ -641,10 +646,12 @@ cb(const int opt, const char* arg, const int index, char** argv) {
         pargs.children = true;
         break;
 
-    case 'x':
-        if (str_to_num((char*)arg, (long*)&(pargs.exposure)) == 1 || pargs.exposure > LONG_MAX)
+    case 'x': {
+        long exposure;
+        if (str_to_num((char*)arg, &exposure) == 1 || exposure > LONG_MAX)
             arg_error("the exposure must be a positive integer");
-        break;
+        pargs.exposure = exposure;
+    } break;
 
     case 'P':
         pargs.pipe = true;
