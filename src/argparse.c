@@ -87,13 +87,19 @@ str_to_num(char* str, long* num) {
     return (p_err == str || *p_err != '\0') ? 1 : 0;
 }
 
+typedef struct {
+    const char* suffix;
+    long        factor;
+} unit_t;
+
 /**
- * Parse the interval argument.
+ * Parse an integer optionally followed by one of the given unit suffixes.
  *
- * This accepts s, ms and us as units. The result is in microseconds.
+ * The result is scaled by the factor of the matching unit. A bare number is
+ * taken to be in the base unit, i.e. the one with factor 1.
  */
 static int
-parse_interval(char* str, long* num) {
+parse_with_units(char* str, const unit_t* units, long* num) {
     char* p_err;
 
     *num = strtol(str, &p_err, 10);
@@ -101,27 +107,36 @@ parse_interval(char* str, long* num) {
     if (p_err == str)
         FAIL;
 
-    switch (*p_err) {
-    case '\0':
+    if (*p_err == '\0')
         SUCCESS;
-    case 's':
-        if (*(p_err + 1) != '\0')
-            FAIL;
-        *num = *num * 1000000;
-        break;
-    case 'm':
-        if (*(p_err + 1) != 's' || *(p_err + 2) != '\0')
-            FAIL;
-        *num = *num * 1000;
-    case 'u':
-        if (*(p_err + 1) != 's' || *(p_err + 2) != '\0')
-            FAIL;
-        break;
-    default:
-        FAIL;
+
+    for (const unit_t* unit = units; unit->suffix != NULL; unit++) {
+        if (strcmp(p_err, unit->suffix) == 0) {
+            if (*num > LONG_MAX / unit->factor || *num < LONG_MIN / unit->factor)
+                FAIL;
+            *num *= unit->factor;
+            SUCCESS;
+        }
     }
 
-    SUCCESS;
+    FAIL;
+}
+
+/**
+ * Parse the interval argument.
+ *
+ * This accepts s, ms and us as units. The result is in microseconds.
+ */
+static int
+parse_interval(char* str, long* num) {
+    static const unit_t units[] = {
+        {"s",  1000000},
+        {"ms", 1000   },
+        {"us", 1      },
+        {NULL, 0      },
+    };
+
+    return parse_with_units(str, units, num);
 }
 
 /**
@@ -131,29 +146,13 @@ parse_interval(char* str, long* num) {
  */
 static int
 parse_timeout(char* str, long* num) {
-    char* p_err;
+    static const unit_t units[] = {
+        {"s",  1000},
+        {"ms", 1   },
+        {NULL, 0   },
+    };
 
-    *num = strtol(str, &p_err, 10);
-
-    if (p_err == str)
-        FAIL;
-
-    switch (*p_err) {
-    case '\0':
-        SUCCESS;
-    case 's':
-        if (*(p_err + 1) != '\0')
-            FAIL;
-        *num = *num * 1000;
-        break;
-    case 'm':
-        if (*(p_err + 1) != 's' || *(p_err + 2) != '\0')
-            FAIL;
-    default:
-        FAIL;
-    }
-
-    SUCCESS;
+    return parse_with_units(str, units, num);
 }
 
 // ---- Argument parser -------------------------------------------------------
