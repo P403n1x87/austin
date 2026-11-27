@@ -37,6 +37,8 @@ typedef struct {
     unsigned int     line_end;
     unsigned int     column;
     unsigned int     column_end;
+    uint64_t         code_ident;  // see _code__ident
+    bool             is_volatile; // see _code__is_volatile
 } frame_t;
 
 typedef struct {
@@ -61,10 +63,12 @@ frame_new(
     frame->filename = filename;
     frame->scope    = scope;
 
-    frame->line       = line;
-    frame->line_end   = line_end;
-    frame->column     = column;
-    frame->column_end = column_end;
+    frame->line        = line;
+    frame->line_end    = line_end;
+    frame->column      = column;
+    frame->column_end  = column_end;
+    frame->code_ident  = 0;
+    frame->is_volatile = false;
 
     return frame;
 }
@@ -114,7 +118,16 @@ _frame_remote(py_proc_t* py_proc, raddr_t code_raddr, int lasti) {
     V_DESC(py_proc->py_v);
 
     code_t* code = lru_cache__maybe_hit(py_proc->code_cache, (key_dt)code_raddr);
-    if (!isvalid(code)) {
+
+    // A volatile code object might have been freed and its address reused.
+    uint64_t ident = isvalid(code) && code->is_volatile ? _code__ident_remote(py_proc, code_raddr) : 0;
+    if (ident && code->ident != ident) {
+        log_d("Code object at %p was recycled, refreshing its cached data", code_raddr);
+        code = _code_remote(py_proc, code_raddr);
+        if (!isvalid(code))
+            FAIL_PTR;
+        lru_cache__replace(py_proc->code_cache, (key_dt)code_raddr, code);
+    } else if (!isvalid(code)) {
         code = _code_remote(py_proc, code_raddr);
         if (!isvalid(code))
             FAIL_PTR;
@@ -215,7 +228,12 @@ _frame_remote(py_proc_t* py_proc, raddr_t code_raddr, int lasti) {
         }
     }
 
-    return frame_new(
-        py_frame_key(code_raddr, lasti), code->filename, code->scope, lineno, line_end, column, column_end
-    );
+    frame_t* frame
+        = frame_new(py_frame_key(code_raddr, lasti), code->filename, code->scope, lineno, line_end, column, column_end);
+    if (isvalid(frame)) {
+        frame->code_ident  = code->ident;
+        frame->is_volatile = code->is_volatile;
+    }
+
+    return frame;
 }
