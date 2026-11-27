@@ -418,6 +418,17 @@ void
 lru_cache__store(lru_cache_t*, key_dt, value_t);
 
 /**
+ * Replace the value at the given key, deallocating the old one, or store it
+ * if the key is not in the cache.
+ *
+ * @param self   the cache to store into
+ * @param key    the key at which to store the value
+ * @param value  the value to store
+ */
+void
+lru_cache__replace(lru_cache_t*, key_dt, value_t);
+
+/**
  * Invalidate the cache.
  *
  * @param self  the cache to invalidate

@@ -102,6 +102,13 @@ _py_thread__resolve_py_stack(py_thread_t* self, stack_dt* stack) {
         key_dt   frame_key = py_frame_key(py_frame.code, lasti);
         frame_t* frame     = lru_cache__maybe_hit(cache, frame_key);
 
+        // A volatile code object might have been freed and its address reused.
+        if (isvalid(frame) && frame->is_volatile) {
+            uint64_t ident = _code__ident_remote(self->proc, py_frame.code);
+            if (ident && ident != frame->code_ident)
+                frame = NULL;
+        }
+
         if (!isvalid(frame)) {
             frame = _frame_remote(self->proc, py_frame.code, lasti);
             if (!isvalid(frame)) {
@@ -109,6 +116,8 @@ _py_thread__resolve_py_stack(py_thread_t* self, stack_dt* stack) {
                 stack->pointer = i;
                 FAIL;
             }
+            // Not lru_cache__replace: a stale frame might still be on this
+            // stack (e.g. on a key collision), so let the LRU dispose of it.
             lru_cache__store(cache, frame_key, frame);
 
             event_handler__emit_new_frame(frame);

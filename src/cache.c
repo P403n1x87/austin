@@ -445,6 +445,23 @@ lru_cache__store(lru_cache_t* self, key_dt key, value_t value) {
 
 // ----------------------------------------------------------------------------
 void
+lru_cache__replace(lru_cache_t* self, key_dt key, value_t value) {
+    queue_item_t* item = (queue_item_t*)hash_table__get(self->hash, key);
+
+    if (!isvalid(item)) {
+        lru_cache__store(self, key, value);
+        return;
+    }
+
+    if (item->value != value) {
+        if (isvalid(item->value))
+            self->queue->deallocator(item->value);
+        item->value = value;
+    }
+}
+
+// ----------------------------------------------------------------------------
+void
 lru_cache__invalidate(lru_cache_t* self) {
     if (!isvalid(self))
         return;

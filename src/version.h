@@ -120,7 +120,8 @@ typedef struct {
     offset_t o_firstlineno;
     offset_t o_code;
     offset_t o_qualname;
-    offset_t o_tlbc; // offset of co_tlbc in PyCodeObject; 0 when not present (GIL/3.13)
+    offset_t o_tlbc;  // offset of co_tlbc in PyCodeObject; 0 when not present (GIL/3.13)
+    offset_t o_flags; // offset of co_flags in PyCodeObject; 0 when unused (3.14+)
 } py_code_v;
 
 typedef struct {
@@ -260,8 +261,18 @@ typedef struct {
 
 #define UNSUPPORTED_VERSION log_w("Unsupported Python version detected. Austin might not work as expected.")
 
-#define PY_CODE(s)                                                                                                   \
-    {sizeof(s), offsetof(s, co_filename), offsetof(s, co_name), offsetof(s, co_lnotab), offsetof(s, co_firstlineno)}
+#define PY_CODE(s)                   \
+    {                                \
+        sizeof(s),                   \
+        offsetof(s, co_filename),    \
+        offsetof(s, co_name),        \
+        offsetof(s, co_lnotab),      \
+        offsetof(s, co_firstlineno), \
+        0,                           \
+        0,                           \
+        0,                           \
+        offsetof(s, co_flags),       \
+    }
 
 #define PY_CODE_311(s)                 \
     {                                  \
@@ -272,6 +283,8 @@ typedef struct {
         offsetof(s, co_firstlineno),   \
         offsetof(s, co_code_adaptive), \
         offsetof(s, co_qualname),      \
+        0,                             \
+        offsetof(s, co_flags),         \
     }
 
 #define PY_FRAME(s)                                                                                       \
@@ -591,6 +604,9 @@ init_version_descriptor(python_v* py_v, _Py_DebugOffsets* py_d) {
         PY_UNICODE_313(3_13);
         py_v->py_object_size   = py_d->v3_13.pyobject.size;
         py_v->py_object_o_type = py_d->v3_13.pyobject.ob_type;
+        // Not in the debug offsets: co_flags follows the PyVarObject header
+        // and the co_consts, co_names and co_exceptiontable pointers.
+        py_v->py_code.o_flags  = py_v->py_object_size + sizeof(ssize_t) + 3 * sizeof(void*);
         break;
 
     case 14:
