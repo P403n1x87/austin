@@ -667,7 +667,7 @@ py_proc__init(py_proc_t* self) {
 
 #ifdef DEBUG
     if (!try_once)
-        log_d("Start up timeout: %d ms", pargs.timeout / 1000);
+        log_d("Start up timeout: %" PRIu64 " ms", pargs.timeout / 1000);
     else
         log_d("Single attempt to attach to process %d", self->pid);
 #endif

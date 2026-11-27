@@ -1,5 +1,9 @@
+from ctypes import Structure
+from ctypes import c_bool
 from ctypes import c_char_p
+from ctypes import c_int
 from ctypes import c_uint64
+from ctypes import c_void_p
 
 import pytest
 
@@ -11,11 +15,29 @@ def parse_args(argv):
     return argparse.parse_args(argc, (c_char_p * argc)(*(_.encode() for _ in argv)))
 
 
-def parsed_times():
-    # The first two fields of parsed_args_t are the sampling interval and the
-    # timeout, both 64-bit unsigned integers.
-    interval, timeout = (c_uint64 * 2).in_dll(argparse.__binary__, "pargs")
-    return interval, timeout
+class ParsedArgs(Structure):
+    # Leading fields of parsed_args_t, up to the exposure. The field following
+    # attach_pid is pointer-aligned, so the layout does not depend on the size
+    # of pid_t, and reading it as an int is fine for small PIDs on the
+    # little-endian hosts the unit tests run on.
+    _fields_ = [
+        ("t_sampling_interval", c_uint64),
+        ("timeout", c_uint64),
+        ("attach_pid", c_int),
+        ("cmd", c_void_p),
+        ("where", c_bool),
+        ("cpu", c_bool),
+        ("full", c_bool),
+        ("memory", c_bool),
+        ("output_file", c_void_p),
+        ("output_filename", c_void_p),
+        ("children", c_bool),
+        ("exposure", c_uint64),
+    ]
+
+
+def pargs():
+    return ParsedArgs.in_dll(argparse.__binary__, "pargs")
 
 
 def test_parse_args_command():
@@ -29,6 +51,19 @@ def test_parse_args_no_target():
 
 def test_parse_args_process():
     parse_args(["austin", "-p", "123"])
+    assert pargs().attach_pid == 123
+    assert not pargs().where
+
+
+def test_parse_args_where():
+    parse_args(["austin", "-w", "123"])
+    assert pargs().attach_pid == 123
+    assert pargs().where
+
+
+def test_parse_args_exposure():
+    parse_args(["austin", "-x", "42", "-p", "123"])
+    assert pargs().exposure == 42
 
 
 @pytest.mark.exitcode(64)
@@ -107,7 +142,7 @@ def test_parse_args_pid_and_command():
 )
 def test_parse_args_interval_units(value, expected):
     parse_args(["austin", "-i", value, "-p", "123"])
-    assert parsed_times()[0] == expected
+    assert pargs().t_sampling_interval == expected
 
 
 @pytest.mark.parametrize(
@@ -116,9 +151,33 @@ def test_parse_args_interval_units(value, expected):
 )
 def test_parse_args_timeout_units(value, expected):
     parse_args(["austin", "-t", value, "-p", "123"])
-    assert parsed_times()[1] == expected
+    assert pargs().timeout == expected
 
 
 @pytest.mark.exitcode(64)
 def test_parse_args_interval_unit_overflow():
     parse_args(["austin", "-i", "9223372036854775807s", "-p", "123"])
+
+
+@pytest.mark.exitcode(64)
+@pytest.mark.parametrize("pid", ["-123", "99999999999999999999", "123 "])
+def test_parse_args_invalid_pid_value(pid):
+    parse_args(["austin", "-p", pid])
+
+
+@pytest.mark.exitcode(64)
+@pytest.mark.parametrize("value", ["-1", "-1ms", "99999999999999999999"])
+def test_parse_args_invalid_interval_value(value):
+    parse_args(["austin", "-i", value, "-p", "123"])
+
+
+@pytest.mark.exitcode(64)
+@pytest.mark.parametrize("value", ["-1", "-1s", "9223372036854775807"])
+def test_parse_args_invalid_timeout_value(value):
+    parse_args(["austin", "-t", value, "-p", "123"])
+
+
+@pytest.mark.exitcode(64)
+@pytest.mark.parametrize("value", ["5s", "99999999999999999999"])
+def test_parse_args_invalid_exposure_value(value):
+    parse_args(["austin", "-x", value, "-p", "123"])
