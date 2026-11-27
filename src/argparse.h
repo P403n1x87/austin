@@ -31,14 +31,13 @@
 #include "platform.h"
 
 typedef uint64_t microseconds_t;
-typedef uint64_t milliseconds_t;
 typedef uint64_t seconds_t;
 
 #define MICROSECONDS_MAX UINT64_MAX
 
 typedef struct {
     microseconds_t t_sampling_interval;
-    milliseconds_t timeout;
+    microseconds_t timeout;
     pid_t          attach_pid;
     char**         cmd;
     bool           where;

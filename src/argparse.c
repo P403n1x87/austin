@@ -29,7 +29,8 @@
 #include <io.h>
 #endif
 
-#include <limits.h>
+#include <errno.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -77,44 +78,47 @@ parsed_args_t pargs = {
 
 // ---- PRIVATE ---------------------------------------------------------------
 
-// ----------------------------------------------------------------------------
-static int
-str_to_num(char* str, long* num) {
-    char* p_err;
-
-    *num = strtol(str, &p_err, 10);
-
-    return (p_err == str || *p_err != '\0') ? 1 : 0;
-}
-
 typedef struct {
     const char* suffix;
-    long        factor;
+    intmax_t    factor;
 } unit_t;
 
 /**
- * Parse an integer optionally followed by one of the given unit suffixes.
+ * Parse a non-negative integer, optionally followed by a unit suffix.
  *
- * The result is scaled by the factor of the matching unit. A bare number is
- * taken to be in the base unit, i.e. the one with factor 1.
+ * The whole string must be consumed. If units is NULL, only a bare number is
+ * accepted. Otherwise, the suffix must match one of the entries in the
+ * NULL-terminated units table, and the number is scaled by its factor. An entry
+ * with an empty suffix gives the factor to use for a bare number.
+ *
+ * The result is parsed into the widest integer type available so that callers
+ * can range-check it before assigning it to the actual target type. Never pass
+ * a cast pointer to a narrower or wider type here, as that breaks on
+ * big-endian architectures.
  */
 static int
-parse_with_units(char* str, const unit_t* units, long* num) {
-    char* p_err;
+parse_number(const char* str, const unit_t* units, intmax_t* num) {
+    char*    end;
+    intmax_t value;
 
-    *num = strtol(str, &p_err, 10);
+    errno = 0;
+    value = strtoimax(str, &end, 10);
 
-    if (p_err == str)
+    if (end == str || errno == ERANGE || value < 0)
         FAIL;
 
-    if (*p_err == '\0')
+    if (units == NULL) {
+        if (*end != '\0')
+            FAIL;
+        *num = value;
         SUCCESS;
+    }
 
     for (const unit_t* unit = units; unit->suffix != NULL; unit++) {
-        if (strcmp(p_err, unit->suffix) == 0) {
-            if (*num > LONG_MAX / unit->factor || *num < LONG_MIN / unit->factor)
+        if (strcmp(end, unit->suffix) == 0) {
+            if (value > INTMAX_MAX / unit->factor)
                 FAIL;
-            *num *= unit->factor;
+            *num = value * unit->factor;
             SUCCESS;
         }
     }
@@ -123,36 +127,78 @@ parse_with_units(char* str, const unit_t* units, long* num) {
 }
 
 /**
- * Parse the interval argument.
- *
- * This accepts s, ms and us as units. The result is in microseconds.
+ * Parse a process ID.
  */
 static int
-parse_interval(char* str, long* num) {
+parse_pid(const char* str, pid_t* pid) {
+    intmax_t value;
+
+    if (fail(parse_number(str, NULL, &value)) || value == 0 || (intmax_t)(pid_t)value != value)
+        FAIL;
+
+    *pid = (pid_t)value;
+
+    SUCCESS;
+}
+
+/**
+ * Parse an unsigned 64-bit quantity, optionally with units.
+ */
+static int
+parse_uint64(const char* str, const unit_t* units, uint64_t* num) {
+    intmax_t value;
+
+    if (fail(parse_number(str, units, &value)))
+        FAIL;
+
+    *num = (uint64_t)value;
+
+    SUCCESS;
+}
+
+/**
+ * Parse the interval argument.
+ *
+ * This accepts s, ms and us as units. The default unit is microseconds. The
+ * result is in microseconds.
+ */
+static int
+parse_interval(const char* str, microseconds_t* interval) {
     static const unit_t units[] = {
-        {"s",  1000000},
-        {"ms", 1000   },
+        {"",   1      },
         {"us", 1      },
+        {"ms", 1000   },
+        {"s",  1000000},
         {NULL, 0      },
     };
 
-    return parse_with_units(str, units, num);
+    return parse_uint64(str, units, interval);
 }
 
 /**
  * Parse the timeout argument.
  *
- * This accepts s and ms as units. The result is in milliseconds.
+ * This accepts s and ms as units. The default unit is milliseconds. The result
+ * is in microseconds.
  */
 static int
-parse_timeout(char* str, long* num) {
+parse_timeout(const char* str, microseconds_t* timeout) {
     static const unit_t units[] = {
-        {"s",  1000},
-        {"ms", 1   },
-        {NULL, 0   },
+        {"",   1000   },
+        {"ms", 1000   },
+        {"s",  1000000},
+        {NULL, 0      },
     };
 
-    return parse_with_units(str, units, num);
+    return parse_uint64(str, units, timeout);
+}
+
+/**
+ * Parse the exposure argument, in seconds.
+ */
+static int
+parse_exposure(const char* str, seconds_t* exposure) {
+    return parse_uint64(str, NULL, exposure);
 }
 
 // ---- Argument parser -------------------------------------------------------
@@ -599,15 +645,13 @@ static int
 cb(const int opt, const char* arg, const int index, char** argv) {
     switch (opt) {
     case 'i':
-        if (fail(parse_interval((char*)arg, (long*)&(pargs.t_sampling_interval)))
-            || pargs.t_sampling_interval > LONG_MAX)
+        if (fail(parse_interval(arg, &pargs.t_sampling_interval)))
             arg_error("the sampling interval must be a positive integer");
         break;
 
     case 't':
-        if (fail(parse_timeout((char*)arg, (long*)&(pargs.timeout))) || pargs.timeout > LONG_MAX / 1000)
+        if (fail(parse_timeout(arg, &pargs.timeout)))
             arg_error("the timeout must be a positive integer");
-        pargs.timeout *= 1000;
         break;
 
     case 'c':
@@ -623,12 +667,12 @@ cb(const int opt, const char* arg, const int index, char** argv) {
         break;
 
     case 'p':
-        if (str_to_num((char*)arg, (long*)&pargs.attach_pid) == 1 || pargs.attach_pid <= 0)
+        if (fail(parse_pid(arg, &pargs.attach_pid)))
             arg_error("invalid PID");
         break;
 
     case 'w':
-        if (str_to_num((char*)arg, (long*)&pargs.attach_pid) == 1 || pargs.attach_pid <= 0)
+        if (fail(parse_pid(arg, &pargs.attach_pid)))
             arg_error("invalid PID");
         pargs.where = true;
         break;
@@ -642,7 +686,7 @@ cb(const int opt, const char* arg, const int index, char** argv) {
         break;
 
     case 'x':
-        if (str_to_num((char*)arg, (long*)&(pargs.exposure)) == 1 || pargs.exposure > LONG_MAX)
+        if (fail(parse_exposure(arg, &pargs.exposure)))
             arg_error("the exposure must be a positive integer");
         break;
 
