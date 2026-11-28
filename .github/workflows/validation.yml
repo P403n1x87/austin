@@ -371,7 +371,7 @@ jobs:
         run: python3 scripts/validation.py --merge results-*.txt --output validation.txt
 
       - name: Post results on PR
-        uses: marocchino/sticky-pull-request-comment@v3.0.5
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: validation
           path: validation.txt
@@ -419,14 +419,14 @@ jobs:
 
       - name: Post crash report on PR
         if: steps.crash.outputs.found == 'true'
-        uses: marocchino/sticky-pull-request-comment@v3.0.5
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: validation-crash-report
           path: crash-comment.md
 
       - name: Clear stale crash comment
         if: steps.crash.outputs.found == 'false'
-        uses: marocchino/sticky-pull-request-comment@v3.0.5
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: validation-crash-report
           delete: true

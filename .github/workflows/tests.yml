@@ -719,14 +719,14 @@ jobs:
 
       - name: Post crash report on PR
         if: steps.report.outputs.found == 'true'
-        uses: marocchino/sticky-pull-request-comment@v3.0.5
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: crash-report
           path: crash-comment.md
 
       - name: Clear stale crash comment
         if: steps.report.outputs.found == 'false'
-        uses: marocchino/sticky-pull-request-comment@v3.0.5
+        uses: marocchino/sticky-pull-request-comment@v3
         with:
           header: crash-report
           delete: true

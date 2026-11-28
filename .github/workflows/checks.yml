@@ -379,7 +379,7 @@ jobs:
           gcovr "${args[@]}" --xml cobertura.xml -r src/
 
       - name: Upload report to Codecov
-        uses: codecov/codecov-action@v7.1.1
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./cobertura.xml
